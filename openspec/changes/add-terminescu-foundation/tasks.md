@@ -88,9 +88,14 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       Done 2026-11-04: `terminescu_core::{daemon, runtime}`, 5 tests in
       `crates/ptyd/tests/daemon_client.rs` (plus a killed daemon), and a manual run of the app:
       quit leaves the shell running, the next start adopts it. Pane output reaches views in 2.5.
-- [ ] 2.2 Session store in the daemon for session-only and secret variables, `zeroize`, TTL
+- [x] 2.2 Session store in the daemon for session-only and secret variables, `zeroize`, TTL
       (D21). Verify: integration test sets a secret, restarts the client, reads it, waits past
       the TTL and finds it gone; a test greps the SQLite file for the value and finds none.
+      Done 2026-11-04; the store came with 2.3 (`crates/ptyd/src/vars.rs`), this task adds
+      `Zeroizing` values and a sweep every 200 ms. Tests: `daemon.rs`
+      `a_secret_outlives_its_client_and_expires_after_its_ttl`, `daemon_client.rs`
+      `the_app_database_never_holds_a_secret` (scans every file in the app folder, log
+      included). Copies made to answer a request are plain strings until the answer is written.
 - [x] 2.3 `terminescu` CLI: `hook`, `status`, `var get/set/env`, pane from `TERMINESCU_PANE_ID`;
       `var get` of a secret needs `--reveal` (D35); routing per D36. Verify also: `var env`
       answers with the app closed.

@@ -599,6 +599,8 @@ pub fn run(opts: Options) -> io::Result<bool> {
     std::thread::spawn(move || {
         loop {
             std::thread::sleep(Duration::from_millis(200).min(idle.opts.idle));
+            // Expired variables leave memory on time, whether or not a shell asks (D21).
+            lock(&idle.vars).sweep();
             let quiet = lock(&idle.clients).is_empty() && idle.live_panes() == 0;
             if !quiet {
                 idle.touch();

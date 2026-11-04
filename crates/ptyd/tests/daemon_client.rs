@@ -366,3 +366,70 @@ fn a_view_that_falls_behind_resyncs_from_a_snapshot() {
     );
     assert_eq!(rt.view_state(&tab), Some(ViewState::Live));
 }
+
+/// D35: secrets live in the daemon's memory only. The app's database, written the way the app
+/// writes it, holds no trace of a secret set and read through the real runtime and daemon.
+#[test]
+fn the_app_database_never_holds_a_secret() {
+    use terminescu_core::db::Db;
+    use terminescu_protocol::client::Client;
+    use terminescu_protocol::{Control, Frame, VarMode};
+
+    const SECRET: &str = "tok-example-7f3c9a";
+    let f = Fixture::new();
+    let db_path = f.dir.join("terminescu.sqlite");
+    let db = Db::open(&db_path).unwrap();
+    db.local_owner().unwrap();
+    let (rt, _, _) = f.start();
+    let [(_, tab)] = tabs(&rt.workspace()).try_into().unwrap();
+    let pane = rt.pane_of(&tab).unwrap();
+    wait_for(
+        || live(&rt, pane).is_some_and(|p| p.side_tab.is_some()),
+        "side tab",
+    );
+
+    let mut c = Client::connect(&f.socket, "test").unwrap();
+    c.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    let mut call = |frame| {
+        c.send(&Frame::Control(frame)).unwrap();
+        c.recv_until(|f| match f {
+            Frame::Control(a @ (Control::Vars { .. } | Control::Done { .. })) => Some(a.clone()),
+            Frame::Control(Control::Error { message, .. }) => panic!("{message}"),
+            _ => None,
+        })
+        .unwrap()
+    };
+    call(Control::VarSet {
+        req: 1,
+        pane,
+        name: "API_TOKEN".into(),
+        value: SECRET.into(),
+        mode: VarMode::Secret,
+        ttl_secs: None,
+    });
+    let Control::Vars { vars, .. } = call(Control::VarGet {
+        req: 2,
+        pane,
+        name: None,
+    }) else {
+        panic!("no vars")
+    };
+    assert_eq!(vars[0].value, SECRET);
+    drop(db);
+    rt.stop();
+
+    let mut found = Vec::new();
+    for entry in std::fs::read_dir(&f.dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_file()
+            && std::fs::read(&path)
+                .unwrap()
+                .windows(SECRET.len())
+                .any(|w| w == SECRET.as_bytes())
+        {
+            found.push(path);
+        }
+    }
+    assert!(db_path.exists());
+    assert!(found.is_empty(), "secret written to {found:?}");
+}

@@ -5,7 +5,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 use terminescu_protocol::client::{Client, ClientError};
-use terminescu_protocol::{Control, Frame, PaneId, PaneInfo, SpawnSpec};
+use terminescu_protocol::{Control, Frame, PaneId, PaneInfo, SpawnSpec, VarMode};
 
 static NEXT: AtomicU32 = AtomicU32::new(0);
 
@@ -373,4 +373,87 @@ fn default_program_is_the_login_shell() {
     .unwrap();
     let out = read_until(&mut c, pane, ":42\r\n");
     assert!(out.contains("login:-"), "{out}");
+}
+
+fn var_call(c: &mut Client, frame: Control) -> Control {
+    c.send(&Frame::Control(frame)).unwrap();
+    c.recv_until(|f| match f {
+        Frame::Control(
+            a @ (Control::Vars { req: 9, .. } | Control::Done { req: 9 } | Control::Error { .. }),
+        ) => Some(a.clone()),
+        _ => None,
+    })
+    .unwrap()
+}
+
+fn var_values(c: &mut Client, pane: PaneId) -> Vec<(String, String)> {
+    match var_call(
+        c,
+        Control::VarGet {
+            req: 9,
+            pane,
+            name: None,
+        },
+    ) {
+        Control::Vars { vars, .. } => vars.into_iter().map(|v| (v.name, v.value)).collect(),
+        other => panic!("unexpected {other:?}"),
+    }
+}
+
+/// D21: a secret outlives the client that set it and is gone once its TTL passes.
+#[test]
+fn a_secret_outlives_its_client_and_expires_after_its_ttl() {
+    let d = Daemon::start(60);
+    let mut c = d.client();
+    let pane = spawn(&mut c, &["/bin/sleep", "60"]);
+    c.send(&Frame::Control(Control::SetSideTab {
+        pane,
+        side_tab: "st-1".into(),
+    }))
+    .unwrap();
+    let set = |name: &str, ttl_secs| Control::VarSet {
+        req: 9,
+        pane,
+        name: name.into(),
+        value: format!("{name}-value"),
+        mode: VarMode::Secret,
+        ttl_secs,
+    };
+    assert_eq!(
+        var_call(&mut c, set("API_TOKEN", Some(1))),
+        Control::Done { req: 9 }
+    );
+    assert_eq!(
+        var_call(&mut c, set("KEEP", None)),
+        Control::Done { req: 9 }
+    );
+    drop(c);
+
+    let mut c = d.client();
+    assert_eq!(
+        var_values(&mut c, pane),
+        [
+            ("API_TOKEN".into(), "API_TOKEN-value".into()),
+            ("KEEP".into(), "KEEP-value".into())
+        ]
+    );
+    std::thread::sleep(Duration::from_millis(1300));
+    assert_eq!(
+        var_values(&mut c, pane),
+        [("KEEP".into(), "KEEP-value".into())]
+    );
+
+    // A pane with no side tab yet has nowhere to keep variables.
+    let loose = spawn(&mut c, &["/bin/sleep", "60"]);
+    match var_call(
+        &mut c,
+        Control::VarGet {
+            req: 9,
+            pane: loose,
+            name: None,
+        },
+    ) {
+        Control::Error { code, .. } => assert_eq!(code, "no_side_tab"),
+        other => panic!("unexpected {other:?}"),
+    }
 }

@@ -13,6 +13,7 @@ alacritty_terminal = { path = "../vendor/alacritty_terminal" }
 portable-pty = "0.9"
 libc.workspace = true
 serde_json.workspace = true
+zeroize = "1"
 
 [dev-dependencies]
 terminescu-core.workspace = true

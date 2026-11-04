@@ -1,14 +1,16 @@
 //! Session and secret variables, per side tab, in memory only (D21, D35, D36).
 //!
-//! Task 2.2 adds zeroizing and a TTL sweep; until then an expired variable disappears the next
-//! time anyone reads its side tab.
+//! Values never touch the disk. Each value is wiped from memory when it is replaced, unset or
+//! expires; the daemon sweeps expired ones a few times a second, so a TTL holds even when no
+//! shell asks. Copies made to answer a request live only until that answer is written.
 
 use std::collections::{BTreeMap, HashMap};
 use std::time::{Duration, Instant};
 use terminescu_protocol::{Var, VarMode};
+use zeroize::Zeroizing;
 
 struct Entry {
-    value: String,
+    value: Zeroizing<String>,
     mode: VarMode,
     expires: Option<Instant>,
 }
@@ -17,6 +19,14 @@ struct Entry {
 struct SideVars {
     generation: u64,
     vars: BTreeMap<String, Entry>,
+}
+
+impl SideVars {
+    fn has_expired(&self, now: Instant) -> bool {
+        self.vars
+            .values()
+            .any(|e| e.expires.is_some_and(|t| t <= now))
+    }
 }
 
 #[derive(Default)]
@@ -48,7 +58,7 @@ impl Vars {
         self.bump(side).vars.insert(
             name.into(),
             Entry {
-                value,
+                value: Zeroizing::new(value),
                 mode,
                 expires,
             },
@@ -65,17 +75,33 @@ impl Vars {
         }
     }
 
-    /// The side tab's generation and variables, or just `name`. Drops expired ones first.
+    /// Drops every expired variable. Returns whether any went.
+    pub fn sweep(&mut self) -> bool {
+        let now = Instant::now();
+        let sides: Vec<String> = self
+            .by_side
+            .iter()
+            .filter(|(_, s)| s.has_expired(now))
+            .map(|(side, _)| side.clone())
+            .collect();
+        for side in &sides {
+            self.expire(side, now);
+        }
+        !sides.is_empty()
+    }
+
+    fn expire(&mut self, side: &str, now: Instant) {
+        self.bump(side)
+            .vars
+            .retain(|_, e| e.expires.is_none_or(|t| t > now));
+    }
+
+    /// The side tab's generation and variables, or just `name`. Drops expired ones first, so a
+    /// read between two sweeps never returns one.
     pub fn get(&mut self, side: &str, name: Option<&str>) -> (u64, Vec<Var>) {
         let now = Instant::now();
-        let expired = self
-            .by_side
-            .get(side)
-            .is_some_and(|s| s.vars.values().any(|e| e.expires.is_some_and(|t| t <= now)));
-        if expired {
-            self.bump(side)
-                .vars
-                .retain(|_, e| e.expires.is_none_or(|t| t > now));
+        if self.by_side.get(side).is_some_and(|s| s.has_expired(now)) {
+            self.expire(side, now);
         }
         let Some(s) = self.by_side.get(side) else {
             return (0, Vec::new());
@@ -86,7 +112,7 @@ impl Vars {
             .filter(|(n, _)| name.is_none_or(|want| want == n.as_str()))
             .map(|(n, e)| Var {
                 name: n.clone(),
-                value: e.value.clone(),
+                value: e.value.to_string(),
                 mode: e.mode,
             })
             .collect();
@@ -135,5 +161,28 @@ mod tests {
             vars.iter().map(|v| v.name.as_str()).collect::<Vec<_>>(),
             ["K"]
         );
+    }
+
+    #[test]
+    fn a_sweep_drops_expired_variables_without_a_read() {
+        let mut v = Vars::default();
+        v.set("s1", "K", "y".into(), VarMode::Session, None);
+        v.set(
+            "s2",
+            "T",
+            "x".into(),
+            VarMode::Secret,
+            Some(Duration::from_millis(20)),
+        );
+        assert!(!v.sweep(), "nothing has expired yet");
+        let g1 = v.by_side["s1"].generation;
+        std::thread::sleep(Duration::from_millis(30));
+        assert!(v.sweep());
+        assert!(v.by_side["s2"].vars.is_empty());
+        assert_eq!(
+            v.by_side["s1"].generation, g1,
+            "other side tabs keep theirs"
+        );
+        assert!(!v.sweep());
     }
 }
