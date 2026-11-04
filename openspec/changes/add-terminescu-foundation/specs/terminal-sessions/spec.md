@@ -63,8 +63,14 @@ login shell in each pane's last cwd.
 
 ### Requirement: Command line tool
 A `terminescu` CLI SHALL ship inside the app with subcommands `hook`, `status`, `var` (with `env`) and `edit`, and
-SHALL find its pane through `TERMINESCU_PANE_ID`.
+SHALL find its pane through `TERMINESCU_PANE_ID`. The app SHALL keep a copy of it at a path that
+survives app updates, first on each pane's `PATH`. `var env` SHALL answer from the daemon, so it
+works while the app is closed.
 
 #### Scenario: Status from a script
 - **WHEN** a deploy script runs `terminescu status "Deploying" --color cyan --until-exit`
 - **THEN** the tab shows `Deploying` in cyan until the script's command ends, then its auto status
+
+#### Scenario: Variables while the app is closed
+- **WHEN** the app is closed and a pane's shell shows its next prompt
+- **THEN** the shell still loads its side tab's session and secret variables from the daemon

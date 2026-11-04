@@ -11,7 +11,8 @@ shell, and Terminescu never starts a turn on its own.
 
 > Status: P1, milestone M1. The spikes are done and the skeleton (tasks 1.1 to 1.4) builds:
 > an app window with side tabs and tabs over the core's command and patch protocol, the
-> SQLite schema, and the design tokens. Terminals arrive with group 2.
+> SQLite schema, and the design tokens. The pty daemon (task 2.1) runs shells and restores
+> their screens on reattach; the app connects to it in task 2.6.
 
 ## See it
 
@@ -19,7 +20,7 @@ All links are private claude.ai artifacts. Only the owner can open them until th
 
 | What | Link |
 |---|---|
-| Plan page: proposal, 53 tasks, decisions D1 to D35, risks, confidence | https://claude.ai/artifact/NxQVoq2agT798FUijmKxmQ |
+| Plan page: proposal, 53 tasks, decisions D1 to D36, risks, confidence | https://claude.ai/artifact/NxQVoq2agT798FUijmKxmQ |
 | Reel: an 80-second animated walkthrough in 11 scenes | https://claude.ai/artifact/9xWiUJnmsdS2z4aYauTGik |
 | Screens: 12 canvas boards (main window, drags, merge, statuses, extract, insert, prompts, hidden context panel, settings, text editor, editor request) | https://claude.ai/artifact/RGGKUzakwC7mZqvNZ3tPpH |
 | Workbench: the design system (tokens, 8x8 icons, components) | https://claude.ai/artifact/AhrMAGQJ1CGCzb6JYYBojH |
@@ -81,7 +82,7 @@ Window            an OS window
   serves the same protocol over WebSocket so a browser can view the Mac, with no cloud
   involved.
 
-The decisions behind each choice are numbered D1 to D35 in
+The decisions behind each choice are numbered D1 to D36 in
 [design.md](openspec/changes/add-terminescu-foundation/design.md).
 
 ## Plan
@@ -92,7 +93,7 @@ foundation:
 | File | Contents |
 |---|---|
 | [proposal.md](openspec/changes/add-terminescu-foundation/proposal.md) | Why, what changes, scope, phases, resolved and open questions |
-| [design.md](openspec/changes/add-terminescu-foundation/design.md) | Decisions D1 to D35, risks |
+| [design.md](openspec/changes/add-terminescu-foundation/design.md) | Decisions D1 to D36, risks |
 | [tasks.md](openspec/changes/add-terminescu-foundation/tasks.md) | Tasks, each with how it's verified |
 | [specs/](openspec/changes/add-terminescu-foundation/specs) | Requirements and scenarios for 9 capabilities |
 | [sequence.mmd](openspec/changes/add-terminescu-foundation/sequence.mmd) | The needs-you flow, from Claude Code hook to amber side tab |

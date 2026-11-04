@@ -306,21 +306,24 @@ alternate screen when it swaps back, so a long-lived daemon must never call it. 
 vendors `alacritty_terminal` 0.25.1 (Apache-2.0) under `crates/vendor/` with read-only
 accessors and offers them upstream. The snapshot restores every `TermMode` bit, the kitty
 keyboard mode stack, the scroll region, the saved cursor, the cursor style and OSC 4 colors,
-and keeps trailing blanks on wrapped rows. Rejected: a raw byte ring, exact only until it drops
+and keeps trailing blanks on wrapped rows. It leaves out tab stops and the window title. The daemon's model never answers terminal queries (DA, DSR); the attached xterm.js answers them, and two answers would reach the shell. Rejected: a raw byte ring, exact only until it drops
 its head; then the alternate-screen switch and the shell history above `claude` are lost
 (spike 0.1). Also rejected: a line-count ring of decoded text, which loses colors and cursor state.
 
 ### D32. The daemon runs detached from its own copy
 The app copies `terminescu-ptyd` from the bundle to
-`~/Library/Application Support/Terminescu/bin/ptyd-<version>` and starts it with
-`std::process::Command` and `setsid`. Its socket sits in a `0700` folder with mode `0600`; macOS caps socket paths at 104 bytes, so a
+`~/Library/Application Support/Terminescu/bin/ptyd-<version>-<hash>`, where `<hash>` is the first
+8 hex digits of the binary's SHA-256, and starts it with `std::process::Command` and `setsid`. It
+writes the copy to a temporary name and renames it into place: rewriting a binary that a daemon
+still runs makes macOS kill that daemon at its next page-in, and dev builds share a version. Its socket sits in a `0700` folder with mode `0600`; macOS caps socket paths at 104 bytes, so a
 longer path falls back to `/tmp/terminescu-<uid>/`. The app clears `com.apple.quarantine` on the
 copy, which `std::fs::copy` keeps, and release builds are signed and notarized. Spike 0.3 showed
 the daemon outliving app quit, `kill -9` and a bundle swap, reparented to launchd.
 The first message on every connection is a handshake with the protocol version; the app speaks
 the daemon's version and the one before. A newer daemon takes over only when no pane is open or
 when the person picks "Restart sessions", because live ptys cannot move between processes in
-v1. Rejected: the Tauri shell plugin's sidecar API, which kills its children when the app exits,
+v1. The daemon checks each connecting peer's uid with `getpeereid` and exits after 10 minutes
+with no pane and no client. It runs on plain threads, a bounded queue per client, and drops a client that falls behind; that client reattaches from a snapshot. Rust starts with SIGPIPE ignored and portable-pty does not reset it for the child, so the daemon restores the default before it spawns shells and sets `SO_NOSIGPIPE` on its own sockets. Rejected: the Tauri shell plugin's sidecar API, which kills its children when the app exits,
 and running the daemon from inside the bundle, which the updater replaces under it.
 
 ### D33. Pty output streams as raw bytes; WebGL only where it shows
@@ -356,7 +359,7 @@ watches.
 `terminescu var env` prints `export` lines for the session and secret variables of the calling
 pane's side tab. The shell integration runs `eval "$(terminescu var env)"` in `precmd`, so a
 shell sees new values at its next prompt, and nothing is typed, echoed, kept in history or
-written to the scrollback ring. For Claude, the `SessionStart` hook writes the same `eval` line
+written to the scrollback. For Claude, the `SessionStart` hook writes the same `eval` line
 to `CLAUDE_ENV_FILE`, which Claude Code runs before each Bash command, so Claude's commands
 see `$API_TOKEN` added after Claude started. The limit is stated plainly: any process running as
 the person, Claude's Bash tool included, can run `terminescu var get --reveal`. Secret mode
@@ -364,6 +367,22 @@ guards against accidental exposure on disk, screen, scrollback, transcript and p
 against code that runs as the person. Rejected: typing ` export NAME=value` into the pane,
 which echoes the value into the scrollback, needs `HIST_IGNORE_SPACE`, and would land in
 Claude's input when Claude is the foreground process.
+
+### D36. One place for the CLI and the sockets
+On every start the app copies `terminescu` to `~/Library/Application Support/Terminescu/bin/`
+with the same write-and-rename as D32, so Claude's hook config and the shells use a path that
+survives app updates; the hook config quotes it, since the path holds a space. The shell
+integration puts that folder first on `PATH` after the person's rc files. The daemon socket
+`ptyd.sock` and the core socket `core.sock` sit in `Terminescu/run/`, or in
+`/tmp/terminescu-<uid>/` past the 104-byte limit; one function in `terminescu-protocol` picks the
+paths, so app, daemon and CLI agree, and each pane gets `TERMINESCU_PTYD_SOCKET` and
+`TERMINESCU_CORE_SOCKET`. `var env`, `var get` and session-only `var set` go to the daemon,
+which keeps session and secret variables per side tab and learns each pane's side tab from the
+core at spawn and on every move; they work while the app is closed. `hook`, `status`, `edit` and
+saved `var set` go to the core: with the app closed `hook` exits 0 in silence, `status` and saved
+`var set` warn and exit 0, and `edit --wait` exits 1. Rejected: the CLI inside the bundle, whose
+path moves with each update and breaks every hook entry; routing `var env` through the core,
+which leaves every prompt without its variables while the app is closed.
 
 ## Risks
 

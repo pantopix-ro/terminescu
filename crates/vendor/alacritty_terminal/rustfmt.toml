@@ -1,0 +1,2 @@
+# Vendored: keep the diff against upstream to the patch in VENDORED.md.
+disable_all_formatting = true

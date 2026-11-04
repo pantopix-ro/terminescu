@@ -57,20 +57,28 @@ A no-go changes the named decision before group 1 starts.
 
 ## 2. Terminal sessions (P1)
 
-- [ ] 2.1 `terminescu-ptyd`: spawn the login shell per pane with cwd and `TERMINESCU_PANE_ID`,
-      Unix socket protocol v1 with a version handshake, headless screen per pane with a snapshot on attach
-      (D31: vendored `alacritty_terminal` with accessors, never `swap_alt`), foreground process, `CLAUDE*` stripped from
-      the pane environment. The app copies the daemon out of the bundle and
-      starts it detached with `setsid` (D32). Verify: integration test spawns a shell,
-      disconnects, reconnects and reads the snapshot; a test replays the spike 0.1 stream and
-      compares the snapshot with xterm.js headless;
-      unit tests cover a wrapped row ending in blanks, a scroll region, the kitty keyboard
-      stack and two attaches in a row with the alternate screen active.
+Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
+
+- [x] 2.1 `terminescu-ptyd`: spawn the login shell per pane with cwd, `TERMINESCU_PANE_ID` and
+      the socket variables (D36), Unix socket protocol v1 with a version handshake and a peer uid
+      check, headless screen per pane with a snapshot on attach (D31: `alacritty_terminal`
+      0.25.1 vendored under `crates/vendor/` with accessors and left out of the workspace
+      members, never `swap_alt`), foreground process, `CLAUDE*` stripped from the pane
+      environment, exit after 10 idle minutes. The app copies the daemon out of the bundle under
+      a hash name and starts it detached with `setsid` (D32). Verify: integration test spawns a
+      shell, disconnects, reconnects and reads the snapshot; a test replays the spike 0.1 stream
+      and matches a committed snapshot file, which `packages/ui` feeds to `@xterm/headless` and
+      compares with the raw stream; unit tests cover a wrapped row ending in blanks, a scroll
+      region, the kitty keyboard stack and two attaches in a row with the alternate screen active.
+      Done 2026-11-04: `crates/ptyd` (threads, no async runtime), `terminescu_core::launcher`,
+      12 snapshot tests with a committed `claude-session.snapshot.bin`, 10 daemon tests, a launcher
+      test and `packages/ui/test/snapshot.test.ts`. The app starts the daemon in task 2.6.
 - [ ] 2.2 Session store in the daemon for session-only and secret variables, `zeroize`, TTL
       (D21). Verify: integration test sets a secret, restarts the client, reads it, waits past
       the TTL and finds it gone; a test greps the SQLite file for the value and finds none.
 - [ ] 2.3 `terminescu` CLI: `hook`, `status`, `var get/set/env`, pane from `TERMINESCU_PANE_ID`;
-      `var get` of a secret needs `--reveal` (D35).
+      `var get` of a secret needs `--reveal` (D35); routing per D36. Verify also: `var env`
+      answers with the app closed.
       Verify: `cli.test.rs` runs `terminescu status "Deploying" --for 1s` against a test core.
 - [ ] 2.4 Shell integration for zsh, bash and fish (OSC 133, OSC 7, command line), loaded after
       the person's rc files; `precmd` runs `terminescu var env` when the variable generation
@@ -100,7 +108,8 @@ A no-go changes the named decision before group 1 starts.
 
 ## 4. Claude awareness (P1)
 
-- [ ] 4.1 `terminescu hook` and its idempotent installer: events and rules of D34, 5 s timeout,
+- [ ] 4.1 `terminescu hook` and its idempotent installer, with the quoted D36 path: events and
+      rules of D34, 5 s timeout,
       silent stdout, exit 0 without `TERMINESCU_PANE_ID` or socket. Verify: running the
       installer twice leaves one entry per event and other hooks unchanged; `hook.test.rs` runs
       the hook with no pane id and with no socket and gets exit 0 and empty stdout under 100 ms.

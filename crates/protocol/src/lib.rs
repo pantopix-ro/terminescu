@@ -7,6 +7,9 @@
 use serde::{Deserialize, Serialize};
 use std::ops::RangeInclusive;
 
+pub mod client;
+pub mod paths;
+
 /// The protocol version this build speaks natively.
 pub const PROTOCOL_VERSION: u32 = 1;
 
@@ -31,13 +34,66 @@ pub enum Frame {
 }
 
 /// Control messages. The first message on every connection is `Hello` from the client,
-/// answered by `Welcome` or `Error` (D32).
+/// answered by `Welcome` or `Error` (D32). Requests that expect an answer carry a `req` number
+/// that the answer repeats.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum Control {
+    // Client to daemon.
     Hello { versions: Vec<u32>, client: String },
+    Spawn { req: u64, spec: SpawnSpec },
+    /// Subscribe to a pane: the daemon answers `Attached`, then an output frame with the
+    /// screen snapshot (D31), then live output.
+    Attach { pane: PaneId },
+    Detach { pane: PaneId },
+    Resize { pane: PaneId, cols: u16, rows: u16 },
+    /// Hang up the pane's shell and forget the pane.
+    Close { pane: PaneId },
+    List { req: u64 },
+    /// The side tab a pane belongs to, for its variables (D36).
+    SetSideTab { pane: PaneId, side_tab: String },
+
+    // Daemon to client.
     Welcome { version: u32, daemon: String },
-    Error { code: String, message: String },
+    Spawned { req: u64, pane: PaneId },
+    Attached { pane: PaneId, cols: u16, rows: u16 },
+    Exited { pane: PaneId, code: Option<i32> },
+    Panes { req: u64, panes: Vec<PaneInfo> },
+    Error {
+        code: String,
+        message: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        req: Option<u64>,
+    },
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SpawnSpec {
+    pub cols: u16,
+    pub rows: u16,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<String>,
+    /// The program and its arguments; the person's login shell when absent (D8).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub argv: Option<Vec<String>>,
+    /// Extra environment on top of the daemon's, after `CLAUDE*` is removed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub env: Vec<(String, String)>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub side_tab: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PaneInfo {
+    pub pane: PaneId,
+    pub pid: Option<u32>,
+    pub cols: u16,
+    pub rows: u16,
+    pub side_tab: Option<String>,
+    /// Name of the pty's foreground process, such as `zsh` or `claude`.
+    pub foreground: Option<String>,
+    /// Exit code once the shell ended; the pane stays listed until closed.
+    pub exited: Option<i32>,
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -161,6 +217,14 @@ mod tests {
         assert_eq!(decode(&[0, 0, 0, 1, 9]), Err(DecodeError::UnknownKind(9)));
         assert_eq!(decode(&[0, 0, 0, 3, 1, 0, 0]), Err(DecodeError::ShortPaneFrame));
         assert!(matches!(decode(&[0, 0, 0, 2, 0, b'{']), Err(DecodeError::BadControl(_))));
+    }
+
+    #[test]
+    fn spawn_json_leaves_out_defaults() {
+        let c = Control::Spawn { req: 1, spec: SpawnSpec { cols: 80, rows: 24, ..Default::default() } };
+        assert_eq!(serde_json::to_string(&c).unwrap(), r#"{"op":"spawn","req":1,"spec":{"cols":80,"rows":24}}"#);
+        let e = Control::Error { code: "x".into(), message: "y".into(), req: None };
+        assert_eq!(serde_json::to_string(&e).unwrap(), r#"{"op":"error","code":"x","message":"y"}"#);
     }
 
     #[test]

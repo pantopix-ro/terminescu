@@ -9,3 +9,18 @@ publish.workspace = true
 
 [dependencies]
 terminescu-protocol.workspace = true
+alacritty_terminal = { path = "../vendor/alacritty_terminal" }
+portable-pty = "0.9"
+libc.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+terminescu-core.workspace = true
+
+[lib]
+name = "terminescu_ptyd"
+path = "src/lib.rs"
+
+[[bin]]
+name = "terminescu-ptyd"
+path = "src/main.rs"

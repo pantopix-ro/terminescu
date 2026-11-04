@@ -2,6 +2,7 @@
 //! contexts (D6), persisted in SQLite (D18).
 
 pub mod db;
+pub mod launcher;
 pub mod state;
 
 pub fn new_id() -> String {

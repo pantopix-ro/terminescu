@@ -13,3 +13,6 @@ serde_json.workspace = true
 thiserror.workspace = true
 rusqlite.workspace = true
 uuid.workspace = true
+terminescu-protocol.workspace = true
+libc.workspace = true
+sha2 = "0.11"
