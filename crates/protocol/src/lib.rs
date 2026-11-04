@@ -78,6 +78,9 @@ pub enum Control {
     Welcome {
         version: u32,
         daemon: String,
+        /// Differs for every daemon process. Pane ids restart with a new daemon, so a client that
+        /// reconnects compares this before trusting the ids it holds.
+        instance: String,
     },
     Spawned {
         req: u64,
@@ -327,9 +330,13 @@ mod tests {
         let json = serde_json::to_string(&Control::Welcome {
             version: 1,
             daemon: "0.1.0".into(),
+            instance: "i1".into(),
         })
         .unwrap();
-        assert_eq!(json, r#"{"op":"welcome","version":1,"daemon":"0.1.0"}"#);
+        assert_eq!(
+            json,
+            r#"{"op":"welcome","version":1,"daemon":"0.1.0","instance":"i1"}"#
+        );
     }
 
     #[test]

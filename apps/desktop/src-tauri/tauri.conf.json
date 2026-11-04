@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "ro.pxro.terminescu",
   "build": {
-    "beforeDevCommand": "pnpm dev",
+    "beforeDevCommand": "cargo build -p terminescu-ptyd -p terminescu-cli && pnpm dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "pnpm sidecars && pnpm build",
     "frontendDist": "../dist"

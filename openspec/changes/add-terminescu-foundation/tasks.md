@@ -73,6 +73,21 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       Done 2026-11-04: `crates/ptyd` (threads, no async runtime), `terminescu_core::launcher`,
       12 snapshot tests with a committed `claude-session.snapshot.bin`, 10 daemon tests, a launcher
       test and `packages/ui/test/snapshot.test.ts`. The app starts the daemon in task 2.6.
+- [x] 2.6 Core daemon client and pane lifecycle: on start the app installs the bundled daemon
+      and CLI copies (D32, D36), starts the daemon detached and connects with the version
+      handshake; the client reconnects when the connection drops and gives fresh login shells to
+      tabs whose panes died with the daemon. Each tab owns one daemon pane until splits arrive
+      (3.x): a new tab spawns a login shell (cwd from the focused pane once 2.4 reports it, home
+      until then), closing a tab closes its pane, a shell that exits closes its tab, and the
+      daemon learns the pane's side tab at spawn and on every move (D36). Until layout
+      persistence (3.3) a start adopts the daemon's live panes as tabs instead of opening a new
+      shell, so restarts never leak shells. Verify: `daemon_client.rs` runs the core against the
+      real daemon: a new tab lists a pane with its side tab, a move updates it, closing the tab
+      removes the pane, `exit` in a pane closes its tab, a second core adopts the live panes, and
+      a dropped connection reconnects.
+      Done 2026-11-04: `terminescu_core::{daemon, runtime}`, 5 tests in
+      `crates/ptyd/tests/daemon_client.rs` (plus a killed daemon), and a manual run of the app:
+      quit leaves the shell running, the next start adopts it. Pane output reaches views in 2.5.
 - [ ] 2.2 Session store in the daemon for session-only and secret variables, `zeroize`, TTL
       (D21). Verify: integration test sets a secret, restarts the client, reads it, waits past
       the TTL and finds it gone; a test greps the SQLite file for the value and finds none.

@@ -259,13 +259,26 @@ impl Core {
 
     /// One window with one side tab holding one tab: what a first start shows.
     pub fn first_start(&mut self) -> Id {
+        self.first_start_with(1).0
+    }
+
+    /// Like `first_start`, with `tabs` tabs (at least one) in the side tab. Returns the window
+    /// id and the tab ids in order.
+    pub fn first_start_with(&mut self, tabs: usize) -> (Id, Vec<Id>) {
         let window_id = (self.new_id)();
-        let side_tab = self.new_side_tab();
+        let mut side_tab = self.new_side_tab();
+        for _ in 1..tabs {
+            side_tab.tabs.push(Tab {
+                id: (self.new_id)(),
+                title: None,
+            });
+        }
+        let ids = side_tab.tabs.iter().map(|t| t.id.clone()).collect();
         self.ws.windows.push(Window {
             id: window_id.clone(),
             side_tabs: vec![side_tab],
         });
-        window_id
+        (window_id, ids)
     }
 
     pub fn snapshot(&self) -> Snapshot {

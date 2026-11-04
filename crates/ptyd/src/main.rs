@@ -7,6 +7,11 @@ use terminescu_ptyd::server::{DEFAULT_IDLE, Options, run};
 const USAGE: &str = "usage: terminescu-ptyd [--socket PATH] [--idle-exit-secs N] | --version";
 
 fn main() -> ExitCode {
+    // Drop every fd the starter left open. macOS has no pipe2, so a process that forks on
+    // another thread can leak a pipe into us; holding it would block that process's own
+    // `Command::spawn` for as long as the daemon lives. The app's files have no business
+    // here either.
+    portable_pty::unix::close_random_fds();
     let mut socket: Option<PathBuf> = None;
     let mut idle = DEFAULT_IDLE;
     let mut args = std::env::args().skip(1);

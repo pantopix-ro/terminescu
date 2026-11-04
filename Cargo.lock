@@ -3669,6 +3669,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "terminescu-core",
+ "terminescu-protocol",
 ]
 
 [[package]]

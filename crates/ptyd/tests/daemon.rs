@@ -26,7 +26,11 @@ impl Daemon {
         std::fs::create_dir_all(&dir).unwrap();
         let socket = dir.join("ptyd.sock");
         let child = Self::spawn(&socket, idle_secs);
-        wait_for(|| socket.exists(), "daemon socket");
+        // The file appears at bind, a moment before listen: wait for a connection to work.
+        wait_for(
+            || std::os::unix::net::UnixStream::connect(&socket).is_ok(),
+            "daemon socket",
+        );
         Self { child, dir, socket }
     }
 

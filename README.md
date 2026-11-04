@@ -12,7 +12,8 @@ shell, and Terminescu never starts a turn on its own.
 > Status: P1, milestone M1. The spikes are done and the skeleton (tasks 1.1 to 1.4) builds:
 > an app window with side tabs and tabs over the core's command and patch protocol, the
 > SQLite schema, and the design tokens. The pty daemon (task 2.1) runs shells and restores
-> their screens on reattach; the app connects to it in task 2.6.
+> their screens on reattach. The app starts it and gives each tab a shell that outlives the
+> app (task 2.6); the terminal view arrives with task 2.5.
 
 ## See it
 

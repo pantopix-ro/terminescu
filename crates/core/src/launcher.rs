@@ -36,6 +36,23 @@ pub fn install(bundled: &Path, bin_dir: &Path) -> io::Result<PathBuf> {
     Ok(target)
 }
 
+/// Copies the CLI to `bin_dir/terminescu` when its content changed (D36). The rename leaves a
+/// running `terminescu` on the old file, so a hook in flight never breaks.
+pub fn install_cli(bundled: &Path, bin_dir: &Path) -> io::Result<PathBuf> {
+    let bytes = std::fs::read(bundled)?;
+    let target = bin_dir.join("terminescu");
+    if std::fs::read(&target).is_ok_and(|old| old == bytes) {
+        return Ok(target);
+    }
+    std::fs::create_dir_all(bin_dir)?;
+    let tmp = bin_dir.join(format!(".terminescu-{}.tmp", std::process::id()));
+    std::fs::write(&tmp, &bytes)?;
+    std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755))?;
+    clear_quarantine(&tmp)?;
+    std::fs::rename(&tmp, &target)?;
+    Ok(target)
+}
+
 /// Removes `com.apple.quarantine`, which Gatekeeper would otherwise check on the copy.
 fn clear_quarantine(path: &Path) -> io::Result<()> {
     let p = CString::new(path.as_os_str().as_bytes()).map_err(io::Error::other)?;

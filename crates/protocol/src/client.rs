@@ -25,6 +25,8 @@ pub struct Client {
     stream: UnixStream,
     buf: Vec<u8>,
     pub version: u32,
+    /// The daemon process this client talks to; see `Control::Welcome`.
+    pub instance: String,
 }
 
 impl Client {
@@ -35,19 +37,31 @@ impl Client {
             stream,
             buf: Vec::new(),
             version: 0,
+            instance: String::new(),
         };
         c.send(&Frame::Control(Control::Hello {
             versions: APP_SUPPORTED.collect(),
             client: client.into(),
         }))?;
         match c.recv()? {
-            Frame::Control(Control::Welcome { version, .. }) => c.version = version,
+            Frame::Control(Control::Welcome {
+                version, instance, ..
+            }) => {
+                c.version = version;
+                c.instance = instance;
+            }
             Frame::Control(Control::Error { code, message, .. }) => {
                 return Err(ClientError::Refused { code, message });
             }
             other => return Err(ClientError::Unexpected(Box::new(other))),
         }
         Ok(c)
+    }
+
+    /// The socket and any bytes already read past the handshake, for a caller that runs its own
+    /// reader thread.
+    pub fn into_parts(self) -> (UnixStream, Vec<u8>) {
+        (self.stream, self.buf)
     }
 
     pub fn set_read_timeout(&self, t: Option<Duration>) -> io::Result<()> {

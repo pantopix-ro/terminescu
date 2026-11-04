@@ -74,6 +74,7 @@ struct Shared {
     next_pane: AtomicU32,
     next_client: AtomicU64,
     last_activity: Mutex<Instant>,
+    instance: String,
 }
 
 impl Shared {
@@ -365,6 +366,7 @@ fn serve_client(shared: Arc<Shared>, mut stream: UnixStream) {
                     Control::Welcome {
                         version,
                         daemon: format!("terminescu-ptyd {}", env!("CARGO_PKG_VERSION")),
+                        instance: shared.instance.clone(),
                     },
                 );
                 let Ok(handle) = stream.try_clone() else {
@@ -526,6 +528,13 @@ pub fn run(opts: Options) -> io::Result<bool> {
         next_pane: AtomicU32::new(1),
         next_client: AtomicU64::new(1),
         last_activity: Mutex::new(Instant::now()),
+        instance: format!(
+            "{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        ),
     });
 
     let idle = shared.clone();

@@ -1,8 +1,10 @@
 //! Terminescu core: the single source of truth for windows, side tabs, tabs and their
 //! contexts (D6), persisted in SQLite (D18).
 
+pub mod daemon;
 pub mod db;
 pub mod launcher;
+pub mod runtime;
 pub mod state;
 
 pub fn new_id() -> String {
