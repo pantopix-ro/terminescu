@@ -1,0 +1,50 @@
+{
+  "comment": "Checked by crates/core/tests/host_protocol.rs and packages/host/test/protocol.test.ts. Both reducers must turn start plus batches into end.",
+  "start": {
+    "rev": 1,
+    "workspace": {
+      "windows": [
+        {
+          "id": "w1",
+          "sideTabs": [
+            { "id": "s1", "title": "acme-api", "tabs": [{ "id": "t1", "title": null }, { "id": "t2", "title": "dev server" }] },
+            { "id": "s2", "title": null, "tabs": [{ "id": "t3", "title": null }] }
+          ]
+        }
+      ]
+    }
+  },
+  "batches": [
+    { "rev": 2, "patches": [{ "type": "TabCreated", "sideTabId": "s2", "index": 1, "tab": { "id": "t4", "title": null } }] },
+    { "rev": 3, "patches": [{ "type": "TabMoved", "tabId": "t1", "toSideTabId": "s2", "index": 0 }] },
+    {
+      "rev": 4,
+      "patches": [
+        { "type": "SideTabCreated", "windowId": "w1", "index": 0, "sideTab": { "id": "s3", "title": null, "tabs": [] } },
+        { "type": "TabMoved", "tabId": "t2", "toSideTabId": "s3", "index": 0 },
+        { "type": "SideTabClosed", "sideTabId": "s1" }
+      ]
+    },
+    { "rev": 5, "patches": [{ "type": "TabRenamed", "tabId": "t3", "title": "claude" }] },
+    { "rev": 6, "patches": [{ "type": "TabClosed", "tabId": "t4" }] }
+  ],
+  "end": {
+    "windows": [
+      {
+        "id": "w1",
+        "sideTabs": [
+          { "id": "s3", "title": null, "tabs": [{ "id": "t2", "title": "dev server" }] },
+          { "id": "s2", "title": null, "tabs": [{ "id": "t1", "title": null }, { "id": "t3", "title": "claude" }] }
+        ]
+      }
+    ]
+  },
+  "commands": [
+    { "type": "CreateSideTab", "windowId": "w1", "index": 0 },
+    { "type": "CreateTab", "sideTabId": "s1" },
+    { "type": "CloseTab", "tabId": "t1" },
+    { "type": "MoveTab", "tabId": "t1", "toSideTabId": "s2", "index": 0 },
+    { "type": "MoveTabToNewSideTab", "tabId": "t2", "windowId": "w1", "index": 1 },
+    { "type": "RenameTab", "tabId": "t3", "title": "claude" }
+  ]
+}

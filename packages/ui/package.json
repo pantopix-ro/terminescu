@@ -1,0 +1,30 @@
+{
+  "name": "@terminescu/ui",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./styles.css": "./src/styles.css"
+  },
+  "scripts": {
+    "tokens": "node scripts/gen-tokens.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@fontsource/geist-mono": "^5.3.0",
+    "@fontsource/silkscreen": "^5.3.0"
+  },
+  "peerDependencies": {
+    "react": "^19.3.0"
+  },
+  "devDependencies": {
+    "@terminescu/host": "workspace:*",
+    "@types/node": "^24",
+    "@types/react": "^19",
+    "@xterm/xterm": "^6.0.0",
+    "react": "^19.3.1",
+    "typescript": "~5.9.3",
+    "vitest": "^5.1.0"
+  }
+}

@@ -9,9 +9,9 @@ whichever of your 20 terminals it lives in.
 It doesn't orchestrate Claude. You start every session yourself by typing `claude` in a
 shell, and Terminescu never starts a turn on its own.
 
-> Status: planning. The OpenSpec change `add-terminescu-foundation` holds the full plan, and
-> no product code exists yet. The `apps/` and `packages/` folders hold an earlier
-> orchestrator draft (Hono, DBOS, Next.js) that task 1.1 deletes.
+> Status: P1, milestone M1. The spikes are done and the skeleton (tasks 1.1 to 1.4) builds:
+> an app window with side tabs and tabs over the core's command and patch protocol, the
+> SQLite schema, and the design tokens. Terminals arrive with group 2.
 
 ## See it
 
@@ -60,7 +60,7 @@ Window            an OS window
  Terminescu.app (Tauri 2)                        terminescu-ptyd (detached daemon)
  ┌───────────────────────────────────┐  unix    ┌──────────────────────────────┐
  │ one webview per window            │  socket  │ a pty per pane (login shell) │
- │  React 19, xterm.js, CodeMirror 6 │◀────────▶│ scrollback ring, OSC 133/7   │
+ │  React 19, xterm.js, CodeMirror 6 │◀────────▶│ screen model, OSC 133/7      │
  │        ▲ commands  │ patches      │  v1      │ foreground process           │
  │        │  (Host)   ▼              │          │ session + secret variables   │
  │ Rust core: state, SQLite,         │          └──────────────────────────────┘
@@ -97,11 +97,12 @@ foundation:
 | [specs/](openspec/changes/add-terminescu-foundation/specs) | Requirements and scenarios for 9 capabilities |
 | [sequence.mmd](openspec/changes/add-terminescu-foundation/sequence.mmd) | The needs-you flow, from Claude Code hook to amber side tab |
 | [review](docs/review-2026-11-04.md) | Plan review: issues found, fixes, risks, confidence |
+| [spikes](docs/spikes) | Spike notes 0.1 to 0.5: reattach, keys, daemon lifetime, throughput, hooks |
 
 Delivery runs in three phases:
 
-1. **P1, daily use.** Starts with five spikes on the riskiest assumptions, then lands in four
-   milestones. Each milestone is usable on its own:
+1. **P1, daily use.** Five spikes tested the riskiest assumptions on 2026-11-04 (all go, see
+   `docs/spikes/`); the work then lands in four milestones. Each milestone is usable on its own:
    - M1: terminal manager (ptyd, tabs, splits, persistence, statuses from hooks)
    - M2: context and prompts
    - M3: commands, settings and keys
@@ -115,17 +116,16 @@ rich editor layer.
 
 ## Repository layout
 
-After task 1.1:
-
 | Path | Role |
 |---|---|
 | `apps/desktop` | Tauri 2 app: windows, sidebar, tabs, panes, context panel |
-| `crates/core` | Rust core: state, SQLite, statuses, documents, hook socket |
+| `crates/core` | `terminescu-core`: state, SQLite, statuses, documents, hook socket |
 | `crates/ptyd` | `terminescu-ptyd`: shells, scrollback, session and secret variables |
 | `crates/cli` | `terminescu`: `hook`, `status`, `var`, `edit` |
 | `crates/protocol` | The versioned core and daemon protocol |
 | `packages/ui` | React components and design tokens |
-| `packages/host` | The `Host` interface: Tauri IPC now, WebSocket later |
+| `packages/host` | The `Host` interface: Tauri IPC now, WebSocket later; a mock for tests |
+| `scripts/sidecars.mjs` | Builds the daemon and the CLI for the app bundle |
 | `seeds/prompts` | Seed prompts for the library |
 | `design/` | Design system and canvas sources |
 | `openspec/` | Change proposals, designs, specs and tasks |
@@ -159,3 +159,16 @@ statuses.
 ## Requirements (target)
 
 macOS 14 or later, Rust stable, Node 24, pnpm, and Claude Code with a logged-in `claude`.
+
+## Build and run
+
+```
+pnpm install
+pnpm dev                      # the app with hot reload
+cargo test --workspace        # Rust tests
+pnpm test                     # TypeScript tests
+pnpm build --debug            # Terminescu.app with both sidecars, in target/debug/bundle
+pnpm tokens                   # after editing design/system/build_tokens.py
+```
+
+`pnpm --filter @terminescu/desktop dev` serves the UI alone in a browser on a mock `Host`.

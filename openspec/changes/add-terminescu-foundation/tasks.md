@@ -31,7 +31,7 @@ A no-go changes the named decision before group 1 starts.
 
 ## 1. Skeleton (P1)
 
-- [ ] 1.1 Replace the Hono, DBOS and Next skeleton with the Tauri layout: `apps/desktop`
+- [x] 1.1 Replace the Hono, DBOS and Next skeleton with the Tauri layout: `apps/desktop`
       (Tauri 2, React 19, Vite; its crate joins the Cargo workspace), `crates/core`,
       `crates/ptyd`, `crates/cli`, `crates/protocol` (packages prefixed `terminescu-`),
       `packages/ui` (React components, tokens), `packages/host` (the `Host` interface). Remove
@@ -41,15 +41,19 @@ A no-go changes the named decision before group 1 starts.
       `externalBin` sidecars built by `scripts/sidecars.mjs`; window with
       `titleBarStyle: Overlay` (D19, D20). Verify: `pnpm install && pnpm tauri build --debug`
       and `cargo test --workspace` pass on a fresh clone.
-- [ ] 1.2 SQLite schema in migration `0001_init.sql` with `owner_id` on every table, one local
+      Done 2026-11-04; the sidecar list lives in `tauri.bundle.conf.json` so `cargo test` needs no prebuilt binaries.
+- [x] 1.2 SQLite schema in migration `0001_init.sql` with `owner_id` on every table, one local
       owner created on first run (D18). Verify: `cargo test -p terminescu-core migrations` applies on an
       empty file and twice without change, and a test asserts every table except `owners` has
       `owner_id`.
-- [ ] 1.3 Core command and patch protocol behind `Host` (IPC), Zustand store per window, mock
+      Done 2026-11-04.
+- [x] 1.3 Core command and patch protocol behind `Host` (IPC), Zustand store per window, mock
       `Host` for Playwright (D6, D19). Verify: `host.test.ts` applies a `MoveTab` patch in two
       store instances.
-- [ ] 1.4 Tokens and xterm theme from the design system (D16), Geist Mono and Silkscreen
+      Done 2026-11-04; `fixtures/host-protocol.json` checks the Rust and TypeScript reducers against each other.
+- [x] 1.4 Tokens and xterm theme from the design system (D16), Geist Mono and Silkscreen
       bundled. Verify: `tokens.test.ts` asserts the 16 ANSI colors equal the CSS tokens.
+      Done 2026-11-04; tokens gained `ansi-0` to `ansi-15`, yellow apart from amber.
 
 ## 2. Terminal sessions (P1)
 

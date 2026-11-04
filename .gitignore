@@ -1,8 +1,7 @@
 node_modules/
 .pnpm-store/
 dist/
-.next/
-out/
+target/
 coverage/
 *.log
 .env
@@ -10,5 +9,7 @@ coverage/
 .DS_Store
 .idea/
 .vscode/
-/data/
-/storage/
+apps/desktop/src-tauri/binaries/
+apps/desktop/src-tauri/gen/
+playwright-report/
+test-results/

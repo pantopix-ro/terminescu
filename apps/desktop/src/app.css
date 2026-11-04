@@ -1,0 +1,14 @@
+html, body, #root { height: 100%; }
+body { overflow: hidden; user-select: none; -webkit-user-select: none; }
+.app { display: grid; grid-template-columns: 272px minmax(0, 1fr); height: 100%; }
+.app-side { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; background: var(--bg); border-right: 2px solid var(--line-strong); }
+/* Room for the macOS traffic lights; the title bar is an overlay (D20). */
+.app-traffic { height: 34px; flex: none; }
+.app-side .ao-st { text-align: left; background: var(--st-bg); }
+.app-side .ao-tab-new { align-self: flex-start; }
+.app-main { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; }
+.app-main .ao-tabs { overflow-x: auto; }
+.app button { font: inherit; border: 0; background: none; color: inherit; cursor: default; }
+.app-pane { background: var(--panel); padding: var(--space-4); color: var(--dim); }
+.app-error { color: var(--red); }
+.boot-error { color: var(--red); padding: var(--space-4); white-space: pre-wrap; }

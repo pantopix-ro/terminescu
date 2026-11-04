@@ -401,3 +401,4 @@ None; nothing is committed. The Hono, DBOS and Next skeleton is replaced in task
 
 `openspec/changes/add-terminescu-foundation/plan.html`, built 2026-11-04. Artifact: https://claude.ai/artifact/NxQVoq2agT798FUijmKxmQ (version 1, 2026-11-04).
 Refreshed 2026-11-04 after spikes 0.1 to 0.5 (version 2): D7, D20, D31-D34 and D27 updated, five tasks ticked, confidence about 85%.
+Refreshed 2026-11-04 after the skeleton (version 3): tasks 1.1 to 1.4 ticked, D18, D19 and D31 updated from the review, a third open question on closing a side tab.

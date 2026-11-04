@@ -1,0 +1,19 @@
+{
+  "name": "terminescu",
+  "private": true,
+  "packageManager": "pnpm@11.21.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @terminescu/desktop tauri dev",
+    "build": "pnpm --filter @terminescu/desktop tauri:build",
+    "tauri": "pnpm --filter @terminescu/desktop tauri",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "tokens": "pnpm --filter @terminescu/ui tokens"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3"
+  }
+}
