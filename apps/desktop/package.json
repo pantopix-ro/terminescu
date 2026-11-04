@@ -9,7 +9,8 @@
     "typecheck": "tsc -p .",
     "sidecars": "node ../../scripts/sidecars.mjs",
     "tauri": "tauri",
-    "tauri:build": "tauri build --config src-tauri/tauri.bundle.conf.json"
+    "tauri:build": "tauri build --config src-tauri/tauri.bundle.conf.json",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",
@@ -20,10 +21,12 @@
     "zustand": "^5.0.16"
   },
   "devDependencies": {
+    "@playwright/test": "1.64.1",
     "@tauri-apps/cli": "^2.12.4",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^6.2.1",
+    "@xterm/xterm": "6.0.0",
     "typescript": "~5.9.3",
     "vite": "^8.3.5"
   }

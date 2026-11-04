@@ -6,6 +6,7 @@ pub mod db;
 pub mod launcher;
 pub mod runtime;
 pub mod state;
+pub mod views;
 
 pub fn new_id() -> String {
     uuid::Uuid::now_v7().to_string()

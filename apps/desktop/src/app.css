@@ -9,6 +9,10 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 .app-main { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; }
 .app-main .ao-tabs { overflow-x: auto; }
 .app button { font: inherit; border: 0; background: none; color: inherit; cursor: default; }
-.app-pane { background: var(--panel); padding: var(--space-4); color: var(--dim); }
-.app-error { color: var(--red); }
+.app-pane { position: relative; background: var(--panel); color: var(--dim); min-height: 0; }
+.app-empty { padding: var(--space-4); }
+.app-error { position: absolute; left: var(--space-4); bottom: var(--space-2); color: var(--red); }
+/* The terminal fills the pane; xterm.js fits whole cells inside. */
+.term-pane { position: absolute; inset: var(--space-2) var(--space-1) var(--space-1) var(--space-3); user-select: text; -webkit-user-select: text; }
+.term-pane[hidden] { display: none; }
 .boot-error { color: var(--red); padding: var(--space-4); white-space: pre-wrap; }

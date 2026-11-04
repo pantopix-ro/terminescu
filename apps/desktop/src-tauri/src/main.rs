@@ -3,14 +3,16 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use terminescu_core::daemon::DaemonClient;
 use terminescu_core::db::Db;
 use terminescu_core::launcher;
 use terminescu_core::runtime::Runtime;
 use terminescu_core::state::{Command, CommandError, Core, Snapshot, Workspace};
+use terminescu_core::views::ViewId;
 use terminescu_protocol::paths;
 
 /// Event that carries every patch batch to every window.
@@ -30,6 +32,61 @@ fn host_snapshot(state: State<'_, AppState>) -> Snapshot {
 fn host_command(state: State<'_, AppState>, command: Command) -> Result<u64, CommandError> {
     // The runtime emits each batch under its core lock, so windows see them in rev order.
     state.runtime.command(command)
+}
+
+/// Opens a view of a tab's pane. Output goes to `on_output` as raw bytes (D33).
+#[tauri::command]
+fn pane_open(
+    state: State<'_, AppState>,
+    tab: String,
+    cols: u16,
+    rows: u16,
+    on_output: Channel<InvokeResponseBody>,
+) -> Result<ViewId, CommandError> {
+    let sink =
+        Arc::new(move |bytes: Vec<u8>| on_output.send(InvokeResponseBody::Raw(bytes)).is_ok());
+    state.runtime.open_view(&tab, cols, rows, sink)
+}
+
+#[tauri::command]
+fn pane_close(state: State<'_, AppState>, view: ViewId) {
+    state.runtime.close_view(view);
+}
+
+#[tauri::command]
+fn pane_ack(state: State<'_, AppState>, view: ViewId, bytes: u64) {
+    state.runtime.view_ack(view, bytes);
+}
+
+#[tauri::command]
+fn pane_resize(state: State<'_, AppState>, view: ViewId, cols: u16, rows: u16) {
+    state.runtime.view_resize(view, cols, rows);
+}
+
+/// Keys and pastes. xterm.js binary data carries one byte per character.
+#[tauri::command]
+fn pane_input(state: State<'_, AppState>, view: ViewId, data: String, binary: bool) {
+    let bytes = if binary {
+        data.chars().map(|c| c as u32 as u8).collect()
+    } else {
+        data.into_bytes()
+    };
+    state.runtime.view_input(view, bytes);
+}
+
+/// Opens a link from a pane in the default browser. Only http and https leave the app, so the
+/// url can never read as an `open` option.
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    let lower = url.to_ascii_lowercase();
+    if !(lower.starts_with("http://") || lower.starts_with("https://")) {
+        return Err(format!("not an http(s) link: {url}"));
+    }
+    std::process::Command::new("/usr/bin/open")
+        .arg(&url)
+        .spawn()
+        .map(drop)
+        .map_err(|e| e.to_string())
 }
 
 /// The sidecars sit next to the app binary: in `Contents/MacOS` when bundled, in
@@ -101,7 +158,16 @@ fn main() {
             open_window(app.handle(), &window_id)?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![host_snapshot, host_command])
+        .invoke_handler(tauri::generate_handler![
+            host_snapshot,
+            host_command,
+            pane_open,
+            pane_close,
+            pane_ack,
+            pane_resize,
+            pane_input,
+            open_url
+        ])
         .run(tauri::generate_context!())
         .expect("Terminescu failed to start");
 }

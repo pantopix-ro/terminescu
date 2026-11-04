@@ -246,3 +246,123 @@ fn tabs_get_fresh_shells_when_the_daemon_dies() {
     let pane = rt.pane_of(&tab).expect("the tab got a new pane");
     assert!(live(&rt, pane).is_some());
 }
+
+/// A window stand-in: collects every batch, and acknowledges only when told to.
+#[derive(Clone, Default)]
+struct Window {
+    batches: Arc<Mutex<Vec<Vec<u8>>>>,
+}
+
+impl Window {
+    fn sink(&self) -> terminescu_core::views::Sink {
+        let b = self.batches.clone();
+        Arc::new(move |batch| {
+            b.lock().unwrap().push(batch);
+            true
+        })
+    }
+    fn text(&self) -> String {
+        String::from_utf8_lossy(&self.batches.lock().unwrap().concat()).into_owned()
+    }
+    fn bytes(&self) -> u64 {
+        self.batches
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|b| b.len() as u64)
+            .sum()
+    }
+    fn count(&self) -> usize {
+        self.batches.lock().unwrap().len()
+    }
+}
+
+#[test]
+fn a_view_shows_the_snapshot_then_live_output_and_takes_input() {
+    let f = Fixture::new();
+    let (rt, _, _) = f.start();
+    let [(_, tab)] = tabs(&rt.workspace()).try_into().unwrap();
+    let win = Window::default();
+    let view = rt.open_view(&tab, 100, 30, win.sink()).unwrap();
+    wait_for(|| win.count() > 0, "the snapshot");
+    assert!(
+        win.batches.lock().unwrap()[0].starts_with(b"\x1bc"),
+        "a view starts from a reset screen"
+    );
+    let pane = rt.pane_of(&tab).unwrap();
+    assert_eq!(
+        live(&rt, pane).map(|p| (p.cols, p.rows)),
+        Some((100, 30)),
+        "the pane takes the view's size"
+    );
+
+    rt.view_input(view, b"echo view:$((40+2))\r".to_vec());
+    wait_for(|| win.text().contains("view:42"), "echoed output");
+    rt.view_resize(view, 120, 40);
+    wait_for(
+        || live(&rt, pane).map(|p| (p.cols, p.rows)) == Some((120, 40)),
+        "resize",
+    );
+
+    rt.close_view(view);
+    let before = win.count();
+    rt.view_input(view, b"echo gone\r".to_vec());
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(win.count(), before, "a closed view gets nothing");
+}
+
+#[test]
+fn a_view_of_a_new_tab_attaches_once_its_shell_runs() {
+    let f = Fixture::new();
+    let (rt, _, _) = f.start();
+    let [(side, _)] = tabs(&rt.workspace()).try_into().unwrap();
+    rt.command(Command::CreateTab { side_tab_id: side })
+        .unwrap();
+    let (_, tab) = tabs(&rt.workspace())[1].clone();
+    let win = Window::default();
+    let view = rt.open_view(&tab, 80, 24, win.sink()).unwrap();
+    rt.view_input(view, b"echo new:$((40+3))\r".to_vec());
+    wait_for(|| win.text().contains("new:43"), "output of the new tab");
+    assert!(rt.open_view("no-such-tab", 80, 24, win.sink()).is_err());
+}
+
+#[test]
+fn a_view_that_falls_behind_resyncs_from_a_snapshot() {
+    use terminescu_core::views::{ACK_WINDOW, ViewState};
+    let f = Fixture::new();
+    let (rt, _, _) = f.start();
+    let [(_, tab)] = tabs(&rt.workspace()).try_into().unwrap();
+    let win = Window::default();
+    let view = rt.open_view(&tab, 80, 24, win.sink()).unwrap();
+    wait_for(|| win.count() > 0, "the snapshot");
+    rt.view_ack(view, win.bytes());
+
+    // About 4.4 MB with no acknowledgement past the snapshot.
+    rt.view_input(
+        view,
+        b"yes 0123456789 | head -n 400000; echo done:$((40+4))\r".to_vec(),
+    );
+    wait_for(|| rt.view_state(&tab) == Some(ViewState::Stale), "stale");
+    std::thread::sleep(Duration::from_millis(500));
+    let flown = win.bytes();
+    assert!(flown <= ACK_WINDOW + 64 * 1024, "{flown} bytes forwarded");
+
+    // Now a window that keeps up.
+    let n = win.count();
+    let mut acked = 0;
+    wait_for(
+        || {
+            let total = win.bytes();
+            rt.view_ack(view, total - acked);
+            acked = total;
+            win.text().contains("done:44")
+        },
+        "the end of the flood",
+    );
+    let after = win.batches.lock().unwrap()[n..].concat();
+    assert!(
+        after.starts_with(b"\x1bc"),
+        "the resync starts from a reset screen"
+    );
+    assert_eq!(rt.view_state(&tab), Some(ViewState::Live));
+}

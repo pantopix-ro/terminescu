@@ -1,11 +1,14 @@
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { createIpcHost, createWorkspaceStore, type Host, type WorkspaceStore } from "@terminescu/host";
 import { createMockHost } from "@terminescu/host/mock";
+import type { Terminal } from "@xterm/xterm";
 
 export interface Connection {
   windowId: string;
   host: Host;
   workspace: WorkspaceStore;
+  /** Set on the mock host only, as `window.__terminescu`, for Playwright. */
+  terminals?: Map<string, Terminal>;
 }
 
 /**
@@ -20,5 +23,8 @@ export async function connect(): Promise<Connection> {
   const windowId = inTauri
     ? getCurrentWebviewWindow().label
     : workspace.store.getState().workspace.windows[0]!.id;
-  return { windowId, host, workspace };
+  if (inTauri) return { windowId, host, workspace };
+  const terminals = new Map<string, Terminal>();
+  Object.assign(window, { __terminescu: { host, terminals } });
+  return { windowId, host, workspace, terminals };
 }

@@ -6,5 +6,6 @@ export default defineConfig({
   plugins: [react()],
   clearScreen: false,
   server: { port: 1420, strictPort: true, watch: { ignored: ["**/src-tauri/**"] } },
-  build: { target: "safari16", sourcemap: true },
+  // One local bundle, loaded from disk: xterm.js and its addons make it large, and that is fine.
+  build: { target: "safari16", sourcemap: true, chunkSizeWarningLimit: 1500 },
 });

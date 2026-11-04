@@ -4,19 +4,25 @@
 //! in rev order. The daemon work a batch implies (spawn, close, side tab changes) runs after the
 //! core lock is released but under the effects lock, which the command takes before letting go
 //! of the core lock, so effects also run in rev order.
+//!
+//! Views (task 2.5, D33) carry each tab's pty output to the window showing it. The daemon event
+//! thread queues output into [`Views`]; a flush thread sends one batch per view per frame.
 
 use crate::daemon::{DaemonClient, DaemonError, DaemonEvent};
 use crate::state::{Command, CommandError, Core, Id, Patch, PatchBatch, Snapshot, Workspace};
+use crate::views::{Action, Sink, ViewId, Views};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver};
-use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::Duration;
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+use std::time::{Duration, Instant};
 use terminescu_protocol::{PaneId, SpawnSpec};
 
 /// Size of a new pane until its view reports its own (task 2.5).
 const DEFAULT_SIZE: (u16, u16) = (80, 24);
 const RECONNECT_DELAY: Duration = Duration::from_millis(500);
+/// One batch per view per frame.
+const FRAME: Duration = Duration::from_millis(16);
 
 pub type Emit = Box<dyn Fn(&PatchBatch) + Send + Sync>;
 /// Makes sure a daemon runs, then connects to it. Called at start and after a drop.
@@ -57,6 +63,8 @@ struct Inner {
     daemon: Mutex<Option<Arc<DaemonClient>>>,
     instance: Mutex<String>,
     panes: Mutex<Panes>,
+    views: Mutex<Views>,
+    queued: Condvar,
     emit: Emit,
     connect: Connect,
     stopped: AtomicBool,
@@ -85,6 +93,8 @@ impl Runtime {
                 daemon: Mutex::new(Some(client.clone())),
                 instance: Mutex::new(client.instance.clone()),
                 panes: Mutex::new(Panes::default()),
+                views: Mutex::new(Views::default()),
+                queued: Condvar::new(),
                 emit,
                 connect,
                 stopped: AtomicBool::new(false),
@@ -114,6 +124,11 @@ impl Runtime {
             .name("daemon-events".into())
             .spawn(move || me.events(rx))
             .map_err(DaemonError::Io)?;
+        let me = rt.clone();
+        std::thread::Builder::new()
+            .name("view-flush".into())
+            .spawn(move || me.flush())
+            .map_err(DaemonError::Io)?;
         Ok((rt, window))
     }
 
@@ -137,8 +152,114 @@ impl Runtime {
     /// Disconnects for good, as the app quits. The shells keep running in the daemon.
     pub fn stop(&self) {
         self.inner.stopped.store(true, Ordering::SeqCst);
+        self.inner.queued.notify_all();
         if let Some(client) = lock(&self.inner.daemon).take() {
             client.shutdown();
+        }
+    }
+
+    /// Opens a view of a tab's pane at the window's size. Output then reaches `sink`, starting
+    /// with a snapshot of the screen. A tab whose shell is still starting attaches once it runs.
+    pub fn open_view(
+        &self,
+        tab: &str,
+        cols: u16,
+        rows: u16,
+        sink: Sink,
+    ) -> Result<ViewId, CommandError> {
+        // Core, then effects: a tab created by a command in flight has its pane once the effects
+        // lock is ours.
+        let core = lock(&self.inner.core);
+        if core.workspace().locate_tab(tab).is_none() {
+            return Err(CommandError::UnknownTab(tab.into()));
+        }
+        let _guard = lock(&self.inner.effects);
+        drop(core);
+        let (view, action) = lock(&self.inner.views).open(tab, cols, rows, sink);
+        if let Some(client) = self.daemon() {
+            self.act(&client, action);
+        }
+        Ok(view)
+    }
+
+    pub fn view_state(&self, tab: &str) -> Option<crate::views::ViewState> {
+        lock(&self.inner.views).state(tab)
+    }
+
+    /// Closes a view. A view that another window replaced closes as a no-op.
+    pub fn close_view(&self, view: ViewId) {
+        let tab = lock(&self.inner.views).close(view);
+        if let (Some(pane), Some(client)) = (tab.and_then(|t| self.pane_of(&t)), self.daemon()) {
+            let _ = client.detach(pane);
+        }
+    }
+
+    /// The window wrote `bytes` of this view's output.
+    pub fn view_ack(&self, view: ViewId, bytes: u64) {
+        let action = lock(&self.inner.views).ack(view, bytes);
+        if let (Some(action), Some(client)) = (action, self.daemon()) {
+            self.act(&client, action);
+        }
+    }
+
+    pub fn view_resize(&self, view: ViewId, cols: u16, rows: u16) {
+        let tab = lock(&self.inner.views).resize(view, cols, rows);
+        if let (Some(pane), Some(client)) = (tab.and_then(|t| self.pane_of(&t)), self.daemon()) {
+            let _ = client.resize(pane, cols, rows);
+        }
+    }
+
+    /// Keys and pastes from the window, as bytes for the pty.
+    pub fn view_input(&self, view: ViewId, data: Vec<u8>) {
+        let tab = lock(&self.inner.views).tab_of(view);
+        if let (Some(pane), Some(client)) = (tab.and_then(|t| self.pane_of(&t)), self.daemon()) {
+            let _ = client.input(pane, data);
+        }
+    }
+
+    /// Sends what a view needs from the daemon. Resize goes first so the snapshot fits.
+    fn act(&self, client: &DaemonClient, action: Action) {
+        match action {
+            Action::Attach { tab, cols, rows } => {
+                if let Some(pane) = self.pane_of(&tab) {
+                    let _ = client.resize(pane, cols, rows);
+                    let _ = client.attach(pane);
+                }
+            }
+        }
+    }
+
+    fn tab_of_pane(&self, pane: PaneId) -> Option<Id> {
+        lock(&self.inner.panes).by_pane.get(&pane).cloned()
+    }
+
+    /// Sends one batch per view per frame, sleeping while nothing is queued.
+    fn flush(self) {
+        loop {
+            let started = Instant::now();
+            let batches = {
+                let mut views = lock(&self.inner.views);
+                while !views.has_queued() {
+                    if self.inner.stopped.load(Ordering::SeqCst) {
+                        return;
+                    }
+                    views = self
+                        .inner
+                        .queued
+                        .wait_timeout(views, Duration::from_secs(1))
+                        .unwrap_or_else(|e| e.into_inner())
+                        .0;
+                }
+                views.take_batches()
+            };
+            for (view, sink, bytes) in batches {
+                if !sink(bytes) {
+                    self.close_view(view);
+                }
+            }
+            if let Some(rest) = FRAME.checked_sub(started.elapsed()) {
+                std::thread::sleep(rest);
+            }
         }
     }
 
@@ -169,6 +290,7 @@ impl Runtime {
             match e {
                 Effect::Spawn { tab, side_tab } => self.spawn_for(&client, &tab, &side_tab),
                 Effect::Close { tab } => {
+                    lock(&self.inner.views).remove_tab(&tab);
                     if let Some(pane) = lock(&self.inner.panes).unlink_tab(&tab) {
                         let _ = client.close(pane);
                     }
@@ -190,7 +312,13 @@ impl Runtime {
             ..Default::default()
         };
         match client.spawn(spec) {
-            Ok(pane) => lock(&self.inner.panes).link(tab.into(), pane),
+            Ok(pane) => {
+                lock(&self.inner.panes).link(tab.into(), pane);
+                let action = lock(&self.inner.views).reattach(tab);
+                if let Some(action) = action {
+                    self.act(client, action);
+                }
+            }
             Err(e) => eprintln!("terminescu: could not start a shell for tab {tab}: {e}"),
         }
     }
@@ -199,10 +327,20 @@ impl Runtime {
         loop {
             while let Ok(event) = rx.recv() {
                 match event {
+                    DaemonEvent::Output { pane, data } => {
+                        if let Some(tab) = self.tab_of_pane(pane)
+                            && lock(&self.inner.views).output(&tab, &data)
+                        {
+                            self.inner.queued.notify_one();
+                        }
+                    }
+                    DaemonEvent::Attached { pane, .. } => {
+                        if let Some(tab) = self.tab_of_pane(pane) {
+                            lock(&self.inner.views).attached(&tab);
+                        }
+                    }
                     DaemonEvent::Exited { pane, .. } => self.pane_exited(pane),
                     DaemonEvent::Disconnected => break,
-                    // Output and attach go to views once task 2.5 subscribes them.
-                    DaemonEvent::Output { .. } | DaemonEvent::Attached { .. } => {}
                 }
             }
             *lock(&self.inner.daemon) = None;
@@ -263,6 +401,11 @@ impl Runtime {
                         for tab in &side.tabs {
                             let pane = self.pane_of(&tab.id);
                             if pane.is_some_and(|p| live.contains(&p)) {
+                                // A new connection has no subscriptions: attach views again.
+                                let action = lock(&self.inner.views).reattach(&tab.id);
+                                if let Some(action) = action {
+                                    self.act(&client, action);
+                                }
                                 continue;
                             }
                             lock(&self.inner.panes).unlink_tab(&tab.id);

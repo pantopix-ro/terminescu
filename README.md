@@ -13,7 +13,7 @@ shell, and Terminescu never starts a turn on its own.
 > an app window with side tabs and tabs over the core's command and patch protocol, the
 > SQLite schema, and the design tokens. The pty daemon (task 2.1) runs shells and restores
 > their screens on reattach. The app starts it and gives each tab a shell that outlives the
-> app (task 2.6); the terminal view arrives with task 2.5.
+> app (task 2.6), shown in an xterm.js pane that streams raw bytes from the core (task 2.5).
 
 ## See it
 
@@ -170,6 +170,7 @@ pnpm dev                      # the app with hot reload
 cargo test --workspace        # Rust tests
 pnpm check:rust               # rustfmt, clippy and Rust tests: run before every commit
 pnpm test                     # TypeScript tests
+pnpm --filter @terminescu/desktop e2e   # Playwright WebKit on the mock host
 pnpm build --debug            # Terminescu.app with both sidecars, in target/debug/bundle
 pnpm tokens                   # after editing design/system/build_tokens.py
 ```

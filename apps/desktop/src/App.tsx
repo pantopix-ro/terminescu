@@ -1,5 +1,6 @@
 import type { Command, Host, WorkspaceStore } from "@terminescu/host";
-import { SideTabList, TabBar } from "@terminescu/ui";
+import { SideTabList, TabBar, TerminalPane } from "@terminescu/ui";
+import type { Terminal } from "@xterm/xterm";
 import { useEffect, useState } from "react";
 import { useStore } from "zustand";
 
@@ -7,6 +8,8 @@ export interface AppProps {
   windowId: string;
   host: Host;
   workspace: WorkspaceStore;
+  /** Collects each tab's terminal, for Playwright on the mock host. */
+  terminals?: Map<string, Terminal>;
 }
 
 /** Keeps a selection valid: the previous id while it still exists, else the first one. */
@@ -14,7 +17,7 @@ function pick(ids: string[], previous: string | undefined): string | undefined {
   return previous && ids.includes(previous) ? previous : ids[0];
 }
 
-export function App({ windowId, host, workspace }: AppProps) {
+export function App({ windowId, host, workspace, terminals }: AppProps) {
   const ws = useStore(workspace.store, (s) => s.workspace);
   const win = ws.windows.find((w) => w.id === windowId);
   const sideTabs = win?.sideTabs ?? [];
@@ -64,11 +67,20 @@ export function App({ windowId, host, workspace }: AppProps) {
           }}
         />
         <section className="app-pane">
-          {activeTabId ? (
-            <p className="small">Terminal panes arrive with task 2.5.</p>
-          ) : (
-            <p className="small">No side tabs. Press + in the sidebar.</p>
+          {/* Every tab of the window keeps its terminal; only the selected one shows (D33). */}
+          {sideTabs.flatMap((side) =>
+            side.tabs.map((tab) => (
+              <TerminalPane
+                key={tab.id}
+                tabId={tab.id}
+                visible={side.id === activeSide?.id && tab.id === activeTabId}
+                open={(cols, rows, onOutput) => host.openPane(tab.id, cols, rows, onOutput)}
+                openUrl={(url) => void host.openUrl(url).catch((e: unknown) => setError(String(e)))}
+                onTerminal={terminals && ((t) => (t ? terminals.set(tab.id, t) : terminals.delete(tab.id)))}
+              />
+            )),
           )}
+          {!activeTabId && <p className="small app-empty">No side tabs. Press + in the sidebar.</p>}
           {error && <p className="small app-error">{error}</p>}
         </section>
       </main>

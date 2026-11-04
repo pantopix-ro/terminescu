@@ -100,10 +100,20 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       changed; `VISUAL` and `EDITOR` when the setting is on (D9, D35). Verify: test runs `false`
       in each shell and reads exit code 1, the command line and the cwd, and finds a secret set
       mid-session in the next command's environment but not in the pane's scrollback.
-- [ ] 2.5 xterm.js pane, output over a raw-byte `ipc::Channel` batched per frame with
+- [x] 2.5 xterm.js pane, output over a raw-byte `ipc::Channel` batched per frame with
       acknowledgements, WebGL for visible panes only with DOM fallback on context loss, resize,
       copy, links (D33). Verify: manual, `vim` and `htop` render and resize; Playwright opens 20
       panes over 2 windows and every visible pane renders.
+      Done: `terminescu_core::views` queues output per view, sends at most 256 KB per view per
+      16 ms frame and goes stale past 1 MB unacknowledged; once the window acknowledges what is
+      in flight, the view attaches again and the daemon's snapshot redraws it. A tab has one view;
+      opening another replaces it. `TerminalPane` keeps every tab of a window mounted, hidden
+      ones without WebGL, and at most 12 WebGL panes per window. Links open on `⌘`-click,
+      http(s) only. `cargo test` covers snapshot, input, resize, a new tab's late shell and the
+      stale resync; Playwright WebKit runs 20 panes over 2 pages on the mock host, keys and
+      resize, and links. Manual on 2026-11-04: `vim` and `top` render and follow a window
+      resize, and a restarted app shows the same screen (`htop` is not installed here). Copy
+      and paste go through the default Edit menu and still need a manual check.
 
 ## 3. Windows and tabs (P1)
 

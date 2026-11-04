@@ -1,7 +1,7 @@
 // A Host without Tauri, for unit tests and Playwright runs of the Vite build (task 1.3). It
 // plans commands like crates/core/src/state.rs, with readable ids (m1, m2, ...).
 
-import type { Host } from "./host";
+import type { Host, PaneView } from "./host";
 import type { Command, CommandError, Patch, PatchBatch, SideTab, Snapshot, Workspace } from "./protocol";
 import { applyBatch } from "./reducer";
 
@@ -15,6 +15,45 @@ export interface MockHost extends Host {
   /** Every batch the mock produced, in order. */
   readonly batches: PatchBatch[];
   workspace(): Workspace;
+  /** Links the UI asked to open. */
+  readonly openedUrls: string[];
+}
+
+const encoder = new TextEncoder();
+
+/**
+ * A pretend shell per tab: a prompt, local echo and one canned answer per line. Enough for the
+ * UI and Playwright to see a pane render, type and resize without a daemon.
+ */
+class MockShell {
+  private line = "";
+  private size = "80x24";
+  constructor(private readonly tabId: string) {}
+  prompt = () => `mock ${this.tabId} $ `;
+  redraw = () => `\x1bc${this.prompt()}${this.line}`;
+  resize(cols: number, rows: number) {
+    this.size = `${cols}x${rows}`;
+  }
+  input(data: string): string {
+    let out = "";
+    for (const ch of data) {
+      if (ch === "\r") {
+        const said = this.line.trim();
+        this.line = "";
+        const answer = said === "size" ? this.size : said ? `you typed: ${said}` : "";
+        out += `\r\n${answer ? `${answer}\r\n` : ""}${this.prompt()}`;
+      } else if (ch === "\x7f") {
+        if (this.line) {
+          this.line = this.line.slice(0, -1);
+          out += "\b \b";
+        }
+      } else if (ch >= " ") {
+        this.line += ch;
+        out += ch;
+      }
+    }
+    return out;
+  }
 }
 
 export function createMockHost(initial?: Workspace): MockHost {
@@ -24,6 +63,8 @@ export function createMockHost(initial?: Workspace): MockHost {
   let ws: Workspace = initial ? structuredClone(initial) : firstStart();
   const listeners = new Set<(b: PatchBatch) => void>();
   const batches: PatchBatch[] = [];
+  const shells = new Map<string, MockShell>();
+  const openedUrls: string[] = [];
 
   function firstStart(): Workspace {
     const windowId = id();
@@ -91,6 +132,7 @@ export function createMockHost(initial?: Workspace): MockHost {
 
   return {
     batches,
+    openedUrls,
     workspace: () => structuredClone(ws),
     async snapshot(): Promise<Snapshot> {
       return { rev, workspace: structuredClone(ws) };
@@ -106,6 +148,28 @@ export function createMockHost(initial?: Workspace): MockHost {
     async onPatches(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
+    },
+    async openPane(tabId, cols, rows, onOutput): Promise<PaneView> {
+      holder(tabId);
+      const shell = shells.get(tabId) ?? new MockShell(tabId);
+      shells.set(tabId, shell);
+      shell.resize(cols, rows);
+      let open = true;
+      const emit = (s: string) => {
+        if (open && s) queueMicrotask(() => open && onOutput(encoder.encode(s)));
+      };
+      emit(shell.redraw());
+      return {
+        input: (data) => emit(shell.input(data)),
+        resize: (c, r) => shell.resize(c, r),
+        ack: () => {},
+        close: () => {
+          open = false;
+        },
+      };
+    },
+    async openUrl(url) {
+      openedUrls.push(url);
     },
   };
 }

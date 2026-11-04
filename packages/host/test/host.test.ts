@@ -47,6 +47,7 @@ describe("workspace store", () => {
     let deliver: ((b: PatchBatch) => void) | undefined;
     // A host that drops the batch for rev 2 on its way to the store.
     const lossy: Host = {
+      ...host,
       snapshot: () => host.snapshot(),
       send: (c) => host.send(c),
       onPatches: (l) => {
@@ -91,5 +92,22 @@ describe("workspace store", () => {
   it("rejects an unknown tab like the core", async () => {
     const host = createMockHost(seed);
     await expect(host.send({ type: "CloseTab", tabId: "nope" })).rejects.toThrow("UnknownTab nope");
+  });
+
+  it("runs a pretend shell per pane", async () => {
+    const host = createMockHost(seed);
+    const out: string[] = [];
+    const flush = () => new Promise((r) => setTimeout(r, 0));
+    const view = await host.openPane("t1", 100, 30, (b) => out.push(new TextDecoder().decode(b)));
+    await flush();
+    expect(out.join("")).toBe("\x1bcmock t1 $ ");
+    view.input("size\r");
+    await flush();
+    expect(out.join("")).toContain("size\r\n100x30\r\nmock t1 $ ");
+    view.close();
+    view.input("x");
+    await flush();
+    expect(out.join("")).not.toMatch(/x$/);
+    await expect(host.openPane("nope", 80, 24, () => {})).rejects.toThrow("UnknownTab nope");
   });
 });

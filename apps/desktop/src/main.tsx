@@ -6,5 +6,5 @@ import { connect } from "./connect";
 
 const root = createRoot(document.getElementById("root")!);
 connect()
-  .then(({ windowId, host, workspace }) => root.render(<App windowId={windowId} host={host} workspace={workspace} />))
+  .then((c) => root.render(<App {...c} />))
   .catch((e: unknown) => root.render(<pre className="boot-error">{String(e)}</pre>));
