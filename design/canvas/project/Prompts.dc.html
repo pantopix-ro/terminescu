@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Prompt library</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/agentorch/tokens.css">
+<link rel="stylesheet" href="ds/agentorch/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600&amp;family=Silkscreen&amp;display=swap">
+<style>
+body{margin:0;background:#111318}
+a{color:#539bf5}a:hover{color:#8bbcf8}
+@media (max-width: 1000px){ .lib{grid-template-columns:1fr !important} .meta{display:none !important} }
+</style>
+</helmet>
+<div style="width: 100%; min-height: 900px; display: flex; flex-direction: column; background: var(--bg); color: var(--fg); font-family: var(--font-mono); font-size: 13px; line-height: 20px">
+
+  <header style="display: flex; align-items: center; gap: 12px; height: 32px; padding: 0 12px; background: var(--panel-2); border-bottom: 2px solid var(--line-strong)">
+    <span aria-hidden="true" style="display: flex; gap: 6px"><i style="width: 10px; height: 10px; background: var(--faint)"></i><i style="width: 10px; height: 10px; background: var(--faint)"></i><i style="width: 10px; height: 10px; background: var(--faint)"></i></span>
+    <span class="ao-pixel" style="font-size: 8px; color: var(--amber); margin-left: 8px">Terminescu</span>
+    <span class="small ao-dim">Prompts · opens as a tab with ⌘⇧L, closes back to your work</span>
+  </header>
+
+  <div class="ao-tabs" role="tablist" aria-label="Tabs">
+    <a href="Main.dc.html" role="tab" aria-selected="false" class="ao-tab" style="text-decoration: none"><span class="ao-dot need"></span><i class="ao-i ao-i-agent"></i><span class="n">claude · plan</span></a>
+    <span role="tab" aria-selected="true" class="ao-tab active"><i class="ao-i ao-i-tpl"></i><span class="n">prompts</span><span class="x"><i class="ao-i ao-i-cross"></i></span></span>
+  </div>
+
+  <div class="lib" style="flex: 1; display: grid; grid-template-columns: 340px minmax(0, 1fr) 280px; min-height: 0">
+
+    <section aria-label="Prompt list" style="display: flex; flex-direction: column; border-right: 2px solid var(--line-strong); background: var(--bg)">
+      <div style="padding: 12px; display: grid; gap: 10px; border-bottom: 2px solid var(--line)">
+        <label class="ao-field"><span class="ao-pixel ao-dim">Search name, tags, body</span><input class="ao-input" value="" placeholder="confidence"></label>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px"><span class="ao-chip tag small" style="color: var(--fg)">all 14</span><span class="ao-chip tag small">openspec</span><span class="ao-chip tag small">review</span><span class="ao-chip tag small">git</span><span class="ao-chip tag small">archived 3</span></div>
+        <div class="small ao-dim">sort: last used</div>
+      </div>
+      <div role="listbox" aria-label="Prompts" style="flex: 1">
+        <div role="option" aria-selected="true" style="padding: 10px 12px; border-bottom: 2px solid var(--line); background: var(--panel-2); box-shadow: inset 2px 0 0 0 var(--fg)"><div style="display: flex; gap: 8px; align-items: center"><span class="body-strong">review-plan</span><span style="flex: 1"></span><span class="small ao-dim">today</span></div><div class="small ao-dim">v6 · used 41× · review, openspec</div></div>
+        <div role="option" aria-selected="false" style="padding: 10px 12px; border-bottom: 2px solid var(--line)"><div style="display: flex; gap: 8px"><span>plan-backend-openspec</span><span style="flex: 1"></span><span class="small ao-dim">today</span></div><div class="small ao-dim">v4 · used 52× · openspec</div></div>
+        <div role="option" aria-selected="false" style="padding: 10px 12px; border-bottom: 2px solid var(--line)"><div style="display: flex; gap: 8px"><span>implement</span><span style="flex: 1"></span><span class="small ao-dim">yesterday</span></div><div class="small ao-dim">v3 · used 38× · openspec</div></div>
+        <div role="option" aria-selected="false" style="padding: 10px 12px; border-bottom: 2px solid var(--line)"><div style="display: flex; gap: 8px"><span>review-and-open-prs</span><span style="flex: 1"></span><span class="small ao-dim">2 d</span></div><div class="small ao-dim">v2 · used 17× · git, review</div></div>
+        <div role="option" aria-selected="false" style="padding: 10px 12px; border-bottom: 2px solid var(--line)"><div style="display: flex; gap: 8px"><span>finalize-prs</span><span style="flex: 1"></span><span class="small ao-dim">5 d</span></div><div class="small ao-dim">v2 · used 12× · git</div></div>
+        <div role="option" aria-selected="false" style="padding: 10px 12px; border-bottom: 2px solid var(--line)"><div style="display: flex; gap: 8px"><span>confidence</span><span style="flex: 1"></span><span class="small ao-dim">1 w</span></div><div class="small ao-dim">v1 · used 30× · review</div></div>
+      </div>
+      <div style="padding: 12px; border-top: 2px solid var(--line)"><button class="ao-btn" style="width: 100%; justify-content: center"><i class="ao-i ao-i-plus"></i>New prompt</button></div>
+    </section>
+
+    <section aria-label="Edit review-plan" style="display: flex; flex-direction: column; min-width: 0; background: var(--panel)">
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 2px solid var(--line)">
+        <h1 class="title" style="margin: 0">review-plan</h1>
+        <span class="ao-chip save"><i class="ao-i ao-i-save"></i><span class="ao-pixel">Saved v6</span></span>
+        <span style="flex: 1"></span>
+        <button class="ao-btn ghost">Duplicate</button>
+        <button class="ao-btn ghost">Archive</button>
+        <a href="Insert.dc.html" class="ao-btn primary" style="text-decoration: none"><i class="ao-i ao-i-in"></i>Insert into claude · plan</a>
+      </div>
+      <div style="padding: 16px; display: grid; gap: 14px; flex: 1; align-content: start">
+        <label class="ao-field"><span class="ao-pixel ao-dim">Description</span><input class="ao-input" value="Review the plan for a ticket against the code"></label>
+        <label class="ao-field"><span class="ao-pixel ao-dim">Tags</span><input class="ao-input" value="review, openspec"></label>
+        <div class="ao-field"><span class="ao-pixel ao-dim">Body · Markdown, images by paste</span>
+          <div class="ao-input" role="textbox" aria-multiline="true" aria-label="Body" style="min-height: 300px; padding: 12px; white-space: pre-wrap">Review the plan for <span class="ao-var">{{v.ticket}}</span> on branch <span class="ao-var">{{v.branch}}</span>.
+
+The plan lives at <span class="ao-var">{{v.plan}}</span>. Read the code in <span class="ao-var">{{v.repos}}</span> before you judge it.
+
+List the gaps, then rate your confidence from 0 to 100. Ask <span class="ao-var">{{v.owner}}</span> about anything that needs a product call.
+
+Pinned so far:
+<span class="ao-var">{{v.pins}}</span></div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="meta" aria-label="Prompt details" style="display: flex; flex-direction: column; border-left: 2px solid var(--line-strong); background: var(--bg)">
+      <div class="ao-pixel ao-dim" style="padding: 12px 12px 6px">Variables</div>
+      <div class="ao-ctx">
+        <div class="ao-ctx-row"><span class="k"><span class="ao-var">{{v.ticket}}</span></span><span class="small ao-dim">in 6 side tabs</span></div>
+        <div class="ao-ctx-row"><span class="k"><span class="ao-var">{{v.branch}}</span></span><span class="small ao-dim">in 4</span></div>
+        <div class="ao-ctx-row"><span class="k"><span class="ao-var">{{v.plan}}</span></span><span class="small ao-dim">in 3</span></div>
+        <div class="ao-ctx-row"><span class="k"><span class="ao-var">{{v.owner}}</span></span><span class="small ao-dim">asked each time</span></div>
+        <div class="ao-ctx-row"><span class="k"><span class="ao-var">{{v.pins}}</span></span><span class="small ao-dim">built in</span></div>
+      </div>
+      <div class="ao-pixel ao-dim" style="padding: 16px 12px 6px">Versions</div>
+      <ol style="margin: 0; padding: 0 12px; list-style: none; display: grid; gap: 6px" class="small">
+        <li style="display: flex; gap: 8px"><span class="body-strong">v6</span><span class="ao-dim">today · added {{v.owner}}</span></li>
+        <li style="display: flex; gap: 8px"><span>v5</span><span class="ao-dim">3 d · saved from an insert</span><span style="flex: 1"></span><a href="#">restore</a></li>
+        <li style="display: flex; gap: 8px"><span>v4</span><span class="ao-dim">2 w</span><span style="flex: 1"></span><a href="#">restore</a></li>
+      </ol>
+      <div class="ao-pixel ao-dim" style="padding: 16px 12px 6px">Last used</div>
+      <div class="small ao-dim" style="padding: 0 12px">PROJ-482 · claude · plan · 14:40</div>
+    </aside>
+  </div>
+
+  <footer class="ao-status">
+    <span class="seg"><i class="ao-i ao-i-tpl"></i>14 prompts · 3 archived</span>
+    <span class="seg">variables resolve from the side tab you insert into</span>
+    <span class="spacer"></span>
+    <span class="seg">window 1 of 2</span>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return { v: { ticket: "{{ticket}}", branch: "{{branch}}", plan: "{{plan}}", repos: "{{repos}}", owner: "{{owner}}", pins: "{{pins}}" } }; }
+}
+</script>
+</body>
+</html>

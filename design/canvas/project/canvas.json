@@ -1,0 +1,134 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-03T21:40:19Z"
+  },
+  "title": "Terminescu Screens",
+  "launch": {
+    "view": "canvas"
+  },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Window: side tabs, tabs, panes, context",
+      "expand": "fill"
+    },
+    "DragToSide.dc.html": {
+      "x": 1520,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Drag a tab into the sidebar",
+      "expand": "fill"
+    },
+    "DragOut.dc.html": {
+      "x": 0,
+      "y": 1020,
+      "w": 1440,
+      "h": 900,
+      "title": "Drag a tab out to a new window",
+      "expand": "fill"
+    },
+    "Merge.dc.html": {
+      "x": 1520,
+      "y": 1020,
+      "w": 1440,
+      "h": 900,
+      "title": "Merge two side tabs",
+      "expand": "fill"
+    },
+    "Status.dc.html": {
+      "x": 0,
+      "y": 2040,
+      "w": 1440,
+      "h": 900,
+      "title": "Status and colors",
+      "expand": "fill"
+    },
+    "Extract.dc.html": {
+      "x": 1520,
+      "y": 2040,
+      "w": 1440,
+      "h": 900,
+      "title": "Extract and pin from a response",
+      "expand": "fill"
+    },
+    "Insert.dc.html": {
+      "x": 0,
+      "y": 3060,
+      "w": 1440,
+      "h": 900,
+      "title": "Insert a prompt",
+      "expand": "fill"
+    },
+    "Prompts.dc.html": {
+      "x": 1520,
+      "y": 3060,
+      "w": 1440,
+      "h": 900,
+      "title": "Prompt library",
+      "expand": "fill"
+    },
+    "ContextHidden.dc.html": {
+      "x": 3040,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Context panel auto-hidden, shown on hover",
+      "expand": "fill"
+    },
+    "Settings.dc.html": {
+      "x": 3040,
+      "y": 1020,
+      "w": 1440,
+      "h": 900,
+      "title": "Settings: statuses",
+      "expand": "fill"
+    },
+    "TextEditor.dc.html": {
+      "x": 3040,
+      "y": 2040,
+      "w": 1440,
+      "h": 900,
+      "title": "Text tab: editing a prompt file",
+      "expand": "fill"
+    },
+    "EditorRequest.dc.html": {
+      "x": 3040,
+      "y": 3060,
+      "w": 1440,
+      "h": 900,
+      "title": "Editor request from Claude, file changed on disk",
+      "expand": "fill"
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "ContextHidden.dc.html",
+    "Settings.dc.html",
+    "TextEditor.dc.html",
+    "EditorRequest.dc.html",
+    "DragToSide.dc.html",
+    "DragOut.dc.html",
+    "Merge.dc.html",
+    "Status.dc.html",
+    "Extract.dc.html",
+    "Insert.dc.html",
+    "Prompts.dc.html"
+  ],
+  "notes": {},
+  "designSystems": [
+    {
+      "title": "Terminescu Workbench",
+      "namespace": "agentorch",
+      "artifact": "https://claude.ai/artifact/AhrMAGQJ1CGCzb6JYYBojH",
+      "version": "1793795329-e2a4",
+      "copiedAt": "2026-11-04T18:05:00Z"
+    }
+  ]
+}

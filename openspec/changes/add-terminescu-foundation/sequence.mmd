@@ -1,0 +1,31 @@
+sequenceDiagram
+    autonumber
+    actor P as Person
+    participant Sh as Shell in pane (ptyd)
+    participant C as claude
+    participant H as terminescu hook
+    participant Co as Rust core
+    participant W as Window (webview)
+
+    P->>Sh: types claude
+    Sh->>C: starts with TERMINESCU_PANE_ID in env
+    C->>H: SessionStart (session_id, transcript_path)
+    H->>Co: hook JSON + pane id over unix socket
+    H-->>C: writes eval "$(terminescu var env)" to CLAUDE_ENV_FILE, exit 0
+    Co->>W: patch: pane has agent icon
+    P->>C: prompt
+    C->>H: UserPromptSubmit
+    H->>Co: forward
+    Co->>W: patch: Running
+    C->>H: PermissionRequest (Bash)
+    H->>Co: forward
+    Co->>W: patch: Waiting, amber side tab, count +1
+    Co-->>P: macOS notification if the app is in the background
+    P->>W: ⌘⇧A focuses the oldest waiting pane
+    P->>C: approves
+    C->>H: PostToolUse
+    H->>Co: forward
+    Co->>W: patch: Running, amber clears
+    C->>H: Stop (last_assistant_message)
+    H->>Co: forward
+    Co->>W: patch: Done

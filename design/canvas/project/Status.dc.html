@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Status and colors</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/agentorch/tokens.css">
+<link rel="stylesheet" href="ds/agentorch/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600&amp;family=Silkscreen&amp;display=swap">
+<style>
+body{margin:0;background:#111318}
+a{color:#539bf5}a:hover{color:#8bbcf8}
+@media (max-width: 900px){ .win{grid-template-columns:1fr !important} .pop{position:static !important; margin:16px} }
+</style>
+</helmet>
+<div style="width: 100%; min-height: 900px; display: flex; flex-direction: column; background: var(--bg); color: var(--fg); font-family: var(--font-mono); font-size: 13px; line-height: 20px">
+
+  <header style="display: flex; align-items: center; gap: 12px; height: 32px; padding: 0 12px; background: var(--panel-2); border-bottom: 2px solid var(--line-strong)">
+    <span aria-hidden="true" style="display: flex; gap: 6px"><i style="width: 10px; height: 10px; background: var(--faint)"></i><i style="width: 10px; height: 10px; background: var(--faint)"></i><i style="width: 10px; height: 10px; background: var(--faint)"></i></span>
+    <span class="ao-pixel" style="font-size: 8px; color: var(--amber); margin-left: 8px">Terminescu</span>
+    <span class="small ao-dim">PROJ-477 rate limit · status</span>
+  </header>
+
+  <div class="win" style="flex: 1; display: grid; grid-template-columns: 272px minmax(0, 1fr); min-height: 0; position: relative">
+
+    <nav aria-label="Side tabs" style="display: flex; flex-direction: column; border-right: 2px solid var(--line-strong); background: var(--bg)">
+      <div style="display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-bottom: 2px solid var(--line-strong)">
+        <span class="ao-pixel ao-dim">Side tabs</span><span style="flex: 1"></span>
+        <label class="small ao-dim" style="display: flex; align-items: center; gap: 6px">sort
+          <select class="ao-input" style="height: 22px; padding: 0 4px; font-size: 12px"><option>manual</option><option selected>background</option><option>status</option><option>name</option></select></label>
+      </div>
+      <div class="ao-side">
+        <div class="ao-st need" style="--st-accent: var(--blue); --st-bg: var(--tint-blue)"><i class="ao-i ao-i-group"></i><span class="t">PROJ-482 audit export</span><span class="ao-stat need">Waiting</span><span class="m">3 tabs</span></div>
+        <div class="ao-st" style="--st-accent: var(--cyan); --st-bg: var(--tint-cyan)"><i class="ao-i ao-i-agent"></i><span class="t">PROJ-479 invoices paging</span><span class="ao-stat" style="--s-fg: var(--blue)">Running</span><span class="m">claude · implement</span></div>
+        <div class="ao-st active" style="--st-accent: var(--magenta); --st-bg: var(--tint-magenta)"><i class="ao-i ao-i-group"></i><span class="t">PROJ-477 rate limit</span><span class="ao-stat manual" style="--s-fg: var(--magenta); --s-edge: var(--magenta)">Review</span><span class="m">2 tabs</span></div>
+        <div class="ao-st need" style="--st-accent: var(--red); --st-bg: var(--tint-red)"><i class="ao-i ao-i-term"></i><span class="t">infra hetzner</span><span class="ao-stat manual" style="--s-fg: var(--red); --s-edge: var(--red)">Blocked</span><span class="m">claude asks a question</span></div>
+        <div class="ao-st" style="--st-accent: var(--green)"><i class="ao-i ao-i-term"></i><span class="t">dev servers</span><span class="ao-stat" style="--s-fg: var(--blue)">Running</span><span class="m">docker compose up</span></div>
+        <div class="ao-st"><i class="ao-i ao-i-term"></i><span class="t">scratch</span><span class="ao-stat">Idle</span><span class="m">zsh · ~</span></div>
+      </div>
+    </nav>
+
+    <main style="display: flex; flex-direction: column; min-width: 0; opacity: .4" aria-hidden="true">
+      <div class="ao-tabs">
+        <span class="ao-tab active" style="--tab-accent: var(--magenta)"><span class="ao-dot done"></span><span class="n">claude · review</span></span>
+        <span class="ao-tab"><span class="ao-dot idle"></span><span class="n">zsh · ~/work/api-477</span></span>
+      </div>
+      <div style="flex: 1; background: var(--panel)"></div>
+    </main>
+
+    <div class="pop" style="position: absolute; left: 284px; top: 150px; display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start">
+      <div class="ao-frame" style="width: 380px" role="dialog" aria-labelledby="se-t">
+        <div class="ao-frame-head"><i class="ao-i ao-i-dot"></i><span id="se-t" class="ao-pixel">Status</span><span style="flex: 1"></span><span class="small ao-dim">side tab · PROJ-477</span></div>
+        <div class="ao-frame-body" style="display: grid; gap: 16px">
+          <div style="display: flex; gap: 4px" role="tablist" aria-label="Apply to">
+            <button class="ao-btn" role="tab" aria-selected="true" style="height: 24px">Side tab</button>
+            <button class="ao-btn ghost" role="tab" aria-selected="false" style="height: 24px">Tab: claude · review</button>
+          </div>
+          <label class="ao-field"><span class="ao-pixel ao-dim">Label</span><input class="ao-input" value="Review" maxlength="12"></label>
+          <div class="small ao-dim">auto would say: <span class="ao-stat" style="--s-fg: var(--green)">Done</span> 1 of 2 tabs · <a href="#">back to auto</a></div>
+          <div class="ao-field"><span class="ao-pixel ao-dim">This side tab</span>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; padding-top: 4px">
+              <button class="ao-stat manual" style="--s-fg: var(--magenta); --s-edge: var(--magenta); border: 0; cursor: pointer">Review</button>
+              <button class="ao-stat manual" style="--s-fg: var(--cyan); --s-edge: var(--cyan); border: 0; cursor: pointer">QA on staging</button>
+              <button class="ao-stat" style="border: 0; cursor: pointer">+ save here</button>
+            </div>
+          </div>
+          <div class="ao-field"><span class="ao-pixel ao-dim">Global</span>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; padding-top: 4px">
+              <button class="ao-stat manual" style="--s-fg: var(--red); --s-edge: var(--red); border: 0; cursor: pointer">Blocked</button>
+              <button class="ao-stat manual" style="--s-fg: var(--cyan); --s-edge: var(--cyan); border: 0; cursor: pointer">Testing</button>
+              <button class="ao-stat manual" style="border: 0; cursor: pointer">Parked</button>
+              <button class="ao-stat" style="border: 0; cursor: pointer">↑ make “Review” global</button>
+            </div>
+            <div class="small ao-dim" style="padding-top: 4px">Edit the global list in <a href="Settings.dc.html">Settings › Statuses</a></div>
+          </div>
+          <div class="ao-field"><span class="ao-pixel ao-dim">Accent</span>
+            <div class="ao-swatches" role="radiogroup" aria-label="Accent">
+              <button class="ao-sw none" role="radio" aria-checked="false" aria-label="No accent" style="border: 0"></button>
+              <button class="ao-sw" role="radio" aria-checked="false" aria-label="Blue" style="--sw: var(--blue); border: 0"></button>
+              <button class="ao-sw" role="radio" aria-checked="false" aria-label="Cyan" style="--sw: var(--cyan); border: 0"></button>
+              <button class="ao-sw" role="radio" aria-checked="false" aria-label="Green" style="--sw: var(--green); border: 0"></button>
+              <button class="ao-sw on" role="radio" aria-checked="true" aria-label="Magenta" style="--sw: var(--magenta); border: 0"></button>
+              <button class="ao-sw" role="radio" aria-checked="false" aria-label="Red" style="--sw: var(--red); border: 0"></button>
+              <button class="ao-sw" role="radio" aria-checked="false" aria-label="White" style="--sw: var(--fg); border: 0"></button>
+            </div>
+          </div>
+          <div class="ao-field"><span class="ao-pixel ao-dim">Background</span>
+            <div class="ao-swatches" role="radiogroup" aria-label="Background">
+              <button class="ao-sw none" role="radio" aria-checked="false" aria-label="No background" style="border: 0"></button>
+              <button class="ao-sw" role="radio" aria-checked="false" aria-label="Blue tint" style="--sw: var(--tint-blue); --swe: var(--blue); border: 0"></button>
+              <button class="ao-sw" role="radio" aria-checked="false" aria-label="Cyan tint" style="--sw: var(--tint-cyan); --swe: var(--cyan); border: 0"></button>
+              <button class="ao-sw" role="radio" aria-checked="false" aria-label="Green tint" style="--sw: var(--tint-green); --swe: var(--green); border: 0"></button>
+              <button class="ao-sw on" role="radio" aria-checked="true" aria-label="Magenta tint" style="--sw: var(--tint-magenta); --swe: var(--magenta); border: 0"></button>
+              <button class="ao-sw" role="radio" aria-checked="false" aria-label="Red tint" style="--sw: var(--tint-red); --swe: var(--red); border: 0"></button>
+            </div>
+          </div>
+          <div class="small ao-dim">Amber stays reserved: a session waiting on you shows its amber marker over any status you set.</div>
+        </div>
+        <div class="ao-frame-foot">
+          <button class="ao-btn ghost">Reset all to auto</button>
+          <a href="Main.dc.html" class="ao-btn primary" style="text-decoration: none">Done <span class="ao-key">↵</span></a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="ao-status">
+    <span class="need"><i class="ao-i ao-i-bp"></i><span class="ao-pixel">2 need you</span></span>
+    <span class="seg"><i class="ao-i ao-i-dot"></i>⌘⇧S edits the status of the focused side tab</span>
+    <span class="spacer"></span>
+    <span class="seg">sorted by background</span>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

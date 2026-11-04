@@ -1,0 +1,64 @@
+# Spec Delta
+
+## ADDED Requirements
+
+### Requirement: Visual tokens
+Every color SHALL come from the design tokens, and the xterm theme SHALL be generated from the
+same tokens. Amber SHALL mean needs you, focus and drop targets only.
+
+#### Scenario: Theme matches
+- **WHEN** the token test compares the xterm theme with the CSS tokens
+- **THEN** all 16 ANSI colors match
+
+### Requirement: Keyboard model
+Plain keys SHALL always go to the focused pane. App actions SHALL be `⌘` chords: `⌘K`, `⌘T`,
+`⌘N`, `⌘D`, `⌘⇧D`, `⌘W`, `⌘1`-`⌘9`, `⌃⌘1`-`⌃⌘9`, `⌘I`, `⌘E`, `⌘⇧P`, `⌘⇧S`, `⌘⇧A`, `⌘\`,
+`⌥⌘T`, `⌘O`. Each SHALL be a native menu item, so the chord wins over the webview and over the
+text editor. Every shortcut SHALL be editable in Settings › Keys, which SHALL flag conflicts.
+
+#### Scenario: App chord in a text pane
+- **WHEN** a text pane has focus and the person presses `⌘D`
+- **THEN** the tab splits and the editor does not select the next match
+
+#### Scenario: Rebind a shortcut
+- **WHEN** the person binds "Open file" to `⌘P` in Settings › Keys
+- **THEN** `⌘P` opens the file search and `⌘O` does nothing; binding `⌘T` to it as well shows a conflict
+
+#### Scenario: Letter typed in a terminal
+- **WHEN** the focused pane is a terminal and the person types `c`
+- **THEN** the shell receives `c` and no app action runs
+
+### Requirement: Attention signals
+When a session waits, the status line SHALL show the count in amber, the dock icon SHALL show
+a badge with the count, and a macOS notification SHALL be posted when the app is in the
+background, on by default and without sound. A chime SHALL exist and SHALL be off by default. `⌘⇧A` SHALL focus the pane that
+has waited longest.
+
+#### Scenario: Waiting in the background
+- **WHEN** a Claude session starts waiting while another app is in front
+- **THEN** a notification names the side tab and tab, the dock badge reads 1, and no sound plays
+
+### Requirement: Collapsible context panel
+`⌘\` SHALL cycle the context panel between pinned and auto-hide. When auto-hidden, hovering a
+6px edge at the right of the window for 150 ms SHALL slide the panel in as an overlay over the
+panes without resizing them, and it SHALL slide out when the pointer leaves.
+
+#### Scenario: Peek at the context
+- **WHEN** the panel is auto-hidden and the pointer rests on the right edge
+- **THEN** the panel slides over the panes and no terminal receives a resize
+
+### Requirement: Independent scrolling
+The sidebar, each pane and the context panel SHALL scroll on their own, and the tab bar SHALL
+scroll sideways when its tabs overflow.
+
+#### Scenario: Long sidebar
+- **WHEN** a window has 30 side tabs
+- **THEN** the sidebar scrolls while the tab bar, panes and context panel stay in place
+
+### Requirement: Settings
+A Settings screen SHALL offer Statuses, Commands, Variable defaults, Extraction rules
+(read-only in v1), Shell (including the opt-in `EDITOR` setting) and Keys (editable).
+
+#### Scenario: Default storage mode
+- **WHEN** the person sets the default storage mode to session only in Settings
+- **THEN** variables extracted afterwards start as session only

@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Context auto-hidden</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/agentorch/tokens.css">
+<link rel="stylesheet" href="ds/agentorch/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600&amp;family=Silkscreen&amp;display=swap">
+<style>
+body{margin:0;background:#111318}
+a{color:#539bf5}a:hover{color:#8bbcf8}
+@media (max-width: 1100px){ .win{grid-template-columns:240px minmax(0,1fr) 12px !important} }
+@media (max-width: 760px){ .ao-ctx-over{width:calc(100% - 12px) !important} }
+@media (max-width: 760px){ .win{grid-template-columns:1fr !important} .side{display:none !important} }
+</style>
+</helmet>
+<div style="width: 100%; height: 100vh; min-height: 720px; display: flex; flex-direction: column; background: var(--bg); color: var(--fg); font-family: var(--font-mono); font-size: 13px; line-height: 20px">
+
+  <header style="display: flex; align-items: center; gap: 12px; height: 32px; padding: 0 12px; background: var(--panel-2); border-bottom: 2px solid var(--line-strong)">
+    <span aria-hidden="true" style="display: flex; gap: 6px"><i style="width: 10px; height: 10px; background: var(--faint)"></i><i style="width: 10px; height: 10px; background: var(--faint)"></i><i style="width: 10px; height: 10px; background: var(--faint)"></i></span>
+    <span class="ao-pixel" style="font-size: 8px; color: var(--amber); margin-left: 8px">Terminescu</span>
+    <span class="small ao-dim">PROJ-482 audit export · claude · plan</span>
+    <span style="flex: 1"></span>
+    <button class="ao-btn ghost" style="height: 24px"><i class="ao-i ao-i-prompt"></i>Search tabs, prompts, variables <span class="ao-key">⌘</span><span class="ao-key">K</span></button>
+  </header>
+
+  <div class="win" style="flex: 1; display: grid; grid-template-columns: 272px minmax(0, 1fr) 12px; min-height: 0; position: relative">
+
+    <nav class="side" aria-label="Side tabs" style="display: flex; flex-direction: column; min-height: 0; border-right: 2px solid var(--line-strong); background: var(--bg)">
+      <div style="display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-bottom: 2px solid var(--line-strong)">
+        <span class="ao-pixel ao-dim">Side tabs</span><span style="flex: 1"></span>
+        <button class="ao-btn ghost" style="height: 24px; padding: 0 6px" aria-label="Sort side tabs"><span class="small">sort: manual</span></button>
+        <button class="ao-btn ghost" style="height: 24px; padding: 0 6px" aria-label="New side tab"><i class="ao-i ao-i-plus"></i></button>
+      </div>
+      <div class="ao-scroll" style="flex: 1"><div class="ao-side">
+        <a href="Status.dc.html" class="ao-st active need" style="--st-accent: var(--blue); --st-bg: var(--tint-blue); text-decoration: none"><i class="ao-i ao-i-group"></i><span class="t">PROJ-482 audit export</span><span class="ao-stat need">Waiting</span><span class="m"><i class="ao-i x1 ao-i-chev"></i><span class="ao-strip"><i class="ao-cell wait"></i><i class="ao-cell run"></i><i class="ao-cell"></i></span>3 tabs · ~/work/api</span></a>
+        <div class="ao-st-kids" style="--st-accent: var(--blue); --st-bg: var(--tint-blue)">
+          <div class="ao-st-kid active"><span class="ao-dot need"></span><i class="ao-i x1 ao-i-agent"></i><span class="grow">claude · plan</span><span>⌘1</span></div>
+          <div class="ao-st-kid"><span class="ao-dot run"></span><i class="ao-i x1 ao-i-term"></i><span class="grow">pnpm dev</span><span>⌘2</span></div>
+          <div class="ao-st-kid"><span class="ao-dot idle"></span><i class="ao-i x1 ao-i-term"></i><span class="grow">zsh · ~/work/web</span><span>⌘3</span></div>
+        </div>
+        <div class="ao-st" style="--st-accent: var(--magenta); --st-bg: var(--tint-magenta)"><i class="ao-i ao-i-group"></i><span class="t">PROJ-477 rate limit</span><span class="ao-stat manual" style="--s-fg: var(--magenta); --s-edge: var(--magenta)">Review</span><span class="m"><i class="ao-i x1 ao-i-chevr"></i><span class="ao-strip"><i class="ao-cell done"></i><i class="ao-cell"></i></span>2 tabs</span></div>
+        <div class="ao-st" style="--st-accent: var(--cyan); --st-bg: var(--tint-cyan)"><i class="ao-i ao-i-agent"></i><span class="t">PROJ-479 invoices paging</span><span class="ao-stat" style="--s-fg: var(--blue)">Running</span><span class="m">claude · implement · 22m</span></div>
+        <div class="ao-st" style="--st-accent: var(--red); --st-bg: var(--tint-red)"><i class="ao-i ao-i-term"></i><span class="t">PROJ-470 export retry</span><span class="ao-stat" style="--s-fg: var(--red); --s-edge: var(--red)">Tests red</span><span class="m">rule · pnpm test exited 1 · 4m</span></div>
+        <div class="ao-st" style="--st-accent: var(--green); --st-bg: var(--tint-green)"><i class="ao-i ao-i-play"></i><span class="t">dev servers</span><span class="ao-stat" style="--s-fg: var(--green)">2/2 up</span><span class="m">launcher · compose, pnpm dev · 3h</span></div>
+        <div class="ao-st" style="--st-accent: var(--red); --st-bg: var(--tint-red)"><i class="ao-i ao-i-term"></i><span class="t">infra hetzner</span><span class="ao-stat manual" style="--s-fg: var(--red); --s-edge: var(--red)">Blocked</span><span class="m">waiting on DNS</span></div>
+        <div class="ao-st"><i class="ao-i ao-i-term"></i><span class="t">scratch</span><span></span><span class="m">zsh · ~</span></div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px; margin-top: 8px; border-top: 2px solid var(--line)"><span class="ao-pixel ao-dim">Commands</span><span class="small ao-dim">PROJ-482</span><span style="flex: 1"></span><button class="ao-btn ghost" style="height: 22px; padding: 0 6px" aria-label="New command"><i class="ao-i ao-i-plus"></i></button></div>
+      <div class="ao-cmds">
+        <div class="ao-cmd"><i class="ao-i ao-i-play"></i><span class="c">pnpm test audit</span><span class="to">new tab</span></div>
+        <div class="ao-cmd"><i class="ao-i ao-i-play"></i><span class="c">gh pr checks {{v.pr_api}}</span><span class="to">pane</span></div>
+      </div>
+      <div style="display: flex; align-items: center; height: 24px; padding: 0 12px"><span class="ao-pixel ao-dim">Global</span></div>
+      <div class="ao-cmds">
+        <div class="ao-cmd"><i class="ao-i ao-i-play"></i><span class="c">docker compose ps</span><span class="to">pane</span></div>
+        <div class="ao-cmd"><i class="ao-i ao-i-play"></i><span class="c">claude --resume</span><span class="to">new tab</span></div>
+        <div class="ao-cmd"><i class="ao-i ao-i-play"></i><span class="c">git fetch --all --prune</span><span class="to">pane</span></div>
+      </div>
+      </div>
+      <div style="padding: 8px 12px; border-top: 2px solid var(--line)" class="small ao-dim"><span class="ao-key">⌃⌘</span><span class="ao-key">1</span>–<span class="ao-key">9</span> switch side tab · <a href="Settings.dc.html">settings</a></div>
+    </nav>
+
+    <main style="display: flex; flex-direction: column; min-width: 0; min-height: 0">
+      <div class="ao-tabs" role="tablist" aria-label="Tabs in PROJ-482">
+        <a href="Extract.dc.html" role="tab" aria-selected="true" class="ao-tab active" style="--tab-accent: var(--blue); text-decoration: none"><span class="ao-dot need"></span><i class="ao-i ao-i-agent"></i><span class="n">claude · plan</span><span class="x"><i class="ao-i ao-i-cross"></i></span></a>
+        <a href="DragToSide.dc.html" role="tab" aria-selected="false" class="ao-tab" style="text-decoration: none"><span class="ao-dot run"></span><span class="n">pnpm dev</span><span class="x"></span></a>
+        <span role="tab" aria-selected="false" class="ao-tab"><span class="ao-dot idle"></span><span class="n">zsh · ~/work/web</span><span class="x"></span></span>
+        <a href="EditorRequest.dc.html" class="ao-tab-split" style="text-decoration: none" aria-label="New tab"><span><i class="ao-i ao-i-plus"></i></span><span><i class="ao-i ao-i-chev"></i></span></a>
+        <span style="flex: 1"></span>
+        <span class="small ao-dim" style="align-self: center">⌘D split · ⌘⇧D split down</span>
+      </div>
+
+      <div class="ao-split" style="flex: 1; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr)">
+        <section class="ao-tp focused" style="grid-row: span 2" aria-label="Claude session">
+          <div class="ao-tp-head"><i class="ao-i x1 ao-i-agent"></i><span>claude · ~/work/api</span><span class="grow"></span><span>session 3f9a · 41k tokens</span></div>
+          <div class="ao-tp-body ao-term ao-scroll" style="white-space: pre-wrap"><span class="p">❯</span> Write the OpenSpec plan for the pasted ticket. Repos: api, web.
+
+<span class="t">● Read</span> <span class="d">src/routes/audit.ts</span>
+<span class="t">● Read</span> <span class="d">../web/src/pages/audit/index.tsx</span>
+<span class="t">● Write</span> <span class="d">openspec/changes/add-audit-export/proposal.md</span>
+  <span class="d">⎿ Wrote 64 lines</span>
+<span class="t">● Write</span> <span class="d">openspec/changes/add-audit-export/design.md</span>
+  <span class="d">⎿ Wrote 112 lines</span>
+
+The export streams CSV in batches of 5,000 rows on a cursor over id.
+Published the plan: <span class="u">claude.ai/artifact/9f2c41…</span>
+
+<span style="display: block; margin-top: 8px; padding: 8px 12px; border: 2px solid var(--amber); color: var(--fg)"><span style="color: var(--amber)">Bash command</span>
+  openspec validate add-audit-export --strict
+
+Do you want to proceed?
+<span style="color: var(--amber)">❯ 1. Yes</span>
+  2. Yes, and don't ask again for openspec commands
+  3. No, and tell Claude what to do differently</span></div>
+        </section>
+
+        <section class="ao-tp" aria-label="Transcript">
+          <div class="ao-tp-head"><i class="ao-i x1 ao-i-doc"></i><span>transcript · claude · plan</span><span class="grow"></span><span>select to pin or extract</span></div>
+          <div class="ao-tp-body ao-scroll" style="display: flex; flex-direction: column; gap: 10px; font-size: 12px; line-height: 16px">
+            <div><div style="color: var(--blue)">you · 14:02 · prompt plan-backend-openspec v4</div>Write the OpenSpec plan for the pasted ticket. Repos: api, web.</div>
+            <div><div class="ao-dim">assistant · 14:20</div>Branch <span style="color: var(--magenta); border-bottom: 2px solid var(--magenta)">feature/PROJ-482-audit-export</span> is created in api and web.</div>
+            <div><div class="ao-dim">assistant · 14:22</div>The export streams CSV in batches of 5,000 rows on a cursor over id. <span class="ao-sel">One transaction per batch keeps locks short.</span> Published the plan: <a href="#">claude.ai/artifact/9f2c41…</a></div>
+          </div>
+        </section>
+
+        <section class="ao-tp" aria-label="Shell">
+          <div class="ao-tp-head"><i class="ao-i x1 ao-i-term"></i><span>zsh · ~/work/api</span><span class="grow"></span><span style="color: var(--green)">exit 0</span></div>
+          <div class="ao-tp-body ao-term"><span class="p">$</span> git status -sb
+<span class="d">## feature/PROJ-482-audit-export</span>
+<span class="d">?? openspec/changes/add-audit-export/</span>
+<span class="p">$</span> <span class="ao-cursor"></span></div>
+        </section>
+      </div>
+    </main>
+
+    <div class="ao-edge hot" aria-label="Context, auto-hidden"><span class="pip need"></span><span class="pip"></span><span class="pip"></span><span class="ao-pixel">Context</span></div>
+    <aside class="ctx ao-ctx-over" aria-label="Context of PROJ-482, shown on hover" style="right: 12px; min-height: 0; overflow: hidden; border-left: 2px solid var(--line-strong); background: var(--panel)">
+      <div style="display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; background: var(--bg); border-bottom: 2px solid var(--line-strong)">
+        <i class="ao-i ao-i-var" style="color: var(--magenta)"></i><span class="ao-pixel ao-dim">Context</span><span class="small ao-dim">PROJ-482</span><span style="flex: 1"></span><a href="Main.dc.html" class="ao-btn ghost" style="height: 22px; padding: 0 6px; text-decoration: none"><span class="small">pin open</span><span class="ao-key">⌘\</span></a>
+      </div>
+      <div class="ao-scroll" style="flex: 1">
+
+      <div style="display: flex; align-items: center; gap: 8px; padding: 10px 12px 6px"><span class="ao-pixel ao-dim">Variables</span><span class="small ao-dim">7</span><span style="flex: 1"></span><a href="Insert.dc.html" class="small">⌘I insert</a></div>
+      <div class="ao-ctx">
+        <div class="ao-ctx-row"><span class="k"><span class="ao-var">{{v.ticket}}</span></span><span class="small ao-dim">text</span><span class="v">PROJ-482 · Add audit export endpoint…</span><span class="src">pasted · 412 words · 2 images</span></div>
+        <div class="ao-ctx-row"><span class="k"><span class="ao-var">{{v.branch}}</span></span><span class="small ao-dim">text</span><span class="v">feature/PROJ-482-audit-export</span><span class="src">extracted · claude · plan · 14:20</span></div>
+        <div class="ao-ctx-row"><span class="k"><span class="ao-var">{{v.plan}}</span><span class="ao-chip pin" style="height: 16px"><i class="ao-i x1 ao-i-link"></i><span class="ao-pixel">Auto</span></span></span><span class="small ao-dim">link</span><span class="v"><a href="#">claude.ai/artifact/9f2c41…</a></span><span class="src">auto · artifact URL · 14:22</span></div>
+        <div class="ao-ctx-row"><span class="k"><span class="ao-var">{{v.repos}}</span></span><span class="small ao-dim">text</span><span class="v">api, web</span><span class="src">typed · 13:58</span></div>
+        <div class="ao-ctx-row"><span class="k"><span class="ao-var">{{v.root}}</span></span><span class="small ao-dim">path</span><span class="v">~/work</span><span class="src">cwd of the side tab</span></div>
+        <div class="ao-ctx-row session"><span class="k"><span class="ao-var">{{v.from_date}}</span><span class="ao-store">Session</span></span><span class="small ao-dim">text</span><span class="v">2026-10-01</span><span class="src">not stored · gone on reboot</span></div>
+        <div class="ao-ctx-row secret"><span class="k"><span class="ao-var">{{v.api_token}}</span><span class="ao-store secret">Secret</span></span><span class="small ao-dim">text</span><span class="v">••••••••••••</span><span class="src">inserts as $API_TOKEN · 52m left</span></div>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 8px; padding: 14px 12px 6px"><span class="ao-pixel ao-dim">Pins</span><span class="small ao-dim">2 · ⌥1–⌥9 copies</span></div>
+      <div style="display: flex; flex-direction: column; gap: 12px; padding: 4px 12px 12px">
+        <div class="ao-pin" style="width: auto">
+          <div class="ao-pin-head"><i class="ao-i ao-i-pin"></i><span class="ao-pixel">Selection</span><span class="grow"></span><span class="ao-key">1</span></div>
+          <div class="ao-pin-body" style="padding: 8px 12px"><q>One transaction per batch keeps locks short.</q></div>
+          <div class="ao-pin-meta"><span>part of a reply · claude · plan</span><span>14:22</span></div>
+        </div>
+        <div class="ao-pin" style="width: auto">
+          <div class="ao-pin-head" style="color: var(--green)"><i class="ao-i ao-i-term"></i><span class="ao-pixel">Output</span><span class="grow"></span><span class="ao-key">2</span></div>
+          <div class="ao-pin-body" style="padding: 8px 12px"><div class="small">curl -s :4800/audit/export?from=2026-10-01 | head</div></div>
+          <div class="ao-pin-meta"><span>zsh · ~/work/api</span><span>14:31</span></div>
+        </div>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 8px; padding: 6px 12px"><span class="ao-pixel ao-dim">Prompts</span><span style="flex: 1"></span><a href="Prompts.dc.html" class="small">library</a></div>
+      <div class="ao-ctx">
+        <a href="Insert.dc.html" class="ao-ctx-row" style="text-decoration: none; color: var(--fg)"><span class="k"><i class="ao-i x1 ao-i-tpl"></i>review-plan</span><span class="small ao-dim">used 41×</span></a>
+        <a href="Insert.dc.html" class="ao-ctx-row" style="text-decoration: none; color: var(--fg)"><span class="k"><i class="ao-i x1 ao-i-tpl"></i>implement</span><span class="small ao-dim">used 38×</span></a>
+      </div>
+      </div>
+    </aside>
+  </div>
+
+  <footer class="ao-status">
+    <a href="Extract.dc.html" class="need" style="text-decoration: none"><i class="ao-i ao-i-bp"></i><span class="ao-pixel">1 needs you</span></a>
+    <span class="seg" style="color: var(--blue)"><i class="ao-i ao-i-play"></i>3 running</span>
+    <span class="seg"><i class="ao-i ao-i-group"></i>7 side tabs · 12 tabs</span>
+    <span class="seg"><i class="ao-i ao-i-agent"></i>claude · plan · ~/work/api</span>
+    <span class="spacer"></span>
+    <span class="seg">context auto-hides · hover the right edge</span>
+    <span class="seg">window 1 of 2</span>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return { v: { ticket: "{{ticket}}", branch: "{{branch}}", plan: "{{plan}}", repos: "{{repos}}", root: "{{root}}", from_date: "{{from_date}}", api_token: "{{api_token}}", pr_api: "{{pr_api}}" } }; }
+}
+</script>
+</body>
+</html>

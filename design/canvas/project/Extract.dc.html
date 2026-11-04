@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Extract and pin from a response</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/agentorch/tokens.css">
+<link rel="stylesheet" href="ds/agentorch/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600&amp;family=Silkscreen&amp;display=swap">
+<style>
+body{margin:0;background:#111318}
+a{color:#539bf5}a:hover{color:#8bbcf8}
+@media (max-width: 1000px){ .win{grid-template-columns:minmax(0,1fr) !important} .ctx{border-left:0 !important; border-top:2px solid #414756} }
+</style>
+</helmet>
+<div style="width: 100%; min-height: 900px; display: flex; flex-direction: column; background: var(--bg); color: var(--fg); font-family: var(--font-mono); font-size: 13px; line-height: 20px">
+
+  <header style="display: flex; align-items: center; gap: 12px; height: 32px; padding: 0 12px; background: var(--panel-2); border-bottom: 2px solid var(--line-strong)">
+    <span aria-hidden="true" style="display: flex; gap: 6px"><i style="width: 10px; height: 10px; background: var(--faint)"></i><i style="width: 10px; height: 10px; background: var(--faint)"></i><i style="width: 10px; height: 10px; background: var(--faint)"></i></span>
+    <span class="ao-pixel" style="font-size: 8px; color: var(--amber); margin-left: 8px">Terminescu</span>
+    <span class="small ao-dim">PROJ-482 audit export · claude · prs · sidebar hidden (⌘B)</span>
+  </header>
+
+  <div class="win" style="flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 340px; min-height: 0">
+
+    <main style="display: flex; flex-direction: column; min-width: 0; min-height: 0">
+      <div class="ao-tabs" role="tablist" aria-label="Tabs in PROJ-482">
+        <span role="tab" aria-selected="false" class="ao-tab"><span class="ao-dot done"></span><i class="ao-i ao-i-agent"></i><span class="n">claude · plan</span></span>
+        <span role="tab" aria-selected="true" class="ao-tab active" style="--tab-accent: var(--blue)"><span class="ao-dot done"></span><i class="ao-i ao-i-agent"></i><span class="n">claude · prs</span><span class="x"><i class="ao-i ao-i-cross"></i></span></span>
+        <span role="tab" aria-selected="false" class="ao-tab"><span class="ao-dot run"></span><span class="n">pnpm dev</span></span>
+      </div>
+
+      <div class="ao-split" style="flex: 1; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)">
+        <section class="ao-tp" aria-label="Claude session">
+          <div class="ao-tp-head"><i class="ao-i x1 ao-i-agent"></i><span>claude · ~/work</span><span class="grow"></span><span style="color: var(--green)">turn done · 14:31</span></div>
+          <div class="ao-tp-body ao-term" style="white-space: pre-wrap"><span class="p">❯</span> Open WIP PRs in api and web for the plan.
+
+<span class="t">● Bash</span> <span class="d">gh pr create --draft --repo acme/api</span>
+  <span class="d">⎿ https://github.com/acme/api/pull/918</span>
+<span class="t">● Bash</span> <span class="d">gh pr create --draft --repo acme/web</span>
+  <span class="d">⎿ https://github.com/acme/web/pull/1204</span>
+
+Opened two draft PRs.
+<span class="p">❯</span> <span class="ao-cursor"></span></div>
+        </section>
+
+        <section class="ao-tp focused" aria-label="Transcript">
+          <div class="ao-tp-head"><i class="ao-i x1 ao-i-doc"></i><span>transcript · claude · prs</span><span class="grow"></span><span>⌘E extract · ⌘⇧P pin</span></div>
+          <div class="ao-tp-body" style="display: flex; flex-direction: column; gap: 12px; overflow: visible">
+            <div><div class="small" style="color: var(--blue)">you · 14:29 · prompt review-and-open-prs v2</div>Open WIP PRs in api and web for the plan.</div>
+            <div style="position: relative">
+              <div class="small ao-dim">assistant · 14:31</div>
+              <div>Opened two draft PRs:</div>
+              <div>api: <span class="ao-sel">https://github.com/acme/api/pull/918</span></div>
+              <div style="margin-top: 52px">web: <a href="#">https://github.com/acme/web/pull/1204</a></div>
+              <div style="position: absolute; left: 32px; top: 64px; display: flex; flex-direction: column; gap: 8px; z-index: 2">
+                <span class="ao-seltool" role="toolbar" aria-label="Selection">
+                  <button class="on"><i class="ao-i ao-i-var"></i>Extract<span class="ao-key">⌘E</span></button>
+                  <button><i class="ao-i ao-i-pin"></i>Pin<span class="ao-key">⌘⇧P</span></button>
+                  <span class="sep"></span>
+                  <button><i class="ao-i ao-i-in"></i>Send to…</button>
+                  <button>Copy</button>
+                </span>
+              </div>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px; background: var(--panel-2); box-shadow: var(--frame-neutral)">
+              <label for="vn" class="ao-pixel ao-dim">Name</label>
+              <span class="ao-var">{{</span><input id="vn" class="ao-input" value="pr_api" style="width: 120px; height: 24px; padding: 0 6px"><span class="ao-var">}}</span>
+              <span class="small ao-dim">suggested from “GitHub PR URL” · repo api</span>
+              <span style="flex: 1"></span>
+              <a href="Insert.dc.html" class="ao-btn primary" style="height: 24px; text-decoration: none">Save <span class="ao-key">↵</span></a>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <aside class="ctx" aria-label="Context of PROJ-482" style="display: flex; flex-direction: column; border-left: 2px solid var(--line-strong); background: var(--panel)">
+      <div style="display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; background: var(--bg); border-bottom: 2px solid var(--line-strong)">
+        <i class="ao-i ao-i-var" style="color: var(--magenta)"></i><span class="ao-pixel ao-dim">Context</span><span class="small ao-dim">PROJ-482</span>
+      </div>
+
+      <div style="padding: 10px 12px 6px; display: flex; gap: 8px; align-items: center"><span class="ao-pixel ao-dim">Found in this turn</span><span style="flex: 1"></span><button class="ao-btn ghost" style="height: 22px; padding: 0 6px"><span class="small">keep all</span></button></div>
+      <div class="ao-ctx">
+        <div class="ao-ctx-row" style="background: var(--panel-2)"><span class="k"><i class="ao-i x1 ao-i-pr" style="color: var(--magenta)"></i><span class="ao-var">{{v.pr_api}}</span></span><span class="small" style="color: var(--amber)">saving</span><span class="v"><a href="#">github.com/acme/api/pull/918</a></span><span class="src">rule: GitHub PR URL</span></div>
+        <div class="ao-ctx-row"><span class="k"><i class="ao-i x1 ao-i-pr"></i><span class="ao-var">{{v.pr_web}}</span></span><button class="ao-btn" style="height: 22px; padding: 0 6px"><span class="small">Keep</span></button><span class="v"><a href="#">github.com/acme/web/pull/1204</a></span><span class="src">rule: GitHub PR URL</span></div>
+      </div>
+
+      <div style="padding: 14px 12px 6px; display: flex; gap: 8px"><span class="ao-pixel ao-dim">Variables</span><span class="small ao-dim">5</span></div>
+      <div class="ao-ctx">
+        <div class="ao-ctx-row"><span class="k"><span class="ao-var">{{v.ticket}}</span></span><span class="small ao-dim">text</span><span class="v">PROJ-482 · Add audit export endpoint…</span></div>
+        <div class="ao-ctx-row"><span class="k"><span class="ao-var">{{v.branch}}</span></span><span class="small ao-dim">text</span><span class="v">feature/PROJ-482-audit-export</span></div>
+        <div class="ao-ctx-row"><span class="k"><span class="ao-var">{{v.plan}}</span></span><span class="small ao-dim">link</span><span class="v"><a href="#">claude.ai/artifact/9f2c41…</a></span></div>
+      </div>
+
+      <div style="padding: 14px 12px 6px; display: flex; gap: 8px; align-items: center"><span class="ao-pixel ao-dim">Extraction rules</span><span style="flex: 1"></span><a href="#" class="small">edit</a></div>
+      <ul class="small" style="margin: 0; padding: 0 12px 12px 28px; color: var(--dim); display: grid; gap: 4px">
+        <li>GitHub PR URL → <span style="color: var(--fg)">pr_&lt;repo&gt;</span> · auto-keep</li>
+        <li>claude.ai artifact URL → <span style="color: var(--fg)">plan</span>, then artifact_n · auto-keep</li>
+        <li>branch name after “Branch” → <span style="color: var(--fg)">branch</span> · suggest</li>
+      </ul>
+    </aside>
+  </div>
+
+  <footer class="ao-status">
+    <span class="seg" style="color: var(--green)"><i class="ao-i ao-i-check"></i>claude · prs finished its turn</span>
+    <span class="seg" style="color: var(--magenta)"><i class="ao-i ao-i-var"></i>2 found, 1 saving</span>
+    <span class="spacer"></span>
+    <span class="seg">window 1 of 2</span>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return { v: { pr_api: "{{pr_api}}", pr_web: "{{pr_web}}", ticket: "{{ticket}}", branch: "{{branch}}", plan: "{{plan}}" } }; }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,40 @@
+schema: spec-driven
+
+# Project-wide facts an agent cannot infer from the code. Keep it short; the
+# generated skills already explain how OpenSpec itself works.
+context: |
+  Terminescu: a macOS terminal manager with extras for Claude Code. Window >
+  side tab (sidebar row) > tab (top bar) > pane (terminal, transcript or
+  text). Each side tab owns a context of variables, pins, links and text.
+  Personal use first (one owner on the owner's Mac); every table carries
+  owner_id for later. The web app comes later as a remote view of the Mac.
+  Stack: Tauri 2 app with a Rust core (state, SQLite via rusqlite, status
+  rules, extraction) and React 19 + Vite + xterm.js webviews;
+  terminescu-ptyd owns every shell and the session-only variables;
+  the terminescu CLI is the Claude Code hook and the status, var and edit tool.
+  Claude runs as the unmodified `claude` CLI started by the person. The
+  Agent SDK npm package is never used and no Claude token is read or stored.
+  Branches start from develop. Commit messages: at most 9 lines, present
+  tense, never mention AI assistants or Co-Authored-By.
+  Never put client ticket contents, tokens or real names in the repo: seeds,
+  tests and specs use invented data.
+
+rules:
+  proposal:
+    - Interview first. Ask the open questions with AskUserQuestion, with a
+      recommendation per question, before writing proposal.md.
+    - State what is out of scope and which follow-up change owns it.
+    - List the unresolved questions at the end, if any remain.
+  design:
+    - Record each decision as "Dn. Title" with the alternative rejected and
+      the reason, so the archive explains the shape of the code.
+    - A design that touches tables names the SQLite migration it adds.
+    - A change to the core/ptyd protocol names its version bump.
+  specs:
+    - Do not restate requirements that already exist; MODIFIED blocks copy
+      every scenario the current spec has, then add the new ones.
+  tasks:
+    - Each task states how it is verified (test name, command, or manual
+      check) so verify can confirm it without reading the diff.
+    - Tick tasks as they ship. A task dropped on purpose is ticked with
+      "Dropped (reason)" so the counter stays honest.

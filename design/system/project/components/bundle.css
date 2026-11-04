@@ -1,0 +1,293 @@
+@import url("https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600&family=Silkscreen&display=swap");
+/* Terminescu Workbench components. Values come from tokens.css. */
+html, body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-mono); font-size: 13px; line-height: 20px; }
+* { box-sizing: border-box; }
+a { color: var(--link); }
+.ao-row { display: flex; flex-wrap: wrap; gap: var(--space-4); align-items: center; padding: var(--space-4); }
+.ao-col { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); }
+.ao-pixel { font-family: var(--font-pixel); text-transform: uppercase; font-size: 8px; line-height: 12px; letter-spacing: .04em; }
+.ao-dim { color: var(--dim); }
+.ao-icon { width: 16px; height: 16px; image-rendering: pixelated; shape-rendering: crispEdges; fill: currentColor; flex: none; }
+.ao-icon.x1 { width: 8px; height: 8px; }
+
+/* PixelFrame: four 2px edges, open corners, hard shadow */
+.ao-frame { background: var(--panel); box-shadow: var(--frame-neutral); margin: 2px; }
+.ao-frame.amber { box-shadow: 0 -2px 0 0 var(--amber), 0 2px 0 0 var(--amber), -2px 0 0 0 var(--amber), 2px 0 0 0 var(--amber), var(--shadow-hard); }
+.ao-frame-head { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); background: var(--panel-2); border-bottom: 2px solid var(--line-strong); }
+.ao-frame.amber .ao-frame-head { border-bottom-color: var(--amber); color: var(--amber); }
+.ao-frame-body { padding: var(--space-4); }
+.ao-frame-foot { display: flex; justify-content: flex-end; gap: var(--space-3); padding: var(--space-3) var(--space-4); border-top: 2px solid var(--line); }
+
+/* Chip */
+.ao-chip { display: inline-flex; align-items: center; gap: var(--space-1); height: 20px; padding: 0 var(--space-2); background: var(--panel-2); color: var(--fg); box-shadow: 0 -2px 0 0 var(--line-strong), 0 2px 0 0 var(--line-strong), -2px 0 0 0 var(--line-strong), 2px 0 0 0 var(--line-strong), var(--shadow-hard-sm); margin: 2px; }
+.ao-chip.save, .ao-chip.wait { background: var(--amber); color: var(--on-amber); box-shadow: var(--frame-amber); }
+.ao-chip.done { color: var(--green); }
+.ao-chip.fail { color: var(--red); }
+.ao-chip.run  { color: var(--blue); }
+.ao-chip.pin  { color: var(--magenta); }
+.ao-chip.tag  { color: var(--dim); box-shadow: 0 -2px 0 0 var(--line), 0 2px 0 0 var(--line), -2px 0 0 0 var(--line), 2px 0 0 0 var(--line); }
+
+/* Keycap */
+.ao-key { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 var(--space-1); background: var(--panel-2); color: var(--fg); border: 2px solid var(--line-strong); border-bottom-width: 4px; font-family: var(--font-pixel); font-size: 8px; line-height: 1; text-transform: uppercase; }
+.ao-hint { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--dim); font-size: 12px; }
+
+/* PixelButton */
+.ao-btn { font: inherit; font-weight: 600; display: inline-flex; align-items: center; gap: var(--space-2); height: 28px; padding: 0 var(--space-3); border: 0; border-radius: 0; cursor: pointer; background: var(--panel-2); color: var(--fg); box-shadow: 0 -2px 0 0 var(--line-strong), 0 2px 0 0 var(--line-strong), -2px 0 0 0 var(--line-strong), 2px 0 0 0 var(--line-strong), var(--shadow-hard-sm); margin: 2px; }
+.ao-btn.primary { background: var(--amber); color: var(--on-amber); box-shadow: var(--frame-amber); }
+.ao-btn.ghost { background: transparent; box-shadow: none; color: var(--dim); }
+.ao-btn.danger { color: var(--red); }
+.ao-btn:active { transform: translate(3px, 3px); box-shadow: 0 -2px 0 0 var(--line-strong), 0 2px 0 0 var(--line-strong), -2px 0 0 0 var(--line-strong), 2px 0 0 0 var(--line-strong); }
+.ao-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
+.ao-btn[disabled] { color: var(--faint); cursor: not-allowed; }
+.ao-btn .ao-key { margin-left: var(--space-1); }
+.ao-btn.primary .ao-key { background: var(--amber-edge); color: var(--on-amber); border-color: var(--on-amber); }
+
+/* BlockStrip: one cell per step */
+.ao-strip { display: inline-flex; gap: 2px; align-items: center; }
+.ao-cell { width: 10px; height: 14px; background: var(--faint); }
+.ao-cell.done { background: var(--green); }
+.ao-cell.run  { background: var(--blue); animation: ao-blink 960ms steps(2) infinite; }
+.ao-cell.wait { background: var(--amber); }
+.ao-cell.fail { background: var(--red); }
+.ao-cell.skip { background: transparent; box-shadow: inset 0 0 0 2px var(--faint); }
+.ao-cell.bp { position: relative; }
+.ao-cell.bp::after { content: ""; position: absolute; left: 2px; right: 2px; top: -6px; height: 2px; background: var(--amber); }
+.ao-strip.lg .ao-cell { width: 18px; height: 22px; }
+@keyframes ao-blink { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .ao-cell.run { animation: none; } }
+
+/* Toast */
+.ao-toast { display: flex; align-items: center; gap: var(--space-3); min-width: 320px; padding: var(--space-3) var(--space-4); background: var(--panel); box-shadow: var(--frame-neutral); margin: 2px; }
+.ao-toast .ao-pixel { min-width: 40px; }
+.ao-toast.wait { box-shadow: 0 -2px 0 0 var(--amber), 0 2px 0 0 var(--amber), -2px 0 0 0 var(--amber), 2px 0 0 0 var(--amber), var(--shadow-hard); }
+.ao-toast.wait .ao-pixel { color: var(--amber); }
+.ao-toast.done .ao-pixel { color: var(--green); }
+.ao-toast.fail .ao-pixel { color: var(--red); }
+.ao-toast.pin .ao-pixel { color: var(--magenta); }
+.ao-toast .grow { flex: 1; }
+
+/* StatusLine */
+.ao-status { display: flex; align-items: center; gap: var(--space-4); height: 24px; padding: 0 var(--space-3); background: var(--panel-2); border-top: 2px solid var(--line-strong); font-size: 12px; line-height: 16px; color: var(--dim); white-space: nowrap; overflow: hidden; }
+.ao-status .seg { display: inline-flex; align-items: center; gap: var(--space-1); }
+.ao-status .need { color: var(--on-amber); background: var(--amber); padding: 0 var(--space-2); height: 24px; display: inline-flex; align-items: center; gap: var(--space-1); margin-left: calc(-1 * var(--space-3)); }
+.ao-status .spacer { flex: 1; }
+
+/* Pane: one tile of the workbench */
+.ao-pane { display: flex; flex-direction: column; background: var(--panel); border: 2px solid var(--line-strong); min-height: 0; }
+.ao-pane.focused { border-color: var(--amber); }
+.ao-pane-head { display: flex; align-items: center; gap: var(--space-2); height: 28px; padding: 0 var(--space-3); background: var(--panel-2); border-bottom: 2px solid var(--line-strong); }
+.ao-pane.focused .ao-pane-head { border-bottom-color: var(--amber); }
+.ao-pane-head .ao-pixel { color: var(--dim); }
+.ao-pane.focused .ao-pane-head .ao-pixel { color: var(--amber); }
+.ao-pane-head .grow { flex: 1; }
+.ao-pane-body { padding: var(--space-3); overflow: auto; }
+.ao-term { background: var(--panel); font-size: 13px; line-height: 18px; white-space: pre; }
+.ao-term .p { color: var(--green); } .ao-term .t { color: var(--cyan); } .ao-term .u { color: var(--blue); text-decoration: underline; } .ao-term .d { color: var(--dim); }
+.ao-cursor { display: inline-block; width: 8px; height: 15px; background: var(--fg); vertical-align: -3px; }
+
+/* PinCard */
+.ao-pin { background: var(--panel); box-shadow: var(--frame-neutral); margin: 2px; width: 300px; }
+.ao-pin-head { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-3); background: var(--panel-2); color: var(--magenta); }
+.ao-pin-head .grow { flex: 1; }
+.ao-pin-body { padding: var(--space-3); }
+.ao-pin-body q { quotes: none; display: block; color: var(--fg); }
+.ao-pin-body q::before { content: "> "; color: var(--magenta); }
+.ao-pin-meta { display: flex; justify-content: space-between; padding: 0 var(--space-3) var(--space-2); color: var(--dim); font-size: 12px; }
+.ao-pin a { color: var(--link); }
+
+/* Field */
+.ao-field { display: flex; flex-direction: column; gap: var(--space-1); }
+.ao-input { font: inherit; color: var(--fg); background: var(--panel-2); border: 2px solid var(--line-strong); border-radius: var(--radius-1); padding: var(--space-1) var(--space-2); }
+.ao-input:focus { outline: none; border-color: var(--amber); }
+.ao-var { color: var(--magenta); background: var(--bg); padding: 0 2px; }
+
+/* SideTab: one row in the sidebar. A side tab holds 1..N tabs and one context. */
+.ao-side { display: flex; flex-direction: column; gap: 4px; padding: var(--space-2); background: var(--bg); }
+.ao-st { --st-accent: var(--line-strong); --st-bg: var(--panel); display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; column-gap: var(--space-2); row-gap: 2px; padding: 6px var(--space-2) 6px var(--space-3); background: var(--st-bg); box-shadow: inset 4px 0 0 0 var(--st-accent); color: var(--dim); position: relative; }
+.ao-st > .ao-i:first-child { color: var(--st-accent); }
+.ao-st .t { color: var(--fg); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ao-st .m { grid-column: 2 / -1; display: flex; align-items: center; gap: var(--space-2); font-size: 12px; line-height: 16px; min-width: 0; white-space: nowrap; overflow: hidden; }
+.ao-st.active { box-shadow: inset 4px 0 0 0 var(--st-accent), inset 0 0 0 2px var(--fg); }
+.ao-st.need::after { content: ""; position: absolute; top: -2px; left: -2px; width: 8px; height: 8px; background: var(--amber); box-shadow: 0 0 0 2px var(--bg); }
+.ao-st.need { animation: ao-need 960ms steps(2) 3; }
+@keyframes ao-need { 50% { background: var(--tint-amber); } }
+.ao-st-kids { display: flex; flex-direction: column; background: var(--st-bg, var(--panel)); box-shadow: inset 4px 0 0 0 var(--st-accent, var(--line-strong)); margin-top: -4px; padding: 2px 0 6px; }
+.ao-st-kid { display: flex; align-items: center; gap: var(--space-2); height: 24px; padding: 0 var(--space-2) 0 28px; font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; }
+.ao-st-kid.active { color: var(--fg); background: rgba(255,255,255,.04); box-shadow: inset 2px 0 0 0 var(--fg); }
+.ao-st-kid .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* status label: auto or set by the person; colors come from --s-fg and --s-bg */
+.ao-stat { display: inline-flex; align-items: center; gap: 4px; height: 16px; padding: 0 6px; font-family: var(--font-pixel); font-size: 8px; line-height: 1; text-transform: uppercase; letter-spacing: .04em; color: var(--s-fg, var(--dim)); background: var(--s-bg, transparent); box-shadow: 0 0 0 2px var(--s-edge, var(--line)); margin: 0 2px; flex: none; }
+.ao-stat.need { --s-fg: var(--on-amber); --s-bg: var(--amber); --s-edge: var(--amber-edge); }
+.ao-stat.manual::before { content: ""; width: 4px; height: 4px; background: currentColor; }
+.ao-dot { display: inline-block; width: 8px; height: 8px; background: var(--faint); flex: none; }
+.ao-dot.need { background: var(--amber); } .ao-dot.run { background: var(--blue); animation: ao-blink 960ms steps(2) infinite; } .ao-dot.done { background: var(--green); } .ao-dot.fail { background: var(--red); } .ao-dot.idle { background: transparent; box-shadow: inset 0 0 0 2px var(--faint); }
+@media (prefers-reduced-motion: reduce) { .ao-dot.run, .ao-st.need { animation: none; } }
+
+/* TabBar: the tabs of the active side tab, like browser tabs */
+.ao-tabs { display: flex; align-items: flex-end; gap: 2px; height: 34px; padding: 0 var(--space-2); background: var(--bg); border-bottom: 2px solid var(--line-strong); }
+.ao-tab { --tab-bg: var(--panel-2); display: inline-flex; align-items: center; gap: var(--space-2); height: 28px; min-width: 0; max-width: 220px; padding: 0 6px 0 10px; background: var(--tab-bg); color: var(--dim); border: 2px solid var(--line); border-bottom: 0; font-size: 12px; white-space: nowrap; flex: 0 1 auto; }
+.ao-tab .n { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.ao-tab .x { width: 16px; height: 16px; display: grid; place-items: center; color: var(--faint); }
+.ao-tab .x .ao-icon, .ao-tab .x .ao-i { width: 8px; height: 8px; }
+.ao-tab.active { height: 32px; margin-bottom: -2px; background: var(--panel); color: var(--fg); border-color: var(--line-strong); box-shadow: inset 0 2px 0 0 var(--tab-accent, transparent); }
+.ao-tab.active .x { color: var(--dim); }
+.ao-tab.ghost { background: var(--panel); color: var(--fg); border: 0; box-shadow: var(--frame-neutral); opacity: .95; }
+.ao-tab.placeholder { background: transparent; border: 2px dashed var(--line-strong); border-bottom: 0; color: transparent; }
+.ao-tab-new { display: grid; place-items: center; width: 28px; height: 28px; color: var(--dim); }
+.ao-caret { width: 2px; height: 28px; background: var(--amber); box-shadow: 0 0 0 2px var(--bg); align-self: flex-end; flex: none; }
+
+/* Split: terminal panes inside one tab */
+.ao-split { display: grid; gap: 2px; background: var(--line-strong); min-height: 0; min-width: 0; }
+.ao-tp { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--panel); }
+.ao-tp-head { display: flex; align-items: center; gap: var(--space-2); height: 22px; padding: 0 var(--space-2); font-size: 12px; line-height: 16px; color: var(--faint); background: var(--panel); border-bottom: 2px solid var(--line); white-space: nowrap; overflow: hidden; }
+.ao-tp-head .grow { flex: 1; }
+.ao-tp.focused { box-shadow: inset 0 0 0 2px var(--amber); }
+.ao-tp.focused .ao-tp-head { color: var(--amber); border-bottom-color: var(--amber); }
+.ao-tp-body { flex: 1; min-height: 0; overflow: hidden; padding: var(--space-2) var(--space-3); }
+
+/* DropZone: where a dragged tab lands */
+.ao-drop { display: flex; align-items: center; gap: var(--space-2); min-height: 36px; padding: var(--space-2) var(--space-3); color: var(--amber); background: var(--tint-amber); border: 2px dashed var(--amber); font-size: 12px; line-height: 16px; }
+.ao-drop-line { position: relative; height: 2px; background: var(--amber); margin: 1px 0; }
+.ao-drop-line::before { content: ""; position: absolute; left: -2px; top: -3px; width: 8px; height: 8px; background: var(--amber); }
+.ao-st.drop-into { box-shadow: inset 4px 0 0 0 var(--st-accent), inset 0 0 0 2px var(--amber); background: var(--tint-amber); }
+
+/* StatusEditor: swatches for accent and background */
+.ao-swatches { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.ao-sw { width: 24px; height: 24px; background: var(--sw); box-shadow: inset 0 0 0 2px var(--swe, rgba(0,0,0,.28)); flex: none; }
+.ao-sw.on { outline: 2px solid var(--fg); outline-offset: 2px; }
+.ao-sw.none { background: repeating-linear-gradient(45deg, var(--panel) 0 4px, var(--line) 4px 6px); }
+
+/* ContextRow: a variable, link or text kept by a side tab */
+.ao-ctx { display: flex; flex-direction: column; }
+.ao-ctx-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: var(--space-2); row-gap: 2px; padding: 6px var(--space-3); border-bottom: 2px solid var(--line); }
+.ao-ctx-row .k { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.ao-ctx-row .v { grid-column: 1 / -1; font-size: 12px; line-height: 16px; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ao-ctx-row .v a { color: var(--link); }
+.ao-ctx-row .src { grid-column: 1 / -1; font-size: 12px; line-height: 16px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ao-ctx-row.conflict { box-shadow: inset 2px 0 0 0 var(--amber); }
+
+/* SelectionToolbar: floats over selected terminal or transcript text */
+.ao-sel { background: var(--selection); color: var(--fg); }
+.ao-seltool { display: inline-flex; align-items: center; gap: 2px; padding: 2px; background: var(--panel-2); box-shadow: var(--frame-neutral); margin: 2px; }
+.ao-seltool button { font: inherit; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 var(--space-2); background: transparent; color: var(--fg); border: 0; cursor: pointer; }
+.ao-seltool button:hover, .ao-seltool button.on { background: var(--panel); }
+.ao-seltool .sep { width: 2px; height: 18px; background: var(--line); }
+.ao-seltool .ao-key { height: 18px; min-width: 18px; border-bottom-width: 3px; }
+
+/* Scrolling regions: sidebar, panes, context panel. Square pixel thumb. */
+.ao-scroll { overflow: auto; min-height: 0; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+.ao-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.ao-scroll::-webkit-scrollbar-track { background: transparent; }
+.ao-scroll::-webkit-scrollbar-thumb { background: var(--line-strong); border: 2px solid var(--bg); }
+.ao-scroll::-webkit-scrollbar-thumb:hover { background: var(--dim); }
+
+/* Variable storage: saved (default), session only, secret. */
+.ao-ctx-row.session .ao-var { outline: 2px dashed var(--faint); outline-offset: 0; box-shadow: none; }
+.ao-ctx-row.secret .ao-var { outline: 2px dashed var(--red); outline-offset: 0; box-shadow: none; }
+.ao-ctx-row.secret .v { letter-spacing: .12em; color: var(--dim); }
+.ao-store { display: inline-flex; align-items: center; height: 16px; padding: 0 4px; font-family: var(--font-pixel); font-size: 8px; text-transform: uppercase; color: var(--dim); border: 2px dashed var(--line-strong); }
+.ao-store.secret { color: var(--red); border-color: var(--red); }
+
+/* Sidebar commands. */
+.ao-cmds { display: flex; flex-direction: column; padding: 2px 0 6px; }
+.ao-cmd { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; align-items: center; column-gap: var(--space-2); height: 26px; padding: 0 var(--space-3); color: var(--fg); font-size: 12px; cursor: default; }
+.ao-cmd > .ao-i:first-child, .ao-cmd > .ao-icon:first-child { color: var(--green); }
+.ao-cmd .c { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ao-cmd .to { color: var(--faint); font-size: 11px; }
+.ao-cmd:hover { background: var(--panel-2); }
+.ao-cmd:hover .to { color: var(--dim); }
+
+/* Context panel, auto-hide. The edge stays; the panel slides in over the panes. */
+.ao-edge { width: 12px; display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 12px; background: var(--panel); border-left: 2px solid var(--line-strong); color: var(--faint); }
+.ao-edge .ao-pixel { writing-mode: vertical-rl; letter-spacing: .2em; }
+.ao-edge .pip { width: 4px; height: 4px; background: var(--magenta); }
+.ao-edge .pip.need { background: var(--amber); }
+.ao-edge.hot { background: var(--panel-2); color: var(--fg); box-shadow: inset 2px 0 0 0 var(--amber); }
+.ao-ctx-over { position: absolute; top: 0; right: 0; bottom: 0; width: 304px; display: flex; flex-direction: column; background: var(--panel); border-left: 2px solid var(--line-strong); box-shadow: -6px 0 0 0 var(--shadow); z-index: 5; }
+
+/* Text panes: CodeMirror-shaped editor. The text stays plain; color and chips are decorations. */
+.ao-ed { display: flex; flex-direction: column; font-size: 13px; line-height: 20px; background: var(--panel); padding: var(--space-2) 0; }
+.ao-ed-l { display: grid; grid-template-columns: 44px minmax(0, 1fr); min-height: 20px; }
+.ao-ed-l .n { color: var(--faint); text-align: right; padding-right: 12px; user-select: none; font-size: 12px; }
+.ao-ed-l .c { padding: 0 var(--space-4) 0 var(--space-3); white-space: pre-wrap; overflow-wrap: anywhere; border-left: 2px solid var(--line); }
+.ao-ed-l.cur { background: var(--panel-2); }
+.ao-ed-l.cur .n { color: var(--dim); }
+.ao-ed .mk { color: var(--faint); }
+.ao-ed .h { color: var(--fg); font-weight: 600; }
+.ao-ed .h1 { color: var(--blue); font-weight: 600; }
+.ao-ed .em { font-style: italic; }
+.ao-ed .code { color: var(--cyan); }
+.ao-ed .lnk { color: var(--link); text-decoration: underline; }
+.ao-ed .li { color: var(--magenta); }
+.ao-ed .dimt { color: var(--dim); }
+.ao-vchip { color: var(--magenta); background: var(--tint-magenta); box-shadow: inset 0 -2px 0 0 var(--magenta); padding: 0 2px; }
+.ao-vchip.unknown { color: var(--red); background: transparent; box-shadow: none; text-decoration: underline wavy var(--red); text-underline-offset: 4px; }
+.ao-vchip.secret { color: var(--red); background: var(--tint-red); box-shadow: inset 0 -2px 0 0 var(--red); }
+.ao-ed-caret { display: inline-block; width: 2px; height: 16px; background: var(--fg); vertical-align: -3px; margin: 0 -1px; }
+.ao-ed-bar { display: flex; align-items: center; height: 24px; border-top: 2px solid var(--line); background: var(--panel); color: var(--faint); font-size: 12px; white-space: nowrap; overflow: hidden; }
+.ao-ed-bar > span { padding: 0 var(--space-3); border-right: 2px solid var(--line); height: 100%; display: flex; align-items: center; gap: 6px; }
+.ao-ed-bar > .grow { flex: 1; border: 0; }
+.ao-ed-bar .dirty { color: var(--fg); }
+.ao-complete { position: absolute; width: 360px; background: var(--panel-2); box-shadow: var(--frame-neutral); z-index: 6; font-size: 12px; line-height: 16px; }
+.ao-complete .it { display: grid; grid-template-columns: 16px minmax(0, 110px) minmax(0, 1fr) auto; align-items: center; column-gap: var(--space-2); height: 26px; padding: 0 var(--space-2); }
+.ao-complete .it .v { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ao-complete .it .k { color: var(--faint); }
+.ao-complete .it.on { background: var(--selection); }
+.ao-complete .ft { padding: 4px var(--space-2); border-top: 2px solid var(--line); color: var(--faint); }
+.ao-bar-info, .ao-bar-wait { display: flex; align-items: center; gap: var(--space-3); min-height: 32px; padding: 4px var(--space-3); font-size: 12px; border-bottom: 2px solid var(--blue); background: var(--tint-blue); }
+.ao-bar-wait { border-bottom-color: var(--amber); background: var(--tint-amber); }
+.ao-bar-wait .w { color: var(--amber); }
+.ao-bar-info .grow, .ao-bar-wait .grow { flex: 1; }
+.ao-bar-info .ao-btn, .ao-bar-wait .ao-btn { height: 22px; padding: 0 var(--space-2); font-size: 12px; }
+.ao-tab .dirty { width: 16px; height: 16px; display: grid; place-items: center; }
+.ao-tab .dirty::before { content: ""; width: 6px; height: 6px; background: var(--fg); }
+
+/* New-tab split button and its menu. */
+.ao-tab-split { display: inline-flex; align-items: center; height: 28px; color: var(--dim); position: relative; }
+.ao-tab-split > span { display: grid; place-items: center; height: 28px; width: 26px; }
+.ao-tab-split > span + span { width: 18px; border-left: 2px solid var(--line); }
+.ao-tab-split.open > span + span { color: var(--fg); background: var(--panel-2); }
+.ao-menu { position: absolute; min-width: 248px; background: var(--panel); box-shadow: var(--frame-neutral); padding: 4px 0; z-index: 8; font-size: 12px; }
+.ao-menu .mi { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; column-gap: var(--space-2); height: 28px; padding: 0 var(--space-3); color: var(--fg); white-space: nowrap; }
+.ao-menu .mi.on { background: var(--panel-2); box-shadow: inset 2px 0 0 0 var(--amber); }
+.ao-menu .mi .ao-key { height: 18px; min-width: 18px; }
+.ao-menu .sep { height: 2px; background: var(--line); margin: 4px 0; }
+.ao-menu .hint { padding: 4px var(--space-3); color: var(--faint); white-space: normal; }
+
+/* Files Claude edited, in the context panel. */
+.ao-file { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; align-items: center; column-gap: var(--space-2); height: 26px; padding: 0 var(--space-3); font-size: 12px; }
+.ao-file .s { font-family: var(--font-pixel); font-size: 8px; }
+.ao-file .s.a { color: var(--green); } .ao-file .s.m { color: var(--blue); }
+.ao-file .p { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
+.ao-file .t { color: var(--faint); }
+.ao-file:hover { background: var(--panel-2); }
+
+/* Icons by name: <i class="ao-i ao-i-pin"></i>. 8x8 bitmaps as masks, painted in currentColor. */
+.ao-i { display: inline-block; width: 16px; height: 16px; flex: none; background: currentColor; -webkit-mask: var(--ao-i) center / 100% 100% no-repeat; mask: var(--ao-i) center / 100% 100% no-repeat; image-rendering: pixelated; vertical-align: -3px; }
+.ao-i.x1 { width: 8px; height: 8px; vertical-align: 0; }
+.ao-i-pin { --ao-i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Crect x='2' y='0' width='1' height='1'/%3E%3Crect x='3' y='0' width='1' height='1'/%3E%3Crect x='4' y='0' width='1' height='1'/%3E%3Crect x='5' y='0' width='1' height='1'/%3E%3Crect x='2' y='1' width='1' height='1'/%3E%3Crect x='3' y='1' width='1' height='1'/%3E%3Crect x='4' y='1' width='1' height='1'/%3E%3Crect x='5' y='1' width='1' height='1'/%3E%3Crect x='3' y='2' width='1' height='1'/%3E%3Crect x='4' y='2' width='1' height='1'/%3E%3Crect x='1' y='3' width='1' height='1'/%3E%3Crect x='2' y='3' width='1' height='1'/%3E%3Crect x='3' y='3' width='1' height='1'/%3E%3Crect x='4' y='3' width='1' height='1'/%3E%3Crect x='5' y='3' width='1' height='1'/%3E%3Crect x='6' y='3' width='1' height='1'/%3E%3Crect x='3' y='4' width='1' height='1'/%3E%3Crect x='4' y='4' width='1' height='1'/%3E%3Crect x='3' y='5' width='1' height='1'/%3E%3Crect x='4' y='5' width='1' height='1'/%3E%3Crect x='3' y='6' width='1' height='1'/%3E%3Crect x='4' y='6' width='1' height='1'/%3E%3Crect x='3' y='7' width='1' height='1'/%3E%3C/svg%3E"); }
+.ao-i-check { --ao-i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Crect x='7' y='1' width='1' height='1'/%3E%3Crect x='6' y='2' width='1' height='1'/%3E%3Crect x='7' y='2' width='1' height='1'/%3E%3Crect x='0' y='3' width='1' height='1'/%3E%3Crect x='5' y='3' width='1' height='1'/%3E%3Crect x='6' y='3' width='1' height='1'/%3E%3Crect x='0' y='4' width='1' height='1'/%3E%3Crect x='1' y='4' width='1' height='1'/%3E%3Crect x='4' y='4' width='1' height='1'/%3E%3Crect x='5' y='4' width='1' height='1'/%3E%3Crect x='1' y='5' width='1' height='1'/%3E%3Crect x='2' y='5' width='1' height='1'/%3E%3Crect x='3' y='5' width='1' height='1'/%3E%3Crect x='4' y='5' width='1' height='1'/%3E%3Crect x='2' y='6' width='1' height='1'/%3E%3Crect x='3' y='6' width='1' height='1'/%3E%3C/svg%3E"); }
+.ao-i-cross { --ao-i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Crect x='0' y='1' width='1' height='1'/%3E%3Crect x='1' y='1' width='1' height='1'/%3E%3Crect x='6' y='1' width='1' height='1'/%3E%3Crect x='7' y='1' width='1' height='1'/%3E%3Crect x='1' y='2' width='1' height='1'/%3E%3Crect x='2' y='2' width='1' height='1'/%3E%3Crect x='5' y='2' width='1' height='1'/%3E%3Crect x='6' y='2' width='1' height='1'/%3E%3Crect x='2' y='3' width='1' height='1'/%3E%3Crect x='3' y='3' width='1' height='1'/%3E%3Crect x='4' y='3' width='1' height='1'/%3E%3Crect x='5' y='3' width='1' height='1'/%3E%3Crect x='3' y='4' width='1' height='1'/%3E%3Crect x='4' y='4' width='1' height='1'/%3E%3Crect x='2' y='5' width='1' height='1'/%3E%3Crect x='3' y='5' width='1' height='1'/%3E%3Crect x='4' y='5' width='1' height='1'/%3E%3Crect x='5' y='5' width='1' height='1'/%3E%3Crect x='1' y='6' width='1' height='1'/%3E%3Crect x='2' y='6' width='1' height='1'/%3E%3Crect x='5' y='6' width='1' height='1'/%3E%3Crect x='6' y='6' width='1' height='1'/%3E%3Crect x='0' y='7' width='1' height='1'/%3E%3Crect x='1' y='7' width='1' height='1'/%3E%3Crect x='6' y='7' width='1' height='1'/%3E%3Crect x='7' y='7' width='1' height='1'/%3E%3C/svg%3E"); }
+.ao-i-save { --ao-i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Crect x='0' y='0' width='1' height='1'/%3E%3Crect x='1' y='0' width='1' height='1'/%3E%3Crect x='2' y='0' width='1' height='1'/%3E%3Crect x='3' y='0' width='1' height='1'/%3E%3Crect x='4' y='0' width='1' height='1'/%3E%3Crect x='5' y='0' width='1' height='1'/%3E%3Crect x='6' y='0' width='1' height='1'/%3E%3Crect x='0' y='1' width='1' height='1'/%3E%3Crect x='2' y='1' width='1' height='1'/%3E%3Crect x='3' y='1' width='1' height='1'/%3E%3Crect x='4' y='1' width='1' height='1'/%3E%3Crect x='6' y='1' width='1' height='1'/%3E%3Crect x='7' y='1' width='1' height='1'/%3E%3Crect x='0' y='2' width='1' height='1'/%3E%3Crect x='2' y='2' width='1' height='1'/%3E%3Crect x='3' y='2' width='1' height='1'/%3E%3Crect x='4' y='2' width='1' height='1'/%3E%3Crect x='7' y='2' width='1' height='1'/%3E%3Crect x='0' y='3' width='1' height='1'/%3E%3Crect x='7' y='3' width='1' height='1'/%3E%3Crect x='0' y='4' width='1' height='1'/%3E%3Crect x='2' y='4' width='1' height='1'/%3E%3Crect x='3' y='4' width='1' height='1'/%3E%3Crect x='4' y='4' width='1' height='1'/%3E%3Crect x='5' y='4' width='1' height='1'/%3E%3Crect x='7' y='4' width='1' height='1'/%3E%3Crect x='0' y='5' width='1' height='1'/%3E%3Crect x='2' y='5' width='1' height='1'/%3E%3Crect x='5' y='5' width='1' height='1'/%3E%3Crect x='7' y='5' width='1' height='1'/%3E%3Crect x='0' y='6' width='1' height='1'/%3E%3Crect x='2' y='6' width='1' height='1'/%3E%3Crect x='3' y='6' width='1' height='1'/%3E%3Crect x='4' y='6' width='1' height='1'/%3E%3Crect x='5' y='6' width='1' height='1'/%3E%3Crect x='7' y='6' width='1' height='1'/%3E%3Crect x='0' y='7' width='1' height='1'/%3E%3Crect x='1' y='7' width='1' height='1'/%3E%3Crect x='2' y='7' width='1' height='1'/%3E%3Crect x='3' y='7' width='1' height='1'/%3E%3Crect x='4' y='7' width='1' height='1'/%3E%3Crect x='5' y='7' width='1' height='1'/%3E%3Crect x='6' y='7' width='1' height='1'/%3E%3Crect x='7' y='7' width='1' height='1'/%3E%3C/svg%3E"); }
+.ao-i-doc { --ao-i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Crect x='0' y='0' width='1' height='1'/%3E%3Crect x='1' y='0' width='1' height='1'/%3E%3Crect x='2' y='0' width='1' height='1'/%3E%3Crect x='3' y='0' width='1' height='1'/%3E%3Crect x='4' y='0' width='1' height='1'/%3E%3Crect x='0' y='1' width='1' height='1'/%3E%3Crect x='4' y='1' width='1' height='1'/%3E%3Crect x='5' y='1' width='1' height='1'/%3E%3Crect x='0' y='2' width='1' height='1'/%3E%3Crect x='4' y='2' width='1' height='1'/%3E%3Crect x='5' y='2' width='1' height='1'/%3E%3Crect x='6' y='2' width='1' height='1'/%3E%3Crect x='0' y='3' width='1' height='1'/%3E%3Crect x='6' y='3' width='1' height='1'/%3E%3Crect x='0' y='4' width='1' height='1'/%3E%3Crect x='2' y='4' width='1' height='1'/%3E%3Crect x='3' y='4' width='1' height='1'/%3E%3Crect x='4' y='4' width='1' height='1'/%3E%3Crect x='6' y='4' width='1' height='1'/%3E%3Crect x='0' y='5' width='1' height='1'/%3E%3Crect x='6' y='5' width='1' height='1'/%3E%3Crect x='0' y='6' width='1' height='1'/%3E%3Crect x='2' y='6' width='1' height='1'/%3E%3Crect x='3' y='6' width='1' height='1'/%3E%3Crect x='4' y='6' width='1' height='1'/%3E%3Crect x='6' y='6' width='1' height='1'/%3E%3Crect x='0' y='7' width='1' height='1'/%3E%3Crect x='1' y='7' width='1' height='1'/%3E%3Crect x='2' y='7' width='1' height='1'/%3E%3Crect x='3' y='7' width='1' height='1'/%3E%3Crect x='4' y='7' width='1' height='1'/%3E%3Crect x='5' y='7' width='1' height='1'/%3E%3Crect x='6' y='7' width='1' height='1'/%3E%3C/svg%3E"); }
+.ao-i-bp { --ao-i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Crect x='2' y='0' width='1' height='1'/%3E%3Crect x='3' y='0' width='1' height='1'/%3E%3Crect x='4' y='0' width='1' height='1'/%3E%3Crect x='5' y='0' width='1' height='1'/%3E%3Crect x='1' y='1' width='1' height='1'/%3E%3Crect x='2' y='1' width='1' height='1'/%3E%3Crect x='3' y='1' width='1' height='1'/%3E%3Crect x='4' y='1' width='1' height='1'/%3E%3Crect x='5' y='1' width='1' height='1'/%3E%3Crect x='6' y='1' width='1' height='1'/%3E%3Crect x='0' y='2' width='1' height='1'/%3E%3Crect x='1' y='2' width='1' height='1'/%3E%3Crect x='2' y='2' width='1' height='1'/%3E%3Crect x='3' y='2' width='1' height='1'/%3E%3Crect x='4' y='2' width='1' height='1'/%3E%3Crect x='5' y='2' width='1' height='1'/%3E%3Crect x='6' y='2' width='1' height='1'/%3E%3Crect x='7' y='2' width='1' height='1'/%3E%3Crect x='0' y='3' width='1' height='1'/%3E%3Crect x='1' y='3' width='1' height='1'/%3E%3Crect x='6' y='3' width='1' height='1'/%3E%3Crect x='7' y='3' width='1' height='1'/%3E%3Crect x='0' y='4' width='1' height='1'/%3E%3Crect x='1' y='4' width='1' height='1'/%3E%3Crect x='2' y='4' width='1' height='1'/%3E%3Crect x='3' y='4' width='1' height='1'/%3E%3Crect x='4' y='4' width='1' height='1'/%3E%3Crect x='5' y='4' width='1' height='1'/%3E%3Crect x='6' y='4' width='1' height='1'/%3E%3Crect x='7' y='4' width='1' height='1'/%3E%3Crect x='0' y='5' width='1' height='1'/%3E%3Crect x='1' y='5' width='1' height='1'/%3E%3Crect x='2' y='5' width='1' height='1'/%3E%3Crect x='3' y='5' width='1' height='1'/%3E%3Crect x='4' y='5' width='1' height='1'/%3E%3Crect x='5' y='5' width='1' height='1'/%3E%3Crect x='6' y='5' width='1' height='1'/%3E%3Crect x='7' y='5' width='1' height='1'/%3E%3Crect x='1' y='6' width='1' height='1'/%3E%3Crect x='2' y='6' width='1' height='1'/%3E%3Crect x='3' y='6' width='1' height='1'/%3E%3Crect x='4' y='6' width='1' height='1'/%3E%3Crect x='5' y='6' width='1' height='1'/%3E%3Crect x='6' y='6' width='1' height='1'/%3E%3Crect x='2' y='7' width='1' height='1'/%3E%3Crect x='3' y='7' width='1' height='1'/%3E%3Crect x='4' y='7' width='1' height='1'/%3E%3Crect x='5' y='7' width='1' height='1'/%3E%3C/svg%3E"); }
+.ao-i-play { --ao-i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Crect x='1' y='0' width='1' height='1'/%3E%3Crect x='1' y='1' width='1' height='1'/%3E%3Crect x='2' y='1' width='1' height='1'/%3E%3Crect x='1' y='2' width='1' height='1'/%3E%3Crect x='2' y='2' width='1' height='1'/%3E%3Crect x='3' y='2' width='1' height='1'/%3E%3Crect x='1' y='3' width='1' height='1'/%3E%3Crect x='2' y='3' width='1' height='1'/%3E%3Crect x='3' y='3' width='1' height='1'/%3E%3Crect x='4' y='3' width='1' height='1'/%3E%3Crect x='1' y='4' width='1' height='1'/%3E%3Crect x='2' y='4' width='1' height='1'/%3E%3Crect x='3' y='4' width='1' height='1'/%3E%3Crect x='4' y='4' width='1' height='1'/%3E%3Crect x='1' y='5' width='1' height='1'/%3E%3Crect x='2' y='5' width='1' height='1'/%3E%3Crect x='3' y='5' width='1' height='1'/%3E%3Crect x='1' y='6' width='1' height='1'/%3E%3Crect x='2' y='6' width='1' height='1'/%3E%3Crect x='1' y='7' width='1' height='1'/%3E%3C/svg%3E"); }
+.ao-i-link { --ao-i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Crect x='4' y='0' width='1' height='1'/%3E%3Crect x='5' y='0' width='1' height='1'/%3E%3Crect x='6' y='0' width='1' height='1'/%3E%3Crect x='3' y='1' width='1' height='1'/%3E%3Crect x='7' y='1' width='1' height='1'/%3E%3Crect x='3' y='2' width='1' height='1'/%3E%3Crect x='6' y='2' width='1' height='1'/%3E%3Crect x='2' y='3' width='1' height='1'/%3E%3Crect x='4' y='3' width='1' height='1'/%3E%3Crect x='5' y='3' width='1' height='1'/%3E%3Crect x='2' y='4' width='1' height='1'/%3E%3Crect x='3' y='4' width='1' height='1'/%3E%3Crect x='5' y='4' width='1' height='1'/%3E%3Crect x='1' y='5' width='1' height='1'/%3E%3Crect x='4' y='5' width='1' height='1'/%3E%3Crect x='0' y='6' width='1' height='1'/%3E%3Crect x='4' y='6' width='1' height='1'/%3E%3Crect x='1' y='7' width='1' height='1'/%3E%3Crect x='2' y='7' width='1' height='1'/%3E%3Crect x='3' y='7' width='1' height='1'/%3E%3C/svg%3E"); }
+.ao-i-dot { --ao-i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Crect x='2' y='1' width='1' height='1'/%3E%3Crect x='3' y='1' width='1' height='1'/%3E%3Crect x='4' y='1' width='1' height='1'/%3E%3Crect x='5' y='1' width='1' height='1'/%3E%3Crect x='1' y='2' width='1' height='1'/%3E%3Crect x='6' y='2' width='1' height='1'/%3E%3Crect x='1' y='3' width='1' height='1'/%3E%3Crect x='6' y='3' width='1' height='1'/%3E%3Crect x='1' y='4' width='1' height='1'/%3E%3Crect x='6' y='4' width='1' height='1'/%3E%3Crect x='1' y='5' width='1' height='1'/%3E%3Crect x='6' y='5' width='1' height='1'/%3E%3Crect x='2' y='6' width='1' height='1'/%3E%3Crect x='3' y='6' width='1' height='1'/%3E%3Crect x='4' y='6' width='1' height='1'/%3E%3Crect x='5' y='6' width='1' height='1'/%3E%3C/svg%3E"); }
+.ao-i-term { --ao-i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Crect x='0' y='0' width='1' height='1'/%3E%3Crect x='1' y='0' width='1' height='1'/%3E%3Crect x='2' y='0' width='1' height='1'/%3E%3Crect x='3' y='0' width='1' height='1'/%3E%3Crect x='4' y='0' width='1' height='1'/%3E%3Crect x='5' y='0' width='1' height='1'/%3E%3Crect x='6' y='0' width='1' height='1'/%3E%3Crect x='7' y='0' width='1' height='1'/%3E%3Crect x='0' y='1' width='1' height='1'/%3E%3Crect x='7' y='1' width='1' height='1'/%3E%3Crect x='0' y='2' width='1' height='1'/%3E%3Crect x='2' y='2' width='1' height='1'/%3E%3Crect x='7' y='2' width='1' height='1'/%3E%3Crect x='0' y='3' width='1' height='1'/%3E%3Crect x='3' y='3' width='1' height='1'/%3E%3Crect x='7' y='3' width='1' height='1'/%3E%3Crect x='0' y='4' width='1' height='1'/%3E%3Crect x='2' y='4' width='1' height='1'/%3E%3Crect x='5' y='4' width='1' height='1'/%3E%3Crect x='6' y='4' width='1' height='1'/%3E%3Crect x='7' y='4' width='1' height='1'/%3E%3Crect x='0' y='5' width='1' height='1'/%3E%3Crect x='7' y='5' width='1' height='1'/%3E%3Crect x='0' y='6' width='1' height='1'/%3E%3Crect x='7' y='6' width='1' height='1'/%3E%3Crect x='0' y='7' width='1' height='1'/%3E%3Crect x='1' y='7' width='1' height='1'/%3E%3Crect x='2' y='7' width='1' height='1'/%3E%3Crect x='3' y='7' width='1' height='1'/%3E%3Crect x='4' y='7' width='1' height='1'/%3E%3Crect x='5' y='7' width='1' height='1'/%3E%3Crect x='6' y='7' width='1' height='1'/%3E%3Crect x='7' y='7' width='1' height='1'/%3E%3C/svg%3E"); }
+.ao-i-pr { --ao-i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Crect x='1' y='0' width='1' height='1'/%3E%3Crect x='6' y='0' width='1' height='1'/%3E%3Crect x='0' y='1' width='1' height='1'/%3E%3Crect x='1' y='1' width='1' height='1'/%3E%3Crect x='2' y='1' width='1' height='1'/%3E%3Crect x='5' y='1' width='1' height='1'/%3E%3Crect x='6' y='1' width='1' height='1'/%3E%3Crect x='7' y='1' width='1' height='1'/%3E%3Crect x='1' y='2' width='1' height='1'/%3E%3Crect x='6' y='2' width='1' height='1'/%3E%3Crect x='1' y='3' width='1' height='1'/%3E%3Crect x='5' y='3' width='1' height='1'/%3E%3Crect x='1' y='4' width='1' height='1'/%3E%3Crect x='4' y='4' width='1' height='1'/%3E%3Crect x='1' y='5' width='1' height='1'/%3E%3Crect x='3' y='5' width='1' height='1'/%3E%3Crect x='0' y='6' width='1' height='1'/%3E%3Crect x='1' y='6' width='1' height='1'/%3E%3Crect x='2' y='6' width='1' height='1'/%3E%3Crect x='1' y='7' width='1' height='1'/%3E%3C/svg%3E"); }
+.ao-i-tpl { --ao-i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Crect x='0' y='0' width='1' height='1'/%3E%3Crect x='1' y='0' width='1' height='1'/%3E%3Crect x='2' y='0' width='1' height='1'/%3E%3Crect x='3' y='0' width='1' height='1'/%3E%3Crect x='4' y='0' width='1' height='1'/%3E%3Crect x='5' y='0' width='1' height='1'/%3E%3Crect x='6' y='0' width='1' height='1'/%3E%3Crect x='7' y='0' width='1' height='1'/%3E%3Crect x='0' y='1' width='1' height='1'/%3E%3Crect x='7' y='1' width='1' height='1'/%3E%3Crect x='0' y='2' width='1' height='1'/%3E%3Crect x='2' y='2' width='1' height='1'/%3E%3Crect x='3' y='2' width='1' height='1'/%3E%3Crect x='4' y='2' width='1' height='1'/%3E%3Crect x='5' y='2' width='1' height='1'/%3E%3Crect x='7' y='2' width='1' height='1'/%3E%3Crect x='0' y='3' width='1' height='1'/%3E%3Crect x='7' y='3' width='1' height='1'/%3E%3Crect x='0' y='4' width='1' height='1'/%3E%3Crect x='2' y='4' width='1' height='1'/%3E%3Crect x='3' y='4' width='1' height='1'/%3E%3Crect x='5' y='4' width='1' height='1'/%3E%3Crect x='7' y='4' width='1' height='1'/%3E%3Crect x='0' y='5' width='1' height='1'/%3E%3Crect x='7' y='5' width='1' height='1'/%3E%3Crect x='0' y='6' width='1' height='1'/%3E%3Crect x='2' y='6' width='1' height='1'/%3E%3Crect x='3' y='6' width='1' height='1'/%3E%3Crect x='4' y='6' width='1' height='1'/%3E%3Crect x='7' y='6' width='1' height='1'/%3E%3Crect x='0' y='7' width='1' height='1'/%3E%3Crect x='1' y='7' width='1' height='1'/%3E%3Crect x='2' y='7' width='1' height='1'/%3E%3Crect x='3' y='7' width='1' height='1'/%3E%3Crect x='4' y='7' width='1' height='1'/%3E%3Crect x='5' y='7' width='1' height='1'/%3E%3Crect x='6' y='7' width='1' height='1'/%3E%3Crect x='7' y='7' width='1' height='1'/%3E%3C/svg%3E"); }
+.ao-i-agent { --ao-i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Crect x='3' y='0' width='1' height='1'/%3E%3Crect x='4' y='0' width='1' height='1'/%3E%3Crect x='0' y='1' width='1' height='1'/%3E%3Crect x='3' y='1' width='1' height='1'/%3E%3Crect x='4' y='1' width='1' height='1'/%3E%3Crect x='7' y='1' width='1' height='1'/%3E%3Crect x='1' y='2' width='1' height='1'/%3E%3Crect x='3' y='2' width='1' height='1'/%3E%3Crect x='4' y='2' width='1' height='1'/%3E%3Crect x='6' y='2' width='1' height='1'/%3E%3Crect x='2' y='3' width='1' height='1'/%3E%3Crect x='3' y='3' width='1' height='1'/%3E%3Crect x='4' y='3' width='1' height='1'/%3E%3Crect x='5' y='3' width='1' height='1'/%3E%3Crect x='2' y='4' width='1' height='1'/%3E%3Crect x='3' y='4' width='1' height='1'/%3E%3Crect x='4' y='4' width='1' height='1'/%3E%3Crect x='5' y='4' width='1' height='1'/%3E%3Crect x='1' y='5' width='1' height='1'/%3E%3Crect x='3' y='5' width='1' height='1'/%3E%3Crect x='4' y='5' width='1' height='1'/%3E%3Crect x='6' y='5' width='1' height='1'/%3E%3Crect x='0' y='6' width='1' height='1'/%3E%3Crect x='3' y='6' width='1' height='1'/%3E%3Crect x='4' y='6' width='1' height='1'/%3E%3Crect x='7' y='6' width='1' height='1'/%3E%3Crect x='3' y='7' width='1' height='1'/%3E%3Crect x='4' y='7' width='1' height='1'/%3E%3C/svg%3E"); }
+.ao-i-tab { --ao-i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Crect x='0' y='0' width='1' height='1'/%3E%3Crect x='1' y='0' width='1' height='1'/%3E%3Crect x='2' y='0' width='1' height='1'/%3E%3Crect x='3' y='0' width='1' height='1'/%3E%3Crect x='0' y='1' width='1' height='1'/%3E%3Crect x='3' y='1' width='1' height='1'/%3E%3Crect x='0' y='2' width='1' height='1'/%3E%3Crect x='3' y='2' width='1' height='1'/%3E%3Crect x='4' y='2' width='1' height='1'/%3E%3Crect x='5' y='2' width='1' height='1'/%3E%3Crect x='6' y='2' width='1' height='1'/%3E%3Crect x='7' y='2' width='1' height='1'/%3E%3Crect x='0' y='3' width='1' height='1'/%3E%3Crect x='7' y='3' width='1' height='1'/%3E%3Crect x='0' y='4' width='1' height='1'/%3E%3Crect x='7' y='4' width='1' height='1'/%3E%3Crect x='0' y='5' width='1' height='1'/%3E%3Crect x='7' y='5' width='1' height='1'/%3E%3Crect x='0' y='6' width='1' height='1'/%3E%3Crect x='7' y='6' width='1' height='1'/%3E%3Crect x='0' y='7' width='1' height='1'/%3E%3Crect x='1' y='7' width='1' height='1'/%3E%3Crect x='2' y='7' width='1' height='1'/%3E%3Crect x='3' y='7' width='1' height='1'/%3E%3Crect x='4' y='7' width='1' height='1'/%3E%3Crect x='5' y='7' width='1' height='1'/%3E%3Crect x='6' y='7' width='1' height='1'/%3E%3Crect x='7' y='7' width='1' height='1'/%3E%3C/svg%3E"); }
+.ao-i-group { --ao-i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Crect x='2' y='0' width='1' height='1'/%3E%3Crect x='3' y='0' width='1' height='1'/%3E%3Crect x='4' y='0' width='1' height='1'/%3E%3Crect x='5' y='0' width='1' height='1'/%3E%3Crect x='6' y='0' width='1' height='1'/%3E%3Crect x='7' y='0' width='1' height='1'/%3E%3Crect x='2' y='1' width='1' height='1'/%3E%3Crect x='7' y='1' width='1' height='1'/%3E%3Crect x='0' y='2' width='1' height='1'/%3E%3Crect x='1' y='2' width='1' height='1'/%3E%3Crect x='2' y='2' width='1' height='1'/%3E%3Crect x='3' y='2' width='1' height='1'/%3E%3Crect x='4' y='2' width='1' height='1'/%3E%3Crect x='5' y='2' width='1' height='1'/%3E%3Crect x='7' y='2' width='1' height='1'/%3E%3Crect x='0' y='3' width='1' height='1'/%3E%3Crect x='5' y='3' width='1' height='1'/%3E%3Crect x='7' y='3' width='1' height='1'/%3E%3Crect x='0' y='4' width='1' height='1'/%3E%3Crect x='5' y='4' width='1' height='1'/%3E%3Crect x='6' y='4' width='1' height='1'/%3E%3Crect x='7' y='4' width='1' height='1'/%3E%3Crect x='0' y='5' width='1' height='1'/%3E%3Crect x='5' y='5' width='1' height='1'/%3E%3Crect x='0' y='6' width='1' height='1'/%3E%3Crect x='1' y='6' width='1' height='1'/%3E%3Crect x='2' y='6' width='1' height='1'/%3E%3Crect x='3' y='6' width='1' height='1'/%3E%3Crect x='4' y='6' width='1' height='1'/%3E%3Crect x='5' y='6' width='1' height='1'/%3E%3C/svg%3E"); }
+.ao-i-split { --ao-i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Crect x='0' y='0' width='1' height='1'/%3E%3Crect x='1' y='0' width='1' height='1'/%3E%3Crect x='2' y='0' width='1' height='1'/%3E%3Crect x='3' y='0' width='1' height='1'/%3E%3Crect x='4' y='0' width='1' height='1'/%3E%3Crect x='5' y='0' width='1' height='1'/%3E%3Crect x='6' y='0' width='1' height='1'/%3E%3Crect x='7' y='0' width='1' height='1'/%3E%3Crect x='0' y='1' width='1' height='1'/%3E%3Crect x='3' y='1' width='1' height='1'/%3E%3Crect x='7' y='1' width='1' height='1'/%3E%3Crect x='0' y='2' width='1' height='1'/%3E%3Crect x='3' y='2' width='1' height='1'/%3E%3Crect x='7' y='2' width='1' height='1'/%3E%3Crect x='0' y='3' width='1' height='1'/%3E%3Crect x='3' y='3' width='1' height='1'/%3E%3Crect x='4' y='3' width='1' height='1'/%3E%3Crect x='5' y='3' width='1' height='1'/%3E%3Crect x='6' y='3' width='1' height='1'/%3E%3Crect x='7' y='3' width='1' height='1'/%3E%3Crect x='0' y='4' width='1' height='1'/%3E%3Crect x='3' y='4' width='1' height='1'/%3E%3Crect x='7' y='4' width='1' height='1'/%3E%3Crect x='0' y='5' width='1' height='1'/%3E%3Crect x='3' y='5' width='1' height='1'/%3E%3Crect x='7' y='5' width='1' height='1'/%3E%3Crect x='0' y='6' width='1' height='1'/%3E%3Crect x='3' y='6' width='1' height='1'/%3E%3Crect x='7' y='6' width='1' height='1'/%3E%3Crect x='0' y='7' width='1' height='1'/%3E%3Crect x='1' y='7' width='1' height='1'/%3E%3Crect x='2' y='7' width='1' height='1'/%3E%3Crect x='3' y='7' width='1' height='1'/%3E%3Crect x='4' y='7' width='1' height='1'/%3E%3Crect x='5' y='7' width='1' height='1'/%3E%3Crect x='6' y='7' width='1' height='1'/%3E%3Crect x='7' y='7' width='1' height='1'/%3E%3C/svg%3E"); }
+.ao-i-window { --ao-i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Crect x='0' y='0' width='1' height='1'/%3E%3Crect x='1' y='0' width='1' height='1'/%3E%3Crect x='2' y='0' width='1' height='1'/%3E%3Crect x='3' y='0' width='1' height='1'/%3E%3Crect x='4' y='0' width='1' height='1'/%3E%3Crect x='5' y='0' width='1' height='1'/%3E%3Crect x='6' y='0' width='1' height='1'/%3E%3Crect x='7' y='0' width='1' height='1'/%3E%3Crect x='0' y='1' width='1' height='1'/%3E%3Crect x='1' y='1' width='1' height='1'/%3E%3Crect x='2' y='1' width='1' height='1'/%3E%3Crect x='3' y='1' width='1' height='1'/%3E%3Crect x='4' y='1' width='1' height='1'/%3E%3Crect x='5' y='1' width='1' height='1'/%3E%3Crect x='6' y='1' width='1' height='1'/%3E%3Crect x='7' y='1' width='1' height='1'/%3E%3Crect x='0' y='2' width='1' height='1'/%3E%3Crect x='7' y='2' width='1' height='1'/%3E%3Crect x='0' y='3' width='1' height='1'/%3E%3Crect x='7' y='3' width='1' height='1'/%3E%3Crect x='0' y='4' width='1' height='1'/%3E%3Crect x='7' y='4' width='1' height='1'/%3E%3Crect x='0' y='5' width='1' height='1'/%3E%3Crect x='7' y='5' width='1' height='1'/%3E%3Crect x='0' y='6' width='1' height='1'/%3E%3Crect x='7' y='6' width='1' height='1'/%3E%3Crect x='0' y='7' width='1' height='1'/%3E%3Crect x='1' y='7' width='1' height='1'/%3E%3Crect x='2' y='7' width='1' height='1'/%3E%3Crect x='3' y='7' width='1' height='1'/%3E%3Crect x='4' y='7' width='1' height='1'/%3E%3Crect x='5' y='7' width='1' height='1'/%3E%3Crect x='6' y='7' width='1' height='1'/%3E%3Crect x='7' y='7' width='1' height='1'/%3E%3C/svg%3E"); }
+.ao-i-var { --ao-i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Crect x='1' y='0' width='1' height='1'/%3E%3Crect x='2' y='0' width='1' height='1'/%3E%3Crect x='5' y='0' width='1' height='1'/%3E%3Crect x='6' y='0' width='1' height='1'/%3E%3Crect x='1' y='1' width='1' height='1'/%3E%3Crect x='6' y='1' width='1' height='1'/%3E%3Crect x='1' y='2' width='1' height='1'/%3E%3Crect x='6' y='2' width='1' height='1'/%3E%3Crect x='0' y='3' width='1' height='1'/%3E%3Crect x='7' y='3' width='1' height='1'/%3E%3Crect x='1' y='4' width='1' height='1'/%3E%3Crect x='6' y='4' width='1' height='1'/%3E%3Crect x='1' y='5' width='1' height='1'/%3E%3Crect x='6' y='5' width='1' height='1'/%3E%3Crect x='1' y='6' width='1' height='1'/%3E%3Crect x='2' y='6' width='1' height='1'/%3E%3Crect x='5' y='6' width='1' height='1'/%3E%3Crect x='6' y='6' width='1' height='1'/%3E%3C/svg%3E"); }
+.ao-i-out { --ao-i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Crect x='3' y='0' width='1' height='1'/%3E%3Crect x='4' y='0' width='1' height='1'/%3E%3Crect x='2' y='1' width='1' height='1'/%3E%3Crect x='3' y='1' width='1' height='1'/%3E%3Crect x='4' y='1' width='1' height='1'/%3E%3Crect x='5' y='1' width='1' height='1'/%3E%3Crect x='1' y='2' width='1' height='1'/%3E%3Crect x='3' y='2' width='1' height='1'/%3E%3Crect x='4' y='2' width='1' height='1'/%3E%3Crect x='6' y='2' width='1' height='1'/%3E%3Crect x='3' y='3' width='1' height='1'/%3E%3Crect x='4' y='3' width='1' height='1'/%3E%3Crect x='0' y='4' width='1' height='1'/%3E%3Crect x='3' y='4' width='1' height='1'/%3E%3Crect x='4' y='4' width='1' height='1'/%3E%3Crect x='7' y='4' width='1' height='1'/%3E%3Crect x='0' y='5' width='1' height='1'/%3E%3Crect x='7' y='5' width='1' height='1'/%3E%3Crect x='0' y='6' width='1' height='1'/%3E%3Crect x='7' y='6' width='1' height='1'/%3E%3Crect x='0' y='7' width='1' height='1'/%3E%3Crect x='1' y='7' width='1' height='1'/%3E%3Crect x='2' y='7' width='1' height='1'/%3E%3Crect x='3' y='7' width='1' height='1'/%3E%3Crect x='4' y='7' width='1' height='1'/%3E%3Crect x='5' y='7' width='1' height='1'/%3E%3Crect x='6' y='7' width='1' height='1'/%3E%3Crect x='7' y='7' width='1' height='1'/%3E%3C/svg%3E"); }
+.ao-i-in { --ao-i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Crect x='3' y='0' width='1' height='1'/%3E%3Crect x='4' y='0' width='1' height='1'/%3E%3Crect x='3' y='1' width='1' height='1'/%3E%3Crect x='4' y='1' width='1' height='1'/%3E%3Crect x='1' y='2' width='1' height='1'/%3E%3Crect x='3' y='2' width='1' height='1'/%3E%3Crect x='4' y='2' width='1' height='1'/%3E%3Crect x='6' y='2' width='1' height='1'/%3E%3Crect x='2' y='3' width='1' height='1'/%3E%3Crect x='3' y='3' width='1' height='1'/%3E%3Crect x='4' y='3' width='1' height='1'/%3E%3Crect x='5' y='3' width='1' height='1'/%3E%3Crect x='0' y='4' width='1' height='1'/%3E%3Crect x='3' y='4' width='1' height='1'/%3E%3Crect x='4' y='4' width='1' height='1'/%3E%3Crect x='7' y='4' width='1' height='1'/%3E%3Crect x='0' y='5' width='1' height='1'/%3E%3Crect x='7' y='5' width='1' height='1'/%3E%3Crect x='0' y='6' width='1' height='1'/%3E%3Crect x='7' y='6' width='1' height='1'/%3E%3Crect x='0' y='7' width='1' height='1'/%3E%3Crect x='1' y='7' width='1' height='1'/%3E%3Crect x='2' y='7' width='1' height='1'/%3E%3Crect x='3' y='7' width='1' height='1'/%3E%3Crect x='4' y='7' width='1' height='1'/%3E%3Crect x='5' y='7' width='1' height='1'/%3E%3Crect x='6' y='7' width='1' height='1'/%3E%3Crect x='7' y='7' width='1' height='1'/%3E%3C/svg%3E"); }
+.ao-i-merge { --ao-i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Crect x='0' y='0' width='1' height='1'/%3E%3Crect x='7' y='0' width='1' height='1'/%3E%3Crect x='0' y='1' width='1' height='1'/%3E%3Crect x='1' y='1' width='1' height='1'/%3E%3Crect x='6' y='1' width='1' height='1'/%3E%3Crect x='7' y='1' width='1' height='1'/%3E%3Crect x='1' y='2' width='1' height='1'/%3E%3Crect x='2' y='2' width='1' height='1'/%3E%3Crect x='5' y='2' width='1' height='1'/%3E%3Crect x='6' y='2' width='1' height='1'/%3E%3Crect x='2' y='3' width='1' height='1'/%3E%3Crect x='3' y='3' width='1' height='1'/%3E%3Crect x='4' y='3' width='1' height='1'/%3E%3Crect x='5' y='3' width='1' height='1'/%3E%3Crect x='3' y='4' width='1' height='1'/%3E%3Crect x='4' y='4' width='1' height='1'/%3E%3Crect x='3' y='5' width='1' height='1'/%3E%3Crect x='4' y='5' width='1' height='1'/%3E%3Crect x='3' y='6' width='1' height='1'/%3E%3Crect x='4' y='6' width='1' height='1'/%3E%3Crect x='3' y='7' width='1' height='1'/%3E%3Crect x='4' y='7' width='1' height='1'/%3E%3C/svg%3E"); }
+.ao-i-drag { --ao-i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Crect x='1' y='0' width='1' height='1'/%3E%3Crect x='2' y='0' width='1' height='1'/%3E%3Crect x='5' y='0' width='1' height='1'/%3E%3Crect x='6' y='0' width='1' height='1'/%3E%3Crect x='1' y='1' width='1' height='1'/%3E%3Crect x='2' y='1' width='1' height='1'/%3E%3Crect x='5' y='1' width='1' height='1'/%3E%3Crect x='6' y='1' width='1' height='1'/%3E%3Crect x='1' y='3' width='1' height='1'/%3E%3Crect x='2' y='3' width='1' height='1'/%3E%3Crect x='5' y='3' width='1' height='1'/%3E%3Crect x='6' y='3' width='1' height='1'/%3E%3Crect x='1' y='4' width='1' height='1'/%3E%3Crect x='2' y='4' width='1' height='1'/%3E%3Crect x='5' y='4' width='1' height='1'/%3E%3Crect x='6' y='4' width='1' height='1'/%3E%3Crect x='1' y='6' width='1' height='1'/%3E%3Crect x='2' y='6' width='1' height='1'/%3E%3Crect x='5' y='6' width='1' height='1'/%3E%3Crect x='6' y='6' width='1' height='1'/%3E%3Crect x='1' y='7' width='1' height='1'/%3E%3Crect x='2' y='7' width='1' height='1'/%3E%3Crect x='5' y='7' width='1' height='1'/%3E%3Crect x='6' y='7' width='1' height='1'/%3E%3C/svg%3E"); }
+.ao-i-plus { --ao-i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Crect x='3' y='0' width='1' height='1'/%3E%3Crect x='4' y='0' width='1' height='1'/%3E%3Crect x='3' y='1' width='1' height='1'/%3E%3Crect x='4' y='1' width='1' height='1'/%3E%3Crect x='3' y='2' width='1' height='1'/%3E%3Crect x='4' y='2' width='1' height='1'/%3E%3Crect x='0' y='3' width='1' height='1'/%3E%3Crect x='1' y='3' width='1' height='1'/%3E%3Crect x='2' y='3' width='1' height='1'/%3E%3Crect x='3' y='3' width='1' height='1'/%3E%3Crect x='4' y='3' width='1' height='1'/%3E%3Crect x='5' y='3' width='1' height='1'/%3E%3Crect x='6' y='3' width='1' height='1'/%3E%3Crect x='7' y='3' width='1' height='1'/%3E%3Crect x='0' y='4' width='1' height='1'/%3E%3Crect x='1' y='4' width='1' height='1'/%3E%3Crect x='2' y='4' width='1' height='1'/%3E%3Crect x='3' y='4' width='1' height='1'/%3E%3Crect x='4' y='4' width='1' height='1'/%3E%3Crect x='5' y='4' width='1' height='1'/%3E%3Crect x='6' y='4' width='1' height='1'/%3E%3Crect x='7' y='4' width='1' height='1'/%3E%3Crect x='3' y='5' width='1' height='1'/%3E%3Crect x='4' y='5' width='1' height='1'/%3E%3Crect x='3' y='6' width='1' height='1'/%3E%3Crect x='4' y='6' width='1' height='1'/%3E%3Crect x='3' y='7' width='1' height='1'/%3E%3Crect x='4' y='7' width='1' height='1'/%3E%3C/svg%3E"); }
+.ao-i-chev { --ao-i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Crect x='0' y='2' width='1' height='1'/%3E%3Crect x='1' y='2' width='1' height='1'/%3E%3Crect x='6' y='2' width='1' height='1'/%3E%3Crect x='7' y='2' width='1' height='1'/%3E%3Crect x='1' y='3' width='1' height='1'/%3E%3Crect x='2' y='3' width='1' height='1'/%3E%3Crect x='5' y='3' width='1' height='1'/%3E%3Crect x='6' y='3' width='1' height='1'/%3E%3Crect x='2' y='4' width='1' height='1'/%3E%3Crect x='3' y='4' width='1' height='1'/%3E%3Crect x='4' y='4' width='1' height='1'/%3E%3Crect x='5' y='4' width='1' height='1'/%3E%3Crect x='3' y='5' width='1' height='1'/%3E%3Crect x='4' y='5' width='1' height='1'/%3E%3C/svg%3E"); }
+.ao-i-chevr { --ao-i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Crect x='2' y='0' width='1' height='1'/%3E%3Crect x='2' y='1' width='1' height='1'/%3E%3Crect x='3' y='1' width='1' height='1'/%3E%3Crect x='3' y='2' width='1' height='1'/%3E%3Crect x='4' y='2' width='1' height='1'/%3E%3Crect x='4' y='3' width='1' height='1'/%3E%3Crect x='5' y='3' width='1' height='1'/%3E%3Crect x='4' y='4' width='1' height='1'/%3E%3Crect x='5' y='4' width='1' height='1'/%3E%3Crect x='3' y='5' width='1' height='1'/%3E%3Crect x='4' y='5' width='1' height='1'/%3E%3Crect x='2' y='6' width='1' height='1'/%3E%3Crect x='3' y='6' width='1' height='1'/%3E%3Crect x='2' y='7' width='1' height='1'/%3E%3C/svg%3E"); }
+.ao-i-prompt { --ao-i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Crect x='0' y='1' width='1' height='1'/%3E%3Crect x='1' y='1' width='1' height='1'/%3E%3Crect x='1' y='2' width='1' height='1'/%3E%3Crect x='2' y='2' width='1' height='1'/%3E%3Crect x='2' y='3' width='1' height='1'/%3E%3Crect x='3' y='3' width='1' height='1'/%3E%3Crect x='1' y='4' width='1' height='1'/%3E%3Crect x='2' y='4' width='1' height='1'/%3E%3Crect x='0' y='5' width='1' height='1'/%3E%3Crect x='1' y='5' width='1' height='1'/%3E%3Crect x='4' y='6' width='1' height='1'/%3E%3Crect x='5' y='6' width='1' height='1'/%3E%3Crect x='6' y='6' width='1' height='1'/%3E%3Crect x='7' y='6' width='1' height='1'/%3E%3C/svg%3E"); }

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Drag a tab into the sidebar</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/agentorch/tokens.css">
+<link rel="stylesheet" href="ds/agentorch/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600&amp;family=Silkscreen&amp;display=swap">
+<style>
+body{margin:0;background:#111318}
+a{color:#539bf5}a:hover{color:#8bbcf8}
+@media (max-width: 900px){ .win{grid-template-columns:240px minmax(0,1fr) !important} }
+</style>
+</helmet>
+<div style="width: 100%; min-height: 900px; display: flex; flex-direction: column; background: var(--bg); color: var(--fg); font-family: var(--font-mono); font-size: 13px; line-height: 20px">
+
+  <header style="display: flex; align-items: center; gap: 12px; height: 32px; padding: 0 12px; background: var(--panel-2); border-bottom: 2px solid var(--line-strong)">
+    <span aria-hidden="true" style="display: flex; gap: 6px"><i style="width: 10px; height: 10px; background: var(--faint)"></i><i style="width: 10px; height: 10px; background: var(--faint)"></i><i style="width: 10px; height: 10px; background: var(--faint)"></i></span>
+    <span class="ao-pixel" style="font-size: 8px; color: var(--amber); margin-left: 8px">Terminescu</span>
+    <span class="small ao-dim">dragging “pnpm dev” · Esc cancels</span>
+  </header>
+
+  <div class="win" style="flex: 1; display: grid; grid-template-columns: 272px minmax(0, 1fr); min-height: 0; position: relative">
+
+    <nav aria-label="Side tabs" style="display: flex; flex-direction: column; border-right: 2px solid var(--line-strong); background: var(--bg)">
+      <div style="display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-bottom: 2px solid var(--line-strong)"><span class="ao-pixel ao-dim">Side tabs</span></div>
+      <div class="ao-side" style="flex: 1">
+        <div class="ao-st active" style="--st-accent: var(--blue); --st-bg: var(--tint-blue)"><i class="ao-i ao-i-group"></i><span class="t">PROJ-482 audit export</span><span class="ao-stat need">Waiting</span><span class="m"><i class="ao-i x1 ao-i-chev"></i><span class="ao-strip"><i class="ao-cell wait"></i><i class="ao-cell"></i></span>2 tabs</span></div>
+        <div class="ao-st-kids" style="--st-accent: var(--blue); --st-bg: var(--tint-blue)">
+          <div class="ao-st-kid active"><span class="ao-dot need"></span><i class="ao-i x1 ao-i-agent"></i><span class="grow">claude · plan</span><span>⌘1</span></div>
+          <div class="ao-st-kid"><span class="ao-dot idle"></span><i class="ao-i x1 ao-i-term"></i><span class="grow">zsh · ~/work/web</span><span>⌘2</span></div>
+        </div>
+        <div class="ao-drop-line"></div>
+        <div class="ao-st" style="box-shadow: inset 4px 0 0 0 var(--amber), 0 0 0 2px var(--amber); background: var(--tint-amber)"><i class="ao-i ao-i-plus" style="color: var(--amber)"></i><span class="t">pnpm dev</span><span class="ao-stat" style="--s-fg: var(--blue)">Running</span><span class="m" style="color: var(--amber)">new side tab here · context items made in this tab move with it</span></div>
+        <div class="ao-st" style="--st-accent: var(--magenta); --st-bg: var(--tint-magenta)"><i class="ao-i ao-i-group"></i><span class="t">PROJ-477 rate limit</span><span class="ao-stat manual" style="--s-fg: var(--magenta); --s-edge: var(--magenta)">Review</span><span class="m"><i class="ao-i x1 ao-i-chevr"></i>2 tabs</span></div>
+        <div class="ao-st" style="--st-accent: var(--green)"><i class="ao-i ao-i-term"></i><span class="t">dev servers</span><span class="ao-stat" style="--s-fg: var(--blue)">Running</span><span class="m">hover a row to add the tab to it</span></div>
+        <div class="ao-st"><i class="ao-i ao-i-term"></i><span class="t">scratch</span><span></span><span class="m">zsh · ~</span></div>
+        <div class="ao-drop" style="margin-top: 8px; opacity: .6"><i class="ao-i ao-i-plus"></i>Drop here for a new side tab at the end</div>
+      </div>
+    </nav>
+
+    <span class="ao-tab ghost" style="position: absolute; left: 150px; top: 222px; transform: rotate(-2deg); z-index: 2"><i class="ao-i ao-i-drag"></i><span class="ao-dot run"></span><span class="n">pnpm dev</span></span>
+
+    <main style="display: flex; flex-direction: column; min-width: 0; min-height: 0">
+      <div class="ao-tabs" role="tablist" aria-label="Tabs in PROJ-482">
+        <span role="tab" aria-selected="true" class="ao-tab active" style="--tab-accent: var(--blue)"><span class="ao-dot need"></span><i class="ao-i ao-i-agent"></i><span class="n">claude · plan</span><span class="x"><i class="ao-i ao-i-cross"></i></span></span>
+        <span class="ao-tab placeholder" aria-hidden="true"><span class="n">pnpm dev</span></span>
+        <span role="tab" aria-selected="false" class="ao-tab"><span class="ao-dot idle"></span><span class="n">zsh · ~/work/web</span><span class="x"></span></span>
+      </div>
+      <div class="ao-split" style="flex: 1; grid-template-columns: minmax(0, 1fr); opacity: .45">
+        <section class="ao-tp" aria-label="Claude session">
+          <div class="ao-tp-head"><i class="ao-i x1 ao-i-agent"></i><span>claude · ~/work/api</span></div>
+          <div class="ao-tp-body ao-term" style="white-space: pre-wrap"><span class="p">❯</span> Write the OpenSpec plan for the pasted ticket. Repos: api, web.
+
+<span class="t">● Write</span> <span class="d">openspec/changes/add-audit-export/design.md</span>
+Published the plan: <span class="u">claude.ai/artifact/9f2c41…</span></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <footer class="ao-status">
+    <span class="seg"><i class="ao-i ao-i-drag"></i>drop on a line: new side tab · on a row: move into it · outside the window: new window</span>
+    <span class="spacer"></span>
+    <span class="seg"><span class="ao-key">Esc</span> cancel</span>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

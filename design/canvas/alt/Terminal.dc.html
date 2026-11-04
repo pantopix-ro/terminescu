@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Terminal direction</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/agentorch/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0;background:#0f1115}
+.tm{--bg:#0f1115;--pane:#0c0d10;--side:#13151a;--raise:#191c22;--line:#23262e;--line-2:#2e323b;--fg:#d4d7dd;--dim:#878d99;--faint:#575d69;
+  --amber:#e5a33a;--green:#57ab5a;--red:#e5534b;--blue:#539bf5;--magenta:#b083f0;--cyan:#39c5cf;
+  width:100%;min-height:900px;display:flex;flex-direction:column;background:var(--bg);color:var(--fg);
+  font-family:"Geist Mono",ui-monospace,"SF Mono",Menlo,monospace;font-size:12.5px;line-height:20px;-webkit-font-smoothing:antialiased}
+.tm *{box-sizing:border-box}
+.tm a{color:var(--blue);text-decoration:none}
+.bar{display:flex;align-items:center;height:38px;padding:0 14px;border-bottom:1px solid var(--line);background:var(--side)}
+.lights{display:flex;gap:8px}.lights i{width:12px;height:12px;border-radius:50%;display:block}
+.title{flex:1;text-align:center;color:var(--dim)}.title b{color:var(--fg);font-weight:500}
+.kbd{display:inline-block;padding:0 5px;border:1px solid var(--line-2);border-radius:3px;color:var(--dim);font-size:11px;line-height:16px}
+.search{display:flex;align-items:center;gap:8px;height:24px;padding:0 8px;border:1px solid var(--line-2);border-radius:4px;color:var(--faint);width:260px}
+.win{flex:1;display:grid;grid-template-columns:256px minmax(0,1fr) 300px;min-height:0}
+.side{background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column}
+.sec{display:flex;align-items:center;gap:8px;height:28px;padding:0 14px;color:var(--faint);font-size:11px;letter-spacing:.06em;text-transform:uppercase}
+.sec .r{margin-left:auto;text-transform:none;letter-spacing:0}
+.row{display:grid;grid-template-columns:12px minmax(0,1fr) auto;column-gap:8px;align-items:center;padding:4px 14px 4px 12px;border-left:2px solid transparent;color:var(--fg)}
+.row .m{grid-column:2/4;color:var(--faint);font-size:11px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .n{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row.on{background:var(--raise)}
+.st{font-size:11px}
+.kid{display:grid;grid-template-columns:12px minmax(0,1fr) auto;column-gap:8px;padding:1px 14px 1px 32px;color:var(--dim)}
+.kid.on{color:var(--fg)}
+.cmd{display:grid;grid-template-columns:12px minmax(0,1fr) auto;column-gap:8px;padding:2px 14px;color:var(--fg)}
+.cmd .g{color:var(--green)}.cmd .s{color:var(--faint);font-size:11px}
+hr.h{border:0;border-top:1px solid var(--line);margin:6px 0}
+main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.tabs{display:flex;height:32px;border-bottom:1px solid var(--line);background:var(--side)}
+.tab{display:flex;align-items:center;gap:8px;padding:0 14px;border-right:1px solid var(--line);color:var(--dim);max-width:220px}
+.tab.on{background:var(--pane);color:var(--fg);box-shadow:inset 0 1px 0 var(--blue);margin-bottom:-1px}
+.tab .x{color:var(--faint);margin-left:4px}
+.tab .k{color:var(--faint);font-size:11px}
+.split{flex:1;display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);grid-template-rows:minmax(0,1fr) minmax(0,1fr);gap:1px;background:var(--line);min-height:0}
+.pane{background:var(--pane);display:flex;flex-direction:column;min-width:0;min-height:0;position:relative}
+.pane.f{outline:1px solid var(--amber);outline-offset:-1px;z-index:1}
+.ph{display:flex;gap:10px;height:22px;align-items:center;padding:0 12px;color:var(--faint);font-size:11px;border-bottom:1px solid var(--line)}
+.ph .grow{flex:1}
+.pb{flex:1;padding:10px 14px;white-space:pre-wrap;overflow:hidden}
+.p{color:var(--green)}.d{color:var(--dim)}.t{color:var(--fg)}.u{color:var(--blue)}
+.ask{display:block;margin-top:10px;padding:8px 12px;border:1px solid var(--amber);border-radius:4px}
+.cur{display:inline-block;width:8px;height:15px;background:var(--fg);vertical-align:-3px}
+.msg{padding:8px 14px;border-bottom:1px solid var(--line);white-space:normal}
+.msg .h{display:flex;gap:8px;color:var(--faint);font-size:11px}
+.msg .h .act{margin-left:auto;color:var(--faint)}
+.hl{background:#2b2440;box-shadow:0 1px 0 var(--magenta)}
+.ctx{background:var(--side);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.kv{display:grid;grid-template-columns:92px minmax(0,1fr);column-gap:10px;padding:3px 14px;align-items:baseline}
+.kv .k{color:var(--magenta)}
+.kv .v{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kv .s{grid-column:2;color:var(--faint);font-size:11px;line-height:15px}
+.kv.eph .k{text-decoration:underline dashed var(--faint);text-underline-offset:4px}
+.tag{display:inline-block;padding:0 5px;border:1px solid var(--line-2);border-radius:3px;font-size:10.5px;line-height:15px;color:var(--dim);margin-left:6px}
+.tag.sec{border-color:#5a3a3f;color:#e98c86;text-transform:none;letter-spacing:0;height:auto;padding:0 5px;display:inline-block}
+.pin{margin:4px 14px 8px;padding:6px 10px;border-left:2px solid var(--line-2);color:var(--fg)}
+.pin .s{display:flex;gap:8px;color:var(--faint);font-size:11px}
+.foot{display:flex;align-items:center;height:24px;border-top:1px solid var(--line);background:var(--side);font-size:11px;color:var(--dim)}
+.foot span{padding:0 12px;border-right:1px solid var(--line);height:100%;display:flex;align-items:center;gap:6px}
+.foot .need{background:var(--amber);color:#1a1205;font-weight:600}
+.foot .sp{flex:1;border:0}
+@media (max-width:1100px){.win{grid-template-columns:240px minmax(0,1fr)!important}.ctx{display:none!important}}
+@media (max-width:760px){.win{grid-template-columns:1fr!important}.side{display:none!important}.search{display:none!important}}
+</style>
+</helmet>
+<div class="tm">
+
+  <header class="bar">
+    <span class="lights" aria-hidden="true"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></span>
+    <span class="title"><b>PROJ-482 audit export</b> · claude · ~/work/api</span>
+    <span class="search">⌕ Search everything<span style="flex:1"></span><span class="kbd">⌘K</span></span>
+  </header>
+
+  <div class="win">
+    <nav class="side" aria-label="Side tabs">
+      <div class="sec" style="margin-top:6px">Terminescu<span class="r"><span class="kbd">⌘N</span></span></div>
+
+      <a href="Status.dc.html" class="row on" style="border-left-color:var(--blue);background:#1a2230"><span style="color:var(--amber)">●</span><span class="n">PROJ-482 audit export</span><span class="st" style="color:var(--amber)">waiting</span><span class="m">⌄ 3 tabs · ~/work/api</span></a>
+      <div style="background:#1a2230;padding-bottom:4px;border-left:2px solid var(--blue)">
+        <div class="kid on"><span style="color:var(--amber)">●</span><span>claude · plan</span><span class="k" style="color:var(--faint)">⌘1</span></div>
+        <div class="kid"><span style="color:var(--blue)">●</span><span>pnpm dev</span><span style="color:var(--faint)">⌘2</span></div>
+        <div class="kid"><span style="color:var(--faint)">○</span><span>zsh · ~/work/web</span><span style="color:var(--faint)">⌘3</span></div>
+      </div>
+
+      <div class="row" style="border-left-color:var(--magenta)"><span style="color:var(--magenta)">●</span><span class="n">PROJ-477 rate limit</span><span class="st" style="color:var(--magenta)">review</span><span class="m">› 2 tabs · manual</span></div>
+      <div class="row" style="border-left-color:var(--cyan)"><span style="color:var(--blue)">●</span><span class="n">PROJ-479 invoices paging</span><span class="st" style="color:var(--blue)">running</span><span class="m">claude · implement · 22m</span></div>
+      <div class="row" style="border-left-color:var(--red);background:#1e1719"><span style="color:var(--red)">✗</span><span class="n">PROJ-470 export retry</span><span class="st" style="color:var(--red)">tests red</span><span class="m">rule · pnpm test exit 1 · 4m</span></div>
+      <div class="row" style="border-left-color:var(--green)"><span style="color:var(--green)">⟳</span><span class="n">dev servers</span><span class="st" style="color:var(--green)">2/2 up</span><span class="m">launcher · compose, pnpm dev · 3h</span></div>
+      <div class="row"><span style="color:var(--faint)">○</span><span class="n">scratch</span><span class="st" style="color:var(--faint)">idle</span><span class="m">zsh · ~</span></div>
+
+      <hr class="h">
+      <div class="sec">Commands<span class="r">PROJ-482</span></div>
+      <div class="cmd"><span class="g">▸</span><span>pnpm test audit</span><span class="s">new tab</span></div>
+      <div class="cmd"><span class="g">▸</span><span>gh pr checks {{c.pr}}</span><span class="s">pane</span></div>
+      <div class="sec" style="height:24px">Global</div>
+      <div class="cmd"><span class="g">▸</span><span>docker compose ps</span><span class="s">pane</span></div>
+      <div class="cmd"><span class="g">▸</span><span>claude --resume</span><span class="s">new tab</span></div>
+      <div style="flex:1"></div>
+      <div class="sec" style="border-top:1px solid var(--line);height:30px">⌃⌘1–9 switch<span class="r">⚙ settings</span></div>
+    </nav>
+
+    <main>
+      <div class="tabs" role="tablist" aria-label="Tabs in PROJ-482">
+        <a href="Extract.dc.html" role="tab" aria-selected="true" class="tab on"><span style="color:var(--amber)">●</span>claude · plan<span class="x">×</span></a>
+        <a href="DragToSide.dc.html" role="tab" aria-selected="false" class="tab"><span style="color:var(--blue)">●</span>pnpm dev</a>
+        <span role="tab" aria-selected="false" class="tab"><span style="color:var(--faint)">○</span>zsh · ~/work/web</span>
+        <span class="tab" style="border-right:0;color:var(--faint)">+</span>
+        <span style="flex:1"></span>
+        <span class="tab" style="border-right:0;border-left:1px solid var(--line);color:var(--faint);font-size:11px">⌘D split</span>
+      </div>
+
+      <div class="split">
+        <section class="pane f" style="grid-row:span 2" aria-label="Claude session">
+          <div class="ph"><span>claude</span><span>~/work/api</span><span class="grow"></span><span>session 3f9a · 41k tokens</span></div>
+          <div class="pb"><span class="p">❯</span> Write the OpenSpec plan for the pasted ticket. Repos: api, web.
+
+<span class="t">● Read</span> <span class="d">src/routes/audit.ts</span>
+<span class="t">● Read</span> <span class="d">../web/src/pages/audit/index.tsx</span>
+<span class="t">● Write</span> <span class="d">openspec/changes/add-audit-export/proposal.md</span>
+  <span class="d">⎿ Wrote 64 lines</span>
+<span class="t">● Write</span> <span class="d">openspec/changes/add-audit-export/design.md</span>
+  <span class="d">⎿ Wrote 112 lines</span>
+
+The export streams CSV in batches of 5,000 rows on a cursor over id.
+Published the plan: <span class="u">claude.ai/artifact/9f2c41…</span>
+<span class="ask"><span style="color:var(--amber)">Bash command</span>
+  openspec validate add-audit-export --strict
+
+Do you want to proceed?
+<span style="color:var(--amber)">❯ 1. Yes</span>
+  2. Yes, and don't ask again for openspec commands
+  3. No, and tell Claude what to do differently</span></div>
+        </section>
+
+        <section class="pane" aria-label="Transcript">
+          <div class="ph"><span>transcript</span><span>claude · plan</span><span class="grow"></span><span>⌘E extract · ⌘⇧P pin</span></div>
+          <div style="flex:1;overflow:hidden">
+            <div class="msg"><div class="h"><span style="color:var(--blue)">you</span><span>14:02</span><span>prompt plan-backend v4</span></div>Write the OpenSpec plan for the pasted ticket. Repos: api, web.</div>
+            <div class="msg"><div class="h"><span>claude</span><span>14:20</span><span class="act">pin · extract</span></div>Branch <span class="hl">feature/PROJ-482-audit-export</span> is created in api and web.</div>
+            <div class="msg" style="border:0"><div class="h"><span>claude</span><span>14:22</span><span class="act">pin · extract</span></div>The export streams CSV in batches of 5,000 rows on a cursor over id. Published the plan: <a href="#">claude.ai/artifact/9f2c41…</a></div>
+          </div>
+        </section>
+
+        <section class="pane" aria-label="Shell">
+          <div class="ph"><span>zsh</span><span>~/work/api</span><span class="grow"></span><span style="color:var(--green)">✓ exit 0 · 0.4s</span></div>
+          <div class="pb"><span class="p">$</span> git status -sb
+<span class="d">## feature/PROJ-482-audit-export</span>
+<span class="d">?? openspec/changes/add-audit-export/</span>
+<span class="p">$</span> <span class="cur"></span></div>
+        </section>
+      </div>
+    </main>
+
+    <aside class="ctx" aria-label="Context of PROJ-482">
+      <div class="sec" style="margin-top:6px">Context<span class="r">⌘\</span></div>
+
+      <div class="sec" style="height:24px;color:var(--dim)">Variables<span class="r">⌘I insert</span></div>
+      <div class="kv"><span class="k">ticket</span><span class="v">PROJ-482 · Add audit export…</span><span class="s">pasted · 412 words · 2 images</span></div>
+      <div class="kv"><span class="k">branch</span><span class="v">feature/PROJ-482-audit-export</span><span class="s">extracted · claude · plan</span></div>
+      <div class="kv"><span class="k">plan</span><span class="v"><a href="#">claude.ai/artifact/9f2c41…</a></span><span class="s">auto · artifact URL</span></div>
+      <div class="kv eph"><span class="k">from_date</span><span class="v">2026-10-01<span class="tag">session</span></span><span class="s">not stored · gone on quit</span></div>
+      <div class="kv eph"><span class="k">api_token</span><span class="v">••••••••••••<span class="tag sec">secret</span></span><span class="s">inserts as $API_TOKEN · 52m left</span></div>
+
+      <hr class="h">
+      <div class="sec" style="height:24px;color:var(--dim)">Pins<span class="r">⌥1–9 copy</span></div>
+      <div class="pin">Cursor on id, batches of 5,000, one transaction per batch.<div class="s"><span>1</span><span>claude · plan · 14:22</span></div></div>
+      <div class="pin" style="border-left-color:var(--green)">curl -s :4800/audit/export?from=2026-10-01 | head<div class="s"><span>2</span><span>zsh · ~/work/api · 14:31</span></div></div>
+
+      <hr class="h">
+      <div class="sec" style="height:24px;color:var(--dim)">Prompts<span class="r"><a href="Prompts.dc.html">library</a></span></div>
+      <div class="cmd"><span style="color:var(--magenta)">›</span><span>review-plan</span><span class="s">41×</span></div>
+      <div class="cmd"><span style="color:var(--magenta)">›</span><span>implement</span><span class="s">38×</span></div>
+    </aside>
+  </div>
+
+  <footer class="foot">
+    <span class="need">● 1 waiting</span>
+    <span style="color:var(--blue)">● 3 running</span>
+    <span style="color:var(--red)">✗ 1 failed</span>
+    <span>6 side tabs · 11 tabs</span>
+    <span class="sp"></span>
+    <span>⌘⇧A jump to waiting</span>
+    <span style="border-right:0">window 1 of 2</span>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return { c: { pr: "{{pr_api}}" } }; }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Merge two side tabs</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/agentorch/tokens.css">
+<link rel="stylesheet" href="ds/agentorch/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600&amp;family=Silkscreen&amp;display=swap">
+<style>
+body{margin:0;background:#111318}
+a{color:#539bf5}a:hover{color:#8bbcf8}
+@media (max-width: 900px){ .win{grid-template-columns:1fr !important} .side{display:none !important} }
+</style>
+</helmet>
+<div style="width: 100%; min-height: 900px; display: flex; flex-direction: column; background: var(--bg); color: var(--fg); font-family: var(--font-mono); font-size: 13px; line-height: 20px">
+
+  <header style="display: flex; align-items: center; gap: 12px; height: 32px; padding: 0 12px; background: var(--panel-2); border-bottom: 2px solid var(--line-strong)">
+    <span aria-hidden="true" style="display: flex; gap: 6px"><i style="width: 10px; height: 10px; background: var(--faint)"></i><i style="width: 10px; height: 10px; background: var(--faint)"></i><i style="width: 10px; height: 10px; background: var(--faint)"></i></span>
+    <span class="ao-pixel" style="font-size: 8px; color: var(--amber); margin-left: 8px">Terminescu</span>
+    <span class="small ao-dim">PROJ-477 dropped on PROJ-482</span>
+  </header>
+
+  <div class="win" style="flex: 1; display: grid; grid-template-columns: 272px minmax(0, 1fr); min-height: 0; position: relative">
+
+    <nav class="side" aria-label="Side tabs" style="display: flex; flex-direction: column; border-right: 2px solid var(--line-strong); background: var(--bg)">
+      <div style="display: flex; align-items: center; height: 34px; padding: 0 12px; border-bottom: 2px solid var(--line-strong)"><span class="ao-pixel ao-dim">Side tabs</span></div>
+      <div class="ao-side">
+        <div class="ao-st drop-into" style="--st-accent: var(--blue)"><i class="ao-i ao-i-group"></i><span class="t">PROJ-482 audit export</span><span class="ao-stat need">Waiting</span><span class="m"><span class="ao-strip"><i class="ao-cell wait"></i><i class="ao-cell run"></i><i class="ao-cell"></i><i class="ao-cell done" style="opacity: .5"></i><i class="ao-cell" style="opacity: .5"></i></span>3 + 2 tabs</span></div>
+        <div class="ao-st" style="--st-accent: var(--magenta); --st-bg: var(--tint-magenta); opacity: .45"><i class="ao-i ao-i-group"></i><span class="t">PROJ-477 rate limit</span><span class="ao-stat manual" style="--s-fg: var(--magenta); --s-edge: var(--magenta)">Review</span><span class="m">2 tabs · being merged</span></div>
+        <div class="ao-st" style="--st-accent: var(--green)"><i class="ao-i ao-i-term"></i><span class="t">dev servers</span><span class="ao-stat" style="--s-fg: var(--blue)">Running</span><span class="m">docker compose up · 3h</span></div>
+        <div class="ao-st"><i class="ao-i ao-i-term"></i><span class="t">scratch</span><span></span><span class="m">zsh · ~</span></div>
+      </div>
+    </nav>
+
+    <main style="position: relative; display: flex; flex-direction: column; min-width: 0">
+      <div class="ao-tabs" aria-hidden="true" style="opacity: .4">
+        <span class="ao-tab active"><span class="ao-dot need"></span><span class="n">claude · plan</span></span>
+        <span class="ao-tab"><span class="ao-dot run"></span><span class="n">pnpm dev</span></span>
+        <span class="ao-tab"><span class="ao-dot idle"></span><span class="n">zsh · ~/work/web</span></span>
+      </div>
+      <div style="flex: 1; background: var(--panel); opacity: .35"></div>
+
+      <div style="position: absolute; inset: 34px 0 0 0; display: flex; align-items: flex-start; justify-content: center; padding: 80px 24px">
+        <div class="ao-frame" style="width: 640px; max-width: 100%" role="dialog" aria-labelledby="mg-t">
+          <div class="ao-frame-head"><i class="ao-i ao-i-merge"></i><span id="mg-t" class="pixel-heading">Merge</span><span style="flex: 1"></span><span class="small ao-dim">PROJ-477 rate limit into PROJ-482 audit export</span></div>
+          <div class="ao-frame-body" style="display: grid; gap: 12px; padding: 0">
+            <div style="padding: 12px 16px 0; display: flex; flex-wrap: wrap; gap: 16px; align-items: center">
+              <span class="ao-strip lg" aria-label="5 tabs after the merge"><i class="ao-cell wait"></i><i class="ao-cell run"></i><i class="ao-cell"></i><i class="ao-cell done"></i><i class="ao-cell"></i></span>
+              <span class="small ao-dim">2 tabs move: claude · review, zsh · ~/work/api-477. 7 context items merge, 1 name clashes.</span>
+            </div>
+            <div class="ao-ctx">
+              <div class="ao-ctx-row conflict">
+                <span class="k"><span class="ao-var">{{v.branch}}</span><span class="ao-stat need">Clash</span></span><span class="small ao-dim">pick one</span>
+                <fieldset class="v" style="border: 0; margin: 0; padding: 4px 0 0; display: grid; gap: 6px">
+                  <legend class="sr" style="position: absolute; width: 1px; height: 1px; overflow: hidden">Value for branch</legend>
+                  <label style="display: flex; gap: 8px; align-items: center"><input type="radio" name="branch" checked style="accent-color: #e5a33a">feature/PROJ-482-audit-export <span class="ao-dim">· keep, from PROJ-482</span></label>
+                  <label style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap"><input type="radio" name="branch" style="accent-color: #e5a33a">keep both, rename PROJ-477's to <input class="ao-input" value="branch_477" aria-label="New name" style="width: 120px; height: 22px; padding: 0 6px"></label>
+                </fieldset>
+              </div>
+              <div class="ao-ctx-row"><span class="k"><span class="ao-var">{{v.pr_api}}</span></span><span class="small" style="color: var(--green)">+ new</span><span class="v"><a href="#">github.com/acme/api/pull/911</a></span></div>
+              <div class="ao-ctx-row"><span class="k"><span class="ao-var">{{v.ticket}}</span></span><span class="small ao-dim">same value, kept once</span></div>
+              <div class="ao-ctx-row"><span class="k"><i class="ao-i ao-i-pin" style="color: var(--magenta)"></i><span>3 pins, 1 link</span></span><span class="small" style="color: var(--green)">+ added after PROJ-482's</span></div>
+            </div>
+            <div style="padding: 0 16px; display: grid; gap: 8px">
+              <span class="ao-pixel ao-dim">Keep from</span>
+              <div style="display: flex; flex-wrap: wrap; gap: 16px" class="small">
+                <label style="display: flex; gap: 8px; align-items: center"><input type="radio" name="look" checked style="accent-color: #e5a33a">name, status and colors of PROJ-482</label>
+                <label style="display: flex; gap: 8px; align-items: center"><input type="radio" name="look" style="accent-color: #e5a33a">PROJ-477</label>
+              </div>
+            </div>
+          </div>
+          <div class="ao-frame-foot">
+            <button class="ao-btn ghost">Cancel <span class="ao-key">Esc</span></button>
+            <a href="Main.dc.html" class="ao-btn primary" style="text-decoration: none"><i class="ao-i ao-i-merge"></i>Merge <span class="ao-key">↵</span></a>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <footer class="ao-status">
+    <span class="seg"><i class="ao-i ao-i-merge"></i>no clash: merges without this dialog, ⌘Z undoes for 10 s</span>
+    <span class="spacer"></span>
+    <span class="seg">window 1 of 2</span>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return { v: { branch: "{{branch}}", pr_api: "{{pr_api}}", ticket: "{{ticket}}" } }; }
+}
+</script>
+</body>
+</html>

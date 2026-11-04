@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Insert a prompt</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/agentorch/tokens.css">
+<link rel="stylesheet" href="ds/agentorch/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600&amp;family=Silkscreen&amp;display=swap">
+<style>
+body{margin:0;background:#111318}
+a{color:#539bf5}a:hover{color:#8bbcf8}
+@media (max-width: 900px){ .pal{grid-template-columns:1fr !important} }
+</style>
+</helmet>
+<div style="width: 100%; min-height: 900px; display: flex; flex-direction: column; background: var(--bg); color: var(--fg); font-family: var(--font-mono); font-size: 13px; line-height: 20px">
+
+  <header style="display: flex; align-items: center; gap: 12px; height: 32px; padding: 0 12px; background: var(--panel-2); border-bottom: 2px solid var(--line-strong)">
+    <span aria-hidden="true" style="display: flex; gap: 6px"><i style="width: 10px; height: 10px; background: var(--faint)"></i><i style="width: 10px; height: 10px; background: var(--faint)"></i><i style="width: 10px; height: 10px; background: var(--faint)"></i></span>
+    <span class="ao-pixel" style="font-size: 8px; color: var(--amber); margin-left: 8px">Terminescu</span>
+    <span class="small ao-dim">PROJ-482 audit export · claude · plan</span>
+  </header>
+
+  <div style="flex: 1; position: relative; display: flex; flex-direction: column; min-height: 0">
+    <div class="ao-tabs" aria-hidden="true" style="opacity: .4">
+      <span class="ao-tab active"><span class="ao-dot done"></span><span class="n">claude · plan</span></span>
+      <span class="ao-tab"><span class="ao-dot run"></span><span class="n">pnpm dev</span></span>
+    </div>
+    <div class="ao-term" aria-hidden="true" style="flex: 1; padding: 12px; opacity: .35; white-space: pre-wrap"><span class="p">❯</span> Write the OpenSpec plan for the pasted ticket. Repos: api, web.
+Published the plan: <span class="u">claude.ai/artifact/9f2c41…</span>
+
+<span class="p">❯</span> <span class="ao-cursor"></span></div>
+
+    <div style="position: absolute; inset: 0; display: flex; justify-content: center; align-items: flex-start; padding: 56px 24px">
+      <div class="ao-frame" role="dialog" aria-labelledby="in-t" style="width: 1040px; max-width: 100%">
+        <div class="ao-frame-head"><i class="ao-i ao-i-in"></i><span id="in-t" class="ao-pixel">Insert</span><span class="small ao-dim">into claude · plan, at the cursor</span><span style="flex: 1"></span><span class="ao-key">⌘I</span></div>
+        <div style="padding: 12px 16px; border-bottom: 2px solid var(--line)"><label class="ao-field"><span class="ao-pixel ao-dim" style="position: absolute; width: 1px; height: 1px; overflow: hidden">Search prompts and variables</span><input class="ao-input" value="review" style="width: 100%; height: 32px; font-size: 14px"></label></div>
+
+        <div class="pal" style="display: grid; grid-template-columns: 360px minmax(0, 1fr); min-height: 520px">
+          <div style="border-right: 2px solid var(--line); display: flex; flex-direction: column">
+            <div class="ao-pixel ao-dim" style="padding: 10px 16px 4px">Prompts</div>
+            <div role="listbox" aria-label="Prompts">
+              <div role="option" aria-selected="true" style="padding: 8px 16px; background: var(--panel-2); box-shadow: inset 2px 0 0 0 var(--amber)"><div style="display: flex; gap: 8px; align-items: center"><i class="ao-i x1 ao-i-tpl"></i><span class="body-strong">review-plan</span><span style="flex: 1"></span><span class="small ao-dim">v6 · 41×</span></div><div class="small ao-dim">Review the plan for a ticket against the code</div></div>
+              <div role="option" aria-selected="false" style="padding: 8px 16px"><div style="display: flex; gap: 8px; align-items: center"><i class="ao-i x1 ao-i-tpl"></i><span>review-and-open-prs</span><span style="flex: 1"></span><span class="small ao-dim">v2 · 17×</span></div><div class="small ao-dim">Final review, then draft PRs per repo</div></div>
+              <div role="option" aria-selected="false" style="padding: 8px 16px"><div style="display: flex; gap: 8px; align-items: center"><i class="ao-i x1 ao-i-tpl"></i><span>review-pr-comments</span><span style="flex: 1"></span><span class="small ao-dim">v1 · 6×</span></div><div class="small ao-dim">Answer review comments on a PR</div></div>
+            </div>
+            <div class="ao-pixel ao-dim" style="padding: 14px 16px 4px">Variables in PROJ-482</div>
+            <div role="listbox" aria-label="Variables">
+              <div role="option" aria-selected="false" style="padding: 6px 16px; display: flex; gap: 8px"><span class="ao-var">{{v.pr_api}}</span><span class="small ao-dim" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">github.com/acme/api/pull/918</span></div>
+            </div>
+            <div class="ao-pixel ao-dim" style="padding: 14px 16px 4px">Pins</div>
+            <div role="listbox" aria-label="Pins">
+              <div role="option" aria-selected="false" style="padding: 6px 16px; display: flex; gap: 8px"><span class="ao-key">1</span><span class="small ao-dim" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">Cursor on id, batches of 5,000…</span></div>
+            </div>
+            <span style="flex: 1"></span>
+            <div class="small ao-dim" style="padding: 10px 16px; border-top: 2px solid var(--line)">↑↓ choose · ⇥ preview · ↵ insert</div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; min-width: 0">
+            <div style="display: flex; align-items: center; gap: 8px; padding: 10px 16px 4px"><span class="ao-pixel ao-dim">Preview</span><span class="small ao-dim">review-plan v6 · values from PROJ-482</span><span style="flex: 1"></span><a href="Prompts.dc.html" class="small">open in library</a></div>
+            <div class="ao-input" style="margin: 4px 16px; padding: 12px; min-height: 230px; white-space: pre-wrap; line-height: 20px">Review the plan for <span class="ao-var">PROJ-482 · Add audit export endpoint…</span> on branch <span class="ao-var">feature/PROJ-482-audit-export</span>.
+
+The plan lives at <span class="ao-var">claude.ai/artifact/9f2c41…</span>. Read the code in <span class="ao-var">api, web</span> before you judge it.
+
+List the gaps, then rate your confidence from 0 to 100. Ask <span class="ao-var" style="text-decoration: underline wavy #e5534b">{{v.owner}}</span> about anything that needs a product call.
+
+Pinned so far:
+<span class="ao-var">1. Cursor on id, batches of 5,000, one transaction per batch.</span></div>
+
+            <div style="margin: 8px 16px; padding: 10px 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; box-shadow: inset 2px 0 0 0 var(--amber); background: var(--tint-amber)">
+              <span class="small" style="color: var(--amber)">1 missing</span>
+              <label for="own" class="ao-var">{{v.owner}}</label>
+              <input id="own" class="ao-input" placeholder="value for this insert" style="flex: 1; min-width: 160px; height: 24px; padding: 0 6px">
+              <label class="small ao-dim" style="display: flex; gap: 6px; align-items: center"><input type="checkbox" checked style="accent-color: #e5a33a">save to PROJ-482</label>
+            </div>
+
+            <span style="flex: 1"></span>
+            <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 12px 16px; border-top: 2px solid var(--line)">
+              <label class="small ao-dim" style="display: flex; gap: 6px; align-items: center"><input type="checkbox" style="accent-color: #e5a33a">press Enter after inserting</label>
+              <span style="flex: 1"></span>
+              <button class="ao-btn ghost">Edit before insert <span class="ao-key">⌘↵</span></button>
+              <button class="ao-btn"><i class="ao-i ao-i-save"></i>Save edits as prompt</button>
+              <a href="Main.dc.html" class="ao-btn primary" style="text-decoration: none"><i class="ao-i ao-i-in"></i>Insert <span class="ao-key">↵</span></a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="ao-status">
+    <span class="seg"><i class="ao-i ao-i-in"></i>inserts as bracketed paste, so the shell or Claude sees one block</span>
+    <span class="spacer"></span>
+    <span class="seg">window 1 of 2</span>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return { v: { pr_api: "{{pr_api}}", owner: "{{owner}}" } }; }
+}
+</script>
+</body>
+</html>

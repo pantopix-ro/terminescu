@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Drag a tab out to a new window</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/agentorch/tokens.css">
+<link rel="stylesheet" href="ds/agentorch/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600&amp;family=Silkscreen&amp;display=swap">
+<style>
+body{margin:0;background:#05060a}
+a{color:#539bf5}a:hover{color:#8bbcf8}
+@media (max-width: 1100px){ .desk{flex-direction:column !important; align-items:stretch !important} .ghostwrap{display:none !important} }
+</style>
+</helmet>
+<div style="width: 100%; min-height: 900px; box-sizing: border-box; padding: 48px; display: flex; flex-direction: column; gap: 24px; background: var(--shadow); color: var(--fg); font-family: var(--font-mono); font-size: 13px; line-height: 20px">
+
+  <div class="desk" style="flex: 1; display: flex; align-items: flex-start; gap: 40px">
+
+    <section aria-label="Window 1" style="flex: 0 1 780px; min-width: 0; display: flex; flex-direction: column; background: var(--bg); box-shadow: var(--frame-neutral)">
+      <header style="display: flex; align-items: center; gap: 12px; height: 28px; padding: 0 10px; background: var(--panel-2); border-bottom: 2px solid var(--line-strong)">
+        <span aria-hidden="true" style="display: flex; gap: 6px"><i style="width: 10px; height: 10px; background: var(--faint)"></i><i style="width: 10px; height: 10px; background: var(--faint)"></i><i style="width: 10px; height: 10px; background: var(--faint)"></i></span>
+        <span class="small ao-dim">window 1 · PROJ-482 audit export</span>
+      </header>
+      <div style="display: grid; grid-template-columns: 220px minmax(0, 1fr); height: 520px">
+        <nav class="ao-side" aria-label="Side tabs" style="border-right: 2px solid var(--line-strong)">
+          <div class="ao-st active" style="--st-accent: var(--blue); --st-bg: var(--tint-blue)"><i class="ao-i ao-i-group"></i><span class="t">PROJ-482 audit…</span><span class="ao-stat need">Waiting</span><span class="m">2 tabs</span></div>
+          <div class="ao-st" style="--st-accent: var(--magenta); --st-bg: var(--tint-magenta)"><i class="ao-i ao-i-group"></i><span class="t">PROJ-477 rate…</span><span></span><span class="m">2 tabs</span></div>
+          <div class="ao-st"><i class="ao-i ao-i-term"></i><span class="t">scratch</span><span></span><span class="m">zsh · ~</span></div>
+        </nav>
+        <div style="display: flex; flex-direction: column; min-width: 0">
+          <div class="ao-tabs" role="tablist" aria-label="Tabs in PROJ-482">
+            <span role="tab" aria-selected="true" class="ao-tab active" style="--tab-accent: var(--blue)"><span class="ao-dot need"></span><i class="ao-i ao-i-agent"></i><span class="n">claude · plan</span></span>
+            <span class="ao-tab placeholder" aria-hidden="true"><span class="n">pnpm dev</span></span>
+            <span role="tab" aria-selected="false" class="ao-tab"><span class="ao-dot idle"></span><span class="n">zsh · web</span></span>
+          </div>
+          <div class="ao-tp" style="flex: 1; opacity: .5">
+            <div class="ao-tp-body ao-term" style="white-space: pre-wrap"><span class="p">❯</span> Write the OpenSpec plan for the pasted ticket.
+<span class="t">● Write</span> <span class="d">openspec/changes/add-audit-export/design.md</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="ghostwrap" style="align-self: center; display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 40px">
+      <span class="ao-tab ghost" style="transform: rotate(-2deg)"><i class="ao-i ao-i-drag"></i><span class="ao-dot run"></span><span class="n">pnpm dev</span></span>
+      <span class="ao-chip wait"><i class="ao-i ao-i-window"></i><span class="ao-pixel">New window</span></span>
+    </div>
+
+    <section aria-label="Window 2, opened by the drop" style="flex: 0 1 520px; min-width: 0; margin-top: 160px; display: flex; flex-direction: column; background: var(--bg); box-shadow: 0 -2px 0 0 var(--amber), 0 2px 0 0 var(--amber), -2px 0 0 0 var(--amber), 2px 0 0 0 var(--amber), var(--shadow-hard)">
+      <header style="display: flex; align-items: center; gap: 12px; height: 28px; padding: 0 10px; background: var(--panel-2); border-bottom: 2px solid var(--line-strong)">
+        <span aria-hidden="true" style="display: flex; gap: 6px"><i style="width: 10px; height: 10px; background: var(--faint)"></i><i style="width: 10px; height: 10px; background: var(--faint)"></i><i style="width: 10px; height: 10px; background: var(--faint)"></i></span>
+        <span class="small ao-dim">window 2 · opens where the tab was dropped</span>
+      </header>
+      <div style="display: grid; grid-template-columns: 180px minmax(0, 1fr); height: 360px">
+        <nav class="ao-side" aria-label="Side tabs in window 2" style="border-right: 2px solid var(--line-strong)">
+          <div class="ao-st active"><i class="ao-i ao-i-term"></i><span class="t">pnpm dev</span><span></span><span class="m">new side tab · 1 tab</span></div>
+        </nav>
+        <div style="display: flex; flex-direction: column; min-width: 0">
+          <div class="ao-tabs" role="tablist" aria-label="Tabs in window 2">
+            <span role="tab" aria-selected="true" class="ao-tab active"><span class="ao-dot run"></span><span class="n">pnpm dev</span><span class="x"><i class="ao-i ao-i-cross"></i></span></span>
+          </div>
+          <div class="ao-tp" style="flex: 1">
+            <div class="ao-tp-head"><i class="ao-i x1 ao-i-term"></i><span>zsh · ~/work/api</span><span class="grow"></span><span style="color: var(--blue)">running · 3h</span></div>
+            <div class="ao-tp-body ao-term" style="white-space: pre-wrap"><span class="d">api  | listening on :4800</span>
+<span class="d">web  | ready in 1.2s on :4801</span>
+<span class="d">api  | GET /audit/export 200 41ms</span>
+<span class="ao-cursor"></span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

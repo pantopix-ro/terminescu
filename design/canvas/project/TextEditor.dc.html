@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Text tab</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/agentorch/tokens.css">
+<link rel="stylesheet" href="ds/agentorch/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600&amp;family=Silkscreen&amp;display=swap">
+<style>
+body{margin:0;background:#111318}
+a{color:#539bf5}a:hover{color:#8bbcf8}
+@media (max-width: 1100px){ .win{grid-template-columns:240px minmax(0,1fr) !important} .ctx{display:none !important} }
+@media (max-width: 760px){ .win{grid-template-columns:1fr !important} .side{display:none !important} }
+</style>
+</helmet>
+<div style="width: 100%; height: 100vh; min-height: 720px; display: flex; flex-direction: column; background: var(--bg); color: var(--fg); font-family: var(--font-mono); font-size: 13px; line-height: 20px">
+
+  <header style="display: flex; align-items: center; gap: 12px; height: 32px; padding: 0 12px; background: var(--panel-2); border-bottom: 2px solid var(--line-strong)">
+    <span aria-hidden="true" style="display: flex; gap: 6px"><i style="width: 10px; height: 10px; background: var(--faint)"></i><i style="width: 10px; height: 10px; background: var(--faint)"></i><i style="width: 10px; height: 10px; background: var(--faint)"></i></span>
+    <span class="ao-pixel" style="font-size: 8px; color: var(--amber); margin-left: 8px">Terminescu</span>
+    <span class="small ao-dim">PROJ-482 audit export · claude · plan</span>
+    <span style="flex: 1"></span>
+    <button class="ao-btn ghost" style="height: 24px"><i class="ao-i ao-i-prompt"></i>Search tabs, prompts, variables <span class="ao-key">⌘</span><span class="ao-key">K</span></button>
+  </header>
+
+  <div class="win" style="flex: 1; display: grid; grid-template-columns: 272px minmax(0, 1fr) 304px; min-height: 0">
+
+    <nav class="side" aria-label="Side tabs" style="display: flex; flex-direction: column; min-height: 0; border-right: 2px solid var(--line-strong); background: var(--bg)">
+      <div style="display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-bottom: 2px solid var(--line-strong)">
+        <span class="ao-pixel ao-dim">Side tabs</span><span style="flex: 1"></span>
+        <button class="ao-btn ghost" style="height: 24px; padding: 0 6px" aria-label="Sort side tabs"><span class="small">sort: manual</span></button>
+        <button class="ao-btn ghost" style="height: 24px; padding: 0 6px" aria-label="New side tab"><i class="ao-i ao-i-plus"></i></button>
+      </div>
+      <div class="ao-scroll" style="flex: 1"><div class="ao-side">
+        <a href="EditorRequest.dc.html" class="ao-st active need" style="--st-accent: var(--blue); --st-bg: var(--tint-blue); text-decoration: none"><i class="ao-i ao-i-group"></i><span class="t">PROJ-482 audit export</span><span class="ao-stat need">Waiting</span><span class="m"><i class="ao-i x1 ao-i-chev"></i><span class="ao-strip"><i class="ao-cell wait"></i><i class="ao-cell run"></i><i class="ao-cell"></i></span>5 tabs · ~/work/api</span></a>
+        <div class="ao-st-kids" style="--st-accent: var(--blue); --st-bg: var(--tint-blue)">
+          <div class="ao-st-kid"><span class="ao-dot need"></span><i class="ao-i x1 ao-i-agent"></i><span class="grow">claude · plan</span><span>⌘1</span></div>
+          <div class="ao-st-kid"><span class="ao-dot run"></span><i class="ao-i x1 ao-i-term"></i><span class="grow">pnpm dev</span><span>⌘2</span></div>
+          <div class="ao-st-kid"><span class="ao-dot idle"></span><i class="ao-i x1 ao-i-term"></i><span class="grow">zsh · ~/work/web</span><span>⌘3</span></div>
+          <div class="ao-st-kid active"><span class="ao-dot idle"></span><i class="ao-i x1 ao-i-doc"></i><span class="grow">review-plan.md</span><span>⌘4</span></div>
+          <div class="ao-st-kid"><span class="ao-dot idle"></span><i class="ao-i x1 ao-i-doc"></i><span class="grow">Untitled-1</span><span>⌘5</span></div>
+        </div>
+        <div class="ao-st" style="--st-accent: var(--magenta); --st-bg: var(--tint-magenta)"><i class="ao-i ao-i-group"></i><span class="t">PROJ-477 rate limit</span><span class="ao-stat manual" style="--s-fg: var(--magenta); --s-edge: var(--magenta)">Review</span><span class="m"><i class="ao-i x1 ao-i-chevr"></i><span class="ao-strip"><i class="ao-cell done"></i><i class="ao-cell"></i></span>2 tabs</span></div>
+        <div class="ao-st" style="--st-accent: var(--cyan); --st-bg: var(--tint-cyan)"><i class="ao-i ao-i-agent"></i><span class="t">PROJ-479 invoices paging</span><span class="ao-stat" style="--s-fg: var(--blue)">Running</span><span class="m">claude · implement · 22m</span></div>
+        <div class="ao-st" style="--st-accent: var(--red); --st-bg: var(--tint-red)"><i class="ao-i ao-i-term"></i><span class="t">PROJ-470 export retry</span><span class="ao-stat" style="--s-fg: var(--red); --s-edge: var(--red)">Tests red</span><span class="m">rule · pnpm test exited 1 · 4m</span></div>
+        <div class="ao-st" style="--st-accent: var(--green); --st-bg: var(--tint-green)"><i class="ao-i ao-i-play"></i><span class="t">dev servers</span><span class="ao-stat" style="--s-fg: var(--green)">2/2 up</span><span class="m">launcher · compose, pnpm dev · 3h</span></div>
+        <div class="ao-st" style="--st-accent: var(--red); --st-bg: var(--tint-red)"><i class="ao-i ao-i-term"></i><span class="t">infra hetzner</span><span class="ao-stat manual" style="--s-fg: var(--red); --s-edge: var(--red)">Blocked</span><span class="m">waiting on DNS</span></div>
+        <div class="ao-st"><i class="ao-i ao-i-term"></i><span class="t">scratch</span><span></span><span class="m">zsh · ~</span></div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px; margin-top: 8px; border-top: 2px solid var(--line)"><span class="ao-pixel ao-dim">Commands</span><span class="small ao-dim">PROJ-482</span><span style="flex: 1"></span><button class="ao-btn ghost" style="height: 22px; padding: 0 6px" aria-label="New command"><i class="ao-i ao-i-plus"></i></button></div>
+      <div class="ao-cmds">
+        <div class="ao-cmd"><i class="ao-i ao-i-play"></i><span class="c">pnpm test audit</span><span class="to">new tab</span></div>
+        <div class="ao-cmd"><i class="ao-i ao-i-play"></i><span class="c">gh pr checks {{v.pr_api}}</span><span class="to">pane</span></div>
+      </div>
+      <div style="display: flex; align-items: center; height: 24px; padding: 0 12px"><span class="ao-pixel ao-dim">Global</span></div>
+      <div class="ao-cmds">
+        <div class="ao-cmd"><i class="ao-i ao-i-play"></i><span class="c">docker compose ps</span><span class="to">pane</span></div>
+        <div class="ao-cmd"><i class="ao-i ao-i-play"></i><span class="c">claude --resume</span><span class="to">new tab</span></div>
+        <div class="ao-cmd"><i class="ao-i ao-i-play"></i><span class="c">git fetch --all --prune</span><span class="to">pane</span></div>
+      </div>
+      </div>
+      <div style="padding: 8px 12px; border-top: 2px solid var(--line)" class="small ao-dim"><span class="ao-key">⌃⌘</span><span class="ao-key">1</span>–<span class="ao-key">9</span> switch side tab · <a href="Settings.dc.html">settings</a></div>
+    </nav>
+
+    <main style="display: flex; flex-direction: column; min-width: 0; min-height: 0">
+      <div class="ao-tabs" role="tablist" aria-label="Tabs in PROJ-482">
+        <span role="tab" aria-selected="false" class="ao-tab"><span class="ao-dot need"></span><i class="ao-i ao-i-agent"></i><span class="n">claude · plan</span><span class="x"></span></span>
+        <span role="tab" aria-selected="false" class="ao-tab"><span class="ao-dot run"></span><span class="n">pnpm dev</span><span class="x"></span></span>
+        <span role="tab" aria-selected="false" class="ao-tab"><span class="ao-dot idle"></span><span class="n">zsh · ~/work/web</span><span class="x"></span></span>
+        <span role="tab" aria-selected="true" class="ao-tab active" style="--tab-accent: var(--blue)"><i class="ao-i ao-i-doc"></i><span class="n">review-plan.md</span><span class="dirty" aria-label="Unsaved"></span></span>
+        <span role="tab" aria-selected="false" class="ao-tab"><i class="ao-i ao-i-doc"></i><span class="n">Untitled-1</span><span class="x"></span></span>
+        <a href="EditorRequest.dc.html" class="ao-tab-split" style="text-decoration: none" aria-label="New tab"><span><i class="ao-i ao-i-plus"></i></span><span><i class="ao-i ao-i-chev"></i></span></a>
+        <span style="flex: 1"></span>
+        <span class="small ao-dim" style="align-self: center">⌥⌘T text · ⌘O open</span>
+      </div>
+      <section class="ao-tp focused" aria-label="Text editor" style="flex: 1; position: relative">
+        <div class="ao-tp-head"><i class="ao-i x1 ao-i-doc"></i><span>review-plan.md</span><span>~/work/api/prompts</span><span class="grow"></span><span>Markdown</span></div>
+        <div class="ao-ed ao-scroll" style="flex: 1">
+            <div class="ao-ed-l"><span class="n">1</span><span class="c"><span class="mk"># </span><span class="h1">Review the plan before implementing</span></span></div>
+            <div class="ao-ed-l"><span class="n">2</span><span class="c"></span></div>
+            <div class="ao-ed-l"><span class="n">3</span><span class="c">You review the OpenSpec plan at <span class="ao-vchip">{{e.plan}}</span> for <span class="ao-vchip">{{e.ticket}}</span>.</span></div>
+            <div class="ao-ed-l"><span class="n">4</span><span class="c">The work lives on branch <span class="ao-vchip">{{e.branch}}</span> in <span class="code">api</span> and <span class="code">web</span>.</span></div>
+            <div class="ao-ed-l"><span class="n">5</span><span class="c"></span></div>
+            <div class="ao-ed-l"><span class="n">6</span><span class="c"><span class="mk">## </span><span class="h">Check</span></span></div>
+            <div class="ao-ed-l"><span class="n">7</span><span class="c"></span></div>
+            <div class="ao-ed-l"><span class="n">8</span><span class="c"><span class="li">- </span>Every requirement has at least one scenario.</span></div>
+            <div class="ao-ed-l"><span class="n">9</span><span class="c"><span class="li">- </span>The design names the migration it adds.</span></div>
+            <div class="ao-ed-l"><span class="n">10</span><span class="c"><span class="li">- </span>The export endpoint matches the ticket at <span class="ao-vchip unknown">{{e.ticket_url}}</span>.</span></div>
+            <div class="ao-ed-l"><span class="n">11</span><span class="c"><span class="li">- </span>Smoke test against staging with <span class="ao-vchip secret">$API_TOKEN</span>.</span></div>
+            <div class="ao-ed-l cur"><span class="n">12</span><span class="c"><span class="li">- </span>Compare with the open PR {{e.pl}}<span class="ao-ed-caret"></span></span></div>
+            <div class="ao-ed-l"><span class="n">13</span><span class="c"></span></div>
+            <div class="ao-ed-l"><span class="n">14</span><span class="c"><span class="mk">## </span><span class="h">Output</span></span></div>
+            <div class="ao-ed-l"><span class="n">15</span><span class="c"></span></div>
+            <div class="ao-ed-l"><span class="n">16</span><span class="c">A list of findings, most severe first. For each: the file, the line,</span></div>
+            <div class="ao-ed-l"><span class="n">17</span><span class="c">the problem in one sentence, and a fix. End with <span class="em">*ready*</span> or <span class="em">*not ready*</span>.</span></div>
+        </div>
+        <div class="ao-complete" style="left: 470px; top: 290px" role="listbox" aria-label="Variables">
+          <div class="it on" role="option" aria-selected="true"><i class="ao-i x1 ao-i-link" style="color: var(--magenta)"></i><span>pr_api</span><span class="v">github.com/acme/api/pull/918</span><span class="k">auto</span></div>
+          <div class="it" role="option"><i class="ao-i x1 ao-i-link" style="color: var(--magenta)"></i><span>plan</span><span class="v">claude.ai/artifact/9f2c41…</span><span class="k">auto</span></div>
+          <div class="it" role="option"><i class="ao-i x1 ao-i-var" style="color: var(--magenta)"></i><span>pinned</span><span class="v">2 pins of PROJ-482</span><span class="k">pins</span></div>
+          <div class="ft">↵ insert · ⇥ next · from the context of PROJ-482</div>
+        </div>
+        <div class="ao-ed-bar"><span class="dirty">● unsaved</span><span>Ln 12, Col 41</span><span>1 unknown variable</span><span class="grow"></span><span>UTF-8 · LF</span><span>⌘S save</span><span>⌘⇧↵ send to claude · plan</span></div>
+      </section>
+    </main>
+
+    <aside class="ctx" aria-label="Context of PROJ-482" style="display: flex; flex-direction: column; min-height: 0; overflow: hidden; border-left: 2px solid var(--line-strong); background: var(--panel)">
+      <div style="display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; background: var(--bg); border-bottom: 2px solid var(--line-strong)">
+        <i class="ao-i ao-i-var" style="color: var(--magenta)"></i><span class="ao-pixel ao-dim">Context</span><span class="small ao-dim">PROJ-482</span><span style="flex: 1"></span><a href="ContextHidden.dc.html" class="ao-btn ghost" style="height: 22px; padding: 0 6px; text-decoration: none"><span class="small">auto-hide</span><span class="ao-key">⌘\</span></a>
+      </div>
+      <div class="ao-scroll" style="flex: 1">
+      <div style="display: flex; align-items: center; gap: 8px; padding: 10px 12px 6px"><span class="ao-pixel ao-dim">Files</span><span class="small ao-dim">edited by claude</span><span style="flex: 1"></span><span class="small ao-dim">5</span></div>
+      <div class="ao-file"><span class="s a">A</span><span class="p">openspec/changes/add-audit-export/proposal.md</span><span class="t">14:08</span></div>
+      <div class="ao-file"><span class="s a">A</span><span class="p">openspec/changes/add-audit-export/design.md</span><span class="t">14:12</span></div>
+      <div class="ao-file"><span class="s a">A</span><span class="p">openspec/changes/add-audit-export/tasks.md</span><span class="t">14:13</span></div>
+      <div class="ao-file"><span class="s m">M</span><span class="p">src/routes/audit.ts</span><span class="t">14:31</span></div>
+      <div class="ao-file"><span class="s m">M</span><span class="p">../web/src/pages/audit/index.tsx</span><span class="t">14:34</span></div>
+      <div style="display: flex; align-items: center; gap: 8px; padding: 14px 12px 6px"><span class="ao-pixel ao-dim">Variables</span><span class="small ao-dim">6</span><span style="flex: 1"></span><span class="small ao-dim">type {{e.open}} in the editor</span></div>
+      <div class="ao-ctx">
+        <div class="ao-ctx-row"><span class="k"><span class="ao-var">{{e.ticket}}</span></span><span class="small ao-dim">text</span><span class="v">PROJ-482 · Add audit export…</span></div>
+        <div class="ao-ctx-row"><span class="k"><span class="ao-var">{{e.branch}}</span></span><span class="small ao-dim">text</span><span class="v">feature/PROJ-482-audit-export</span></div>
+        <div class="ao-ctx-row"><span class="k"><span class="ao-var">{{e.plan}}</span></span><span class="small ao-dim">link</span><span class="v"><a href="#">claude.ai/artifact/9f2c41…</a></span></div>
+        <div class="ao-ctx-row"><span class="k"><span class="ao-var">{{e.pr_api}}</span></span><span class="small ao-dim">link</span><span class="v"><a href="#">github.com/acme/api/pull/918</a></span></div>
+        <div class="ao-ctx-row secret"><span class="k"><span class="ao-var">{{e.api_token}}</span><span class="ao-store secret">Secret</span></span><span class="small ao-dim">text</span><span class="v">••••••••••••</span><span class="src">offered as $API_TOKEN</span></div>
+      </div>
+      </div>
+    </aside>
+  </div>
+
+  <footer class="ao-status">
+    <a href="EditorRequest.dc.html" class="need" style="text-decoration: none"><i class="ao-i ao-i-bp"></i><span class="ao-pixel">1 needs you</span></a>
+    <span class="seg"><i class="ao-i ao-i-doc"></i>review-plan.md · unsaved · survives a restart</span>
+    <span class="spacer"></span>
+    <span class="seg">⌘⇧↵ sends the text to a terminal</span>
+    <span class="seg">window 1 of 2</span>
+  </footer>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return { e: { plan: "{{plan}}", ticket: "{{ticket}}", branch: "{{branch}}", ticket_url: "{{ticket_url}}", pl: "{" + "{pr", pr_api: "{{pr_api}}", api_token: "{{api_token}}", open: "{" + "{" }, v: { pr_api: "{{pr_api}}" } }; }
+}
+</script>
+</body>
+</html>
