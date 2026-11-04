@@ -11,7 +11,8 @@
     "tauri": "pnpm --filter @terminescu/desktop tauri",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
-    "tokens": "pnpm --filter @terminescu/ui tokens"
+    "tokens": "pnpm --filter @terminescu/ui tokens",
+    "check:rust": "cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace"
   },
   "devDependencies": {
     "typescript": "~5.9.3"

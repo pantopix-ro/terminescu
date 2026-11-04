@@ -29,6 +29,7 @@ review of the proposal before applying. Run `openspec validate <id> --strict` be
 - When entering plan mode, ask: multi-phase plan? OpenSpec change? git worktree?
 
 ## Branches and commits
+- Run `pnpm check:rust` and `pnpm -r test` before committing; Rust code stays rustfmt-clean.
 - Implement on a feature branch started from `develop`; rebase on `develop` before pushing.
 - Commit messages: at most 9 lines. Never mention Claude, AI assistants, model names or
   Co-Authored-By.

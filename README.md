@@ -167,6 +167,7 @@ macOS 14 or later, Rust stable, Node 24, pnpm, and Claude Code with a logged-in 
 pnpm install
 pnpm dev                      # the app with hot reload
 cargo test --workspace        # Rust tests
+pnpm check:rust               # rustfmt, clippy and Rust tests: run before every commit
 pnpm test                     # TypeScript tests
 pnpm build --debug            # Terminescu.app with both sidecars, in target/debug/bundle
 pnpm tokens                   # after editing design/system/build_tokens.py
