@@ -5,6 +5,7 @@
 //! falls behind gets disconnected and reattaches with a fresh snapshot.
 
 use crate::screen::Screen;
+use crate::vars::Vars;
 use portable_pty::{ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use std::collections::HashMap;
 use std::fs::File;
@@ -17,9 +18,10 @@ use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TrySendError};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
-use terminescu_protocol::paths::{CORE_SOCKET_ENV, PANE_ID_ENV, PTYD_SOCKET_ENV};
+use terminescu_protocol::paths::{CORE_SOCKET_ENV, PANE_ID_ENV, PTYD_SOCKET_ENV, peer_uid};
 use terminescu_protocol::{
-    Control, Frame, PROTOCOL_VERSION, PaneId, PaneInfo, SpawnSpec, decode, encode, negotiate,
+    Control, Frame, PROTOCOL_VERSION, PaneId, PaneInfo, SpawnSpec, decode, encode, is_var_name,
+    negotiate,
 };
 
 /// Frames a client may have queued before it counts as stuck.
@@ -75,6 +77,7 @@ struct Shared {
     next_client: AtomicU64,
     last_activity: Mutex<Instant>,
     instance: String,
+    vars: Mutex<Vars>,
 }
 
 impl Shared {
@@ -115,6 +118,21 @@ impl Shared {
 
     fn pane(&self, id: PaneId) -> Option<Arc<Pane>> {
         lock(&self.panes).get(&id).cloned()
+    }
+
+    /// The side tab whose variables a pane sees.
+    fn side_tab_of(&self, pane: PaneId, req: u64) -> Result<String, Control> {
+        let p = self
+            .pane(pane)
+            .ok_or_else(|| error("no_pane", format!("pane {pane}"), Some(req)))?;
+        let side = lock(&p.state).side_tab.clone();
+        side.ok_or_else(|| {
+            error(
+                "no_side_tab",
+                format!("pane {pane} has no side tab yet"),
+                Some(req),
+            )
+        })
     }
 
     fn spawn(self: &Arc<Self>, spec: SpawnSpec) -> io::Result<PaneId> {
@@ -268,15 +286,6 @@ fn process_name(pid: libc::pid_t) -> Option<String> {
     // SAFETY: the buffer is valid for its full length; proc_name writes at most that many bytes.
     let n = unsafe { libc::proc_name(pid, buf.as_mut_ptr().cast(), buf.len() as u32) };
     (n > 0).then(|| String::from_utf8_lossy(&buf[..n as usize]).into_owned())
-}
-
-fn peer_uid(stream: &UnixStream) -> io::Result<u32> {
-    let (mut uid, mut gid) = (0, 0);
-    // SAFETY: the fd is a connected unix socket owned by `stream`; uid and gid are valid pointers.
-    if unsafe { libc::getpeereid(stream.as_raw_fd(), &mut uid, &mut gid) } != 0 {
-        return Err(io::Error::last_os_error());
-    }
-    Ok(uid)
 }
 
 fn no_sigpipe(stream: &UnixStream) {
@@ -479,6 +488,54 @@ fn handle(shared: &Arc<Shared>, client: u64, tx: &SyncSender<Vec<u8>>, frame: Fr
                     lock(&p.state).side_tab = Some(side_tab);
                 }
             }
+            Control::VarSet {
+                req,
+                pane,
+                name,
+                value,
+                mode,
+                ttl_secs,
+            } => {
+                if !is_var_name(&name) {
+                    return reply(
+                        tx,
+                        error(
+                            "bad_name",
+                            format!("`{name}` cannot be exported"),
+                            Some(req),
+                        ),
+                    );
+                }
+                match shared.side_tab_of(pane, req) {
+                    Ok(side) => {
+                        let ttl = ttl_secs.map(Duration::from_secs);
+                        lock(&shared.vars).set(&side, &name, value, mode, ttl);
+                        reply(tx, Control::Done { req });
+                    }
+                    Err(e) => reply(tx, e),
+                }
+            }
+            Control::VarUnset { req, pane, name } => match shared.side_tab_of(pane, req) {
+                Ok(side) => {
+                    lock(&shared.vars).unset(&side, &name);
+                    reply(tx, Control::Done { req });
+                }
+                Err(e) => reply(tx, e),
+            },
+            Control::VarGet { req, pane, name } => match shared.side_tab_of(pane, req) {
+                Ok(side) => {
+                    let (generation, vars) = lock(&shared.vars).get(&side, name.as_deref());
+                    reply(
+                        tx,
+                        Control::Vars {
+                            req,
+                            generation,
+                            vars,
+                        },
+                    );
+                }
+                Err(e) => reply(tx, e),
+            },
             other => reply(tx, error("unexpected", format!("{other:?}"), None)),
         },
     }
@@ -528,6 +585,7 @@ pub fn run(opts: Options) -> io::Result<bool> {
         next_pane: AtomicU32::new(1),
         next_client: AtomicU64::new(1),
         last_activity: Mutex::new(Instant::now()),
+        vars: Mutex::new(Vars::default()),
         instance: format!(
             "{}-{}",
             std::process::id(),

@@ -84,6 +84,18 @@ pub fn ensure_private_dir(dir: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// The uid of the process at the other end of a Unix socket. Both servers serve only their
+/// own user.
+pub fn peer_uid(stream: &std::os::unix::net::UnixStream) -> std::io::Result<u32> {
+    use std::os::fd::AsRawFd;
+    let (mut uid, mut gid) = (0, 0);
+    // SAFETY: valid socket fd and out pointers.
+    if unsafe { libc::getpeereid(stream.as_raw_fd(), &mut uid, &mut gid) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(uid)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

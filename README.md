@@ -14,6 +14,8 @@ shell, and Terminescu never starts a turn on its own.
 > SQLite schema, and the design tokens. The pty daemon (task 2.1) runs shells and restores
 > their screens on reattach. The app starts it and gives each tab a shell that outlives the
 > app (task 2.6), shown in an xterm.js pane that streams raw bytes from the core (task 2.5).
+> The `terminescu` CLI forwards hooks, sets statuses and keeps session and secret variables in
+> the daemon, so `var env` answers while the app is closed (task 2.3).
 
 ## See it
 

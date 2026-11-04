@@ -12,3 +12,8 @@ name = "terminescu"
 path = "src/main.rs"
 
 [dependencies]
+terminescu-protocol.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+terminescu-ptyd = { path = "../ptyd" }

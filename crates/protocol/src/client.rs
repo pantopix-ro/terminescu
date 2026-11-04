@@ -32,7 +32,24 @@ pub struct Client {
 impl Client {
     /// Connects and completes the handshake.
     pub fn connect(socket: &Path, client: &str) -> Result<Self, ClientError> {
+        Self::handshake(UnixStream::connect(socket)?, client)
+    }
+
+    /// Like `connect`, but every read and write, the handshake included, gives up after
+    /// `timeout`. For callers that must not hang on a wedged daemon, such as `var env` in a
+    /// prompt.
+    pub fn connect_timeout(
+        socket: &Path,
+        client: &str,
+        timeout: Duration,
+    ) -> Result<Self, ClientError> {
         let stream = UnixStream::connect(socket)?;
+        stream.set_read_timeout(Some(timeout))?;
+        stream.set_write_timeout(Some(timeout))?;
+        Self::handshake(stream, client)
+    }
+
+    fn handshake(stream: UnixStream, client: &str) -> Result<Self, ClientError> {
         let mut c = Self {
             stream,
             buf: Vec::new(),

@@ -91,10 +91,14 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
 - [ ] 2.2 Session store in the daemon for session-only and secret variables, `zeroize`, TTL
       (D21). Verify: integration test sets a secret, restarts the client, reads it, waits past
       the TTL and finds it gone; a test greps the SQLite file for the value and finds none.
-- [ ] 2.3 `terminescu` CLI: `hook`, `status`, `var get/set/env`, pane from `TERMINESCU_PANE_ID`;
+- [x] 2.3 `terminescu` CLI: `hook`, `status`, `var get/set/env`, pane from `TERMINESCU_PANE_ID`;
       `var get` of a secret needs `--reveal` (D35); routing per D36. Verify also: `var env`
       answers with the app closed.
       Verify: `cli.test.rs` runs `terminescu status "Deploying" --for 1s` against a test core.
+      Done 2026-11-04; the test lives in `crates/cli/tests/cli.rs`. The app serves `core.sock`
+      and answers `status` and saved `var set` with `not_built` until 5.x and 6.1, which the
+      CLI turns into a warning. `var unset` and `var list` came along. For 2.4: `var env` only
+      exports, so a variable unset or expired since the last prompt needs an `unset` line.
 - [ ] 2.4 Shell integration for zsh, bash and fish (OSC 133, OSC 7, command line), loaded after
       the person's rc files; `precmd` runs `terminescu var env` when the variable generation
       changed; `VISUAL` and `EDITOR` when the setting is on (D9, D35). Verify: test runs `false`

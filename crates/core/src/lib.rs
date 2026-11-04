@@ -1,6 +1,7 @@
 //! Terminescu core: the single source of truth for windows, side tabs, tabs and their
 //! contexts (D6), persisted in SQLite (D18).
 
+pub mod core_socket;
 pub mod daemon;
 pub mod db;
 pub mod launcher;

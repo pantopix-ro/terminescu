@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::ops::RangeInclusive;
 
 pub mod client;
+pub mod core;
 pub mod paths;
 
 /// The protocol version this build speaks natively.
@@ -73,6 +74,29 @@ pub enum Control {
         pane: PaneId,
         side_tab: String,
     },
+    /// Sets a session or secret variable on the pane's side tab (D21, D36). Answered by `Done`.
+    VarSet {
+        req: u64,
+        pane: PaneId,
+        name: String,
+        value: String,
+        mode: VarMode,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        ttl_secs: Option<u64>,
+    },
+    /// Answered by `Done`, whether or not the variable existed.
+    VarUnset {
+        req: u64,
+        pane: PaneId,
+        name: String,
+    },
+    /// One variable, or all of the side tab's when `name` is absent. Answered by `Vars`.
+    VarGet {
+        req: u64,
+        pane: PaneId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+    },
 
     // Daemon to client.
     Welcome {
@@ -99,6 +123,15 @@ pub enum Control {
         req: u64,
         panes: Vec<PaneInfo>,
     },
+    Vars {
+        req: u64,
+        /// Changes whenever the side tab's variables change, so a shell can skip a reload.
+        generation: u64,
+        vars: Vec<Var>,
+    },
+    Done {
+        req: u64,
+    },
     Error {
         code: String,
         message: String,
@@ -121,6 +154,31 @@ pub struct SpawnSpec {
     pub env: Vec<(String, String)>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub side_tab: Option<String>,
+}
+
+/// Where a variable lives (D21). Saved variables live in the core's SQLite, never here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VarMode {
+    Session,
+    Secret,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Var {
+    pub name: String,
+    pub value: String,
+    pub mode: VarMode,
+}
+
+/// A variable name a shell can export: a letter or `_`, then letters, digits or `_`.
+pub fn is_var_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    chars
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+        && name.len() <= 128
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -151,14 +209,47 @@ pub enum DecodeError {
 }
 
 pub fn encode(frame: &Frame) -> Vec<u8> {
-    let (kind, body): (u8, Vec<u8>) = match frame {
-        Frame::Control(c) => (
-            KIND_CONTROL,
-            serde_json::to_vec(c).expect("control serializes"),
-        ),
-        Frame::Output { pane, data } => (KIND_OUTPUT, pane_body(*pane, data)),
-        Frame::Input { pane, data } => (KIND_INPUT, pane_body(*pane, data)),
-    };
+    match frame {
+        Frame::Control(c) => encode_message(c),
+        Frame::Output { pane, data } => frame_bytes(KIND_OUTPUT, pane_body(*pane, data)),
+        Frame::Input { pane, data } => frame_bytes(KIND_INPUT, pane_body(*pane, data)),
+    }
+}
+
+/// Encodes any JSON message as a control frame. The core socket uses it for its own messages.
+pub fn encode_message<T: Serialize>(message: &T) -> Vec<u8> {
+    frame_bytes(
+        KIND_CONTROL,
+        serde_json::to_vec(message).expect("message serializes"),
+    )
+}
+
+/// Decodes one control frame holding a JSON message, like [`decode`] does for frames.
+pub fn decode_message<T: serde::de::DeserializeOwned>(
+    buf: &[u8],
+) -> Result<Option<(T, usize)>, DecodeError> {
+    if buf.len() < 4 {
+        return Ok(None);
+    }
+    let len = u32::from_be_bytes(buf[..4].try_into().unwrap()) as usize;
+    if len == 0 {
+        return Err(DecodeError::Empty);
+    }
+    if len > MAX_FRAME {
+        return Err(DecodeError::TooLarge(len));
+    }
+    if buf.len() < 4 + len {
+        return Ok(None);
+    }
+    if buf[4] != KIND_CONTROL {
+        return Err(DecodeError::UnknownKind(buf[4]));
+    }
+    let message = serde_json::from_slice(&buf[5..4 + len])
+        .map_err(|e| DecodeError::BadControl(e.to_string()))?;
+    Ok(Some((message, 4 + len)))
+}
+
+fn frame_bytes(kind: u8, body: Vec<u8>) -> Vec<u8> {
     let len = u32::try_from(body.len() + 1).expect("frame fits u32");
     let mut out = Vec::with_capacity(body.len() + 5);
     out.extend_from_slice(&len.to_be_bytes());
@@ -232,6 +323,37 @@ mod tests {
         let (back, used) = decode(&bytes).unwrap().unwrap();
         assert_eq!(back, f);
         assert_eq!(used, bytes.len());
+    }
+
+    #[test]
+    fn var_names() {
+        for ok in ["API_TOKEN", "_x", "from_date", "a1"] {
+            assert!(is_var_name(ok), "{ok}");
+        }
+        for bad in ["", "1a", "A-B", "A B", "a$", "é"] {
+            assert!(!is_var_name(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn var_ops_roundtrip() {
+        roundtrip(Frame::Control(Control::VarSet {
+            req: 3,
+            pane: 1,
+            name: "API_TOKEN".into(),
+            value: "s3cr3t".into(),
+            mode: VarMode::Secret,
+            ttl_secs: Some(3600),
+        }));
+        roundtrip(Frame::Control(Control::Vars {
+            req: 4,
+            generation: 2,
+            vars: vec![Var {
+                name: "from_date".into(),
+                value: "2026-11-01".into(),
+                mode: VarMode::Session,
+            }],
+        }));
     }
 
     #[test]

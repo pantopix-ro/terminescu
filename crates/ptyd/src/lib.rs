@@ -4,6 +4,7 @@
 pub mod screen;
 pub mod server;
 pub mod snapshot;
+pub mod vars;
 
 pub(crate) fn paths_uid() -> u32 {
     terminescu_protocol::paths::uid()

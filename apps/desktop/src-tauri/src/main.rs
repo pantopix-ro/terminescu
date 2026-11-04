@@ -7,12 +7,14 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
+use terminescu_core::core_socket;
 use terminescu_core::daemon::DaemonClient;
 use terminescu_core::db::Db;
 use terminescu_core::launcher;
 use terminescu_core::runtime::Runtime;
 use terminescu_core::state::{Command, CommandError, Core, Snapshot, Workspace};
 use terminescu_core::views::ViewId;
+use terminescu_protocol::core::{CoreMessage, CoreReply, CoreRequest};
 use terminescu_protocol::paths;
 
 /// Event that carries every patch batch to every window.
@@ -105,6 +107,9 @@ fn start_runtime(app: &AppHandle) -> Result<(Runtime, String), Box<dyn std::erro
     }
     let run = paths::run_paths();
     paths::ensure_private_dir(&run.dir)?;
+    if let Err(e) = serve_core_socket(&run.core_socket) {
+        eprintln!("terminescu: core socket not served, hooks and statuses stay off: {e}");
+    }
     let log = paths::support_dir().join("logs/ptyd.log");
     let handle = app.clone();
     let emit = Box::new(move |batch: &terminescu_core::state::PatchBatch| {
@@ -128,6 +133,25 @@ fn start_runtime(app: &AppHandle) -> Result<(Runtime, String), Box<dyn std::erro
         emit,
         connect,
     )?)
+}
+
+/// Answers `terminescu hook`, `status` and saved `var set` (D34, D36). Statuses arrive with
+/// group 5 and saved variables with task 6.1; until then those calls get `not_built`, which the
+/// CLI turns into a warning.
+fn serve_core_socket(path: &Path) -> std::io::Result<()> {
+    core_socket::serve(
+        path,
+        Arc::new(|message: CoreMessage| match message.request {
+            // Hook events drive statuses from task 4.2 on.
+            CoreRequest::Hook { .. } => CoreReply::Ok,
+            CoreRequest::Status { .. } => {
+                CoreReply::error("not_built", "statuses arrive in a later version")
+            }
+            CoreRequest::VarSet { .. } => {
+                CoreReply::error("not_built", "saved variables arrive in a later version")
+            }
+        }),
+    )
 }
 
 fn open_window(app: &AppHandle, window_id: &str) -> tauri::Result<()> {
