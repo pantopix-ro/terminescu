@@ -21,7 +21,11 @@ fn host_snapshot(state: State<'_, AppState>) -> Snapshot {
 }
 
 #[tauri::command]
-fn host_command(app: AppHandle, state: State<'_, AppState>, command: Command) -> Result<u64, CommandError> {
+fn host_command(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    command: Command,
+) -> Result<u64, CommandError> {
     let mut core = state.core.lock().expect("core lock");
     let batch = core.handle(command)?;
     // Emit under the lock so every window receives batches in rev order.
@@ -54,7 +58,10 @@ fn main() {
             // Layout persistence arrives with task 3.3; until then every start is a first start.
             let mut core = Core::new(Workspace::default());
             let window_id = core.first_start();
-            app.manage(AppState { core: Mutex::new(core), _db: Mutex::new(db) });
+            app.manage(AppState {
+                core: Mutex::new(core),
+                _db: Mutex::new(db),
+            });
             open_window(app.handle(), &window_id)?;
             Ok(())
         })

@@ -35,9 +35,19 @@ impl Screen {
     pub fn new(cols: u16, rows: u16) -> Self {
         // Terminal queries (DA, DSR) go unanswered here: the attached xterm.js answers them, and
         // two answers would confuse the shell.
-        let config = Config { scrolling_history: SCROLLBACK, kitty_keyboard: true, ..Config::default() };
-        let size = Size { cols: cols.max(2) as usize, rows: rows.max(1) as usize };
-        Self { term: Term::new(config, &size, VoidListener), parser: Processor::new() }
+        let config = Config {
+            scrolling_history: SCROLLBACK,
+            kitty_keyboard: true,
+            ..Config::default()
+        };
+        let size = Size {
+            cols: cols.max(2) as usize,
+            rows: rows.max(1) as usize,
+        };
+        Self {
+            term: Term::new(config, &size, VoidListener),
+            parser: Processor::new(),
+        }
     }
 
     pub fn feed(&mut self, bytes: &[u8]) {
@@ -45,7 +55,10 @@ impl Screen {
     }
 
     pub fn resize(&mut self, cols: u16, rows: u16) {
-        self.term.resize(Size { cols: cols.max(2) as usize, rows: rows.max(1) as usize });
+        self.term.resize(Size {
+            cols: cols.max(2) as usize,
+            rows: rows.max(1) as usize,
+        });
     }
 
     pub fn size(&self) -> (u16, u16) {

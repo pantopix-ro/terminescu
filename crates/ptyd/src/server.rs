@@ -5,7 +5,7 @@
 //! falls behind gets disconnected and reattaches with a fresh snapshot.
 
 use crate::screen::Screen;
-use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
+use portable_pty::{ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, Read, Write};
@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 use terminescu_protocol::paths::{CORE_SOCKET_ENV, PANE_ID_ENV, PTYD_SOCKET_ENV};
 use terminescu_protocol::{
-    decode, encode, negotiate, Control, Frame, PaneId, PaneInfo, SpawnSpec, PROTOCOL_VERSION,
+    Control, Frame, PROTOCOL_VERSION, PaneId, PaneInfo, SpawnSpec, decode, encode, negotiate,
 };
 
 /// Frames a client may have queued before it counts as stuck.
@@ -103,7 +103,10 @@ impl Shared {
 
     fn broadcast(&self, frame: &Frame) {
         let bytes = encode(frame);
-        let targets: Vec<(u64, SyncSender<Vec<u8>>)> = lock(&self.clients).iter().map(|(id, c)| (*id, c.tx.clone())).collect();
+        let targets: Vec<(u64, SyncSender<Vec<u8>>)> = lock(&self.clients)
+            .iter()
+            .map(|(id, c)| (*id, c.tx.clone()))
+            .collect();
         for (id, tx) in targets {
             self.push(id, &tx, bytes.clone());
         }
@@ -117,7 +120,12 @@ impl Shared {
         let id = self.next_pane.fetch_add(1, Ordering::Relaxed);
         let (cols, rows) = (spec.cols.max(2), spec.rows.max(1));
         let pair = native_pty_system()
-            .openpty(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })
+            .openpty(PtySize {
+                rows,
+                cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
             .map_err(io::Error::other)?;
         let mut cmd = match &spec.argv {
             Some(argv) if !argv.is_empty() => {
@@ -159,7 +167,12 @@ impl Shared {
         let pane = Arc::new(Pane {
             id,
             pid: child.process_id(),
-            state: Mutex::new(PaneState { screen: Screen::new(cols, rows), subscribers: Vec::new(), side_tab: spec.side_tab, exited: None }),
+            state: Mutex::new(PaneState {
+                screen: Screen::new(cols, rows),
+                subscribers: Vec::new(),
+                side_tab: spec.side_tab,
+                exited: None,
+            }),
             master: Mutex::new(pair.master),
             input,
             killer: Mutex::new(child.clone_killer()),
@@ -170,36 +183,50 @@ impl Shared {
         // either all of a chunk in its snapshot or all of it as live output.
         let shared = self.clone();
         let p = pane.clone();
-        std::thread::Builder::new().name(format!("pane-{id}-read")).spawn(move || {
-            let mut buf = vec![0u8; READ_CHUNK];
-            loop {
-                let n = match reader.read(&mut buf) {
-                    Ok(0) | Err(_) => break,
-                    Ok(n) => n,
-                };
-                let frame = encode(&Frame::Output { pane: p.id, data: buf[..n].to_vec() });
-                let mut st = lock(&p.state);
-                st.screen.feed(&buf[..n]);
-                st.subscribers.retain(|s| shared.push(s.client, &s.tx, frame.clone()));
-            }
-        })?;
-
-        std::thread::Builder::new().name(format!("pane-{id}-write")).spawn(move || {
-            for data in input_rx {
-                if writer.write_all(&data).and_then(|_| writer.flush()).is_err() {
-                    break;
+        std::thread::Builder::new()
+            .name(format!("pane-{id}-read"))
+            .spawn(move || {
+                let mut buf = vec![0u8; READ_CHUNK];
+                loop {
+                    let n = match reader.read(&mut buf) {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => n,
+                    };
+                    let frame = encode(&Frame::Output {
+                        pane: p.id,
+                        data: buf[..n].to_vec(),
+                    });
+                    let mut st = lock(&p.state);
+                    st.screen.feed(&buf[..n]);
+                    st.subscribers
+                        .retain(|s| shared.push(s.client, &s.tx, frame.clone()));
                 }
-            }
-        })?;
+            })?;
+
+        std::thread::Builder::new()
+            .name(format!("pane-{id}-write"))
+            .spawn(move || {
+                for data in input_rx {
+                    if writer
+                        .write_all(&data)
+                        .and_then(|_| writer.flush())
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            })?;
 
         let shared = self.clone();
         let p = pane;
-        std::thread::Builder::new().name(format!("pane-{id}-wait")).spawn(move || {
-            let code = child.wait().ok().map(|s| s.exit_code() as i32);
-            lock(&p.state).exited = Some(code.unwrap_or(-1));
-            shared.broadcast(&Frame::Control(Control::Exited { pane: p.id, code }));
-            shared.touch();
-        })?;
+        std::thread::Builder::new()
+            .name(format!("pane-{id}-wait"))
+            .spawn(move || {
+                let code = child.wait().ok().map(|s| s.exit_code() as i32);
+                lock(&p.state).exited = Some(code.unwrap_or(-1));
+                shared.broadcast(&Frame::Control(Control::Exited { pane: p.id, code }));
+                shared.touch();
+            })?;
         Ok(id)
     }
 
@@ -209,12 +236,29 @@ impl Shared {
             let (c, r) = st.screen.size();
             (c, r, st.side_tab.clone(), st.exited)
         };
-        let foreground = if exited.is_none() { lock(&pane.master).process_group_leader().and_then(process_name) } else { None };
-        PaneInfo { pane: pane.id, pid: pane.pid, cols, rows, side_tab, foreground, exited }
+        let foreground = if exited.is_none() {
+            lock(&pane.master)
+                .process_group_leader()
+                .and_then(process_name)
+        } else {
+            None
+        };
+        PaneInfo {
+            pane: pane.id,
+            pid: pane.pid,
+            cols,
+            rows,
+            side_tab,
+            foreground,
+            exited,
+        }
     }
 
     fn live_panes(&self) -> usize {
-        lock(&self.panes).values().filter(|p| lock(&p.state).exited.is_none()).count()
+        lock(&self.panes)
+            .values()
+            .filter(|p| lock(&p.state).exited.is_none())
+            .count()
     }
 }
 
@@ -238,7 +282,13 @@ fn no_sigpipe(stream: &UnixStream) {
     let on: libc::c_int = 1;
     // SAFETY: valid fd and a c_int option value of the right size.
     unsafe {
-        libc::setsockopt(stream.as_raw_fd(), libc::SOL_SOCKET, libc::SO_NOSIGPIPE, (&on as *const libc::c_int).cast(), size_of::<libc::c_int>() as libc::socklen_t);
+        libc::setsockopt(
+            stream.as_raw_fd(),
+            libc::SOL_SOCKET,
+            libc::SO_NOSIGPIPE,
+            (&on as *const libc::c_int).cast(),
+            size_of::<libc::c_int>() as libc::socklen_t,
+        );
     }
 }
 
@@ -247,13 +297,19 @@ fn reply(tx: &SyncSender<Vec<u8>>, c: Control) {
 }
 
 fn error(code: &str, message: impl Into<String>, req: Option<u64>) -> Control {
-    Control::Error { code: code.into(), message: message.into(), req }
+    Control::Error {
+        code: code.into(),
+        message: message.into(),
+        req,
+    }
 }
 
 fn serve_client(shared: Arc<Shared>, mut stream: UnixStream) {
     let id = shared.next_client.fetch_add(1, Ordering::Relaxed);
     let (tx, rx): (SyncSender<Vec<u8>>, Receiver<Vec<u8>>) = mpsc::sync_channel(CLIENT_QUEUE);
-    let Ok(mut out) = stream.try_clone() else { return };
+    let Ok(mut out) = stream.try_clone() else {
+        return;
+    };
     let writer = std::thread::spawn(move || {
         for bytes in rx {
             if out.write_all(&bytes).is_err() {
@@ -284,16 +340,43 @@ fn serve_client(shared: Arc<Shared>, mut stream: UnixStream) {
             buf.drain(..used);
             if !greeted {
                 let Frame::Control(Control::Hello { versions, client }) = frame else {
-                    reply(&tx, error("hello_first", "the first message must be hello", None));
+                    reply(
+                        &tx,
+                        error("hello_first", "the first message must be hello", None),
+                    );
                     break 'conn;
                 };
-                let Some(version) = negotiate(&versions, &terminescu_protocol::APP_SUPPORTED) else {
-                    reply(&tx, error("version", format!("{client} offers {versions:?}; this daemon speaks {PROTOCOL_VERSION}"), None));
+                let Some(version) = negotiate(&versions, &terminescu_protocol::APP_SUPPORTED)
+                else {
+                    reply(
+                        &tx,
+                        error(
+                            "version",
+                            format!(
+                                "{client} offers {versions:?}; this daemon speaks {PROTOCOL_VERSION}"
+                            ),
+                            None,
+                        ),
+                    );
                     break 'conn;
                 };
-                reply(&tx, Control::Welcome { version, daemon: format!("terminescu-ptyd {}", env!("CARGO_PKG_VERSION")) });
-                let Ok(handle) = stream.try_clone() else { break 'conn };
-                lock(&shared.clients).insert(id, ClientHandle { tx: tx.clone(), stream: handle });
+                reply(
+                    &tx,
+                    Control::Welcome {
+                        version,
+                        daemon: format!("terminescu-ptyd {}", env!("CARGO_PKG_VERSION")),
+                    },
+                );
+                let Ok(handle) = stream.try_clone() else {
+                    break 'conn;
+                };
+                lock(&shared.clients).insert(
+                    id,
+                    ClientHandle {
+                        tx: tx.clone(),
+                        stream: handle,
+                    },
+                );
                 greeted = true;
                 continue;
             }
@@ -319,19 +402,43 @@ fn handle(shared: &Arc<Shared>, client: u64, tx: &SyncSender<Vec<u8>>, frame: Fr
                 Err(e) => reply(tx, error("spawn", e.to_string(), Some(req))),
             },
             Control::Attach { pane } => {
-                let Some(p) = shared.pane(pane) else { return reply(tx, error("no_pane", format!("pane {pane}"), None)) };
+                let Some(p) = shared.pane(pane) else {
+                    return reply(tx, error("no_pane", format!("pane {pane}"), None));
+                };
                 let mut st = lock(&p.state);
                 let (cols, rows) = st.screen.size();
                 st.subscribers.retain(|s| s.client != client);
                 // The snapshot goes out in pieces well under MAX_FRAME; the terminal parser on
                 // the other side does not care where a piece ends.
                 let snapshot = st.screen.snapshot();
-                let ok = shared.push(client, tx, encode(&Frame::Control(Control::Attached { pane, cols, rows })))
-                    && snapshot.chunks(SNAPSHOT_PIECE).all(|piece| shared.push(client, tx, encode(&Frame::Output { pane, data: piece.to_vec() })));
+                let ok = shared.push(
+                    client,
+                    tx,
+                    encode(&Frame::Control(Control::Attached { pane, cols, rows })),
+                ) && snapshot.chunks(SNAPSHOT_PIECE).all(|piece| {
+                    shared.push(
+                        client,
+                        tx,
+                        encode(&Frame::Output {
+                            pane,
+                            data: piece.to_vec(),
+                        }),
+                    )
+                });
                 if ok {
-                    st.subscribers.push(Subscriber { client, tx: tx.clone() });
+                    st.subscribers.push(Subscriber {
+                        client,
+                        tx: tx.clone(),
+                    });
                     if let Some(code) = st.exited {
-                        shared.push(client, tx, encode(&Frame::Control(Control::Exited { pane, code: Some(code) })));
+                        shared.push(
+                            client,
+                            tx,
+                            encode(&Frame::Control(Control::Exited {
+                                pane,
+                                code: Some(code),
+                            })),
+                        );
                     }
                 }
             }
@@ -345,7 +452,12 @@ fn handle(shared: &Arc<Shared>, client: u64, tx: &SyncSender<Vec<u8>>, frame: Fr
                     let (cols, rows) = (cols.max(2), rows.max(1));
                     let mut st = lock(&p.state);
                     st.screen.resize(cols, rows);
-                    let _ = lock(&p.master).resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 });
+                    let _ = lock(&p.master).resize(PtySize {
+                        rows,
+                        cols,
+                        pixel_width: 0,
+                        pixel_height: 0,
+                    });
                 }
             }
             Control::Close { pane } => {
@@ -373,11 +485,19 @@ fn handle(shared: &Arc<Shared>, client: u64, tx: &SyncSender<Vec<u8>>, frame: Fr
 /// Takes the lock file, so only one daemon serves a socket. `Ok(None)` means another daemon
 /// holds it.
 fn take_lock(path: &Path) -> io::Result<Option<File>> {
-    let file = File::options().create(true).truncate(false).write(true).open(path)?;
+    let file = File::options()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(path)?;
     // SAFETY: valid fd owned by `file`.
     if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
         let err = io::Error::last_os_error();
-        return if err.raw_os_error() == Some(libc::EWOULDBLOCK) { Ok(None) } else { Err(err) };
+        return if err.raw_os_error() == Some(libc::EWOULDBLOCK) {
+            Ok(None)
+        } else {
+            Err(err)
+        };
     }
     Ok(Some(file))
 }
@@ -391,7 +511,9 @@ pub fn run(opts: Options) -> io::Result<bool> {
     // SAFETY: setting a signal disposition to its default has no preconditions.
     unsafe { libc::signal(libc::SIGPIPE, libc::SIG_DFL) };
 
-    let Some(_lock) = take_lock(&opts.lock)? else { return Ok(false) };
+    let Some(_lock) = take_lock(&opts.lock)? else {
+        return Ok(false);
+    };
     // We hold the lock, so a socket file left here belongs to a daemon that died.
     let _ = std::fs::remove_file(&opts.socket);
     let listener = UnixListener::bind(&opts.socket)?;
@@ -407,14 +529,16 @@ pub fn run(opts: Options) -> io::Result<bool> {
     });
 
     let idle = shared.clone();
-    std::thread::spawn(move || loop {
-        std::thread::sleep(Duration::from_millis(200).min(idle.opts.idle));
-        let quiet = lock(&idle.clients).is_empty() && idle.live_panes() == 0;
-        if !quiet {
-            idle.touch();
-        } else if lock(&idle.last_activity).elapsed() >= idle.opts.idle {
-            let _ = std::fs::remove_file(&idle.opts.socket);
-            std::process::exit(0);
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(Duration::from_millis(200).min(idle.opts.idle));
+            let quiet = lock(&idle.clients).is_empty() && idle.live_panes() == 0;
+            if !quiet {
+                idle.touch();
+            } else if lock(&idle.last_activity).elapsed() >= idle.opts.idle {
+                let _ = std::fs::remove_file(&idle.opts.socket);
+                std::process::exit(0);
+            }
         }
     });
 

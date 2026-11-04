@@ -1,7 +1,7 @@
 //! A blocking client for the daemon socket, used by the CLI and by tests. The app's client
 //! lives in `terminescu-core` (task 2.6).
 
-use crate::{decode, encode, Control, DecodeError, Frame, APP_SUPPORTED};
+use crate::{APP_SUPPORTED, Control, DecodeError, Frame, decode, encode};
 use std::io::{self, Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
@@ -31,11 +31,20 @@ impl Client {
     /// Connects and completes the handshake.
     pub fn connect(socket: &Path, client: &str) -> Result<Self, ClientError> {
         let stream = UnixStream::connect(socket)?;
-        let mut c = Self { stream, buf: Vec::new(), version: 0 };
-        c.send(&Frame::Control(Control::Hello { versions: APP_SUPPORTED.collect(), client: client.into() }))?;
+        let mut c = Self {
+            stream,
+            buf: Vec::new(),
+            version: 0,
+        };
+        c.send(&Frame::Control(Control::Hello {
+            versions: APP_SUPPORTED.collect(),
+            client: client.into(),
+        }))?;
         match c.recv()? {
             Frame::Control(Control::Welcome { version, .. }) => c.version = version,
-            Frame::Control(Control::Error { code, message, .. }) => return Err(ClientError::Refused { code, message }),
+            Frame::Control(Control::Error { code, message, .. }) => {
+                return Err(ClientError::Refused { code, message });
+            }
             other => return Err(ClientError::Unexpected(Box::new(other))),
         }
         Ok(c)
@@ -66,7 +75,10 @@ impl Client {
     }
 
     /// Reads frames until `want` returns a value, passing over the others.
-    pub fn recv_until<T>(&mut self, mut want: impl FnMut(&Frame) -> Option<T>) -> Result<T, ClientError> {
+    pub fn recv_until<T>(
+        &mut self,
+        mut want: impl FnMut(&Frame) -> Option<T>,
+    ) -> Result<T, ClientError> {
         loop {
             let f = self.recv()?;
             if let Some(v) = want(&f) {

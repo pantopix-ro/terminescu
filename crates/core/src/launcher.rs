@@ -57,16 +57,30 @@ pub fn is_running(socket: &Path) -> bool {
 
 /// Starts `daemon` detached unless one already answers on `socket`, then waits until the socket
 /// accepts connections. `extra` goes on the daemon's command line after `--socket`.
-pub fn ensure_running(daemon: &Path, socket: &Path, log: &Path, extra: &[&str], timeout: Duration) -> io::Result<()> {
+pub fn ensure_running(
+    daemon: &Path,
+    socket: &Path,
+    log: &Path,
+    extra: &[&str],
+    timeout: Duration,
+) -> io::Result<()> {
     if is_running(socket) {
         return Ok(());
     }
     if let Some(dir) = log.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    let log_file = std::fs::OpenOptions::new().create(true).append(true).open(log)?;
+    let log_file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log)?;
     let mut cmd = Command::new(daemon);
-    cmd.arg("--socket").arg(socket).args(extra).stdin(Stdio::null()).stdout(log_file.try_clone()?).stderr(log_file);
+    cmd.arg("--socket")
+        .arg(socket)
+        .args(extra)
+        .stdin(Stdio::null())
+        .stdout(log_file.try_clone()?)
+        .stderr(log_file);
     // SAFETY: setsid is async-signal-safe and touches no Rust state.
     unsafe {
         cmd.pre_exec(|| {
@@ -89,10 +103,16 @@ pub fn ensure_running(daemon: &Path, socket: &Path, log: &Path, extra: &[&str], 
             if is_running(socket) {
                 return Ok(());
             }
-            return Err(io::Error::other(format!("daemon exited with {status}; see {}", log.display())));
+            return Err(io::Error::other(format!(
+                "daemon exited with {status}; see {}",
+                log.display()
+            )));
         }
         if start.elapsed() > timeout {
-            return Err(io::Error::new(io::ErrorKind::TimedOut, "daemon socket did not appear"));
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "daemon socket did not appear",
+            ));
         }
         std::thread::sleep(Duration::from_millis(20));
     }
@@ -113,15 +133,26 @@ mod tests {
         let b = install(&src, &bin).unwrap();
         assert_eq!(a, b);
         let name = a.file_name().unwrap().to_str().unwrap().to_owned();
-        assert!(name.starts_with(&format!("ptyd-{}-", env!("CARGO_PKG_VERSION"))) && name.len() == "ptyd-".len() + env!("CARGO_PKG_VERSION").len() + 9, "{name}");
-        assert_eq!(std::fs::metadata(&a).unwrap().permissions().mode() & 0o777, 0o755);
+        assert!(
+            name.starts_with(&format!("ptyd-{}-", env!("CARGO_PKG_VERSION")))
+                && name.len() == "ptyd-".len() + env!("CARGO_PKG_VERSION").len() + 9,
+            "{name}"
+        );
+        assert_eq!(
+            std::fs::metadata(&a).unwrap().permissions().mode() & 0o777,
+            0o755
+        );
 
         // A new build gets a new name; the old copy stays for the daemon that runs it.
         std::fs::write(&src, b"#!/bin/sh\necho two\n").unwrap();
         let c = install(&src, &bin).unwrap();
         assert_ne!(a, c);
         assert!(a.exists());
-        let leftovers: Vec<_> = std::fs::read_dir(&bin).unwrap().filter_map(|e| e.ok()).filter(|e| e.file_name().to_string_lossy().ends_with(".tmp")).collect();
+        let leftovers: Vec<_> = std::fs::read_dir(&bin)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".tmp"))
+            .collect();
         assert!(leftovers.is_empty());
         std::fs::remove_dir_all(dir).unwrap();
     }

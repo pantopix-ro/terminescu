@@ -40,25 +40,62 @@ pub enum Frame {
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum Control {
     // Client to daemon.
-    Hello { versions: Vec<u32>, client: String },
-    Spawn { req: u64, spec: SpawnSpec },
+    Hello {
+        versions: Vec<u32>,
+        client: String,
+    },
+    Spawn {
+        req: u64,
+        spec: SpawnSpec,
+    },
     /// Subscribe to a pane: the daemon answers `Attached`, then an output frame with the
     /// screen snapshot (D31), then live output.
-    Attach { pane: PaneId },
-    Detach { pane: PaneId },
-    Resize { pane: PaneId, cols: u16, rows: u16 },
+    Attach {
+        pane: PaneId,
+    },
+    Detach {
+        pane: PaneId,
+    },
+    Resize {
+        pane: PaneId,
+        cols: u16,
+        rows: u16,
+    },
     /// Hang up the pane's shell and forget the pane.
-    Close { pane: PaneId },
-    List { req: u64 },
+    Close {
+        pane: PaneId,
+    },
+    List {
+        req: u64,
+    },
     /// The side tab a pane belongs to, for its variables (D36).
-    SetSideTab { pane: PaneId, side_tab: String },
+    SetSideTab {
+        pane: PaneId,
+        side_tab: String,
+    },
 
     // Daemon to client.
-    Welcome { version: u32, daemon: String },
-    Spawned { req: u64, pane: PaneId },
-    Attached { pane: PaneId, cols: u16, rows: u16 },
-    Exited { pane: PaneId, code: Option<i32> },
-    Panes { req: u64, panes: Vec<PaneInfo> },
+    Welcome {
+        version: u32,
+        daemon: String,
+    },
+    Spawned {
+        req: u64,
+        pane: PaneId,
+    },
+    Attached {
+        pane: PaneId,
+        cols: u16,
+        rows: u16,
+    },
+    Exited {
+        pane: PaneId,
+        code: Option<i32>,
+    },
+    Panes {
+        req: u64,
+        panes: Vec<PaneInfo>,
+    },
     Error {
         code: String,
         message: String,
@@ -112,7 +149,10 @@ pub enum DecodeError {
 
 pub fn encode(frame: &Frame) -> Vec<u8> {
     let (kind, body): (u8, Vec<u8>) = match frame {
-        Frame::Control(c) => (KIND_CONTROL, serde_json::to_vec(c).expect("control serializes")),
+        Frame::Control(c) => (
+            KIND_CONTROL,
+            serde_json::to_vec(c).expect("control serializes"),
+        ),
         Frame::Output { pane, data } => (KIND_OUTPUT, pane_body(*pane, data)),
         Frame::Input { pane, data } => (KIND_INPUT, pane_body(*pane, data)),
     };
@@ -159,7 +199,11 @@ pub fn decode(buf: &[u8]) -> Result<Option<(Frame, usize)>, DecodeError> {
             }
             let pane = u32::from_be_bytes(body[..4].try_into().unwrap());
             let data = body[4..].to_vec();
-            if kind == KIND_OUTPUT { Frame::Output { pane, data } } else { Frame::Input { pane, data } }
+            if kind == KIND_OUTPUT {
+                Frame::Output { pane, data }
+            } else {
+                Frame::Input { pane, data }
+            }
         }
         k => return Err(DecodeError::UnknownKind(k)),
     };
@@ -169,7 +213,11 @@ pub fn decode(buf: &[u8]) -> Result<Option<(Frame, usize)>, DecodeError> {
 /// Picks the version both sides speak: the highest version the client offers that the daemon
 /// supports. `None` means the app must offer "Restart sessions" (D32).
 pub fn negotiate(client_offers: &[u32], daemon_supports: &RangeInclusive<u32>) -> Option<u32> {
-    client_offers.iter().copied().filter(|v| daemon_supports.contains(v)).max()
+    client_offers
+        .iter()
+        .copied()
+        .filter(|v| daemon_supports.contains(v))
+        .max()
 }
 
 #[cfg(test)]
@@ -185,14 +233,26 @@ mod tests {
 
     #[test]
     fn frames_roundtrip() {
-        roundtrip(Frame::Control(Control::Hello { versions: vec![1], client: "test".into() }));
-        roundtrip(Frame::Output { pane: 7, data: b"\x1b[31mred\x1b[0m".to_vec() });
-        roundtrip(Frame::Input { pane: u32::MAX, data: vec![] });
+        roundtrip(Frame::Control(Control::Hello {
+            versions: vec![1],
+            client: "test".into(),
+        }));
+        roundtrip(Frame::Output {
+            pane: 7,
+            data: b"\x1b[31mred\x1b[0m".to_vec(),
+        });
+        roundtrip(Frame::Input {
+            pane: u32::MAX,
+            data: vec![],
+        });
     }
 
     #[test]
     fn partial_frame_waits_for_more() {
-        let bytes = encode(&Frame::Output { pane: 1, data: vec![b'x'; 100] });
+        let bytes = encode(&Frame::Output {
+            pane: 1,
+            data: vec![b'x'; 100],
+        });
         for cut in 0..bytes.len() {
             assert_eq!(decode(&bytes[..cut]).unwrap(), None, "cut at {cut}");
         }
@@ -200,13 +260,25 @@ mod tests {
 
     #[test]
     fn two_frames_in_one_buffer() {
-        let mut bytes = encode(&Frame::Input { pane: 1, data: b"ls\r".to_vec() });
+        let mut bytes = encode(&Frame::Input {
+            pane: 1,
+            data: b"ls\r".to_vec(),
+        });
         let first = bytes.len();
-        bytes.extend(encode(&Frame::Input { pane: 2, data: b"pwd\r".to_vec() }));
+        bytes.extend(encode(&Frame::Input {
+            pane: 2,
+            data: b"pwd\r".to_vec(),
+        }));
         let (_, used) = decode(&bytes).unwrap().unwrap();
         assert_eq!(used, first);
         let (f, _) = decode(&bytes[used..]).unwrap().unwrap();
-        assert_eq!(f, Frame::Input { pane: 2, data: b"pwd\r".to_vec() });
+        assert_eq!(
+            f,
+            Frame::Input {
+                pane: 2,
+                data: b"pwd\r".to_vec()
+            }
+        );
     }
 
     #[test]
@@ -215,21 +287,48 @@ mod tests {
         let huge = ((MAX_FRAME + 1) as u32).to_be_bytes();
         assert_eq!(decode(&huge), Err(DecodeError::TooLarge(MAX_FRAME + 1)));
         assert_eq!(decode(&[0, 0, 0, 1, 9]), Err(DecodeError::UnknownKind(9)));
-        assert_eq!(decode(&[0, 0, 0, 3, 1, 0, 0]), Err(DecodeError::ShortPaneFrame));
-        assert!(matches!(decode(&[0, 0, 0, 2, 0, b'{']), Err(DecodeError::BadControl(_))));
+        assert_eq!(
+            decode(&[0, 0, 0, 3, 1, 0, 0]),
+            Err(DecodeError::ShortPaneFrame)
+        );
+        assert!(matches!(
+            decode(&[0, 0, 0, 2, 0, b'{']),
+            Err(DecodeError::BadControl(_))
+        ));
     }
 
     #[test]
     fn spawn_json_leaves_out_defaults() {
-        let c = Control::Spawn { req: 1, spec: SpawnSpec { cols: 80, rows: 24, ..Default::default() } };
-        assert_eq!(serde_json::to_string(&c).unwrap(), r#"{"op":"spawn","req":1,"spec":{"cols":80,"rows":24}}"#);
-        let e = Control::Error { code: "x".into(), message: "y".into(), req: None };
-        assert_eq!(serde_json::to_string(&e).unwrap(), r#"{"op":"error","code":"x","message":"y"}"#);
+        let c = Control::Spawn {
+            req: 1,
+            spec: SpawnSpec {
+                cols: 80,
+                rows: 24,
+                ..Default::default()
+            },
+        };
+        assert_eq!(
+            serde_json::to_string(&c).unwrap(),
+            r#"{"op":"spawn","req":1,"spec":{"cols":80,"rows":24}}"#
+        );
+        let e = Control::Error {
+            code: "x".into(),
+            message: "y".into(),
+            req: None,
+        };
+        assert_eq!(
+            serde_json::to_string(&e).unwrap(),
+            r#"{"op":"error","code":"x","message":"y"}"#
+        );
     }
 
     #[test]
     fn control_json_shape() {
-        let json = serde_json::to_string(&Control::Welcome { version: 1, daemon: "0.1.0".into() }).unwrap();
+        let json = serde_json::to_string(&Control::Welcome {
+            version: 1,
+            daemon: "0.1.0".into(),
+        })
+        .unwrap();
         assert_eq!(json, r#"{"op":"welcome","version":1,"daemon":"0.1.0"}"#);
     }
 

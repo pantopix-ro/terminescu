@@ -18,7 +18,11 @@ struct Daemon {
 impl Daemon {
     fn start(idle_secs: u64) -> Self {
         // Short folder names: the socket path must stay under 104 bytes.
-        let dir = std::env::temp_dir().join(format!("tptyd-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
+        let dir = std::env::temp_dir().join(format!(
+            "tptyd-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         let socket = dir.join("ptyd.sock");
         let child = Self::spawn(&socket, idle_secs);
@@ -28,7 +32,12 @@ impl Daemon {
 
     fn spawn(socket: &Path, idle_secs: u64) -> Child {
         Command::new(env!("CARGO_BIN_EXE_terminescu-ptyd"))
-            .args(["--socket", socket.to_str().unwrap(), "--idle-exit-secs", &idle_secs.to_string()])
+            .args([
+                "--socket",
+                socket.to_str().unwrap(),
+                "--idle-exit-secs",
+                &idle_secs.to_string(),
+            ])
             .env("CLAUDECODE", "1")
             .env("CLAUDE_CODE_ENTRYPOINT", "cli")
             .stdin(Stdio::null())
@@ -55,14 +64,23 @@ impl Drop for Daemon {
 fn wait_for(mut ok: impl FnMut() -> bool, what: &str) {
     let start = Instant::now();
     while !ok() {
-        assert!(start.elapsed() < Duration::from_secs(10), "timed out waiting for {what}");
+        assert!(
+            start.elapsed() < Duration::from_secs(10),
+            "timed out waiting for {what}"
+        );
         std::thread::sleep(Duration::from_millis(20));
     }
 }
 
 fn spawn(c: &mut Client, argv: &[&str]) -> PaneId {
-    let spec = SpawnSpec { cols: 80, rows: 24, argv: Some(argv.iter().map(|s| s.to_string()).collect()), ..Default::default() };
-    c.send(&Frame::Control(Control::Spawn { req: 7, spec })).unwrap();
+    let spec = SpawnSpec {
+        cols: 80,
+        rows: 24,
+        argv: Some(argv.iter().map(|s| s.to_string()).collect()),
+        ..Default::default()
+    };
+    c.send(&Frame::Control(Control::Spawn { req: 7, spec }))
+        .unwrap();
     c.recv_until(|f| match f {
         Frame::Control(Control::Spawned { req: 7, pane }) => Some(*pane),
         Frame::Control(Control::Error { message, .. }) => panic!("spawn failed: {message}"),
@@ -106,7 +124,11 @@ fn shell_survives_a_reconnect_and_comes_back_as_a_snapshot() {
     let mut c = d.client();
     let pane = spawn(&mut c, &["/bin/sh"]);
     attach_and_read(&mut c, pane, "$");
-    c.send(&Frame::Input { pane, data: b"echo hello-$((40+2))\n".to_vec() }).unwrap();
+    c.send(&Frame::Input {
+        pane,
+        data: b"echo hello-$((40+2))\n".to_vec(),
+    })
+    .unwrap();
     read_until(&mut c, pane, "hello-42");
     drop(c);
 
@@ -114,13 +136,20 @@ fn shell_survives_a_reconnect_and_comes_back_as_a_snapshot() {
     c.send(&Frame::Control(Control::Attach { pane })).unwrap();
     let (cols, rows) = c
         .recv_until(|f| match f {
-            Frame::Control(Control::Attached { pane: p, cols, rows }) if *p == pane => Some((*cols, *rows)),
+            Frame::Control(Control::Attached {
+                pane: p,
+                cols,
+                rows,
+            }) if *p == pane => Some((*cols, *rows)),
             _ => None,
         })
         .unwrap();
     assert_eq!((cols, rows), (80, 24));
     let snapshot = read_until(&mut c, pane, "hello-42");
-    assert!(snapshot.starts_with("\x1bc"), "a snapshot starts with RIS: {snapshot:?}");
+    assert!(
+        snapshot.starts_with("\x1bc"),
+        "a snapshot starts with RIS: {snapshot:?}"
+    );
 
     let info = list(&mut c).into_iter().find(|p| p.pane == pane).unwrap();
     assert!(info.pid.is_some());
@@ -128,20 +157,50 @@ fn shell_survives_a_reconnect_and_comes_back_as_a_snapshot() {
     assert_eq!(info.exited, None);
 
     // The foreground process follows the job the shell runs.
-    c.send(&Frame::Input { pane, data: b"sleep 5\n".to_vec() }).unwrap();
-    wait_for(|| list(&mut c).into_iter().any(|p| p.pane == pane && p.foreground.as_deref() == Some("sleep")), "sleep in the foreground");
+    c.send(&Frame::Input {
+        pane,
+        data: b"sleep 5\n".to_vec(),
+    })
+    .unwrap();
+    wait_for(
+        || {
+            list(&mut c)
+                .into_iter()
+                .any(|p| p.pane == pane && p.foreground.as_deref() == Some("sleep"))
+        },
+        "sleep in the foreground",
+    );
 }
 
 #[test]
 fn pane_environment_drops_claude_and_names_the_pane() {
     let d = Daemon::start(60);
     let mut c = d.client();
-    let pane = spawn(&mut c, &["/bin/bash", "-c", "env; yes | head -1 >/dev/null; echo sigpipe=${PIPESTATUS[0]}; echo END"]);
+    let pane = spawn(
+        &mut c,
+        &[
+            "/bin/bash",
+            "-c",
+            "env; yes | head -1 >/dev/null; echo sigpipe=${PIPESTATUS[0]}; echo END",
+        ],
+    );
     let out = attach_and_read(&mut c, pane, "END\r\n");
     assert!(!out.contains("CLAUDE"), "{out}");
-    assert!(out.contains(&format!("TERMINESCU_PANE_ID={pane}\r\n")), "{out}");
-    assert!(out.contains(&format!("TERMINESCU_PTYD_SOCKET={}", d.socket.display())), "{out}");
-    assert!(out.contains(&format!("TERMINESCU_CORE_SOCKET={}", d.dir.join("core.sock").display())), "{out}");
+    assert!(
+        out.contains(&format!("TERMINESCU_PANE_ID={pane}\r\n")),
+        "{out}"
+    );
+    assert!(
+        out.contains(&format!("TERMINESCU_PTYD_SOCKET={}", d.socket.display())),
+        "{out}"
+    );
+    assert!(
+        out.contains(&format!(
+            "TERMINESCU_CORE_SOCKET={}",
+            d.dir.join("core.sock").display()
+        )),
+        "{out}"
+    );
     assert!(out.contains("TERM=xterm-256color\r\n"), "{out}");
     assert!(out.contains("TERM_PROGRAM=Terminescu\r\n"), "{out}");
     // The shell gets SIGPIPE at its default, so a pipeline ends the way it does elsewhere.
@@ -160,7 +219,10 @@ fn exit_code_is_reported_and_the_pane_stays_listed_until_closed() {
         })
         .unwrap();
     assert_eq!(code, Some(3));
-    assert_eq!(list(&mut c).iter().find(|p| p.pane == pane).unwrap().exited, Some(3));
+    assert_eq!(
+        list(&mut c).iter().find(|p| p.pane == pane).unwrap().exited,
+        Some(3)
+    );
     c.send(&Frame::Control(Control::Close { pane })).unwrap();
     assert!(list(&mut c).iter().all(|p| p.pane != pane));
 }
@@ -171,8 +233,17 @@ fn resize_reaches_the_shell() {
     let mut c = d.client();
     let pane = spawn(&mut c, &["/bin/sh"]);
     attach_and_read(&mut c, pane, "$");
-    c.send(&Frame::Control(Control::Resize { pane, cols: 100, rows: 30 })).unwrap();
-    c.send(&Frame::Input { pane, data: b"stty size\n".to_vec() }).unwrap();
+    c.send(&Frame::Control(Control::Resize {
+        pane,
+        cols: 100,
+        rows: 30,
+    }))
+    .unwrap();
+    c.send(&Frame::Input {
+        pane,
+        data: b"stty size\n".to_vec(),
+    })
+    .unwrap();
     read_until(&mut c, pane, "30 100");
     let info = list(&mut c).into_iter().find(|p| p.pane == pane).unwrap();
     assert_eq!((info.cols, info.rows), (100, 30));
@@ -183,8 +254,20 @@ fn side_tab_is_listed() {
     let d = Daemon::start(60);
     let mut c = d.client();
     let pane = spawn(&mut c, &["/bin/sh"]);
-    c.send(&Frame::Control(Control::SetSideTab { pane, side_tab: "st-1".into() })).unwrap();
-    assert_eq!(list(&mut c).into_iter().find(|p| p.pane == pane).unwrap().side_tab.as_deref(), Some("st-1"));
+    c.send(&Frame::Control(Control::SetSideTab {
+        pane,
+        side_tab: "st-1".into(),
+    }))
+    .unwrap();
+    assert_eq!(
+        list(&mut c)
+            .into_iter()
+            .find(|p| p.pane == pane)
+            .unwrap()
+            .side_tab
+            .as_deref(),
+        Some("st-1")
+    );
 }
 
 #[test]
@@ -192,12 +275,21 @@ fn unknown_protocol_version_is_refused() {
     let d = Daemon::start(60);
     let mut raw = std::os::unix::net::UnixStream::connect(&d.socket).unwrap();
     use std::io::{Read, Write};
-    raw.write_all(&terminescu_protocol::encode(&Frame::Control(Control::Hello { versions: vec![99], client: "future".into() }))).unwrap();
+    raw.write_all(&terminescu_protocol::encode(&Frame::Control(
+        Control::Hello {
+            versions: vec![99],
+            client: "future".into(),
+        },
+    )))
+    .unwrap();
     raw.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
     let mut buf = Vec::new();
     raw.read_to_end(&mut buf).unwrap();
     let (frame, _) = terminescu_protocol::decode(&buf).unwrap().unwrap();
-    assert!(matches!(frame, Frame::Control(Control::Error { ref code, .. }) if code == "version"), "{frame:?}");
+    assert!(
+        matches!(frame, Frame::Control(Control::Error { ref code, .. }) if code == "version"),
+        "{frame:?}"
+    );
 }
 
 #[test]
@@ -205,12 +297,18 @@ fn hello_must_come_first() {
     let d = Daemon::start(60);
     let mut raw = std::os::unix::net::UnixStream::connect(&d.socket).unwrap();
     use std::io::{Read, Write};
-    raw.write_all(&terminescu_protocol::encode(&Frame::Control(Control::List { req: 1 }))).unwrap();
+    raw.write_all(&terminescu_protocol::encode(&Frame::Control(
+        Control::List { req: 1 },
+    )))
+    .unwrap();
     raw.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
     let mut buf = Vec::new();
     raw.read_to_end(&mut buf).unwrap();
     let (frame, _) = terminescu_protocol::decode(&buf).unwrap().unwrap();
-    assert!(matches!(frame, Frame::Control(Control::Error { ref code, .. }) if code == "hello_first"), "{frame:?}");
+    assert!(
+        matches!(frame, Frame::Control(Control::Error { ref code, .. }) if code == "hello_first"),
+        "{frame:?}"
+    );
 }
 
 #[test]
@@ -230,18 +328,32 @@ fn idle_daemon_exits_and_removes_its_socket() {
     // A connected client keeps it alive.
     let c = d.client();
     std::thread::sleep(Duration::from_millis(1500));
-    assert!(d.child.try_wait().unwrap().is_none(), "exited with a client connected");
+    assert!(
+        d.child.try_wait().unwrap().is_none(),
+        "exited with a client connected"
+    );
     drop(c);
     wait_for(|| d.child.try_wait().unwrap().is_some(), "idle exit");
     assert!(!d.socket.exists());
-    assert!(matches!(Client::connect(&d.socket, "late"), Err(ClientError::Io(_))));
+    assert!(matches!(
+        Client::connect(&d.socket, "late"),
+        Err(ClientError::Io(_))
+    ));
 }
 
 #[test]
 fn default_program_is_the_login_shell() {
     let d = Daemon::start(60);
     let mut c = d.client();
-    c.send(&Frame::Control(Control::Spawn { req: 1, spec: SpawnSpec { cols: 80, rows: 24, ..Default::default() } })).unwrap();
+    c.send(&Frame::Control(Control::Spawn {
+        req: 1,
+        spec: SpawnSpec {
+            cols: 80,
+            rows: 24,
+            ..Default::default()
+        },
+    }))
+    .unwrap();
     let pane = c
         .recv_until(|f| match f {
             Frame::Control(Control::Spawned { req: 1, pane }) => Some(*pane),
@@ -250,7 +362,11 @@ fn default_program_is_the_login_shell() {
         .unwrap();
     c.send(&Frame::Control(Control::Attach { pane })).unwrap();
     // A login shell has a leading dash in argv[0] (D8).
-    c.send(&Frame::Input { pane, data: b"echo login:$0:$((40+2))\n".to_vec() }).unwrap();
+    c.send(&Frame::Input {
+        pane,
+        data: b"echo login:$0:$((40+2))\n".to_vec(),
+    })
+    .unwrap();
     let out = read_until(&mut c, pane, ":42\r\n");
     assert!(out.contains("login:-"), "{out}");
 }

@@ -66,7 +66,10 @@ impl Db {
 pub fn migrate(conn: &mut Connection) -> Result<u32> {
     let current: u32 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
     if current > SCHEMA_VERSION {
-        return Err(DbError::SchemaTooNew { found: current, known: SCHEMA_VERSION });
+        return Err(DbError::SchemaTooNew {
+            found: current,
+            known: SCHEMA_VERSION,
+        });
     }
     for (version, sql) in MIGRATIONS.iter().filter(|(v, _)| *v > current) {
         let tx = conn.transaction()?;
@@ -85,14 +88,20 @@ mod tests {
         let mut st = conn
             .prepare("SELECT sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY name")
             .unwrap();
-        st.query_map([], |r| r.get(0)).unwrap().map(|r| r.unwrap()).collect()
+        st.query_map([], |r| r.get(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect()
     }
 
     fn tables(conn: &Connection) -> Vec<String> {
         let mut st = conn
             .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
             .unwrap();
-        st.query_map([], |r| r.get(0)).unwrap().map(|r| r.unwrap()).collect()
+        st.query_map([], |r| r.get(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect()
     }
 
     #[test]
@@ -106,7 +115,10 @@ mod tests {
         };
         let db = Db::open(&path).unwrap();
         assert_eq!(schema(db.conn()), first);
-        let v: u32 = db.conn().pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        let v: u32 = db
+            .conn()
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .unwrap();
         assert_eq!(v, SCHEMA_VERSION);
         drop(db);
         std::fs::remove_dir_all(dir).unwrap();
@@ -116,9 +128,22 @@ mod tests {
     fn migrations_create_every_table_of_d18() {
         let db = Db::open_in_memory().unwrap();
         let expected = [
-            "commands", "context_files", "context_items", "documents", "extraction_rules",
-            "owners", "panes", "pins", "prompt_versions", "prompts", "sessions", "side_tabs",
-            "status_rules", "statuses", "tabs", "windows",
+            "commands",
+            "context_files",
+            "context_items",
+            "documents",
+            "extraction_rules",
+            "owners",
+            "panes",
+            "pins",
+            "prompt_versions",
+            "prompts",
+            "sessions",
+            "side_tabs",
+            "status_rules",
+            "statuses",
+            "tabs",
+            "windows",
         ];
         assert_eq!(tables(db.conn()), expected);
     }
@@ -143,8 +168,12 @@ mod tests {
     #[test]
     fn migrations_refuse_a_newer_schema() {
         let mut conn = Connection::open_in_memory().unwrap();
-        conn.pragma_update(None, "user_version", SCHEMA_VERSION + 1).unwrap();
-        assert!(matches!(migrate(&mut conn), Err(DbError::SchemaTooNew { .. })));
+        conn.pragma_update(None, "user_version", SCHEMA_VERSION + 1)
+            .unwrap();
+        assert!(matches!(
+            migrate(&mut conn),
+            Err(DbError::SchemaTooNew { .. })
+        ));
     }
 
     #[test]
@@ -153,7 +182,10 @@ mod tests {
         let a = db.local_owner().unwrap();
         let b = db.local_owner().unwrap();
         assert_eq!(a, b);
-        let n: i64 = db.conn().query_row("SELECT count(*) FROM owners", [], |r| r.get(0)).unwrap();
+        let n: i64 = db
+            .conn()
+            .query_row("SELECT count(*) FROM owners", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(n, 1);
     }
 

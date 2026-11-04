@@ -13,7 +13,9 @@ fn fixture() -> Value {
 #[test]
 fn reducer_turns_start_plus_batches_into_end() {
     let f = fixture();
-    let mut ws = serde_json::from_value::<Snapshot>(f["start"].clone()).unwrap().workspace;
+    let mut ws = serde_json::from_value::<Snapshot>(f["start"].clone())
+        .unwrap()
+        .workspace;
     for b in f["batches"].as_array().unwrap() {
         let batch: PatchBatch = serde_json::from_value(b.clone()).unwrap();
         for p in &batch.patches {

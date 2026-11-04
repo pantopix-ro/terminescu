@@ -36,13 +36,23 @@ struct Pen {
 
 impl Default for Pen {
     fn default() -> Self {
-        Self { fg: Color::Named(NamedColor::Foreground), bg: Color::Named(NamedColor::Background), flags: Flags::empty(), underline: None }
+        Self {
+            fg: Color::Named(NamedColor::Foreground),
+            bg: Color::Named(NamedColor::Background),
+            flags: Flags::empty(),
+            underline: None,
+        }
     }
 }
 
 impl Pen {
     fn of(cell: &Cell) -> Self {
-        Self { fg: cell.fg, bg: cell.bg, flags: cell.flags & STYLE, underline: cell.underline_color() }
+        Self {
+            fg: cell.fg,
+            bg: cell.bg,
+            flags: cell.flags & STYLE,
+            underline: cell.underline_color(),
+        }
     }
 }
 
@@ -54,7 +64,11 @@ struct Writer {
 
 impl Writer {
     fn new() -> Self {
-        Self { out: String::with_capacity(64 * 1024), pen: Pen::default(), link: None }
+        Self {
+            out: String::with_capacity(64 * 1024),
+            pen: Pen::default(),
+            link: None,
+        }
     }
 
     fn csi(&mut self, s: &str) {
@@ -115,7 +129,10 @@ impl Writer {
 
     fn cell(&mut self, cell: &Cell) {
         self.pen(&Pen::of(cell));
-        self.link(cell.hyperlink().map(|h| (h.id().to_owned(), h.uri().to_owned())));
+        self.link(
+            cell.hyperlink()
+                .map(|h| (h.id().to_owned(), h.uri().to_owned())),
+        );
         self.out.push(cell.c);
         if let Some(zw) = cell.zerowidth() {
             self.out.extend(zw.iter());
@@ -178,10 +195,20 @@ fn rows(w: &mut Writer, grid: &Grid<Cell>) {
         let row = &grid[Line(line)];
         let wrapped = row[Column(cols - 1)].flags.contains(Flags::WRAPLINE);
         // A wrapped row keeps its trailing blanks: the next row starts by wrapping (D31).
-        let end = if wrapped { cols } else { (0..cols).rev().find(|&c| !is_blank(&row[Column(c)])).map_or(0, |c| c + 1) };
+        let end = if wrapped {
+            cols
+        } else {
+            (0..cols)
+                .rev()
+                .find(|&c| !is_blank(&row[Column(c)]))
+                .map_or(0, |c| c + 1)
+        };
         for col in 0..end {
             let cell = &row[Column(col)];
-            if cell.flags.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER) {
+            if cell
+                .flags
+                .intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER)
+            {
                 continue;
             }
             w.cell(cell);
@@ -195,7 +222,12 @@ fn rows(w: &mut Writer, grid: &Grid<Cell>) {
 }
 
 fn charsets(w: &mut Writer, cursor: &Cursor<Cell>) {
-    for (index, intro) in [(CharsetIndex::G0, '('), (CharsetIndex::G1, ')'), (CharsetIndex::G2, '*'), (CharsetIndex::G3, '+')] {
+    for (index, intro) in [
+        (CharsetIndex::G0, '('),
+        (CharsetIndex::G1, ')'),
+        (CharsetIndex::G2, '*'),
+        (CharsetIndex::G3, '+'),
+    ] {
         let set = match cursor.charsets[index] {
             StandardCharset::Ascii => 'B',
             StandardCharset::SpecialCharacterAndLineDrawing => '0',
@@ -208,7 +240,11 @@ fn charsets(w: &mut Writer, cursor: &Cursor<Cell>) {
 
 fn pen_of(cursor: &Cursor<Cell>) -> (Pen, Option<(String, String)>) {
     let t = &cursor.template;
-    (Pen::of(t), t.hyperlink().map(|h| (h.id().to_owned(), h.uri().to_owned())))
+    (
+        Pen::of(t),
+        t.hyperlink()
+            .map(|h| (h.id().to_owned(), h.uri().to_owned())),
+    )
 }
 
 fn keyboard(w: &mut Writer, stack: &[KeyboardModes]) {
@@ -236,7 +272,11 @@ const PRIVATE: [(TermMode, u16); 12] = [
 pub fn snapshot<T>(term: &Term<T>) -> Vec<u8> {
     let mut w = Writer::new();
     let alt = term.mode().contains(TermMode::ALT_SCREEN);
-    let (main, alt_grid) = if alt { (term.inactive_grid(), Some(term.grid())) } else { (term.grid(), None) };
+    let (main, alt_grid) = if alt {
+        (term.inactive_grid(), Some(term.grid()))
+    } else {
+        (term.grid(), None)
+    };
 
     w.out.push_str("\x1bc");
 
@@ -368,16 +408,24 @@ mod tests {
     use crate::screen::Screen;
     use alacritty_terminal::grid::{Cursor, Dimensions, Grid};
     use alacritty_terminal::index::Line;
-    use alacritty_terminal::term::cell::Cell;
     use alacritty_terminal::term::TermMode;
+    use alacritty_terminal::term::cell::Cell;
 
     fn rows_of(grid: &Grid<Cell>) -> Vec<Vec<Cell>> {
         let top = -(grid.history_size() as i32);
-        (top..grid.screen_lines() as i32).map(|l| grid[Line(l)].into_iter().cloned().collect()).collect()
+        (top..grid.screen_lines() as i32)
+            .map(|l| grid[Line(l)].into_iter().cloned().collect())
+            .collect()
     }
 
     fn cursor(c: &Cursor<Cell>, wrap: bool) -> String {
-        format!("{:?} {:?} {:?} wrap={}", c.point, c.template, c.charsets, wrap && c.input_needs_wrap)
+        format!(
+            "{:?} {:?} {:?} wrap={}",
+            c.point,
+            c.template,
+            c.charsets,
+            wrap && c.input_needs_wrap
+        )
     }
 
     /// Everything the snapshot promises to restore, as comparable values.
@@ -394,7 +442,10 @@ mod tests {
             format!("kitty {:?}", t.keyboard_mode_stack()),
             format!("style {:?}", t.cursor_style()),
             format!("charset {:?}", t.active_charset()),
-            format!("colors {:?}", (0..259).map(|i| t.colors()[i]).collect::<Vec<_>>()),
+            format!(
+                "colors {:?}",
+                (0..259).map(|i| t.colors()[i]).collect::<Vec<_>>()
+            ),
         ];
         if alt {
             let main = t.inactive_grid();
@@ -416,7 +467,12 @@ mod tests {
         let b = screen(cols, rows, &a.snapshot());
         let (sa, sb) = (state(a), state(&b));
         for (x, y) in sa.iter().zip(&sb) {
-            assert_eq!(x, y, "\nsnapshot: {:?}", String::from_utf8_lossy(&a.snapshot()));
+            assert_eq!(
+                x,
+                y,
+                "\nsnapshot: {:?}",
+                String::from_utf8_lossy(&a.snapshot())
+            );
         }
         assert_eq!(sa.len(), sb.len());
         // The snapshot of the copy is the same bytes: nothing drifts across reattaches.
@@ -437,18 +493,30 @@ mod tests {
     fn wrapped_row_keeps_trailing_blanks() {
         // "abc" and seven spaces fill row 0 exactly, then "de" wraps onto row 1.
         let a = screen(10, 4, b"abc       de\r\nnext");
-        assert!(a.term().grid()[Line(0)][alacritty_terminal::index::Column(9)].flags.contains(super::Flags::WRAPLINE));
+        assert!(
+            a.term().grid()[Line(0)][alacritty_terminal::index::Column(9)]
+                .flags
+                .contains(super::Flags::WRAPLINE)
+        );
         assert_round_trip(&a);
     }
 
     #[test]
     fn scroll_region_and_origin_mode() {
-        assert_round_trip(&screen(20, 8, b"top\r\n\x1b[2;5r\x1b[?6h\x1b[2;3Hin region"));
+        assert_round_trip(&screen(
+            20,
+            8,
+            b"top\r\n\x1b[2;5r\x1b[?6h\x1b[2;3Hin region",
+        ));
     }
 
     #[test]
     fn saved_cursor_with_pen_and_charset() {
-        assert_round_trip(&screen(20, 6, b"\x1b[3;5H\x1b[1;31m\x1b(0\x1b7\x1b(B\x1b[0m\x1b[1;1Hhome"));
+        assert_round_trip(&screen(
+            20,
+            6,
+            b"\x1b[3;5H\x1b[1;31m\x1b(0\x1b7\x1b(B\x1b[0m\x1b[1;1Hhome",
+        ));
     }
 
     #[test]
@@ -521,8 +589,15 @@ mod tests {
     fn golden_claude_session() {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/reattach");
         let bytes = std::fs::read(dir.join("claude-session.bin")).unwrap();
-        let events: Vec<serde_json::Value> = serde_json::from_slice(&std::fs::read(dir.join("claude-session.events.json")).unwrap()).unwrap();
-        let size = |e: &serde_json::Value| (e["cols"].as_u64().unwrap() as u16, e["rows"].as_u64().unwrap() as u16);
+        let events: Vec<serde_json::Value> =
+            serde_json::from_slice(&std::fs::read(dir.join("claude-session.events.json")).unwrap())
+                .unwrap();
+        let size = |e: &serde_json::Value| {
+            (
+                e["cols"].as_u64().unwrap() as u16,
+                e["rows"].as_u64().unwrap() as u16,
+            )
+        };
         let (cols, rows) = size(&events[0]);
         let mut a = Screen::new(cols, rows);
         let mut at = 0;
@@ -541,7 +616,12 @@ mod tests {
         if std::env::var_os("UPDATE_SNAPSHOT").is_some() {
             std::fs::write(&golden, &snap).unwrap();
         }
-        let want = std::fs::read(&golden).expect("missing snapshot file: run with UPDATE_SNAPSHOT=1");
-        assert!(snap == want, "snapshot differs from {}; rerun with UPDATE_SNAPSHOT=1 after checking why", golden.display());
+        let want =
+            std::fs::read(&golden).expect("missing snapshot file: run with UPDATE_SNAPSHOT=1");
+        assert!(
+            snap == want,
+            "snapshot differs from {}; rerun with UPDATE_SNAPSHOT=1 after checking why",
+            golden.display()
+        );
     }
 }

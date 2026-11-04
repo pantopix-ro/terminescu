@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Duration;
 use terminescu_protocol::paths;
-use terminescu_ptyd::server::{run, Options, DEFAULT_IDLE};
+use terminescu_ptyd::server::{DEFAULT_IDLE, Options, run};
 
 const USAGE: &str = "usage: terminescu-ptyd [--socket PATH] [--idle-exit-secs N] | --version";
 
@@ -13,7 +13,11 @@ fn main() -> ExitCode {
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--version" => {
-                println!("terminescu-ptyd {} protocol {}", env!("CARGO_PKG_VERSION"), terminescu_protocol::PROTOCOL_VERSION);
+                println!(
+                    "terminescu-ptyd {} protocol {}",
+                    env!("CARGO_PKG_VERSION"),
+                    terminescu_protocol::PROTOCOL_VERSION
+                );
                 return ExitCode::SUCCESS;
             }
             "--socket" => match args.next() {
@@ -31,7 +35,12 @@ fn main() -> ExitCode {
     let opts = match socket {
         Some(socket) => {
             let dir = socket.parent().map(PathBuf::from).unwrap_or_default();
-            Options { lock: socket.with_extension("lock"), core_socket: dir.join("core.sock"), socket, idle }
+            Options {
+                lock: socket.with_extension("lock"),
+                core_socket: dir.join("core.sock"),
+                socket,
+                idle,
+            }
         }
         None => {
             let p = paths::run_paths();
@@ -39,7 +48,12 @@ fn main() -> ExitCode {
                 eprintln!("terminescu-ptyd: {}: {e}", p.dir.display());
                 return ExitCode::FAILURE;
             }
-            Options { socket: p.ptyd_socket, lock: p.ptyd_lock, core_socket: p.core_socket, idle }
+            Options {
+                socket: p.ptyd_socket,
+                lock: p.ptyd_lock,
+                core_socket: p.core_socket,
+                idle,
+            }
         }
     };
     match run(opts) {
