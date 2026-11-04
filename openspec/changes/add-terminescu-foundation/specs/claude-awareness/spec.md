@@ -38,8 +38,9 @@ pane named by `TERMINESCU_PANE_ID`, and the pane and its tab SHALL show the `age
 ### Requirement: Waiting detection
 `PermissionRequest`, and a `Notification` whose `notification_type` is `permission_prompt` or
 `elicitation_dialog`, SHALL set the pane's tab to Waiting. `PostToolUse`, `PostToolUseFailure`,
-`PermissionDenied`, `UserPromptSubmit` and `Stop` SHALL clear it. A `Notification` of type
-`idle_prompt` SHALL NOT set Waiting.
+`PermissionDenied`, `UserPromptSubmit` and `Stop` SHALL clear it. While a tab is Waiting the
+app SHALL tail its transcript and clear Waiting on a user-rejected tool result or a
+`turn_duration` line. A `Notification` of type `idle_prompt` SHALL NOT set Waiting.
 
 #### Scenario: Permission prompt
 - **WHEN** Claude asks to run a command in a background tab
@@ -48,6 +49,10 @@ pane named by `TERMINESCU_PANE_ID`, and the pane and its tab SHALL show the `age
 #### Scenario: Permission approved
 - **WHEN** the person approves the command and it runs
 - **THEN** `PostToolUse` arrives, the amber marker clears and the tab shows Running
+
+#### Scenario: Permission denied
+- **WHEN** the person presses Esc on a permission prompt and no hook arrives
+- **THEN** the transcript shows the rejected tool result, the amber marker clears and the tab shows Done
 
 #### Scenario: Finished session left alone
 - **WHEN** a session stops and Claude later sends an `idle_prompt` notification

@@ -54,9 +54,10 @@ to the browser).
 ### D7. A pty daemon owns every shell
 `terminescu-ptyd` is a small Rust process with a stable, versioned Unix-socket protocol. It
 spawns each pane's login shell with `portable-pty` and `TERMINESCU_PANE_ID` in its environment,
-keeps a raw scrollback ring per pane (10,000 lines by default), reads the foreground process
+keeps a headless screen per pane (D31), reads the foreground process
 with `tcgetpgrp`, parses OSC 133 and OSC 7, and holds the in-memory store for session-only and
-secret variables (D21). It survives app quit and app upgrades; a reboot ends it (D23). How it starts and upgrades is
+secret variables (D21). Each pane's environment drops inherited `CLAUDE*` variables and gets
+`LANG` from the macOS locale when unset. It survives app quit, app crashes and app upgrades; a reboot ends it (D23). How it starts and upgrades is
 D32; its protocol starts at version 1. Rejected:
 tmux as the backend, because xterm.js then shows tmux's screen instead of native scrollback and
 selection, and tmux's prefix key fights the person's own tmux. A tmux-backed pane can return as
@@ -146,8 +147,9 @@ Every shortcut is editable in Settings › Keys in v1, which flags conflicts. Re
 Esc Esc plus single letters, which made the person leave the terminal before every action.
 
 ### D18. SQLite in the core, an owner on every row
-`rusqlite` in the Rust core with embedded migrations. Tables: `owners`, `windows`, `side_tabs`,
-`tabs`, `panes` (layout tree as JSON per tab), `context_items`, `pins`, `prompts`,
+`rusqlite` in the Rust core with embedded migrations, the schema version in
+`PRAGMA user_version`. Tables: `owners`, `windows`, `side_tabs`, `tabs` (with the split tree
+as JSON), `panes` (one row per pane), `context_items`, `pins`, `prompts`,
 `prompt_versions`, `commands`, `statuses`, `status_rules`, `extraction_rules`, `sessions`,
 `documents`, `context_files`, in migration `0001_init.sql`. `pairing_tokens` waits for
 `add-remote-view`. Every table carries `owner_id`; v1 creates one local owner on first run.
@@ -158,7 +160,7 @@ core and live in the daemon (D21). Rejected: Postgres in Docker, too heavy for a
  Terminescu.app (Tauri 2)                       terminescu-ptyd
  ┌──────────────────────────────────┐  unix    ┌──────────────────────────┐
  │ webview per window               │  socket  │ pty per pane (login sh)  │
- │  React, xterm.js, Zustand        │◀────────▶│ scrollback ring, OSC 133 │
+ │  React, xterm.js, Zustand        │◀────────▶│ headless screen, OSC 133 │
  │        ▲ commands  │ patches     │          │ foreground process       │
  │        │ (Host)    ▼             │          │ session + secret vars    │
  │ Rust core: state, SQLite,        │          └──────────────────────────┘
@@ -170,16 +172,21 @@ The `terminescu` CLI and the daemon ship inside the app as Tauri `externalBin` s
 Libraries: `react-resizable-panels` for splits, `cmdk` for the palette, `dnd-kit` for drags
 inside a window, Zustand; `rusqlite`, `notify` for JSONL tailing, `vte` to strip ANSI before
 extraction, `zeroize` for secrets, `axum` later for the remote view. Layout: a Cargo workspace
-(`core`, `ptyd`, `cli`, `protocol`) and a pnpm workspace (`apps/desktop`, `packages/ui`,
-`packages/host`). Tests: Rust unit tests for merge, statuses and rules, ptyd integration tests
+(`crates/core`, `crates/ptyd`, `crates/cli`, `crates/protocol` and the app crate
+`apps/desktop/src-tauri`) and a pnpm workspace (`apps/desktop`, `packages/ui`, `packages/host`).
+Packages carry a `terminescu-` prefix (`terminescu-core`, `terminescu-protocol`), because a
+package named `core` shadows Rust's built-in `core` crate. Tauri's `externalBin` wants
+`binaries/<name>-<target-triple>` before it builds, so `scripts/sidecars.mjs` builds the daemon
+and the CLI and copies them there from `beforeDevCommand` and `beforeBuildCommand`. Tests: Rust unit tests for merge, statuses and rules, ptyd integration tests
 against real shells, Playwright on the Vite build with a mock `Host`. Signing and notarization
 come with selling.
 
 ### D20. Reattach is one mechanism, and the window looks native
 Moving a tab to another window, restarting the app and opening the remote view all reattach the
-same way: a new xterm instance attaches to the pane id, the daemon replays the ring, then sends
-a resize so TUIs such as `claude` redraw. If raw replay proves wrong, the fallback is a headless
-screen model in the daemon (`alacritty_terminal`, as Zed uses). The window uses
+same way: a new xterm instance attaches to the pane id at the pty's size, the daemon sends a snapshot of
+the pane's screen (D31), and the view then resizes to its own size, which redraws TUIs such as
+`claude` through SIGWINCH. No nudge after replay: the snapshot is exact, and a resize to the same
+size sends no SIGWINCH (spike 0.1). The window uses
 `titleBarStyle: Overlay` with a hidden title, so the tab bar sits in the title bar like Chrome
 or Ghostty, with the traffic lights positioned to match. App actions are native menu items with
 `⌘` accelerators, so chords win over the webview, and xterm's `attachCustomKeyEventHandler`
@@ -252,6 +259,8 @@ pane ends the wait. Saving behaves like a text editor: `⌘S` saves, an Untitled
 macOS Save dialog, Save As sits in the File menu and the palette, and closing with unsaved
 changes asks Save, Don't save or Cancel. Claude gets no special access to text tabs.
 Rejected: a file manager with a tree, because it grows the app into an IDE.
+Tab indents (`indentWithTab`); Esc then Tab leaves the editor. In a text pane `⌥` types option
+characters, as in any Mac editor (spike 0.2).
 
 ### D28. Documents live in the core
 Every text pane edits one document with a source: a file, an Untitled buffer, a context
@@ -285,18 +294,29 @@ Files section of the side tab's context: path relative to the side tab's cwd, ad
 modified, time and origin tab. One click opens the file in a text tab. It is a list of
 touched files, not a file tree, and it follows the tab rule of D5 when a tab moves.
 
-### D31. Scrollback is a byte ring with resize markers
-The daemon keeps the last 8 MB of raw output per pane, capped at 10,000 lines, and records
-each resize in the ring. Reattach replays at the recorded width, then resizes to the new one
-(D20). Spike 0.1 decides before task 2.1 whether raw replay holds for `claude`; if it does not,
-the daemon keeps a headless screen per pane (`alacritty_terminal`) and replays a serialized
-screen plus scrollback. Rejected: a line-count ring of decoded text, because it loses colors and
-cursor state.
+### D31. Scrollback is a headless screen per pane
+The daemon feeds each pane's output into an `alacritty_terminal` grid with 10,000 lines of
+history (a setting) and, on attach, serializes it: main-screen history and screen with SGR
+attributes, then the alternate screen when active, then cursor and modes. Spike 0.1 replayed a
+`claude` session this way with no difference in text, colors, cursor or buffer, from a 6.4 KB
+snapshot of a 60 KB stream; parsing runs at about 79 MB/s on one core. A full 10,000 × 120 grid
+costs about 30-40 MB. `alacritty_terminal` keeps the inactive grid, the scroll region, the palette and the
+charsets private. The spike reached the inactive grid with `swap_alt`, which erases the
+alternate screen when it swaps back, so a long-lived daemon must never call it. Task 2.1
+vendors `alacritty_terminal` 0.25.1 (Apache-2.0) under `crates/vendor/` with read-only
+accessors and offers them upstream. The snapshot restores every `TermMode` bit, the kitty
+keyboard mode stack, the scroll region, the saved cursor, the cursor style and OSC 4 colors,
+and keeps trailing blanks on wrapped rows. Rejected: a raw byte ring, exact only until it drops
+its head; then the alternate-screen switch and the shell history above `claude` are lost
+(spike 0.1). Also rejected: a line-count ring of decoded text, which loses colors and cursor state.
 
 ### D32. The daemon runs detached from its own copy
 The app copies `terminescu-ptyd` from the bundle to
 `~/Library/Application Support/Terminescu/bin/ptyd-<version>` and starts it with
-`std::process::Command` and `setsid`. Its socket sits in a `0700` folder with mode `0600`.
+`std::process::Command` and `setsid`. Its socket sits in a `0700` folder with mode `0600`; macOS caps socket paths at 104 bytes, so a
+longer path falls back to `/tmp/terminescu-<uid>/`. The app clears `com.apple.quarantine` on the
+copy, which `std::fs::copy` keeps, and release builds are signed and notarized. Spike 0.3 showed
+the daemon outliving app quit, `kill -9` and a bundle swap, reparented to launchd.
 The first message on every connection is a handshake with the protocol version; the app speaks
 the daemon's version and the one before. A newer daemon takes over only when no pane is open or
 when the person picks "Restart sessions", because live ptys cannot move between processes in
@@ -305,21 +325,26 @@ and running the daemon from inside the bundle, which the updater replaces under 
 
 ### D33. Pty output streams as raw bytes; WebGL only where it shows
 The core forwards pty output to each window over a Tauri `ipc::Channel` as raw bytes, batched
-per pane to one message per frame and at least 1 KB when output is heavy, never as JSON events.
+per pane to one message per frame and at most 256 KB, never as JSON events.
 Each window acknowledges what xterm.js has written; past 1 MB unacknowledged the core stops
-forwarding and the window resyncs from the ring. WebKit allows 16 live WebGL contexts per web
-content process and drops the oldest past that, so only visible panes get the WebGL renderer;
+forwarding and the window resyncs from a snapshot. WebKit allows 16 live WebGL contexts per window
+(each window has its own web content process) and drops the oldest past that, so only visible panes get the WebGL renderer;
 hidden panes and any pane past 12 in a window use the DOM renderer, and `onContextLoss`
-falls back to DOM. xterm.js 6 has no canvas renderer. Rejected: Tauri events for output, which
+falls back to DOM. xterm.js 6 has no canvas renderer. Spike 0.4 measured 38-52 MB/s on a
+loaded machine with frame p95 under 35 ms; batches above 1 MB caused the 100 ms frames. Rejected: Tauri events for output, which
 are JSON strings and not built for throughput.
 
 ### D34. Hook events map to states, and the hook never gets in Claude's way
 `SessionStart` maps the session to the pane. `UserPromptSubmit` sets Running.
-`PermissionRequest`, and `Notification` with `notification_type` `permission_prompt` or
-`elicitation_dialog`, set Waiting (amber). `PostToolUse`, `PostToolUseFailure` and
-`PermissionDenied` clear Waiting back to Running; there is no "approved" event, and
-`PreToolUse` fires before the prompt, so it cannot clear it. `idle_prompt` leaves the tab Done:
-a finished session is not a request. `Stop` sets Done and carries `last_assistant_message`.
+`PermissionRequest` sets Waiting (amber) about 0.05 s after `PreToolUse`; it is the fast signal.
+`Notification` `permission_prompt` follows only after 6 s unanswered, and `elicitation_dialog`
+also sets Waiting. `PostToolUse` and `PostToolUseFailure` clear Waiting back to Running.
+Denying a prompt fires no hook (spike 0.5), so while a tab is Waiting the core tails its
+transcript and sets Done on a line with `toolDenialKind` or `subtype: "turn_duration"`; the
+next `UserPromptSubmit` also clears it. `PermissionDenied` covers auto-mode denials and clears
+it too. `PreToolUse` fires before the prompt, so it cannot clear it. `idle_prompt` arrives
+60 s after `Stop` and leaves the tab Done: a finished session is not a request. `Stop` sets
+Done and carries `last_assistant_message`. Findings and fixtures: `docs/spikes/hooks.md`.
 `SessionEnd` drops the agent icon. The main flow is drawn in `sequence.mmd` (rendered to `sequence.svg`). Hooks in `~/.claude/settings.json` run in every Claude
 session on the Mac, so `terminescu hook` exits 0 at once when `TERMINESCU_PANE_ID` is unset. It
 always exits 0, prints nothing to stdout (stdout from `SessionStart` and `UserPromptSubmit`
@@ -345,15 +370,15 @@ Claude's input when Claude is the foreground process.
 - HTML5 drag and drop does not cross webviews. Drags run on pointer events and the core tracks
   the cursor (D20). WKWebView may stop sending pointer events once the cursor leaves the window;
   the fallback is the core polling the cursor position and mouse button state.
-- Raw scrollback replay may garble a TUI mid-redraw; the resize nudge and the
-  `alacritty_terminal` fallback cover it (D20).
+- The headless screen costs memory per pane (about 30-40 MB at 10,000 × 120) and needs an
+  accessor `alacritty_terminal` lacks (D31).
 - An app upgrade must never restart the daemon; its protocol is versioned and stays
   backward compatible (D32). A daemon fix reaches running sessions only after "Restart
   sessions" or a reboot.
 - Menu accelerators win over the webview, so a chord bound in the menu never reaches the
   terminal. That is the intent (D17), and Settings › Keys shows which chords the app takes.
-- `precmd` runs `terminescu var env` before each prompt; spike 0.4 measures it and the
-  integration skips the call when the daemon's variable generation has not changed.
+- `precmd` runs `terminescu var env` before each prompt; a stand-in took 4 ms (p50) and 9.7 ms
+  through zsh `eval` on a loaded machine (spike 0.4). The generation check stays as an optimisation.
 - Claude Code may change hook fields or tool names (`MultiEdit`, `NotebookEdit`); spike 0.5
   records real payloads as fixtures, and the core ignores unknown fields.
 - Shell integration varies per shell and breaks under custom prompts; panes fall back to the
@@ -375,3 +400,4 @@ None; nothing is committed. The Hono, DBOS and Next skeleton is replaced in task
 ## Plan page
 
 `openspec/changes/add-terminescu-foundation/plan.html`, built 2026-11-04. Artifact: https://claude.ai/artifact/NxQVoq2agT798FUijmKxmQ (version 1, 2026-11-04).
+Refreshed 2026-11-04 after spikes 0.1 to 0.5 (version 2): D7, D20, D31-D34 and D27 updated, five tasks ticked, confidence about 85%.

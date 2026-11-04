@@ -67,7 +67,7 @@ prompt stores it in Claude's transcript.
 
 #### Scenario: Token for a curl call
 - **WHEN** the person inserts the secret `API_TOKEN` in a shell pane and presses Enter
-- **THEN** the visible text reads `$API_TOKEN`, the command gets the value, and the value is in neither the scrollback ring nor the shell history
+- **THEN** the visible text reads `$API_TOKEN`, the command gets the value, and the value is in neither the pane's scrollback nor the shell history
 
 #### Scenario: Secret added after Claude started
 - **WHEN** the person sets `API_TOKEN` as a secret while Claude already runs in the side tab, then asks Claude to run `curl -H "Authorization: Bearer $API_TOKEN" …`

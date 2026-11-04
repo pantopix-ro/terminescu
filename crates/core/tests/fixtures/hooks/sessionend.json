@@ -1,0 +1,9 @@
+{
+  "cwd": "/Users/owner/src/acme-api",
+  "hook_event_name": "SessionEnd",
+  "prompt_id": "00000000-0000-4000-8000-000000000006",
+  "reason": "prompt_input_exit",
+  "scratchpad_dir": "/tmp/claude-501/scratch",
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "transcript_path": "/Users/owner/.claude/projects/-Users-owner-src-acme-api/00000000-0000-4000-8000-000000000001.jsonl"
+}

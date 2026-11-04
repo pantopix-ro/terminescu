@@ -1,0 +1,28 @@
+{
+  "cwd": "/Users/owner/src/acme-api",
+  "duration_ms": 6,
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PostToolUse",
+  "permission_mode": "default",
+  "prompt_id": "00000000-0000-4000-8000-000000000004",
+  "scratchpad_dir": "/tmp/claude-501/scratch",
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "tool_input": {
+    "file_path": "/Users/owner/src/acme-api/retry.ts"
+  },
+  "tool_name": "Read",
+  "tool_response": {
+    "file": {
+      "content": "export const retries = 2;\n",
+      "filePath": "retry.ts",
+      "numLines": 2,
+      "startLine": 1,
+      "totalLines": 2
+    },
+    "type": "text"
+  },
+  "tool_use_id": "toolu_fixture03",
+  "transcript_path": "/Users/owner/.claude/projects/-Users-owner-src-acme-api/00000000-0000-4000-8000-000000000001.jsonl"
+}

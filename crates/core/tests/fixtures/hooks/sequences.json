@@ -1,0 +1,40 @@
+{
+  "_note": "Hook order recorded in spike 0.5 (Claude Code 2.1.318, 2026-11-04). t is seconds from the case start. expect is the tab state after the event (D34).",
+  "cases": {
+    "read_only_tool": [
+      {"t": 0.00, "event": "UserPromptSubmit", "expect": "running"},
+      {"t": 1.32, "event": "PreToolUse", "tool": "Bash", "expect": "running"},
+      {"t": 2.30, "event": "PostToolUse", "tool": "Bash", "expect": "running"},
+      {"t": 3.06, "event": "Stop", "expect": "done"}
+    ],
+    "permission_approved_slow": [
+      {"t": 0.00, "event": "UserPromptSubmit", "expect": "running"},
+      {"t": 1.04, "event": "PreToolUse", "tool": "Bash", "expect": "running"},
+      {"t": 1.10, "event": "PermissionRequest", "tool": "Bash", "expect": "waiting"},
+      {"t": 7.12, "event": "Notification", "notification_type": "permission_prompt", "expect": "waiting"},
+      {"t": 31.31, "event": "PostToolUse", "tool": "Bash", "expect": "running"},
+      {"t": 32.48, "event": "Stop", "expect": "done"}
+    ],
+    "permission_approved_fast": [
+      {"t": 0.00, "event": "UserPromptSubmit", "expect": "running"},
+      {"t": 2.07, "event": "PreToolUse", "tool": "Write", "expect": "running"},
+      {"t": 2.13, "event": "PermissionRequest", "tool": "Write", "expect": "waiting"},
+      {"t": 4.06, "event": "PostToolUse", "tool": "Write", "expect": "running"},
+      {"t": 13.26, "event": "Stop", "expect": "done"}
+    ],
+    "permission_denied": [
+      {"t": 0.00, "event": "UserPromptSubmit", "expect": "running"},
+      {"t": 1.06, "event": "PreToolUse", "tool": "Bash", "expect": "running"},
+      {"t": 1.11, "event": "PermissionRequest", "tool": "Bash", "expect": "waiting"},
+      {"t": 7.14, "event": "Notification", "notification_type": "permission_prompt", "expect": "waiting"},
+      {"t": 10.04, "transcript": "transcript-denied.jsonl", "expect": "done"}
+    ],
+    "idle_after_stop": [
+      {"t": 0.00, "event": "UserPromptSubmit", "expect": "running"},
+      {"t": 0.94, "event": "Stop", "expect": "done"},
+      {"t": 61.15, "event": "Notification", "notification_type": "idle_prompt", "expect": "done"},
+      {"t": 91.05, "event": "SessionEnd", "reason": "prompt_input_exit", "expect": "shell"}
+    ],
+    "editor_request": []
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "cwd": "/Users/owner/src/acme-api",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PreToolUse",
+  "permission_mode": "default",
+  "prompt_id": "00000000-0000-4000-8000-000000000004",
+  "scratchpad_dir": "/tmp/claude-501/scratch",
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "tool_input": {
+    "file_path": "/Users/owner/src/acme-api/retry.ts"
+  },
+  "tool_name": "Read",
+  "tool_use_id": "toolu_fixture03",
+  "transcript_path": "/Users/owner/.claude/projects/-Users-owner-src-acme-api/00000000-0000-4000-8000-000000000001.jsonl"
+}

@@ -9,36 +9,42 @@ M3 commands, settings and keys (6.7 to 6.10), M4 text tabs (group 7).
 Each spike is throwaway code that answers one question, and its notes land in `docs/spikes/`.
 A no-go changes the named decision before group 1 starts.
 
-- [ ] 0.1 Reattach: a prototype daemon replays a running `claude` session into a fresh
+- [x] 0.1 Reattach: a prototype daemon replays a running `claude` session into a fresh
       xterm.js at the same width and at a different width (D20, D31). Verify:
       `docs/spikes/reattach.md` records both results and picks raw replay or the headless
       screen model.
-- [ ] 0.2 Keys: a Tauri 2 window with xterm.js and CodeMirror 6 focused in turn. `⌘T`, `⌘W`,
+- [x] 0.2 Keys: a Tauri 2 window with xterm.js and CodeMirror 6 focused in turn. `⌘T`, `⌘W`,
       `⌘K`, `⌘D`, `⌘1`, `⌘I`, `⌘E`, `⌥⌘T` and `⌘\` fire as menu accelerators. Plain keys,
       `⌃` keys and `⌥` as Meta reach the pty (D17). Verify: `docs/spikes/keys.md` holds a table
       of each chord per pane kind.
-- [ ] 0.3 Daemon lifetime: the app spawns the daemon detached, then quits, then its bundle is
+- [x] 0.3 Daemon lifetime: the app spawns the daemon detached, then quits, then its bundle is
       replaced by a new build. The new app reconnects to the old daemon and finds every shell
       alive (D7, D32). Verify: `docs/spikes/daemon.md` with the steps and the outcome.
-- [ ] 0.4 Throughput: `cat` of a 50 MB log through daemon, core, IPC channel and xterm.js
+- [x] 0.4 Throughput: `cat` of a 50 MB log through daemon, core, IPC channel and xterm.js
       WebGL. Also 8 visible panes over 2 windows (D33). Verify: `docs/spikes/throughput.md`
       records the MB/s, the UI frame time and the WebGL context count.
-- [ ] 0.5 Hooks: record the hook event order for a permission prompt that is approved, one
+      Done 2026-11-04; 0.1 picked the headless screen model (D31).
+- [x] 0.5 Hooks: record the hook event order for a permission prompt that is approved, one
       that is denied, an idle prompt and a `⌃G` editor request, and save them as test fixtures
-      with invented content (D10, D34). Verify: fixtures under `crates/core/tests/fixtures/hooks/`.
+      with invented content (D10, D34). Verify: fixtures under `crates/core/tests/fixtures/hooks/`. Done 2026-11-04,
+      `docs/spikes/hooks.md`.
 
 ## 1. Skeleton (P1)
 
 - [ ] 1.1 Replace the Hono, DBOS and Next skeleton with the Tauri layout: `apps/desktop`
-      (Tauri 2, React 19, Vite), `crates/core`, `crates/ptyd`, `crates/cli`, `crates/protocol`, `packages/ui`
-      (React components, tokens), `packages/host` (the `Host` interface). Remove `apps/api`,
-      `apps/web`, `docker-compose.yml`, `seeds/flows/`. Keep `seeds/templates/*.md` as seed
+      (Tauri 2, React 19, Vite; its crate joins the Cargo workspace), `crates/core`,
+      `crates/ptyd`, `crates/cli`, `crates/protocol` (packages prefixed `terminescu-`),
+      `packages/ui` (React components, tokens), `packages/host` (the `Host` interface). Remove
+      `apps/api`, `apps/web`, `packages/core`, `packages/plugins`, `docker/`,
+      `docker-compose.yml`, `.env.example`, `seeds/flows/`. Keep `seeds/templates/*.md` as seed
       prompts under `seeds/prompts/`. Bundle `terminescu-ptyd` and `terminescu` as Tauri
-      `externalBin` sidecars; window with `titleBarStyle: Overlay` (D20). Verify: `pnpm install && pnpm tauri build --debug` and
-      `cargo test --workspace` pass on a fresh clone.
+      `externalBin` sidecars built by `scripts/sidecars.mjs`; window with
+      `titleBarStyle: Overlay` (D19, D20). Verify: `pnpm install && pnpm tauri build --debug`
+      and `cargo test --workspace` pass on a fresh clone.
 - [ ] 1.2 SQLite schema in migration `0001_init.sql` with `owner_id` on every table, one local
-      owner created on first run (D18). Verify: `cargo test -p core migrations` applies on an empty
-      file and twice without change, and a test asserts every table has `owner_id`.
+      owner created on first run (D18). Verify: `cargo test -p terminescu-core migrations` applies on an
+      empty file and twice without change, and a test asserts every table except `owners` has
+      `owner_id`.
 - [ ] 1.3 Core command and patch protocol behind `Host` (IPC), Zustand store per window, mock
       `Host` for Playwright (D6, D19). Verify: `host.test.ts` applies a `MoveTab` patch in two
       store instances.
@@ -48,10 +54,14 @@ A no-go changes the named decision before group 1 starts.
 ## 2. Terminal sessions (P1)
 
 - [ ] 2.1 `terminescu-ptyd`: spawn the login shell per pane with cwd and `TERMINESCU_PANE_ID`,
-      Unix socket protocol v1 with a version handshake, byte ring with resize markers (D31),
-      foreground process, resize after replay. The app copies the daemon out of the bundle and
+      Unix socket protocol v1 with a version handshake, headless screen per pane with a snapshot on attach
+      (D31: vendored `alacritty_terminal` with accessors, never `swap_alt`), foreground process, `CLAUDE*` stripped from
+      the pane environment. The app copies the daemon out of the bundle and
       starts it detached with `setsid` (D32). Verify: integration test spawns a shell,
-      disconnects, reconnects and reads the replayed buffer.
+      disconnects, reconnects and reads the snapshot; a test replays the spike 0.1 stream and
+      compares the snapshot with xterm.js headless;
+      unit tests cover a wrapped row ending in blanks, a scroll region, the kitty keyboard
+      stack and two attaches in a row with the alternate screen active.
 - [ ] 2.2 Session store in the daemon for session-only and secret variables, `zeroize`, TTL
       (D21). Verify: integration test sets a secret, restarts the client, reads it, waits past
       the TTL and finds it gone; a test greps the SQLite file for the value and finds none.
@@ -62,7 +72,7 @@ A no-go changes the named decision before group 1 starts.
       the person's rc files; `precmd` runs `terminescu var env` when the variable generation
       changed; `VISUAL` and `EDITOR` when the setting is on (D9, D35). Verify: test runs `false`
       in each shell and reads exit code 1, the command line and the cwd, and finds a secret set
-      mid-session in the next command's environment but not in the ring.
+      mid-session in the next command's environment but not in the pane's scrollback.
 - [ ] 2.5 xterm.js pane, output over a raw-byte `ipc::Channel` batched per frame with
       acknowledgements, WebGL for visible panes only with DOM fallback on context loss, resize,
       copy, links (D33). Verify: manual, `vim` and `htop` render and resize; Playwright opens 20
@@ -92,8 +102,9 @@ A no-go changes the named decision before group 1 starts.
       the hook with no pane id and with no socket and gets exit 0 and empty stdout under 100 ms.
 - [ ] 4.2 Session to pane mapping, agent icon, Waiting set and cleared per D34, `CLAUDE_ENV_FILE`
       line on `SessionStart` (D35). Verify: `waiting.test.rs` replays the spike 0.5 fixtures
-      (approved, denied, idle) and checks each state; manual, a permission prompt turns the tab
-      amber and approving clears it.
+      (`sequences.json` with `transcript-denied.jsonl`) and checks each state; manual, a
+      permission prompt turns the tab amber, approving clears it and Esc clears it. The denied
+      case reads the transcript tail, so 4.2 lands after 4.3.
 - [ ] 4.3 JSONL tail to `Entry` with byte-offset cursor. Verify: `jsonl.test.rs` with a
       recorded transcript fixture including a compaction marker.
 - [ ] 4.4 Minimal transcript pane: read-only user and assistant messages, Pin and Extract per

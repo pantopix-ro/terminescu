@@ -7,8 +7,8 @@
 
 ## Stack
 Terminescu, a macOS desktop app: Tauri 2 (`apps/desktop`, React 19, Vite, xterm.js), Rust crates
-`core` (state, SQLite), `ptyd` (`terminescu-ptyd`, pty daemon), `cli` (`terminescu`: hook, edit,
-status, var) and `protocol`,
+in `crates/` (packages prefixed `terminescu-`): `core` (state, SQLite), `ptyd` (`terminescu-ptyd`,
+pty daemon), `cli` (`terminescu`: hook, edit, status, var) and `protocol`,
 `packages/ui` and `packages/host`. The current Hono, DBOS and Next skeleton is replaced by
 task 1.1 of `add-terminescu-foundation`. Project facts for planning live in `openspec/config.yaml`.
 
