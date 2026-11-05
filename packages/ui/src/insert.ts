@@ -24,7 +24,8 @@ export function typeable(text: string): string {
  */
 export function pasteBytes(text: string, bracketed: boolean, send = false): string {
   const clean = typeable(text);
-  const wrap = bracketed || clean.includes("\n");
+  // A tab typed raw would trigger shell completion, so it is wrapped like a line break.
+  const wrap = bracketed || clean.includes("\n") || clean.includes("\t");
   return (wrap ? `${START}${clean}${END}` : clean) + (send ? "\r" : "");
 }
 

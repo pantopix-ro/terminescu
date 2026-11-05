@@ -195,9 +195,13 @@ fn hunks_of(result: Option<&Value>) -> Vec<Hunk> {
         return Vec::new();
     };
     let mut left = MAX_HUNK_LINES;
-    let mut out = Vec::new();
+    let mut out: Vec<Hunk> = Vec::new();
     for h in patch {
         if left == 0 {
+            // Say what was cut, as a context row.
+            if let Some(last) = out.last_mut() {
+                last.lines.push(" … more changes not shown".into());
+            }
             break;
         }
         let lines: Vec<String> = h
@@ -293,7 +297,10 @@ fn kinds_of(v: &Value) -> Vec<(Option<usize>, EntryKind)> {
         // The denial line also holds the call's rejected result, so the call shows as failed.
         Some("user") if v.get("toolDenialKind").is_some() => {
             let mut out = one(EntryKind::ToolDenied);
-            out.extend(tool_results(v, blocks));
+            // A subagent's call stays out of the pane, so its result does too.
+            if v.get("isSidechain").and_then(Value::as_bool) != Some(true) {
+                out.extend(tool_results(v, blocks));
+            }
             out
         }
         Some("user") if v.get("isCompactSummary").and_then(Value::as_bool) == Some(true) => content

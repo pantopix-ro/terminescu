@@ -104,7 +104,8 @@ fn branches(text: &str) -> Vec<String> {
             }
         } else {
             name = name.trim_end_matches(['.', '/']);
-            if !loose && !name.contains(['/', '-']) {
+            // In prose ("the feature branch pre-existing") only a name with a `/` counts.
+            if !loose && !name.contains('/') {
                 return;
             }
         }

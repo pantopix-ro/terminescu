@@ -347,7 +347,8 @@ pub fn typeable(text: &str) -> String {
 /// (a paste end marker above all) can end the paste early. `run` adds the one `\r`.
 pub fn type_bytes(text: &str, run: bool) -> Vec<u8> {
     let clean = typeable(text);
-    let mut out = if clean.contains('\n') {
+    // A tab would trigger completion if typed, so it goes bracketed like a line break.
+    let mut out = if clean.contains(['\n', '\t']) {
         format!("{PASTE_START}{clean}{PASTE_END}")
     } else {
         clean

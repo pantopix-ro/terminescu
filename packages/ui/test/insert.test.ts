@@ -24,6 +24,7 @@ describe("pasteBytes", () => {
 
   it("brackets multi-line text even when the program did not ask, and strips paste markers", () => {
     expect(pasteBytes("a\nb", false)).toBe("\x1b[200~a\nb\x1b[201~");
+    expect(pasteBytes("a\tb", false)).toBe("\x1b[200~a\tb\x1b[201~");
     expect(pasteBytes("x\x1b[201~rm -rf ~\n", true)).toBe("\x1b[200~xrm -rf ~\n\x1b[201~");
   });
 

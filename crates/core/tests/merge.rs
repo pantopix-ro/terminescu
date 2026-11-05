@@ -204,6 +204,19 @@ fn keep_both_renames_the_source_and_lists_concatenate() {
 }
 
 #[test]
+fn undo_of_keep_both_gives_the_renamed_variable_its_name_back() {
+    let db = two();
+    let before = (names(&db, "s1"), names(&db, "s2"));
+    let keep_both = Resolution {
+        keep_both: true,
+        renames: BTreeMap::new(),
+    };
+    let undo = merge::merge(&db, None, "s1", "s2", Some("PROJ-477"), &keep_both).unwrap();
+    merge::undo(&db, None, &undo).unwrap();
+    assert_eq!((names(&db, "s1"), names(&db, "s2")), before);
+}
+
+#[test]
 fn keep_target_drops_the_source_value_and_undo_brings_everything_back() {
     let db = two();
     let before = (

@@ -37,6 +37,7 @@ import {
   type SavedCommand,
   type Command,
   type DragPoint,
+  type DragEnd,
   type Host,
   type Workspace,
   type WorkspaceStore,
@@ -854,7 +855,11 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     host.mergePreview(from.id, into.id, sideTabName(from, docs)).then(
       (clashes) => {
         if (clashes.length) setMerging({ from, into, clashes });
-        else finishMerge(from, into, { keepBoth: false });
+        else
+          finishMerge(from, into, { keepBoth: false }).catch((e: unknown) => {
+            report(e);
+            refocus();
+          });
       },
       (e: unknown) => {
         report(e);
@@ -862,18 +867,17 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       },
     );
   };
+  // Rejects when the merge fails, so an open dialog keeps itself and shows why.
   const finishMerge = (from: SideTab, into: SideTab, resolution: MergeResolution) => {
-    setMerging(undefined);
     const fromName = sideTabName(from, docs);
     const intoName = sideTabName(into, docs);
-    host
-      .mergeSideTabs(from.id, into.id, fromName, resolution)
-      .then((done) => {
-        const renamed = done.renames.map(([a, b]) => `${a} → ${b}`).join(", ");
-        setMergeToast({ undoId: done.undoId, text: `Merged ${fromName} into ${intoName}${renamed ? `; kept ${renamed}` : ""}.` });
-        if (activeSide?.id === from.id) setSideTabId(into.id);
-      }, report)
-      .finally(refocus);
+    return host.mergeSideTabs(from.id, into.id, fromName, resolution).then((done) => {
+      setMerging(undefined);
+      const renamed = done.renames.map(([a, b]) => `${a} → ${b}`).join(", ");
+      setMergeToast({ undoId: done.undoId, text: `Merged ${fromName} into ${intoName}${renamed ? `; kept ${renamed}` : ""}.` });
+      if (activeSide?.id === from.id) setSideTabId(into.id);
+      refocus();
+    });
   };
   useEffect(() => {
     if (!mergeToast) return;
@@ -930,6 +934,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     return () => el?.classList.remove("remote-hot");
   }, [remote]);
 
+  // The pending `dragBegin` of the tab being dragged; resolves to its token (task 8.1).
+  const dragBegun = useRef<Promise<number | undefined> | undefined>(undefined);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const onDragEnd = ({ active, over }: DragEndEvent) => {
     setDragging(undefined);
@@ -939,9 +945,16 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     if (tabId.startsWith("side:") && at?.startsWith("into:")) return startMerge(tabId.slice(5), at.slice(5));
     if (tabId.startsWith("side:")) return refocus();
     // The core saw where the cursor was (task 8.1): only a release over this window drops here.
-    host.dragEnd(true).then(
+    // A fast flick ends before `dragBegin` answers, so the end waits for its token. A drag the
+    // core no longer tracks (it timed out, or never began) is left to this window.
+    const begun = dragBegun.current;
+    dragBegun.current = undefined;
+    const ended = (begun ?? Promise.resolve(undefined)).then(
+      (token): Promise<DragEnd> => (token === undefined ? Promise.resolve({ kind: "cancelled" }) : host.dragEnd(token, true)),
+    );
+    ended.then(
       (end) => {
-        if (end.kind === "local") dropHere(tabId, at);
+        if (end.kind === "local" || end.kind === "cancelled") dropHere(tabId, at);
         else refocus();
       },
       (e: unknown) => {
@@ -1005,14 +1018,23 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           const id = String(active.id);
           setDragging(id);
           const tab = tabs.find((t) => t.id === id);
-          if (tab) host.dragBegin(tab.id, tabName(tab, docs)).catch(report);
+          dragBegun.current = tab
+            ? host.dragBegin(tab.id, tabName(tab, docs)).catch((e: unknown) => {
+                report(e);
+                return undefined;
+              })
+            : undefined;
           // Esc cancels the drag; the keyboard must not be in a terminal for that.
           (document.activeElement as HTMLElement | null)?.blur();
         }}
         onDragEnd={onDragEnd}
         onDragCancel={({ active }) => {
           setDragging(undefined);
-          if (!String(active.id).startsWith("side:")) host.dragEnd(false).catch(report);
+          const begun = dragBegun.current;
+          dragBegun.current = undefined;
+          void begun?.then((token) => {
+            if (token !== undefined) host.dragEnd(token, false).catch(report);
+          });
           refocus();
         }}
       >

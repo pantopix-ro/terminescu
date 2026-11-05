@@ -396,6 +396,14 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       locks it. Saved commands keep their scope. `commands.spec.ts` runs a command saved in one
       side tab from another with that side tab's `pr_api`.
 
+From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
+the main thread), each drag has a token, and a closed source window ends its drag. A new
+window opens before an emptied one closes, at the drop point on any screen. Merge undo moves
+items before renaming them back (a kept `branch_477` stayed renamed), needs the daemon before
+it starts, rolls back when it fails, and runs one at a time; quitting wipes parked secrets.
+The merge dialog stays open on an error. A sidechain denial no longer adds a failed result,
+prose branch names need a `/`, and a one-line text with a tab goes in bracketed.
+
 ## 9. Reach (P3)
 
 - [ ] 9.1 Code signing, notarization, DMG build in CI. Verify: a downloaded DMG opens without a

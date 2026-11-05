@@ -333,15 +333,8 @@ pub fn merge(
     });
     if let Err(e) = saved {
         if let Some(d) = daemon {
-            let back: Vec<(String, String)> = undo
-                .daemon_moved
-                .iter()
-                .map(|(a, b)| (b.clone(), a.clone()))
-                .collect();
-            let _ = d.side_vars_move(into, from, &back);
-            let park: Vec<(String, String)> =
-                undo.parked.iter().map(|n| (n.clone(), n.clone())).collect();
-            let _ = d.side_vars_move(&parking(&undo.id), from, &park);
+            let _ = d.side_vars_move(into, from, &reversed(&undo.daemon_moved));
+            let _ = d.side_vars_move(&parking(&undo.id), from, &same_names(&undo.parked));
         }
         return Err(e);
     }
@@ -349,29 +342,63 @@ pub fn merge(
     Ok(undo)
 }
 
+fn reversed(pairs: &[(String, String)]) -> Vec<(String, String)> {
+    pairs.iter().map(|(a, b)| (b.clone(), a.clone())).collect()
+}
+
+fn same_names(names: &[String]) -> Vec<(String, String)> {
+    names.iter().map(|n| (n.clone(), n.clone())).collect()
+}
+
+/// Whether [`undo`] can run now: a merge that moved daemon variables needs the daemon.
+pub fn can_undo(daemon: Option<&DaemonClient>, undo: &Undo) -> Result<(), ContextError> {
+    if daemon.is_none() && (!undo.daemon_moved.is_empty() || !undo.parked.is_empty()) {
+        return Err(ContextError::NoDaemon("not connected".into()));
+    }
+    Ok(())
+}
+
 /// Reverses a merge. The source side tab must exist again ([`crate::state::Command::RestoreSideTab`]).
+/// The daemon goes first, like the merge; a saved-row failure puts its variables forward again.
 pub fn undo(
     db: &impl DbAccess,
     daemon: Option<&DaemonClient>,
     undo: &Undo,
 ) -> Result<(), ContextError> {
-    db.with(|db| -> Result<(), ContextError> {
-        let tx = db.conn().unchecked_transaction()?;
-        for (id, old) in &undo.renamed {
-            tx.execute(
-                "UPDATE OR IGNORE context_items SET name = ?2 WHERE id = ?1",
-                params![id, old],
-            )?;
+    can_undo(daemon, undo)?;
+    let back = reversed(&undo.daemon_moved);
+    let park = same_names(&undo.parked);
+    if let Some(d) = daemon {
+        if !back.is_empty() {
+            d.side_vars_move(&undo.into, &undo.from, &back)
+                .map_err(daemon_err)?;
         }
+        if !park.is_empty()
+            && let Err(e) = d.side_vars_move(&parking(&undo.id), &undo.from, &park)
+        {
+            let _ = d.side_vars_move(&undo.from, &undo.into, &undo.daemon_moved);
+            return Err(daemon_err(e));
+        }
+    }
+    let saved = db.with(|db| -> Result<(), ContextError> {
+        let tx = db.conn().unchecked_transaction()?;
+        // Items leave the target before a renamed one takes its old name back: in the target
+        // that name belongs to the variable it clashed with.
         for (id, position) in &undo.items {
             tx.execute(
-                "UPDATE OR IGNORE context_items SET side_tab_id = ?2, position = ?3 WHERE id = ?1",
+                "UPDATE context_items SET side_tab_id = ?2, position = ?3 WHERE id = ?1",
                 params![id, undo.from, position],
+            )?;
+        }
+        for (id, old) in &undo.renamed {
+            tx.execute(
+                "UPDATE context_items SET name = ?2 WHERE id = ?1",
+                params![id, old],
             )?;
         }
         for (table, id) in &undo.moved {
             tx.execute(
-                &format!("UPDATE OR IGNORE {table} SET side_tab_id = ?2 WHERE id = ?1"),
+                &format!("UPDATE {table} SET side_tab_id = ?2 WHERE id = ?1"),
                 params![id, undo.from],
             )?;
         }
@@ -380,25 +407,16 @@ pub fn undo(
         }
         tx.commit()?;
         Ok(())
-    })?;
-    if let Some(d) = daemon {
-        let back: Vec<(String, String)> = undo
-            .daemon_moved
-            .iter()
-            .map(|(a, b)| (b.clone(), a.clone()))
-            .collect();
-        if !back.is_empty() {
-            d.side_vars_move(&undo.into, &undo.from, &back)
-                .map_err(daemon_err)?;
-        }
-        let park: Vec<(String, String)> =
-            undo.parked.iter().map(|n| (n.clone(), n.clone())).collect();
+    });
+    if let (Err(_), Some(d)) = (&saved, daemon) {
         if !park.is_empty() {
-            d.side_vars_move(&parking(&undo.id), &undo.from, &park)
-                .map_err(daemon_err)?;
+            let _ = d.side_vars_move(&undo.from, &parking(&undo.id), &park);
+        }
+        if !back.is_empty() {
+            let _ = d.side_vars_move(&undo.from, &undo.into, &undo.daemon_moved);
         }
     }
-    Ok(())
+    saved
 }
 
 /// Ends the undo window: the parked variables are wiped.

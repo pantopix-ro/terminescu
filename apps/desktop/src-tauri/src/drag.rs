@@ -27,21 +27,26 @@ const MAX_DRAG: Duration = Duration::from_secs(120);
 /// The ghost sits this far right of and below the cursor, in logical pixels.
 const GHOST_OFFSET: f64 = 14.0;
 
-/// Where a new window opens: set by a drop outside every window, read by the patch emitter.
-static NEXT_WINDOW_AT: Mutex<Option<(f64, f64)>> = Mutex::new(None);
+/// Where a new window opens, in screen pixels with that screen's scale: set by a drop outside
+/// every window, read by the patch emitter.
+static NEXT_WINDOW_AT: Mutex<Option<(f64, f64, f64)>> = Mutex::new(None);
 
-pub fn take_window_at() -> Option<(f64, f64)> {
-    NEXT_WINDOW_AT.lock().map(|mut g| g.take()).unwrap_or(None)
+pub fn take_window_at() -> Option<(f64, f64, f64)> {
+    lock(&NEXT_WINDOW_AT).take()
 }
 
+/// Locks are held only to read or write this state, never across a window call: those block
+/// on the main thread, where sync commands wait for the same lock.
 #[derive(Default)]
 pub struct Drags {
     current: Mutex<Option<Drag>>,
-    /// Bumped by every begin and end; a tracker thread stops when it changes.
+    /// Bumped by every begin and end; a tracker stops when it changes. A drag's token.
     generation: AtomicU64,
 }
 
+#[derive(Clone)]
 struct Drag {
+    token: u64,
     source: String,
     tab_id: Id,
     title: String,
@@ -69,7 +74,7 @@ pub enum DragEnd {
     Remote,
     /// Released outside every window: a new window holds the tab.
     NewWindow,
-    /// No drag was tracked, or the drag was cancelled.
+    /// No drag was tracked under this token, or the drag was cancelled.
     Cancelled,
 }
 
@@ -151,25 +156,32 @@ fn hover(app: &AppHandle, label: &str, point: Option<&Point>) {
     }
 }
 
+fn hide_ghost(app: &AppHandle) {
+    if let Some(g) = app.get_webview_window(GHOST) {
+        let _ = g.hide();
+    }
+}
+
 /// One step of the tracker: light the window under the cursor and move the ghost.
-fn track(app: &AppHandle, drags: &Drags) {
-    let Ok(pos) = app.cursor_position() else {
+fn track(app: &AppHandle, drags: &Drags, token: u64) {
+    let Some(drag) = lock(&drags.current).clone().filter(|d| d.token == token) else {
         return;
     };
-    let mut guard = lock(&drags.current);
-    let Some(drag) = guard.as_mut() else {
+    let Ok(pos) = app.cursor_position() else {
         return;
     };
     let under = window_under(app, pos, &drag.source);
     let other = under.as_ref().filter(|(l, ..)| *l != drag.source);
-    if drag.hovered.as_deref() != other.map(|(l, ..)| l.as_str())
-        && let Some(old) = drag.hovered.take()
+    let mut hovered = drag.hovered.clone();
+    let mut sent = drag.sent;
+    if hovered.as_deref() != other.map(|(l, ..)| l.as_str())
+        && let Some(old) = hovered.take()
     {
         hover(app, &old, None);
-        drag.sent = None;
+        sent = None;
     }
     if let Some((label, x, y)) = other
-        && drag.sent != Some((*x, *y))
+        && sent != Some((*x, *y))
     {
         let point = Point {
             tab_id: drag.tab_id.clone(),
@@ -177,108 +189,139 @@ fn track(app: &AppHandle, drags: &Drags) {
             y: *y,
         };
         hover(app, label, Some(&point));
-        drag.hovered = Some(label.clone());
-        drag.sent = Some((*x, *y));
+        hovered = Some(label.clone());
+        sent = Some((*x, *y));
     }
-    let Some(g) = app.get_webview_window(GHOST) else {
-        return;
-    };
-    if under.as_ref().is_some_and(|(l, ..)| *l == drag.source) {
-        let _ = g.hide();
-    } else {
-        let scale = g.scale_factor().unwrap_or(1.0);
-        let at = PhysicalPosition::new(pos.x + GHOST_OFFSET * scale, pos.y + GHOST_OFFSET * scale);
-        let _ = g.set_position(at);
-        if !g.is_visible().unwrap_or(true) {
-            let _ = g.show();
+    if let Some(g) = app.get_webview_window(GHOST) {
+        if under.as_ref().is_some_and(|(l, ..)| *l == drag.source) {
+            let _ = g.hide();
+        } else {
+            let scale = g.scale_factor().unwrap_or(1.0);
+            let _ = g.set_position(PhysicalPosition::new(
+                pos.x + GHOST_OFFSET * scale,
+                pos.y + GHOST_OFFSET * scale,
+            ));
+            if !g.is_visible().unwrap_or(true) {
+                let _ = g.show();
+            }
         }
+    }
+    let mut guard = lock(&drags.current);
+    if let Some(d) = guard.as_mut().filter(|d| d.token == token) {
+        d.hovered = hovered;
+        d.sent = sent;
+    } else if let Some(h) = hovered {
+        // The drag ended while this step ran: take back the hover it just sent.
+        drop(guard);
+        hover(app, &h, None);
     }
 }
 
-/// A tab drag started in `window` (dnd-kit passed its activation distance). Sync, so it runs
-/// on the main thread before the `drag_end` that follows it.
-#[tauri::command]
+/// Ends the drag `token` (any drag when None) without a drop: hides the ghost and clears the
+/// hover. Returns it unless the target is `keep`, which keeps its light for the drop.
+fn finish(app: &AppHandle, drags: &Drags, token: Option<u64>, keep: Option<&str>) -> Option<Drag> {
+    let drag = {
+        let mut guard = lock(&drags.current);
+        if guard
+            .as_ref()
+            .is_none_or(|d| token.is_some_and(|t| t != d.token))
+        {
+            return None;
+        }
+        drags.generation.fetch_add(1, Ordering::SeqCst);
+        guard.take()?
+    };
+    hide_ghost(app);
+    if let Some(h) = drag.hovered.as_deref().filter(|h| Some(*h) != keep) {
+        hover(app, h, None);
+    }
+    Some(drag)
+}
+
+/// The window `label` closed: a drag that started there can never end, so it ends now.
+pub fn cancel_from(app: &AppHandle, label: &str) {
+    let Some(state) = app.try_state::<AppState>() else {
+        return;
+    };
+    let token = lock(&state.drags.current)
+        .as_ref()
+        .filter(|d| d.source == label)
+        .map(|d| d.token);
+    if token.is_some() {
+        finish(app, &state.drags, token, None);
+    }
+}
+
+/// A tab drag started in `window` (dnd-kit passed its activation distance). Returns the
+/// drag's token for `drag_end`.
+#[tauri::command(async)]
 pub fn drag_begin(
     app: AppHandle,
     window: WebviewWindow,
     state: State<'_, AppState>,
     tab_id: Id,
     title: String,
-) {
-    let drags = &state.drags;
-    let generation = drags.generation.fetch_add(1, Ordering::SeqCst) + 1;
-    if let Some(old) = lock(&drags.current).replace(Drag {
+) -> u64 {
+    finish(&app, &state.drags, None, None);
+    let token = state.drags.generation.fetch_add(1, Ordering::SeqCst) + 1;
+    *lock(&state.drags.current) = Some(Drag {
+        token,
         source: window.label().to_string(),
         tab_id,
         title: title.clone(),
         hovered: None,
         sent: None,
-    }) && let Some(h) = old.hovered
-    {
-        hover(&app, &h, None);
-    }
+    });
     if ghost(&app).is_some() {
         let _ = app.emit_to(GHOST, GHOST_EVENT, &title);
     }
     std::thread::spawn(move || {
         let state = app.state::<AppState>();
         let started = std::time::Instant::now();
-        while state.drags.generation.load(Ordering::SeqCst) == generation {
+        while state.drags.generation.load(Ordering::SeqCst) == token {
             if started.elapsed() > MAX_DRAG {
-                // Ends this drag only: a newer one moved the generation on.
-                if state
-                    .drags
-                    .generation
-                    .compare_exchange(
-                        generation,
-                        generation + 1,
-                        Ordering::SeqCst,
-                        Ordering::SeqCst,
-                    )
-                    .is_ok()
-                    && let Some(d) = lock(&state.drags.current).take()
-                {
-                    if let Some(h) = d.hovered {
-                        hover(&app, &h, None);
-                    }
-                    if let Some(g) = app.get_webview_window(GHOST) {
-                        let _ = g.hide();
-                    }
-                }
+                finish(&app, &state.drags, Some(token), None);
                 break;
             }
-            track(&app, &state.drags);
+            track(&app, &state.drags, token);
             std::thread::sleep(POLL);
         }
     });
+    token
 }
 
 /// The ghost asks for the title when it loads, since it may miss the first event.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn drag_title(state: State<'_, AppState>) -> Option<String> {
     lock(&state.drags.current).as_ref().map(|d| d.title.clone())
 }
 
-/// The drag ended: dropped (`drop`), or cancelled with Esc. Async, so a new window can be
-/// built while the main thread runs.
+/// The drag `token` ended: dropped (`drop`), or cancelled with Esc.
 #[tauri::command(async)]
-pub fn drag_end(app: AppHandle, state: State<'_, AppState>, drop: bool) -> Result<DragEnd, String> {
-    let drags = &state.drags;
-    drags.generation.fetch_add(1, Ordering::SeqCst);
-    let Some(drag) = lock(&drags.current).take() else {
+pub fn drag_end(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    token: u64,
+    drop: bool,
+) -> Result<DragEnd, String> {
+    let current = lock(&state.drags.current)
+        .clone()
+        .filter(|d| d.token == token);
+    let Some(drag) = current else {
         return Ok(DragEnd::Cancelled);
     };
-    if let Some(g) = app.get_webview_window(GHOST) {
-        let _ = g.hide();
-    }
-    if let Some(h) = &drag.hovered {
-        hover(&app, h, None);
-    }
     if !drop {
+        finish(&app, &state.drags, Some(token), None);
         return Ok(DragEnd::Cancelled);
     }
     let pos = app.cursor_position().map_err(|e| e.to_string())?;
-    match window_under(&app, pos, &drag.source) {
+    let under = window_under(&app, pos, &drag.source);
+    // The target keeps its light until the drop resolves there.
+    let keep = under.as_ref().map(|(l, ..)| l.as_str());
+    let Some(drag) = finish(&app, &state.drags, Some(token), keep) else {
+        return Ok(DragEnd::Cancelled);
+    };
+    match under {
         Some((label, ..)) if label == drag.source => Ok(DragEnd::Local),
         Some((label, x, y)) => {
             let point = Point {
@@ -294,11 +337,14 @@ pub fn drag_end(app: AppHandle, state: State<'_, AppState>, drop: bool) -> Resul
             Ok(DragEnd::Remote)
         }
         None => {
+            // The scale of the screen under the cursor, for the new window's offset.
             let scale = app
-                .get_webview_window(&drag.source)
-                .and_then(|w| w.scale_factor().ok())
+                .monitor_from_point(pos.x, pos.y)
+                .ok()
+                .flatten()
+                .map(|m| m.scale_factor())
                 .unwrap_or(1.0);
-            *lock(&NEXT_WINDOW_AT) = Some((pos.x / scale, pos.y / scale));
+            *lock(&NEXT_WINDOW_AT) = Some((pos.x, pos.y, scale));
             let moved = state.runtime.command(Command::MoveTabToNewWindow {
                 tab_id: drag.tab_id,
             });

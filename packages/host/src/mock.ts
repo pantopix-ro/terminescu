@@ -435,7 +435,8 @@ export function createMockHost(initial?: Workspace): MockHost {
 
   // One batch through the reducer to every window, as the core's `handle` and emit.
   // Task 8.1: the drag the core would track, and what tests make it say.
-  let dragging: Id | undefined;
+  let dragging: { tabId: Id; token: number } | undefined;
+  let dragToken = 0;
   let dragOutcome: DragEnd["kind"] = "local";
   const dragsBegun: string[] = [];
   const hoverListeners = new Set<(p: DragPoint | null) => void>();
@@ -695,12 +696,13 @@ export function createMockHost(initial?: Workspace): MockHost {
       return { undoId, renames: [...rename] };
     },
     async dragBegin(tabId, title) {
-      dragging = tabId;
+      dragging = { tabId, token: ++dragToken };
       dragsBegun.push(`${tabId} ${title}`);
+      return dragToken;
     },
-    async dragEnd(drop) {
-      const tabId = dragging;
-      dragging = undefined;
+    async dragEnd(token, drop) {
+      const tabId = dragging?.token === token ? dragging.tabId : undefined;
+      if (tabId) dragging = undefined;
       const kind = dragOutcome;
       dragOutcome = "local";
       if (!tabId || !drop) return { kind: "cancelled" };

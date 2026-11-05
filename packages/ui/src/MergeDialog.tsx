@@ -6,7 +6,8 @@ export interface MergeDialogProps {
   fromName: string;
   intoName: string;
   clashes: MergeClash[];
-  onMerge(resolution: MergeResolution): void;
+  /** Resolves once merged; the dialog stays open, with the error, when it rejects. */
+  onMerge(resolution: MergeResolution): Promise<void>;
   onCancel(): void;
 }
 
@@ -18,11 +19,24 @@ const shown = (value: string | null) => value ?? "••••••";
  */
 export function MergeDialog({ fromName, intoName, clashes, onMerge, onCancel }: MergeDialogProps) {
   const [names, setNames] = useState<Record<string, string>>(() => Object.fromEntries(clashes.map((c) => [c.name, c.rename])));
-  const typed = Object.values(names);
+  const [pending, setPending] = useState(false);
+  const [failed, setFailed] = useState<string>();
+  const typed = Object.values(names).map((n) => n.trim());
+  // Both side tabs hold every clashing name, so none of them is free.
+  const clashing = new Set(clashes.map((c) => c.name));
   const bad = clashes.find((c) => {
-    const n = names[c.name] ?? "";
-    return !isVariableName(n) || typed.filter((x) => x === n).length > 1;
+    const n = (names[c.name] ?? "").trim();
+    return !isVariableName(n) || clashing.has(n) || typed.filter((x) => x === n).length > 1;
   });
+  const merge = (resolution: MergeResolution) => {
+    setPending(true);
+    setFailed(undefined);
+    onMerge(resolution).catch((e: unknown) => {
+      setPending(false);
+      setFailed(e instanceof Error ? e.message : String(e));
+    });
+  };
+  const trimmed = () => Object.fromEntries(Object.entries(names).map(([k, v]) => [k, v.trim()]));
   return (
     <div className="sheet-back" onPointerDown={onCancel}>
       <div
@@ -59,8 +73,9 @@ export function MergeDialog({ fromName, intoName, clashes, onMerge, onCancel }: 
                       value={names[c.name] ?? ""}
                       spellCheck={false}
                       autoFocus={i === 0}
+                      disabled={pending}
                       onChange={(e) => {
-                        const v = e.target.value.trim();
+                        const v = e.target.value;
                         setNames((m) => ({ ...m, [c.name]: v }));
                       }}
                     />
@@ -69,16 +84,25 @@ export function MergeDialog({ fromName, intoName, clashes, onMerge, onCancel }: 
               ))}
             </tbody>
           </table>
-          {bad && <p className="small app-error-inline" role="alert">{names[bad.name] || "A name"} cannot hold {fromName}'s {bad.name}.</p>}
+          {bad && (
+            <p className="small app-error-inline" role="alert">
+              {names[bad.name]?.trim() || "A name"} cannot hold {fromName}'s {bad.name}.
+            </p>
+          )}
+          {failed && (
+            <p className="small app-error-inline" role="alert">
+              {failed}
+            </p>
+          )}
           <div className="close-actions">
             <button type="button" className="ao-btn ghost" onClick={onCancel}>
               Cancel
             </button>
             <span className="grow" />
-            <button type="button" className="ao-btn ghost" onClick={() => onMerge({ keepBoth: false })}>
+            <button type="button" className="ao-btn ghost" disabled={pending} onClick={() => merge({ keepBoth: false })}>
               Keep {intoName}'s
             </button>
-            <button type="button" className="ao-btn primary" disabled={!!bad} onClick={() => onMerge({ keepBoth: true, renames: names })}>
+            <button type="button" className="ao-btn primary" disabled={!!bad || pending} onClick={() => merge({ keepBoth: true, renames: trimmed() })}>
               Keep both
             </button>
           </div>

@@ -86,6 +86,8 @@ struct AppState {
     waits: Arc<docs::Waits>,
     /// Side tab merges still inside their undo window, by undo id (D5).
     merges: Arc<Mutex<HashMap<Id, PendingMerge>>>,
+    /// One merge or undo at a time: each reads the workspace, then changes it in two stores.
+    merging: Mutex<()>,
     /// The tab drag the core tracks across windows (task 8.1).
     drags: drag::Drags,
 }
@@ -140,6 +142,7 @@ fn side_tab_merge(
     label: Option<String>,
     resolution: merge::Resolution,
 ) -> Result<MergeDone, String> {
+    let _one = lock(&state.merging);
     let ws = state.runtime.snapshot().workspace;
     let (window_id, index, side_tab) = ws
         .windows
@@ -214,9 +217,19 @@ fn side_tab_merge_undo(
     state: State<'_, AppState>,
     undo_id: Id,
 ) -> Result<(), String> {
+    let _one = lock(&state.merging);
     let p = lock(&state.merges)
         .remove(&undo_id)
         .ok_or("too late to undo this merge")?;
+    let daemon = state.runtime.daemon();
+    // A refusal before anything changed keeps the undo on offer.
+    let keep = |p: PendingMerge| {
+        lock(&state.merges).insert(undo_id.clone(), p);
+    };
+    if let Err(e) = merge::can_undo(daemon.as_deref(), &p.undo) {
+        keep(p);
+        return Err(format!("the merge cannot be undone yet: {e}"));
+    }
     let ws = state.runtime.snapshot().workspace;
     let tab_ids: Vec<Id> = p
         .tab_ids
@@ -224,7 +237,6 @@ fn side_tab_merge_undo(
         .filter(|t| ws.locate_tab(t).is_some_and(|(s, _)| s.id == p.undo.into))
         .cloned()
         .collect();
-    let daemon = state.runtime.daemon();
     let restored = state.runtime.command(Command::RestoreSideTab {
         window_id: p.window_id.clone(),
         index: p.index,
@@ -235,9 +247,21 @@ fn side_tab_merge_undo(
         merge::finish(daemon.as_deref(), &p.undo);
         return Err(format!("the merge cannot be undone: {e}"));
     }
-    let undone = merge::undo(&*state.db, daemon.as_deref(), &p.undo);
+    if let Err(e) = merge::undo(&*state.db, daemon.as_deref(), &p.undo) {
+        // The context stayed merged, so the tabs go back to the target too.
+        let back = state.runtime.command(Command::MergeSideTab {
+            from: p.undo.from.clone(),
+            into: p.undo.into.clone(),
+        });
+        if let Err(b) = back {
+            eprintln!("terminescu: merge undo half done, side tab kept: {b}");
+        } else {
+            keep(p);
+        }
+        return Err(format!("the merge cannot be undone: {e}"));
+    }
     merged(&app, &state, &p.undo.from);
-    undone.map_err(|e| e.to_string())
+    Ok(())
 }
 
 /// After a merge or its undo: contexts, local commands and statuses changed side tab.
@@ -1242,27 +1266,36 @@ fn start_runtime(
         if let Err(e) = handle.emit(PATCHES_EVENT, batch) {
             eprintln!("terminescu: patch broadcast failed: {e}");
         }
-        // Native windows follow the workspace (task 8.1). This runs under the core lock, so
-        // the window work goes to its own thread.
-        for p in &batch.patches {
-            match p {
-                Patch::WindowCreated { window_id } => {
-                    let (app, id, at) = (handle.clone(), window_id.clone(), drag::take_window_at());
-                    std::thread::spawn(move || {
-                        if let Err(e) = open_window(&app, &id, at) {
-                            eprintln!("terminescu: window {id} not opened: {e}");
+        // Native windows follow the workspace (task 8.1). This runs under the core lock, so the
+        // window work goes to one thread per batch, in patch order: the new window exists before
+        // an emptied one closes, so the app never sees zero windows and quits.
+        let work: Vec<Patch> = batch
+            .patches
+            .iter()
+            .filter(|p| matches!(p, Patch::WindowCreated { .. } | Patch::WindowClosed { .. }))
+            .cloned()
+            .collect();
+        if !work.is_empty() {
+            let app = handle.clone();
+            let at = drag::take_window_at();
+            std::thread::spawn(move || {
+                for p in work {
+                    match p {
+                        Patch::WindowCreated { window_id } => {
+                            if let Err(e) = open_window(&app, &window_id, at) {
+                                eprintln!("terminescu: window {window_id} not opened: {e}");
+                            }
                         }
-                    });
-                }
-                Patch::WindowClosed { window_id } => {
-                    if let Some(w) = handle.get_webview_window(window_id) {
-                        std::thread::spawn(move || {
-                            let _ = w.destroy();
-                        });
+                        Patch::WindowClosed { window_id } => {
+                            drag::cancel_from(&app, &window_id);
+                            if let Some(w) = app.get_webview_window(&window_id) {
+                                let _ = w.destroy();
+                            }
+                        }
+                        _ => {}
                     }
                 }
-                _ => {}
-            }
+            });
         }
     });
     let connect = Box::new(move |events| {
@@ -1466,22 +1499,28 @@ fn serve_core_socket(
     )
 }
 
-/// Opens the native window of a workspace window; `at` puts it under a drop point (logical
-/// screen pixels), so the cursor lands near its tab bar.
-fn open_window(app: &AppHandle, window_id: &str, at: Option<(f64, f64)>) -> tauri::Result<()> {
-    let mut builder =
-        WebviewWindowBuilder::new(app, window_id, WebviewUrl::App("index.html".into()))
-            .title("Terminescu")
-            .inner_size(1200.0, 760.0)
-            .min_inner_size(640.0, 400.0);
-    if let Some((x, y)) = at {
-        builder = builder.position((x - 120.0).max(0.0), (y - 16.0).max(0.0));
-    }
+/// Opens the native window of a workspace window. `at` is a drop point in screen pixels with
+/// that screen's scale: the window opens hidden, moves under it so the cursor lands near its
+/// tab bar, then shows. Physical pixels keep screens left of or above the main one right.
+fn open_window(app: &AppHandle, window_id: &str, at: Option<(f64, f64, f64)>) -> tauri::Result<()> {
+    let builder = WebviewWindowBuilder::new(app, window_id, WebviewUrl::App("index.html".into()))
+        .title("Terminescu")
+        .inner_size(1200.0, 760.0)
+        .min_inner_size(640.0, 400.0)
+        .visible(at.is_none());
     #[cfg(target_os = "macos")]
     let builder = builder
         .title_bar_style(tauri::TitleBarStyle::Overlay)
         .hidden_title(true);
-    builder.build()?;
+    let w = builder.build()?;
+    if let Some((x, y, scale)) = at {
+        w.set_position(tauri::PhysicalPosition::new(
+            x - 120.0 * scale,
+            y - 16.0 * scale,
+        ))?;
+        w.show()?;
+        w.set_focus()?;
+    }
     Ok(())
 }
 
@@ -1643,6 +1682,7 @@ fn main() {
                 docs,
                 waits,
                 merges: Arc::default(),
+                merging: Mutex::default(),
                 drags: drag::Drags::default(),
             });
             for id in &windows {
@@ -1749,6 +1789,11 @@ fn main() {
         if let RunEvent::Exit = event
             && let Some(state) = app.try_state::<AppState>()
         {
+            // Merges still inside their undo window end now: their parked secrets go.
+            let daemon = state.runtime.daemon();
+            for (_, p) in lock(&state.merges).drain() {
+                merge::finish(daemon.as_deref(), &p.undo);
+            }
             state.runtime.stop();
         }
     });

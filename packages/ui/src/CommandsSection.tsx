@@ -1,5 +1,5 @@
 import type { CommandTarget, Id, RunOutcome, SavedCommand, Shown } from "@terminescu/host";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 export const TARGET_LABEL: Record<CommandTarget, string> = {
   focused: "focused pane",
@@ -50,6 +50,7 @@ interface Asking {
 export function CommandsSection({ commands, enabled, onAdd, onDelete, onRun, statuses, onRestart }: CommandsSectionProps) {
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState<CommandDraft>({ name: "", body: "", target: "newTab", global: true, launcher: false });
+  const wasGlobal = useRef(true);
   const [asking, setAsking] = useState<Asking>();
   const [error, setError] = useState<string>();
 
@@ -134,7 +135,11 @@ export function CommandsSection({ commands, enabled, onAdd, onDelete, onRun, sta
               <input
                 type="checkbox"
                 checked={draft.launcher}
-                onChange={(e) => setDraft({ ...draft, launcher: e.target.checked, global: e.target.checked ? false : draft.global })}
+                onChange={(e) => {
+                  // A launcher stays in this side tab; unticking it gives back the scope it had.
+                  if (e.target.checked) wasGlobal.current = draft.global;
+                  setDraft({ ...draft, launcher: e.target.checked, global: e.target.checked ? false : wasGlobal.current });
+                }}
               />{" "}
               launcher
             </label>

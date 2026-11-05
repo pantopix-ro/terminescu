@@ -77,8 +77,8 @@ the tab Done.
 ### Requirement: Transcript mirror
 The app SHALL tail the session's JSONL with a byte-offset cursor, map lines to entries with
 stable ids, and render them in a read-only transcript pane on request. The pane SHALL show
-user and assistant messages with Pin and Extract on each message and on any selection. In P2
-it SHALL also show thinking and tool calls, collapsed; an open file tool call SHALL show its
+user and assistant messages with Pin and Extract on each message and on any selection. It SHALL
+also show thinking and tool calls, collapsed; an open file tool call SHALL show its
 diff and every open call its output.
 
 #### Scenario: Open a transcript pane

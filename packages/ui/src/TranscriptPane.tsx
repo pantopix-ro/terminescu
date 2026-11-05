@@ -1,5 +1,5 @@
 import type { Entry, TranscriptChunk } from "@terminescu/host";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { anchor } from "./anchor";
 import { editDiff, hunkDiff, type DiffLine } from "./diff";
 import { EXTRACT_EVENT, PIN_EVENT } from "./events";
@@ -62,7 +62,7 @@ function Diff({ lines }: { lines: DiffLine[] }) {
 }
 
 /** Claude's reasoning, collapsed; open, its text. */
-function Thinking({ id, text }: { id: string; text: string }) {
+const Thinking = memo(function Thinking({ id, text }: { id: string; text: string }) {
   const [open, setOpen] = useState(false);
   return (
     <details className="tr-block tr-thinking" data-entry={id} onToggle={(e) => setOpen(e.currentTarget.open)}>
@@ -70,13 +70,13 @@ function Thinking({ id, text }: { id: string; text: string }) {
       {open && <div className="tr-body tr-thinking-text">{text}</div>}
     </details>
   );
-}
+});
 
 /**
  * A tool call, collapsed to its name and what it touched; open, it shows the change and the
  * output (task 8.4). The stored patch wins over a diff computed from the edit text.
  */
-function ToolBlock({ call, result }: { call?: ToolCall; result?: ToolResult }) {
+const ToolBlock = memo(function ToolBlock({ call, result }: { call?: ToolCall; result?: ToolResult }) {
   // A closed block draws no body: a long session holds thousands of outputs.
   const [open, setOpen] = useState(false);
   const status = !result ? "running" : result.isError ? "error" : "done";
@@ -113,7 +113,7 @@ function ToolBlock({ call, result }: { call?: ToolCall; result?: ToolResult }) {
       </div>}
     </details>
   );
-}
+});
 
 /**
  * `[start, end)` of the selection inside `el`'s text, in UTF-16 units, or undefined when nothing
@@ -200,18 +200,19 @@ export function TranscriptPane({ paneId, session, read, pin, extract, savePrompt
     if (el && atBottom.current && !mark) el.scrollTop = el.scrollHeight;
   }, [entries, mark]);
 
-  const calls = useMemo(() => new Set(entries.flatMap((e) => (e.kind === "toolCall" ? [e.toolUseId] : []))), [entries]);
-  const results = useMemo(() => {
-    const m = new Map<string, ToolResult>();
-    for (const e of entries) if (e.kind === "toolResult" && !m.has(e.toolUseId)) m.set(e.toolUseId, e);
-    return m;
+  // Calls, results and messages by id. An empty tool id joins nothing.
+  const { results, byId, visible } = useMemo(() => {
+    const calls = new Set(entries.flatMap((e) => (e.kind === "toolCall" && e.toolUseId ? [e.toolUseId] : [])));
+    const results = new Map<string, ToolResult>();
+    const byId = new Map<string, TextEntry>();
+    for (const e of entries) {
+      if (e.kind === "toolResult" && e.toolUseId && !results.has(e.toolUseId)) results.set(e.toolUseId, e);
+      if (e.kind === "user" || e.kind === "assistant") byId.set(e.id, e);
+    }
+    return { results, byId, visible: entries.filter((e) => shown(e, calls)) };
   }, [entries]);
-  const visible = entries.filter((e) => shown(e, calls));
 
-  const textOf = (id: string) => {
-    const e = entries.find((x) => x.id === id);
-    return e && (e.kind === "user" || e.kind === "assistant") ? e : undefined;
-  };
+  const textOf = (id: string) => byId.get(id);
 
   // A revealed pin scrolls to its message and highlights the quote once it loads, once per
   // nonce: later messages must not pull the view back to it.

@@ -93,6 +93,8 @@ fn run_writes_one_cr_and_insert_none() {
         b"\x1b[200~cd api\npnpm dev\x1b[201~"
     );
     assert!(!type_bytes("a\rb", false).contains(&b'\r'));
+    // A tab would complete in the shell, so one line with a tab goes bracketed too.
+    assert_eq!(type_bytes("a\tb", false), b"\x1b[200~a\tb\x1b[201~");
 }
 
 #[test]
