@@ -55,6 +55,8 @@ pub type AgentSink = Box<dyn Fn(&AgentUpdate) + Send + Sync>;
 pub type StatusSink = Box<dyn Fn(&BTreeMap<Id, Shown>) + Send + Sync>;
 /// Hears which side tab's daemon variables changed (D21).
 pub type ContextSink = Box<dyn Fn(&str) + Send + Sync>;
+/// Hears the documents whose text panes left the layout (D28).
+pub type DocSink = Box<dyn Fn(&[Id]) + Send + Sync>;
 /// How often expiries and Claude idle rules are checked when nothing else happens.
 const STATUS_TICK: Duration = Duration::from_secs(1);
 /// Makes sure a daemon runs, then connects to it. Called at start and after a drop.
@@ -160,6 +162,7 @@ struct Inner {
     /// Panes that got a fresh shell at start, most likely after a reboot; launchers rerun there.
     respawned: Mutex<Vec<Id>>,
     context_sink: Mutex<Option<ContextSink>>,
+    doc_sink: Mutex<Option<DocSink>>,
     queued: Condvar,
     emit: Emit,
     connect: Connect,
@@ -288,6 +291,7 @@ impl Runtime {
                 launchers: Mutex::default(),
                 respawned: Mutex::new(spawn.iter().map(|(p, _, _)| p.clone()).collect()),
                 context_sink: Mutex::default(),
+                doc_sink: Mutex::default(),
                 queued: Condvar::new(),
                 emit,
                 connect,
@@ -472,6 +476,7 @@ impl Runtime {
     pub fn command(&self, cmd: Command) -> Result<u64, CommandError> {
         let mut core = lock(&self.inner.core);
         let before = core.workspace().terminal_sides();
+        let docs_before = core.workspace().doc_panes();
         // Typed text and the cwd a split inherits, read before the batch changes the layout.
         let (typed, inherit) = match &cmd {
             Command::ResumePane { pane_id } => {
@@ -502,6 +507,17 @@ impl Runtime {
             effects.push(Effect::Type { pane, text });
         }
         self.run(effects);
+        let docs_after: HashSet<Id> = ws.doc_panes().into_iter().map(|(_, d, _)| d).collect();
+        let gone: Vec<Id> = docs_before
+            .into_iter()
+            .map(|(_, d, _)| d)
+            .filter(|d| !docs_after.contains(d))
+            .collect();
+        if !gone.is_empty()
+            && let Some(sink) = lock(&self.inner.doc_sink).as_ref()
+        {
+            sink(&gone);
+        }
         self.save(&ws);
         drop(guard);
         Ok(batch.rev)
@@ -542,7 +558,7 @@ impl Runtime {
     }
 
     /// The cwd the shell integration reports now, else the last one seen.
-    fn live_cwd(&self, pane: &str) -> Option<String> {
+    pub fn live_cwd(&self, pane: &str) -> Option<String> {
         let client = self.daemon();
         let d = self.daemon_of(pane);
         if let (Some(client), Some(d)) = (client, d)
@@ -961,7 +977,11 @@ impl Runtime {
         *lock(&self.inner.status_sink) = Some(sink);
     }
 
-    /// Where the UI hears that a side tab's session or secret variables changed.
+    /// Where the document store hears that the last pane of a document closed.
+    pub fn on_docs_closed(&self, sink: DocSink) {
+        *lock(&self.inner.doc_sink) = Some(sink);
+    }
+
     pub fn on_context(&self, sink: ContextSink) {
         *lock(&self.inner.context_sink) = Some(sink);
     }

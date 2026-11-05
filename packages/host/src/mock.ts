@@ -4,7 +4,7 @@
 import type { Host, PaneView } from "./host";
 import { ACTIONS, actionFor, bindingProblem, normalAccel, withBindings, type KeyBindings } from "./keys";
 import { PromptStore } from "./prompt-store";
-import { hasSplit, isSessionId, leaf, panesOf, removePane, resizeSplit, splitPane, terminalsOf } from "./layout";
+import { hasSplit, holdsWork, isSessionId, leaf, panesOf, removePane, resizeSplit, splitPane, terminalsOf } from "./layout";
 import {
   ACCENTS,
   MAX_LABEL,
@@ -27,6 +27,7 @@ import {
   type NewVariable,
   isVariableName,
   type CommandError,
+  type DocView,
   type Patch,
   type PatchBatch,
   type Rule,
@@ -75,6 +76,14 @@ export interface MockHost extends Host {
    * `--until-exit` and no Claude idle rules; `crates/core/tests/rules.rs` covers those.
    */
   setCliStatus(pane: string, look: Look | null): void;
+  /** The mock's disk: absolute path to text. A missing path is a missing file. */
+  readonly files: Map<string, string>;
+  /** Answers for the next Open or Save dialogs, in order; null cancels. */
+  readonly dialogAnswers: (string | null)[];
+  /** Each dialog the UI opened, as `open` or `save`. */
+  readonly dialogs: string[];
+  /** Plays someone changing a file on disk: a clean buffer reloads, a dirty one gets the bar. */
+  writeFile(path: string, text: string): void;
 }
 
 /** `*` matches any run of characters, `?` one; the whole text must match (as `glob` in the core). */
@@ -143,6 +152,46 @@ export function createMockHost(initial?: Workspace): MockHost {
   const openedUrls: string[] = [];
   const resizes: string[] = [];
   const typed = new Map<string, string>();
+  const files = new Map<string, string>();
+  const dialogAnswers: (string | null)[] = [];
+  const dialogs: string[] = [];
+  // Documents as in crates/core/src/documents.rs, without hot exit.
+  const docs = new Map<string, { view: DocView; text: string; saved: string }>();
+  const docListeners = new Set<(d: DocView) => void>();
+  const full = (d: { view: DocView; text: string }): DocView => ({ ...structuredClone(d.view), text: d.text });
+  const meta = (d: { view: DocView }): DocView => structuredClone(d.view);
+  const docOrFail = (docId: string) => {
+    const d = docs.get(docId);
+    if (!d) throw new Error(`no document ${docId}`);
+    return d;
+  };
+  const baseName = (path: string) => path.split("/").pop() || path;
+  const newDoc = (source: DocView["source"], title: string, text: string, missing = false) => {
+    const view: DocView = {
+      id: id(),
+      source,
+      title,
+      dirty: false,
+      conflict: false,
+      readOnly: false,
+      bom: false,
+      missing,
+      sessionOnly: false,
+      request: false,
+      rev: 0,
+    };
+    docs.set(view.id, { view, text, saved: text });
+    return view.id;
+  };
+  const showDoc = async (sideTabId: string, docId: string, beside?: string | null) => {
+    try {
+      await host.send({ type: "OpenText", sideTabId, docId, beside: beside ?? null });
+    } catch (e) {
+      docs.delete(docId);
+      throw e;
+    }
+    return full(docs.get(docId)!);
+  };
   const inputs = new Map<string, string>();
   const agents = new Map<string, AgentView>();
   const agentListeners = new Set<(u: AgentUpdate) => void>();
@@ -394,15 +443,26 @@ export function createMockHost(initial?: Workspace): MockHost {
         if (c.type === "OpenTranscript" && !isSessionId(c.session)) return fail("BadSession", c.session);
         const tab = tabOfPane(c.paneId);
         const [dir, session] = c.type === "SplitPane" ? [c.dir, undefined] : (["row", c.session] as const);
-        const layout = splitPane(tab.layout, c.paneId, dir, id(), id(), session);
+        const layout = splitPane(tab.layout, c.paneId, dir, id(), id(), session ? { transcript: session } : {});
         if (layout === "small") return fail("PaneTooSmall", c.paneId);
         return [{ type: "LayoutChanged", tabId: tab.id, layout: layout! }];
+      }
+      case "OpenText": {
+        const side = sideTab(c.sideTabId);
+        if (c.beside) {
+          const tab = side.tabs.find((t) => panesOf(t.layout).includes(c.beside!)) ?? fail("UnknownPane", c.beside);
+          const layout = splitPane(tab.layout, c.beside, "row", id(), id(), { doc: c.docId });
+          if (layout === "small") return fail("PaneTooSmall", c.beside);
+          return [{ type: "LayoutChanged", tabId: tab.id, layout: layout! }];
+        }
+        const tab: Tab = { id: id(), title: null, layout: { type: "pane", id: id(), doc: c.docId } };
+        return [{ type: "TabCreated", sideTabId: c.sideTabId, index: side.tabs.length, tab }];
       }
       case "ClosePane": {
         const tab = tabOfPane(c.paneId);
         const layout = removePane(tab.layout, c.paneId);
         // A tab left with only transcript panes closes, as in the core.
-        if (layout && terminalsOf(layout).length) return [{ type: "LayoutChanged", tabId: tab.id, layout }];
+        if (layout && holdsWork(layout)) return [{ type: "LayoutChanged", tabId: tab.id, layout }];
         return [{ type: "TabClosed", tabId: tab.id }, ...closesSource(tab.id)];
       }
       case "ResizeSplit": {
@@ -458,6 +518,11 @@ export function createMockHost(initial?: Workspace): MockHost {
       batches.push(batch);
       for (const l of listeners) l(structuredClone(batch));
       recompute();
+      // A document goes with its last pane, as `on_docs_closed` in the runtime.
+      const shown = new Set(
+        ws.windows.flatMap((w) => w.sideTabs.flatMap((s) => s.tabs.flatMap((t) => panesOf(t.layout).map((p) => leaf(t.layout, p)!.doc)))),
+      );
+      for (const d of [...docs.keys()]) if (!shown.has(d)) docs.delete(d);
       return rev;
     },
     async onPatches(listener) {
@@ -874,12 +939,108 @@ export function createMockHost(initial?: Workspace): MockHost {
     async openUrl(url) {
       openedUrls.push(url);
     },
+    files,
+    dialogAnswers,
+    dialogs,
+    async newText(sideTabId, beside) {
+      return showDoc(sideTabId, newDoc({ kind: "untitled" }, "Untitled", ""), beside);
+    },
+    async openFile(sideTabId, path, beside) {
+      if (!path.startsWith("/")) throw new Error(`${path} is not an absolute path`);
+      const open = [...docs.values()].find((d) => d.view.source.kind === "file" && d.view.source.path === path);
+      if (open) return full(open);
+      const text = files.get(path);
+      return showDoc(sideTabId, newDoc({ kind: "file", path }, baseName(path), text ?? "", text === undefined), beside);
+    },
+    async document(docId) {
+      return full(docOrFail(docId));
+    },
+    async editDocument(docId, text) {
+      const d = docOrFail(docId);
+      if (d.view.readOnly) throw new Error(`${d.view.title} opened read-only`);
+      d.text = text;
+      d.view.dirty = d.text !== d.saved;
+      return meta(d);
+    },
+    async saveDocument(docId, path) {
+      const d = docOrFail(docId);
+      const src = d.view.source;
+      if (path) {
+        if (!path.startsWith("/")) throw new Error(`${path} is not an absolute path`);
+        d.view.source = { kind: "file", path };
+      } else if (src.kind === "untitled") {
+        throw new Error(`${d.view.title} needs a file name to save`);
+      } else if (src.kind === "prompt") {
+        await library.save(src.promptId, d.text);
+      } else if (src.kind === "variable") {
+        await host.changeVariable(src.sideTabId, src.name, { value: d.text });
+      }
+      if (d.view.source.kind === "file") {
+        files.set(d.view.source.path, d.text);
+        d.view.title = baseName(d.view.source.path);
+        d.view.missing = false;
+        d.view.conflict = false;
+      }
+      d.saved = d.text;
+      d.view.dirty = false;
+      return meta(d);
+    },
+    async reloadDocument(docId) {
+      const d = docOrFail(docId);
+      if (d.view.source.kind !== "file") throw new Error(`${docId} is not a file`);
+      d.text = d.saved = files.get(d.view.source.path) ?? "";
+      d.view.dirty = d.view.conflict = false;
+      d.view.rev++;
+      return full(d);
+    },
+    async keepMine(docId) {
+      const d = docOrFail(docId);
+      if (d.view.source.kind !== "file") throw new Error(`${docId} is not a file`);
+      d.saved = files.get(d.view.source.path) ?? "";
+      d.view.conflict = false;
+      d.view.dirty = d.text !== d.saved;
+      return meta(d);
+    },
+    async onDocument(listener) {
+      docListeners.add(listener);
+      return () => docListeners.delete(listener);
+    },
+    writeFile(path, text) {
+      files.set(path, text);
+      for (const d of docs.values()) {
+        if (d.view.source.kind !== "file" || d.view.source.path !== path || text === d.saved) continue;
+        let out: DocView;
+        if (d.view.dirty) {
+          d.view.conflict = true;
+          out = meta(d);
+        } else {
+          d.text = d.saved = text;
+          d.view.rev++;
+          out = full(d);
+        }
+        for (const l of docListeners) l(structuredClone(out));
+      }
+    },
+    async listFiles() {
+      const root = "/Users/owner/acme-api";
+      const files_ = [...files.keys()].filter((p) => p.startsWith(`${root}/`)).map((p) => p.slice(root.length + 1));
+      return { root, files: files_.sort(), truncated: false };
+    },
+    async chooseFile() {
+      dialogs.push("open");
+      return dialogAnswers.shift() ?? null;
+    },
+    async chooseSavePath() {
+      dialogs.push("save");
+      return dialogAnswers.shift() ?? null;
+    },
     // Outside Tauri there is no app menu: chords come from key events, caught before xterm.js.
     async onAction(listener) {
       const target = globalThis as Partial<typeof globalThis>;
       if (!target.addEventListener || !target.removeEventListener) return () => {};
       const onKey = (e: KeyboardEvent) => {
-        if (recording) return;
+        // A chord the app hands back to a field (see `passToField` in App.tsx) is untrusted.
+        if (recording || !e.isTrusted) return;
         const action = actionFor(e, withBindings(ACTIONS, keyBindings));
         if (!action) return;
         e.preventDefault();

@@ -27,6 +27,7 @@ const KEY_NAMES: Record<string, string> = {
   right: "ArrowRight",
   up: "ArrowUp",
   down: "ArrowDown",
+  enter: "Enter",
 };
 
 interface Chord {
@@ -66,6 +67,7 @@ const CODE_NAMES: Record<string, string> = {
   ArrowRight: "Right",
   ArrowUp: "Up",
   ArrowDown: "Down",
+  Enter: "Enter",
 };
 
 /** The key a chord ends on, from the physical key so ⌥ and ⇧ don't change it. */
@@ -87,10 +89,29 @@ export function actionFor(e: KeyboardEvent, actions: readonly ActionDef[] = ACTI
   })?.id;
 }
 
+/**
+ * A key event for a chord, so the app can hand a menu chord it does not use right now back to
+ * the focused field (a dialog's `⌘↵`, the library's `⌘S`).
+ */
+export function chordEvent(accel: string): KeyboardEventInit {
+  const c = parseAccel(accel);
+  const code = Object.entries(CODE_NAMES).find(([, n]) => (KEY_NAMES[n.toLowerCase()] ?? n) === c.key)?.[0];
+  return {
+    key: c.key,
+    code: code ?? (/^[a-z]$/.test(c.key) ? `Key${c.key.toUpperCase()}` : /^[0-9]$/.test(c.key) ? `Digit${c.key}` : c.key),
+    metaKey: c.meta,
+    ctrlKey: c.ctrl,
+    altKey: c.alt,
+    shiftKey: c.shift,
+    bubbles: true,
+    cancelable: true,
+  };
+}
+
 /** How a chord reads in the UI: ⌃⌥⇧⌘ then the key. */
 export function chordLabel(accel: string): string {
   const c = parseAccel(accel);
-  const key = { "\\": "\\", ArrowLeft: "←", ArrowRight: "→", ArrowUp: "↑", ArrowDown: "↓" }[c.key] ?? c.key.toUpperCase();
+  const key = { "\\": "\\", ArrowLeft: "←", ArrowRight: "→", ArrowUp: "↑", ArrowDown: "↓", Enter: "↵" }[c.key] ?? c.key.toUpperCase();
   return `${c.ctrl ? "⌃" : ""}${c.alt ? "⌥" : ""}${c.shift ? "⇧" : ""}${c.meta ? "⌘" : ""}${key}`;
 }
 

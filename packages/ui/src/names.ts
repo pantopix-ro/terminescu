@@ -61,16 +61,16 @@ export function insertText(v: { name: string; mode: string; value: string | null
 export function timeLeft(at: number, now = Date.now()): string {
   const s = Math.max(0, Math.round((at - now) / 1000));
   if (s < 60) return `${s}s left`;
-  if (s < 3600) return `${Math.round(s / 60)}m left`;
-  if (s < 86_400) return `${Math.round(s / 3600)}h left`;
-  return `${Math.round(s / 86_400)}d left`;
+  if (s < 3600) return `${Math.floor(s / 60)}m left`;
+  if (s < 86_400) return `${Math.floor(s / 3600)}h left`;
+  return `${Math.floor(s / 86_400)}d left`;
 }
 
 /** `just now`, `5m ago`, `3h ago`, `2d ago`. */
 export function timeAgo(at: number, now = Date.now()): string {
   const s = Math.max(0, Math.round((now - at) / 1000));
   if (s < 60) return "just now";
-  if (s < 3600) return `${Math.round(s / 60)}m ago`;
-  if (s < 86_400) return `${Math.round(s / 3600)}h ago`;
-  return `${Math.round(s / 86_400)}d ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86_400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86_400)}d ago`;
 }

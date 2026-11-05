@@ -8,6 +8,7 @@ pub mod context;
 pub mod core_socket;
 pub mod daemon;
 pub mod db;
+pub mod documents;
 pub mod hook_install;
 pub mod keys;
 pub mod launcher;

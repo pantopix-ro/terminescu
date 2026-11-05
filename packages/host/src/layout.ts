@@ -49,9 +49,9 @@ export function splitPane(
   dir: Dir,
   added: Id,
   splitId: Id,
-  transcript?: string,
+  extra: { transcript?: string; doc?: Id } = {},
 ): Layout | undefined | "small" {
-  const fresh: Layout = transcript ? { type: "pane", id: added, transcript } : { type: "pane", id: added };
+  const fresh: Layout = { type: "pane", id: added, ...extra };
   let small = false;
   const go = (node: Layout): Layout | undefined => {
     if (node.type === "pane") {
@@ -155,7 +155,17 @@ export function transcriptOf(l: Layout, id: Id): string | undefined {
   return leaf(l, id)?.transcript;
 }
 
-/** Pane ids that run a shell, in reading order: transcript panes left out. */
+/** The document a text pane edits, or undefined for other panes. */
+export function docOf(l: Layout, id: Id): Id | undefined {
+  return leaf(l, id)?.doc;
+}
+
+/** Pane ids that run a shell, in reading order: transcript and text panes left out. */
 export function terminalsOf(l: Layout): Id[] {
-  return panesOf(l).filter((p) => !transcriptOf(l, p));
+  return panesOf(l).filter((p) => !transcriptOf(l, p) && !docOf(l, p));
+}
+
+/** A tab stays open while it has a shell or a document; transcripts alone close it. */
+export function holdsWork(l: Layout): boolean {
+  return panesOf(l).some((p) => !transcriptOf(l, p));
 }

@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Every Terminescu window talks to the core through the Host commands",
   "windows": ["*"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "dialog:allow-open", "dialog:allow-save"]
 }

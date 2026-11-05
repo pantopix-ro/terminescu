@@ -2,6 +2,42 @@
  "comment": "App actions and their default chords (D17). The app menu (apps/desktop/src-tauri) and the browser fallback (packages/host/src/keys.ts) both read this file.",
  "actions": [
   {
+   "id": "new_text",
+   "label": "New Text Tab",
+   "menu": "File",
+   "accel": "Cmd+Alt+T"
+  },
+  {
+   "id": "open_file",
+   "label": "Open File…",
+   "menu": "File",
+   "accel": "Cmd+O"
+  },
+  {
+   "id": "save",
+   "label": "Save",
+   "menu": "File",
+   "accel": "Cmd+S"
+  },
+  {
+   "id": "save_as",
+   "label": "Save As…",
+   "menu": "File",
+   "accel": "Cmd+Alt+Shift+S"
+  },
+  {
+   "id": "return_edit",
+   "label": "Return to Caller",
+   "menu": "File",
+   "accel": "Cmd+Enter"
+  },
+  {
+   "id": "send_to_pane",
+   "label": "Send to Pane",
+   "menu": "File",
+   "accel": "Cmd+Shift+Enter"
+  },
+  {
    "id": "new_tab",
    "label": "New Tab",
    "menu": "Shell",

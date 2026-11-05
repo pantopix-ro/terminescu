@@ -296,13 +296,18 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
 
 ## 7. Text tabs (P1)
 
-- [ ] 7.1 CodeMirror 6 text pane: Markdown and lazy-loaded languages, soft wrap, find and
+- [x] 7.1 CodeMirror 6 text pane: Markdown and lazy-loaded languages, soft wrap, find and
       replace, multiple cursors, pane status bar, byte-exact save (D29). Verify: `exact.test.ts`
       opens a CRLF file with trailing spaces, edits one word, saves, and diffs one line.
-- [ ] 7.2 Document store in the core: sources (file, Untitled, variable, prompt version, editor
+      Done: `TextPane` (CodeMirror per pane in the pane registry, lazy `language-data`,
+      `lineSeparator` per file, LF/CRLF/Mixed in the status bar); `exact.test.ts`. Next
+      occurrence is `⌃⌘G` since `⌘D` splits.
+- [x] 7.2 Document store in the core: sources (file, Untitled, variable, prompt version, editor
       request), 300 ms change sync, reload on window move, hot exit in SQLite, session-only
       documents never on disk (D28). Verify: `documents.test.rs` restores an unsaved buffer after
       a core restart and finds no row for a session-only document.
+      Done: `documents.rs` with migration 0007 (`base_sig`), 300 ms sync, hot exit rows
+      (none for session-only), `on_docs_closed`; `tests/documents.rs`. Editor requests in 7.4.
 - [ ] 7.3 Openers: `⌥⌘T`, `+ ▾ › Text`, `⌘O` file search then the macOS dialog, `⌘`-click on
       paths in terminal output via the OSC 7 cwd, `terminescu edit`, Finder drop, `⌥` to split
       (D27). Verify: Playwright for `⌥⌘T` and `⌘O`; `cli.test.rs` for `terminescu edit` picking
@@ -313,9 +318,11 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
 - [ ] 7.5 Save and close flows: `⌘S`, Save dialog for Untitled, Save As in menu and palette,
       Save / Don't save / Cancel on close, dirty dot (D27). Verify: Playwright with a mock Host
       covers each close choice.
-- [ ] 7.6 Disk watcher: reload clean buffers, changed-on-disk bar with Reload and Keep mine,
+- [x] 7.6 Disk watcher: reload clean buffers, changed-on-disk bar with Reload and Keep mine,
       20 MB read-only, binary refused (D28). Verify: `watch.test.rs` writes the file under a
       dirty buffer and gets the conflict event, not a reload.
+      Done: 1 s poll by size and mtime in `docs.rs`, `host://document` events, the bar in
+      `TextPane`; `tests/watch.rs` and `e2e/text.spec.ts`.
 - [ ] 7.7 `{{variable}}` chips, autocomplete from the side tab's context, unknown-name warning,
       secrets as `$NAME` only; pasted images saved next to the file (D29). Verify:
       `varchips.test.ts` flags `{{tikcet}}` and offers `$API_TOKEN` for a secret.

@@ -9,6 +9,8 @@ import type {
   SavedCommand,
   Auto,
   Command,
+  DocView,
+  FileList,
   Id,
   Item,
   ItemKind,
@@ -164,4 +166,29 @@ export interface Host {
   setBuiltin(auto: Auto, look: Look | null): Promise<void>;
   /** Opens an http(s) link in the default browser. */
   openUrl(url: string): Promise<void>;
+  /** `⌥⌘T`: an Untitled text pane beside `beside`, or in a new tab of the side tab (D27). */
+  newText(sideTabId: Id, beside?: Id | null): Promise<DocView>;
+  /**
+   * Opens a file by absolute path in a text pane. A file already open comes back without a new
+   * pane; the window focuses the pane that shows it.
+   */
+  openFile(sideTabId: Id, path: string, beside?: Id | null): Promise<DocView>;
+  /** A document with its text. */
+  document(docId: Id): Promise<DocView>;
+  /** The editor's whole text, after a pause in typing (D28). */
+  editDocument(docId: Id, text: string): Promise<DocView>;
+  /** `⌘S`; `path` saves under a new name. Untitled without a path fails: ask for one first. */
+  saveDocument(docId: Id, path?: string | null): Promise<DocView>;
+  /** Changed on disk: take the disk's text. */
+  reloadDocument(docId: Id): Promise<DocView>;
+  /** Changed on disk: keep the buffer. */
+  keepMine(docId: Id): Promise<DocView>;
+  /** A document changed outside the editor: reloaded, changed on disk or gone missing. */
+  onDocument(listener: (doc: DocView) => void): Promise<() => void>;
+  /** Files under a pane's cwd for `⌘O`, git-tracked ones when it is a repository. */
+  listFiles(paneId: Id | null): Promise<FileList>;
+  /** The macOS Open dialog; null when cancelled. */
+  chooseFile(defaultDir?: string): Promise<string | null>;
+  /** The macOS Save dialog; null when cancelled. */
+  chooseSavePath(defaultPath?: string): Promise<string | null>;
 }

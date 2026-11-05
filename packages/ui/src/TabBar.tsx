@@ -4,7 +4,7 @@ import type { Shown, Tab } from "@terminescu/host";
 import { DOT, tabAgent, type Agents } from "./agents";
 import { StatusChip } from "./StatusChip";
 import { chipOf, rowStyle, type Builtins } from "./status";
-import { tabName } from "./SideTabList";
+import { tabDirty, tabName, type DocMarks } from "./SideTabList";
 
 export interface TabBarProps {
   tabs: Tab[];
@@ -17,6 +17,8 @@ export interface TabBarProps {
   /** Shown statuses by tab id: a set status shows as a chip and colors the tab (D15). */
   statuses?: Readonly<Record<string, Shown>>;
   builtins?: Builtins;
+  /** Text panes' documents: their title names the tab, unsaved edits show a dot (D27). */
+  docs?: DocMarks;
 }
 
 function TabItem({
@@ -25,6 +27,7 @@ function TabItem({
   agents,
   shown,
   builtins,
+  docs,
   onSelect,
   onClose,
 }: {
@@ -33,6 +36,7 @@ function TabItem({
   agents: Agents;
   shown: Shown | undefined;
   builtins: Builtins;
+  docs: DocMarks;
   onSelect(): void;
   onClose(): void;
 }) {
@@ -59,7 +63,8 @@ function TabItem({
           <span className={`ao-dot ${DOT[agent.state]}`} title={agent.state} />
         </>
       )}
-      <span className="n">{tabName(tab)}</span>
+      <span className="n">{tabName(tab, docs)}</span>
+      {tabDirty(tab, docs) && <span className="tab-dirty" title="Unsaved changes" aria-label="Unsaved changes" />}
       {shown?.look && <StatusChip chip={chipOf(shown, builtins)} />}
       <button
         type="button"
@@ -78,7 +83,7 @@ function TabItem({
 }
 
 /** The active side tab's tabs, across the top like browser tabs. Drag one to reorder it. */
-export function TabBar({ tabs, activeId, onSelect, onClose, onNew, agents = {}, statuses = {}, builtins = {} }: TabBarProps) {
+export function TabBar({ tabs, activeId, onSelect, onClose, onNew, agents = {}, statuses = {}, builtins = {}, docs = {} }: TabBarProps) {
   return (
     <div className="ao-tabs" role="tablist" data-tauri-drag-region>
       <SortableContext items={tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
@@ -90,6 +95,7 @@ export function TabBar({ tabs, activeId, onSelect, onClose, onNew, agents = {}, 
             agents={agents}
             shown={statuses[t.id]}
             builtins={builtins}
+            docs={docs}
             onSelect={() => onSelect(t.id)}
             onClose={() => onClose(t.id)}
           />

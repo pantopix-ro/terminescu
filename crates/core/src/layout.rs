@@ -40,6 +40,9 @@ pub enum Layout {
         /// a pane has no shell.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         transcript: Option<String>,
+        /// Set on a text pane: the document it edits (D28). Such a pane has no shell either.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        doc: Option<Id>,
     },
     Split {
         id: Id,
@@ -64,6 +67,17 @@ impl Layout {
             id: id.into(),
             resume: None,
             transcript: None,
+            doc: None,
+        }
+    }
+
+    /// A text pane editing document `doc` (D28).
+    pub fn text(id: impl Into<Id>, doc: impl Into<Id>) -> Self {
+        Layout::Pane {
+            id: id.into(),
+            resume: None,
+            transcript: None,
+            doc: Some(doc.into()),
         }
     }
 
@@ -73,16 +87,18 @@ impl Layout {
             id: id.into(),
             resume: None,
             transcript: Some(session.into()),
+            doc: None,
         }
     }
 
-    /// The panes that run a shell, in reading order: every pane but transcript panes.
+    /// The panes that run a shell, in reading order: every pane but transcript and text panes.
     pub fn terminals(&self) -> Vec<&Id> {
         let mut out = Vec::new();
         self.walk(&mut |l| {
             if let Layout::Pane {
                 id,
                 transcript: None,
+                doc: None,
                 ..
             } = l
             {
@@ -90,6 +106,25 @@ impl Layout {
             }
         });
         out
+    }
+
+    /// Text panes and their documents, in reading order.
+    pub fn docs(&self) -> Vec<(&Id, &Id)> {
+        let mut out = Vec::new();
+        self.walk(&mut |l| {
+            if let Layout::Pane {
+                id, doc: Some(d), ..
+            } = l
+            {
+                out.push((id, d));
+            }
+        });
+        out
+    }
+
+    /// A tab with only transcript panes left has nothing of its own to show; it closes.
+    pub fn holds_work(&self) -> bool {
+        !self.terminals().is_empty() || !self.docs().is_empty()
     }
 
     /// Pane ids, in reading order.

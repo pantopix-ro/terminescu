@@ -243,3 +243,15 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 .set-chord.recording { color: var(--blue); }
 .key-problem { color: var(--red); }
 .key-clash { background: color-mix(in srgb, var(--red) 12%, transparent); }
+
+/* Text panes (D27): bars, the editor and its status line, inside the pane's element. */
+.term-pane.text-host { inset: 0; }
+.text-pane { position: absolute; inset: 0; display: flex; flex-direction: column; min-height: 0; }
+.text-editor { flex: 1; min-height: 0; }
+.text-editor .cm-editor { height: 100%; }
+.text-editor .cm-editor.cm-focused { outline: none; }
+.text-bar { display: flex; align-items: center; gap: var(--space-2); flex: none; padding: var(--space-1) var(--space-3); background: var(--bg); color: var(--dim); border-bottom: 2px solid var(--line); font-size: 12px; }
+.text-bar-warn { color: var(--amber); }
+.text-bar-error { color: var(--red); }
+.text-status { display: flex; gap: var(--space-3); flex: none; justify-content: flex-end; padding: 2px var(--space-3); background: var(--bg); color: var(--faint); border-top: 2px solid var(--line); font-size: 11px; white-space: nowrap; overflow: hidden; }
+.tab-dirty { width: 6px; height: 6px; flex: none; background: var(--amber); }

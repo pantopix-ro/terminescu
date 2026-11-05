@@ -89,6 +89,13 @@ pub enum Command {
         pane_id: Id,
         session: String,
     },
+    /// A text pane editing `doc_id` (D27, D28): beside `beside` (a split to the right), or in
+    /// a new tab at the end of the side tab.
+    OpenText {
+        side_tab_id: Id,
+        doc_id: Id,
+        beside: Option<Id>,
+    },
     /// Closes a pane; the last pane of a tab closes the tab.
     ClosePane {
         pane_id: Id,
@@ -257,6 +264,20 @@ impl Workspace {
                     .iter()
                     .flat_map(|t| t.layout.terminals())
                     .map(|p| (p.clone(), s.id.clone()))
+            })
+            .collect()
+    }
+
+    /// Every text pane as (pane, document, side tab), in order (D28).
+    pub fn doc_panes(&self) -> Vec<(Id, Id, Id)> {
+        self.windows
+            .iter()
+            .flat_map(|w| w.side_tabs.iter())
+            .flat_map(|s| {
+                s.tabs
+                    .iter()
+                    .flat_map(|t| t.layout.docs())
+                    .map(|(p, d)| (p.clone(), d.clone(), s.id.clone()))
             })
             .collect()
     }
@@ -676,6 +697,46 @@ impl Core {
                         })?;
                 vec![Patch::LayoutChanged { tab_id, layout }]
             }
+            Command::OpenText {
+                side_tab_id,
+                doc_id,
+                beside,
+            } => {
+                let side = ws
+                    .side_tab(&side_tab_id)
+                    .ok_or(CommandError::UnknownSideTab(side_tab_id.clone()))?;
+                let pane = Layout::text((self.new_id)(), doc_id);
+                match beside {
+                    Some(pane_id) => {
+                        let tab = side
+                            .tabs
+                            .iter()
+                            .find(|t| t.layout.has_pane(&pane_id))
+                            .ok_or(CommandError::UnknownPane(pane_id.clone()))?;
+                        let layout = tab
+                            .layout
+                            .split(&pane_id, Dir::Row, pane, (self.new_id)())
+                            .map_err(|e| match e {
+                                LayoutError::TooSmall => CommandError::PaneTooSmall(pane_id),
+                                _ => CommandError::UnknownPane(pane_id),
+                            })?;
+                        vec![Patch::LayoutChanged {
+                            tab_id: tab.id.clone(),
+                            layout,
+                        }]
+                    }
+                    None => vec![Patch::TabCreated {
+                        side_tab_id,
+                        index: side.tabs.len(),
+                        tab: Tab {
+                            id: (self.new_id)(),
+                            title: None,
+                            layout: pane,
+                            status: None,
+                        },
+                    }],
+                }
+            }
             Command::ClosePane { pane_id } => {
                 let (_, tab) = ws
                     .locate_pane(&pane_id)
@@ -684,7 +745,7 @@ impl Core {
                 let left = tab
                     .layout
                     .remove(&pane_id)
-                    .map(|l| l.filter(|l| !l.terminals().is_empty()));
+                    .map(|l| l.filter(Layout::holds_work));
                 match left {
                     Ok(Some(layout)) => vec![Patch::LayoutChanged {
                         tab_id: tab.id.clone(),
@@ -911,6 +972,53 @@ mod tests {
     }
 
     #[test]
+    fn a_text_pane_opens_as_a_tab_or_beside_a_pane_and_runs_no_shell() {
+        let mut c = core();
+        // A new tab at the end of the side tab.
+        c.handle(Command::OpenText {
+            side_tab_id: "id4".into(),
+            doc_id: "doc-1".into(),
+            beside: None,
+        })
+        .unwrap();
+        let side = &c.workspace().windows[0].side_tabs[0];
+        assert_eq!(side.tabs.len(), 2);
+        let text_tab = side.tabs[1].clone();
+        assert_eq!(text_tab.layout.terminals(), Vec::<&Id>::new());
+        assert_eq!(text_tab.layout.docs().len(), 1);
+        let json = serde_json::to_string(&text_tab.layout).unwrap();
+        assert!(json.contains(r#""doc":"doc-1""#), "{json}");
+        // Beside the shell pane: a split to the right.
+        c.handle(Command::OpenText {
+            side_tab_id: "id4".into(),
+            doc_id: "doc-2".into(),
+            beside: Some("id3".into()),
+        })
+        .unwrap();
+        let first = c.workspace().tab("id2").unwrap().layout.clone();
+        assert_eq!(first.terminals(), vec!["id3"]);
+        let (text_pane, _) = first.docs()[0];
+        let text_pane = text_pane.clone();
+        assert_eq!(c.workspace().doc_panes().len(), 2);
+        // Closing the shell leaves the text pane, so the tab stays.
+        c.handle(Command::ClosePane {
+            pane_id: "id3".into(),
+        })
+        .unwrap();
+        assert!(c.workspace().tab("id2").is_some());
+        c.handle(Command::ClosePane { pane_id: text_pane }).unwrap();
+        assert!(c.workspace().tab("id2").is_none());
+        assert_eq!(
+            c.handle(Command::OpenText {
+                side_tab_id: "nope".into(),
+                doc_id: "doc-3".into(),
+                beside: None,
+            }),
+            Err(CommandError::UnknownSideTab("nope".into()))
+        );
+    }
+
+    #[test]
     fn split_adds_a_pane_and_closing_panes_ends_with_the_tab() {
         let mut c = core();
         let b = c
@@ -1016,6 +1124,7 @@ mod tests {
             id: "id3".into(),
             resume: Some("sess-1".into()),
             transcript: None,
+            doc: None,
         };
         c.restore(ws);
         c.handle(Command::DismissResume {

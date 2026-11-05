@@ -11,13 +11,16 @@ import {
 } from "@dnd-kit/core";
 import {
   ACTIONS,
+  chordEvent,
   chordLabel,
   DEFAULT_SETTINGS,
   withBindings,
+  docOf,
   panesOf,
   terminalsOf,
   transcriptOf,
   type AgentUpdate,
+  type DocView,
   type AppSettings,
   type ActionDef,
   type KeyBindings,
@@ -59,6 +62,8 @@ import {
   TabBar,
   tabName,
   TerminalPane,
+  TextPane,
+  textPane,
   type ContextMode,
   type PaletteItem,
   SORTS,
@@ -150,6 +155,8 @@ const collide: CollisionDetection = (args) => {
 };
 
 const selectable = new Set(["palette"]);
+/** Menu chords that a focused dialog field may use for itself. */
+const FIELD_CHORDS = new Set(["save", "save_as", "return_edit", "send_to_pane"]);
 const paletteActions = (actions: readonly ActionDef[]) => actions.filter((a) => !selectable.has(a.id) && !/^(tab|side)_\d$/.test(a.id));
 
 export function App({ windowId, host, workspace, terminals }: AppProps) {
@@ -180,6 +187,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const [sheet, setSheet] = useState<"status" | "settings" | "prompts" | "insert" | "save-prompt">();
   const [toSave, setToSave] = useState("");
   const [libraryKey, setLibraryKey] = useState<string>();
+  // Text panes' documents as their panes last reported them: titles and unsaved edits (D27).
+  const [docs, setDocs] = useState<Record<string, DocView>>({});
+  const noteDoc = (d: DocView) => setDocs((m) => ({ ...m, [d.id]: d }));
 
   const send = (c: Command): Promise<boolean> =>
     host.send(c).then(
@@ -247,6 +257,42 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     });
   };
 
+  // Shows the pane that edits a document, now or once the core's patch adds it.
+  const revealDoc = (docId: string) => {
+    const pane = (w: Workspace) =>
+      sidesOf(w)
+        .flatMap((s) => s.tabs)
+        .flatMap((t) => panesOf(t.layout))
+        .find((p) => sidesOf(w).some((s) => s.tabs.some((t) => docOf(t.layout, p) === docId)));
+    const found = pane(workspace.store.getState().workspace);
+    if (found) return revealRef.current(found);
+    setFollow((w) => {
+      const p = pane(w);
+      if (p) revealRef.current(p);
+      return !!p;
+    });
+  };
+
+  // `⌘S` and Save As on the focused text pane: its last keystrokes go first, an Untitled
+  // buffer asks where to save.
+  const saveFocused = async (as: boolean) => {
+    const pane = focused && textPane(focused);
+    if (!pane) return setError("Focus a text pane to save.");
+    try {
+      await pane.flush();
+      const doc = docs[pane.docId] ?? (await host.document(pane.docId));
+      let path: string | null | undefined;
+      if (as || doc.source.kind === "untitled") {
+        if (doc.sessionOnly) return setError(`${doc.title} is session only and never goes to disk.`);
+        path = await host.chooseSavePath(doc.source.kind === "file" ? doc.source.path : doc.title);
+        if (!path) return;
+      }
+      noteDoc(await host.saveDocument(pane.docId, path));
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
   // A closed pane hands focus to the pane before it, as the core hands it its space.
   const lastPanes = useRef<{ tab?: string; panes: string[] }>({ panes: [] });
   useEffect(() => {
@@ -259,9 +305,25 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       if (next) focusIn(activeTab.id, next);
     }
     lastPanes.current = { tab: activeTab?.id, panes };
+    // Documents whose panes closed leave the marks.
+    const shown = new Set(sidesOf(ws).flatMap((sd) => sd.tabs.flatMap((t) => panesOf(t.layout).flatMap((p) => docOf(t.layout, p) ?? []))));
+    setDocs((m) => (Object.keys(m).every((d) => shown.has(d)) ? m : Object.fromEntries(Object.entries(m).filter(([d]) => shown.has(d)))));
   }, [ws]);
 
+  // The menu takes ⌘S and ⌘↵ before the page sees them. Outside a text pane they belong to
+  // the focused field, as a dialog's ⌘↵ and the prompt library's ⌘S, so they go back there.
+  const passToField = (id: string) => {
+    const el = document.activeElement;
+    if (!(el instanceof HTMLElement) || el.closest(".text-pane")) return false;
+    if (!el.closest('[role="dialog"]') && !el.matches("input, textarea, select")) return false;
+    const accel = withBindings(ACTIONS, keyBindings).find((a) => a.id === id)?.accel;
+    if (!accel) return false;
+    el.dispatchEvent(new KeyboardEvent("keydown", chordEvent(accel)));
+    return true;
+  };
+
   const act = (id: string) => {
+    if (FIELD_CHORDS.has(id) && passToField(id)) return;
     const nth = /^(tab|side)_(\d)$/.exec(id);
     if (nth) {
       const list = nth[1] === "tab" ? tabs : shownSides;
@@ -288,6 +350,12 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       case "close":
         if (focused) void send({ type: "ClosePane", paneId: focused });
         return;
+      case "new_text":
+        if (!activeSide) return;
+        return void host.newText(activeSide.id).then((d) => revealDoc(d.id), setError);
+      case "save":
+      case "save_as":
+        return void saveFocused(id === "save_as");
       case "open_transcript": {
         const session = focused && agents[focused]?.session;
         if (!activeTab || !focused) return;
@@ -672,6 +740,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               sideTabs={shownSides}
               statuses={statuses}
               builtins={statusConfig.builtins}
+              docs={docs}
               sort={sort}
               onSort={(m) => {
                 setSort(m);
@@ -716,6 +785,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               agents={agents}
               statuses={statuses}
               builtins={statusConfig.builtins}
+              docs={docs}
               onSelect={(id) => {
                 if (activeSide) selectTab(activeSide.id, id);
                 refocus();
@@ -737,8 +807,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                     >
                       {multi && (
                         <div className="ao-tp-head">
-                          <i className={`ao-i x1 ${transcript ? "ao-i-agent" : "ao-i-term"}`} />
-                          <span>{transcript ? "transcript" : "shell"}</span>
+                          <i className={`ao-i x1 ${transcript ? "ao-i-agent" : docOf(activeTab.layout, paneId) ? "ao-i-doc" : "ao-i-term"}`} />
+                          <span>{transcript ? "transcript" : (docs[docOf(activeTab.layout, paneId) ?? ""]?.title ?? (docOf(activeTab.layout, paneId) ? "text" : "shell"))}</span>
                           <span className="grow" />
                           <button type="button" className="tp-close" aria-label="Close pane" onClick={() => void send({ type: "ClosePane", paneId })}>
                             ×
@@ -866,6 +936,28 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               }
             />
           )),
+        ),
+      )}
+      {/* Text panes keep their editor the same way (D27). */}
+      {sideTabs.flatMap((side) =>
+        side.tabs.flatMap((tab) =>
+          panesOf(tab.layout).flatMap((paneId) => {
+            const docId = docOf(tab.layout, paneId);
+            return docId
+              ? [
+                  <TextPane
+                    key={paneId}
+                    paneId={paneId}
+                    docId={docId}
+                    visible={tab.id === activeTab?.id}
+                    focused={paneId === focused}
+                    onFocus={() => focusIn(tab.id, paneId)}
+                    host={host}
+                    onDoc={noteDoc}
+                  />,
+                ]
+              : [];
+          }),
         ),
       )}
       {extracting && (

@@ -9,6 +9,7 @@ export {
   accelOf,
   actionFor,
   bindingProblem,
+  chordEvent,
   chordLabel,
   conflicts,
   normalAccel,

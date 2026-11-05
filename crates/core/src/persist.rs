@@ -79,20 +79,24 @@ pub fn save(db: &Db, saved: &Saved) -> Result<()> {
                 )?;
                 ids[2].push(&t.id);
                 let terminals = t.layout.terminals();
+                let docs = t.layout.docs();
                 for p in t.layout.panes() {
                     let rec = saved.panes.get(p).cloned().unwrap_or_default();
+                    let doc = docs.iter().find(|(pane, _)| *pane == p).map(|(_, d)| *d);
                     let kind = if terminals.contains(&p) {
                         "terminal"
+                    } else if doc.is_some() {
+                        "text"
                     } else {
                         "transcript"
                     };
                     tx.execute(
-                        "INSERT INTO panes (id, owner_id, tab_id, kind, daemon_pane_id, cwd, session_id, created_at)
-                         VALUES (?1, ?2, ?3, ?8, ?4, ?5, ?6, ?7)
+                        "INSERT INTO panes (id, owner_id, tab_id, kind, daemon_pane_id, cwd, session_id, document_id, created_at)
+                         VALUES (?1, ?2, ?3, ?8, ?4, ?5, ?6, ?9, ?7)
                          ON CONFLICT (id) DO UPDATE SET tab_id = excluded.tab_id, kind = excluded.kind,
                            daemon_pane_id = excluded.daemon_pane_id, cwd = excluded.cwd,
-                           session_id = excluded.session_id",
-                        params![p, owner, t.id, rec.daemon.map(|d| d as i64), rec.cwd, rec.session, now, kind],
+                           session_id = excluded.session_id, document_id = excluded.document_id",
+                        params![p, owner, t.id, rec.daemon.map(|d| d as i64), rec.cwd, rec.session, now, kind, doc],
                     )?;
                     ids[3].push(p);
                 }
@@ -211,7 +215,7 @@ pub fn load(db: &Db) -> Result<Option<Saved>> {
                     .unwrap_or_else(|| Layout::pane(crate::new_id()));
             }
         }
-        if layout.terminals().is_empty() {
+        if !layout.holds_work() {
             layout = Layout::pane(crate::new_id());
         }
         if let Some((_, s)) = side_tabs.iter_mut().find(|(_, s)| s.id == side_tab_id) {

@@ -18,3 +18,4 @@ serde_json.workspace = true
 tauri = { version = "2", features = [] }
 # 2.7.0 shipped 2026-10-14; 2.8 is under two weeks old.
 tauri-plugin-notification = "~2.7.0"
+tauri-plugin-dialog = "=2.8.3"

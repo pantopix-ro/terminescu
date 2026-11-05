@@ -1,5 +1,5 @@
 import { useDroppable } from "@dnd-kit/core";
-import type { AgentView, Shown, SideTab, Tab } from "@terminescu/host";
+import { leaf, panesOf, type AgentView, type Shown, type SideTab, type Tab } from "@terminescu/host";
 import { useState } from "react";
 import { DOT, tabAgent, type Agents } from "./agents";
 import { StatusChip } from "./StatusChip";
@@ -22,14 +22,25 @@ export interface SideTabListProps {
   /** The order `sideTabs` comes in; drops between rows only make sense in manual order. */
   sort?: SortMode;
   onSort?(mode: SortMode): void;
+  /** Text panes' documents, for tab names. */
+  docs?: DocMarks;
 }
 
-/** A side tab's name: its own title, else its first tab's title, else "shell". */
-export function sideTabName(s: SideTab): string {
-  return s.title ?? s.tabs[0]?.title ?? "shell";
+/** A side tab's name: its own title, else its first tab's name, else "shell". */
+export function sideTabName(s: SideTab, docs: DocMarks = {}): string {
+  return s.title ?? (s.tabs[0] ? tabName(s.tabs[0], docs) : "shell");
 }
 
-export const tabName = (t: Tab) => t.title ?? "shell";
+/** Text panes' documents by id: the title a tab shows and whether edits are unsaved (D27). */
+export type DocMarks = Readonly<Record<string, { title: string; dirty: boolean }>>;
+
+const docsOf = (t: Tab): string[] => panesOf(t.layout).flatMap((p) => leaf(t.layout, p)?.doc ?? []);
+
+/** A tab's name: its own title, else the title of its first document, else "shell". */
+export const tabName = (t: Tab, docs: DocMarks = {}) => t.title ?? docsOf(t).map((d) => docs[d]?.title).find(Boolean) ?? "shell";
+
+/** A tab holds a document with unsaved edits. */
+export const tabDirty = (t: Tab, docs: DocMarks = {}) => docsOf(t).some((d) => docs[d]?.dirty);
 
 /** `⌘1` to `⌘8` for the first tabs, `⌘9` for the last one, as the Window menu does. */
 export function tabChord(i: number, count: number): string | undefined {
@@ -68,11 +79,12 @@ function Row(props: {
   agents: Agents;
   statuses: Readonly<Record<string, Shown>>;
   builtins: Builtins;
+  docs: DocMarks;
   onSelect(): void;
   onSelectTab(tabId: string): void;
   onToggle(): void;
 }) {
-  const { side, active, expanded, dragging, agents, statuses, builtins } = props;
+  const { side, active, expanded, dragging, agents, statuses, builtins, docs } = props;
   const shown = statuses[side.id];
   const need = shown?.waiting || side.tabs.some((t) => tabAgent(t, agents)?.state === "waiting");
   const chip = chipOf(shown, builtins);
@@ -95,7 +107,7 @@ function Row(props: {
         onKeyDown={(e) => e.key === "Enter" && props.onSelect()}
       >
         <i className={`ao-i ${group ? "ao-i-group" : side.tabs[0] && tabAgent(side.tabs[0], agents) ? "ao-i-agent" : "ao-i-term"}`} />
-        <span className="t">{sideTabName(side)}</span>
+        <span className="t">{sideTabName(side, docs)}</span>
         <span className="side-trail">
         <StatusChip chip={chip} />
         {group && !active && (
@@ -136,7 +148,7 @@ function Row(props: {
               onClick={() => props.onSelectTab(t.id)}
             >
               <KidIcon agent={tabAgent(t, agents)} />
-              <span className="grow">{tabName(t)}</span>
+              <span className="grow">{tabName(t, docs)}</span>
               {statuses[t.id]?.look && <StatusChip chip={chipOf(statuses[t.id], builtins)} />}
               {active && <span>{tabChord(i, side.tabs.length)}</span>}
             </div>
@@ -174,6 +186,7 @@ export function SideTabList({
   builtins = {},
   sort = "manual",
   onSort,
+  docs = {},
 }: SideTabListProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   return (
@@ -211,6 +224,7 @@ export function SideTabList({
               agents={agents}
               statuses={statuses}
               builtins={builtins}
+              docs={docs}
               onSelect={() => onSelect(s.id)}
               onSelectTab={(t) => onSelectTab(s.id, t)}
               onToggle={() => setExpanded((m) => ({ ...m, [s.id]: !m[s.id] }))}

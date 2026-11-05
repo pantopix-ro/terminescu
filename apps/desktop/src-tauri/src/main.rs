@@ -2,6 +2,8 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod docs;
+
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -74,6 +76,8 @@ struct AppState {
     attention: Arc<Mutex<Attention>>,
     /// The window whose Settings › Keys records a chord, while the menu holds no chords.
     recording: Mutex<Option<String>>,
+    /// What text panes edit (D28).
+    docs: Arc<terminescu_core::documents::Documents>,
 }
 
 /// Focuses the pane that has waited longest, raising its window. `None` when nothing waits.
@@ -1272,7 +1276,12 @@ fn build_menu(
             ])?;
             sub.set_as_windows_menu_for_nsapp()?;
         }
-        menu.append(&sub)?;
+        // File sits between the app menu and Edit, as macOS apps place it.
+        if name == "File" {
+            menu.insert(&sub, 1)?;
+        } else {
+            menu.append(&sub)?;
+        }
     }
     Ok(menu)
 }
@@ -1293,6 +1302,7 @@ fn send_action(app: &AppHandle, id: &str) {
 fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_dialog::init())
         .menu(|app| build_menu(app, &keys::Bindings::new(), true))
         .on_menu_event(|app, event| send_action(app, event.id().as_ref()))
         .on_page_load(|webview, payload| {
@@ -1310,6 +1320,7 @@ fn main() {
             }
             let db = Arc::new(Mutex::new(db));
             let (runtime, windows, updates) = start_runtime(app.handle(), db.clone())?;
+            let docs = docs::start(app.handle(), db.clone(), &runtime);
             let attention = Arc::new(Mutex::new(Attention::default()));
             watch_attention(
                 app.handle().clone(),
@@ -1338,6 +1349,7 @@ fn main() {
                 db,
                 attention,
                 recording: Mutex::new(None),
+                docs,
             });
             for id in &windows {
                 open_window(app.handle(), id)?;
@@ -1399,7 +1411,15 @@ fn main() {
             pane_ack,
             pane_resize,
             pane_input,
-            open_url
+            open_url,
+            docs::doc_new,
+            docs::doc_open_file,
+            docs::doc_get,
+            docs::doc_edit,
+            docs::doc_save,
+            docs::doc_reload,
+            docs::doc_keep_mine,
+            docs::files_list
         ])
         .build(tauri::generate_context!())
         .expect("Terminescu failed to start");
@@ -1432,7 +1452,7 @@ mod tests {
         for a in &file.actions {
             assert!(ids.insert(a.id.as_str()), "{} is listed twice", a.id);
             assert!(
-                ["Shell", "View", "Window"].contains(&a.menu.as_str()),
+                ["File", "Shell", "View", "Window"].contains(&a.menu.as_str()),
                 "{}",
                 a.menu
             );

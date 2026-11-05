@@ -101,6 +101,8 @@
     { "type": "MoveTabToNewSideTab", "tabId": "t2", "windowId": "w1", "index": 1 },
     { "type": "RenameTab", "tabId": "t3", "title": "claude" },
     { "type": "SplitPane", "paneId": "p1", "dir": "row" },
+    { "type": "OpenText", "sideTabId": "s1", "docId": "d1", "beside": "p1" },
+    { "type": "OpenText", "sideTabId": "s1", "docId": "d2", "beside": null },
     { "type": "ClosePane", "paneId": "p5" },
     { "type": "ResizeSplit", "splitId": "x1", "sizes": [300, 700] },
     { "type": "ResumePane", "paneId": "p3" },

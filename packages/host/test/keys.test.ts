@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ACTIONS, accelOf, actionFor, bindingProblem, chordLabel, conflicts, normalAccel, withBindings, type ActionDef } from "../src/keys";
+import { ACTIONS, accelOf, actionFor, bindingProblem, chordLabel, conflicts, normalAccel, withBindings } from "../src/keys";
 
 const key = (code: string, mods: Partial<KeyboardEvent> = {}, k = "") =>
   ({ code, key: k, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...mods }) as KeyboardEvent;
@@ -30,12 +30,17 @@ describe("chords", () => {
     expect(chordLabel("Cmd+Shift+D")).toBe("⇧⌘D");
     expect(chordLabel("Cmd+Alt+Left")).toBe("⌥⌘←");
     expect(chordLabel("Cmd+Comma")).toBe("⌘,");
+    expect(chordLabel("Cmd+Shift+Enter")).toBe("⇧⌘↵");
+  });
+
+  it("reads ⌘↵ from the Enter key", () => {
+    expect(actionFor(key("Enter", { metaKey: true }))).toBe("return_edit");
+    expect(actionFor(key("Enter", { metaKey: true, shiftKey: true }))).toBe("send_to_pane");
+    expect(accelOf(key("Enter", { metaKey: true }))).toBe("Cmd+Enter");
   });
 });
 
-// "Open file" arrives with text tabs (7.3); the rebinding logic does not depend on it.
-const OPEN_FILE: ActionDef = { id: "open_file", label: "Open File…", menu: "File", accel: "Cmd+O" };
-const withOpenFile = [...ACTIONS, OPEN_FILE];
+const withOpenFile = ACTIONS;
 
 describe("editable shortcuts (task 6.10)", () => {
   it("rebinds Open file to ⌘P: ⌘P opens it and ⌘O does nothing", () => {

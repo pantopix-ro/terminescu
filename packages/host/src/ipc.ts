@@ -1,6 +1,7 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import type { Host, PaneView } from "./host";
 import type { KeyBindings } from "./keys";
 import type {
@@ -10,6 +11,8 @@ import type {
   RunOutcome,
   SavedCommand,
   Command,
+  DocView,
+  FileList,
   Id,
   Item,
   PatchBatch,
@@ -37,6 +40,8 @@ export const STATUS_CONFIG_EVENT = "host://status-config";
 /** The core sends these to one window: the one holding the pane, for `⌘⇧A` and the chime. */
 export const REVEAL_EVENT = "host://reveal-pane";
 export const CHIME_EVENT = "host://chime";
+/** A document changed outside the editor (D28). */
+export const DOCUMENT_EVENT = "host://document";
 /** The app menu sends each action to the focused window only. */
 export const ACTION_EVENT = "menu://action";
 
@@ -127,6 +132,20 @@ export function createIpcHost(): Host {
     deleteRule: (id) => invoke("rule_delete", { id }),
     setBuiltin: (auto, look) => invoke("builtin_set", { auto, look }),
     openUrl: (url) => invoke("open_url", { url }),
+    newText: (sideTab, beside) => invoke<DocView>("doc_new", { sideTab, beside: beside ?? null }),
+    openFile: (sideTab, path, beside) => invoke<DocView>("doc_open_file", { sideTab, path, beside: beside ?? null }),
+    document: (id) => invoke<DocView>("doc_get", { id }),
+    editDocument: (id, text) => invoke<DocView>("doc_edit", { id, text }),
+    saveDocument: (id, path) => invoke<DocView>("doc_save", { id, path: path ?? null }),
+    reloadDocument: (id) => invoke<DocView>("doc_reload", { id }),
+    keepMine: (id) => invoke<DocView>("doc_keep_mine", { id }),
+    onDocument: (listener) => listen<DocView>(DOCUMENT_EVENT, (e) => listener(e.payload)),
+    listFiles: (pane) => invoke<FileList>("files_list", { pane }),
+    chooseFile: async (defaultPath) => {
+      const picked = await openDialog({ multiple: false, directory: false, defaultPath });
+      return typeof picked === "string" ? picked : null;
+    },
+    chooseSavePath: (defaultPath) => saveDialog({ defaultPath }),
     onAction: (listener) => getCurrentWebviewWindow().listen<string>(ACTION_EVENT, (e) => listener(e.payload)),
   };
 }

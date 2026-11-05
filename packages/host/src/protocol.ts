@@ -14,6 +14,8 @@ export type Layout =
       resume?: string;
       /** Set on a transcript pane: the Claude session it mirrors; such a pane has no shell (task 4.4). */
       transcript?: string;
+      /** Set on a text pane: the document it edits; such a pane has no shell (D27). */
+      doc?: Id;
     }
   | { type: "split"; id: Id; dir: Dir; children: Layout[]; sizes: number[] };
 
@@ -106,6 +108,8 @@ export type Command =
   | { type: "RenameTab"; tabId: Id; title: string | null }
   | { type: "SplitPane"; paneId: Id; dir: Dir }
   | { type: "OpenTranscript"; paneId: Id; session: string }
+  /** A text pane editing `docId`: beside `beside` on the right, or in a new tab (D27). */
+  | { type: "OpenText"; sideTabId: Id; docId: Id; beside?: Id | null }
   | { type: "ClosePane"; paneId: Id }
   | { type: "ResizeSplit"; splitId: Id; sizes: number[] }
   | { type: "ResumePane"; paneId: Id }
@@ -365,3 +369,43 @@ export type RunOutcome =
   | { kind: "missing"; names: string[] }
   | { kind: "unsafe"; names: string[] }
   | { kind: "done"; pane: Id | null };
+
+/** Where a text pane's document comes from and saves to (D27, D28). */
+export type DocSource =
+  | { kind: "file"; path: string }
+  | { kind: "untitled" }
+  | { kind: "variable"; sideTabId: Id; name: string }
+  | { kind: "prompt"; promptId: Id };
+
+/**
+ * What a text pane shows, as crates/core/src/documents.rs sends it. `text` is absent when the
+ * editor already has it.
+ */
+export interface DocView {
+  id: Id;
+  source: DocSource;
+  title: string;
+  text?: string;
+  dirty: boolean;
+  /** The file changed on disk under unsaved edits: Reload or Keep mine. */
+  conflict: boolean;
+  readOnly: boolean;
+  bom: boolean;
+  /** Not on disk yet; saving creates it. */
+  missing: boolean;
+  /** A session or secret variable: never saved to a file. */
+  sessionOnly: boolean;
+  /** `terminescu edit --wait` waits on it. */
+  request: boolean;
+  note?: string;
+  /** Bumps when the core replaced the text (a reload). */
+  rev: number;
+}
+
+/** Files for `⌘O`, relative to `root`. */
+export interface FileList {
+  root: string;
+  files: string[];
+  /** More files exist than the list holds. */
+  truncated: boolean;
+}
