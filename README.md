@@ -16,7 +16,9 @@ shell, and Terminescu never starts a turn on its own.
 > app (task 2.6), shown in an xterm.js pane that streams raw bytes from the core (task 2.5).
 > The `terminescu` CLI forwards hooks, sets statuses and keeps session and secret variables in
 > the daemon, so `var env` answers while the app is closed (task 2.3). Those variables stay in
-> memory only, are wiped on unset and expire on their TTL (task 2.2).
+> memory only, are wiped on unset and expire on their TTL (task 2.2). Shell integration for zsh,
+> bash and fish reports each command's line, exit code and cwd, and loads the side tab's
+> variables before every prompt and command (task 2.4).
 
 ## See it
 

@@ -104,11 +104,19 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       and answers `status` and saved `var set` with `not_built` until 5.x and 6.1, which the
       CLI turns into a warning. `var unset` and `var list` came along. For 2.4: `var env` only
       exports, so a variable unset or expired since the last prompt needs an `unset` line.
-- [ ] 2.4 Shell integration for zsh, bash and fish (OSC 133, OSC 7, command line), loaded after
+- [x] 2.4 Shell integration for zsh, bash and fish (OSC 133, OSC 7, command line), loaded after
       the person's rc files; `precmd` runs `terminescu var env` when the variable generation
       changed; `VISUAL` and `EDITOR` when the setting is on (D9, D35). Verify: test runs `false`
       in each shell and reads exit code 1, the command line and the cwd, and finds a secret set
       mid-session in the next command's environment but not in the pane's scrollback.
+      Done 2026-11-04; scripts in `crates/ptyd/shell/`, written to `<run>/shell` at daemon start;
+      zsh through ZDOTDIR, bash 3.2+ through `--rcfile` (reads the login files itself), fish
+      through XDG_DATA_DIRS. Hooks run at the first prompt, after every rc file. `var env` also
+      runs in `preexec`, so a secret inserted at a waiting prompt reaches that command; it
+      prints nothing when `TERMINESCU_VARS_GEN` matches and `unset` lines for names that went.
+      Our OSC 133 carries `src=terminescu`; other integrations (iTerm2's) are ignored once it
+      reports. Test: `crates/cli/tests/shell.rs`. fish untested here (not installed). The
+      `TERMINESCU_EDITOR` switch waits for the setting (6.x) and `edit` (M4).
 - [x] 2.5 xterm.js pane, output over a raw-byte `ipc::Channel` batched per frame with
       acknowledgements, WebGL for visible panes only with DOM fallback on context loss, resize,
       copy, links (D33). Verify: manual, `vim` and `htop` render and resize; Playwright opens 20

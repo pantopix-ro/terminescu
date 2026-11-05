@@ -172,7 +172,12 @@ pub struct Var {
 }
 
 /// A variable name a shell can export: a letter or `_`, then letters, digits or `_`.
+/// A name a variable may take. `TERMINESCU_*` is reserved for the shell integration's own
+/// bookkeeping.
 pub fn is_var_name(name: &str) -> bool {
+    if name.starts_with("TERMINESCU_") {
+        return false;
+    }
     let mut chars = name.chars();
     chars
         .next()
@@ -192,6 +197,29 @@ pub struct PaneInfo {
     pub foreground: Option<String>,
     /// Exit code once the shell ended; the pane stays listed until closed.
     pub exited: Option<i32>,
+    /// What the shell integration reported (D9); empty for a shell without it.
+    #[serde(default)]
+    pub shell: ShellState,
+}
+
+/// A pane's command state from its shell integration: OSC 133 for prompts and exit codes,
+/// OSC 7 for the cwd and `OSC 633;E` for the command line (D9).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ShellState {
+    /// True once the integration reported anything; without it the app falls back to the
+    /// foreground process name.
+    #[serde(default)]
+    pub integrated: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<String>,
+    /// The running command's line, or the last one once it ended.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    /// True from a command's start until its end.
+    #[serde(default)]
+    pub running: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_exit: Option<i32>,
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -330,7 +358,7 @@ mod tests {
         for ok in ["API_TOKEN", "_x", "from_date", "a1"] {
             assert!(is_var_name(ok), "{ok}");
         }
-        for bad in ["", "1a", "A-B", "A B", "a$", "é"] {
+        for bad in ["", "1a", "A-B", "A B", "a$", "é", "TERMINESCU_VARS"] {
             assert!(!is_var_name(bad), "{bad}");
         }
     }

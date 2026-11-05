@@ -30,9 +30,16 @@ pub fn run(args: &[String]) -> ExitCode {
     }
 }
 
-/// Prints shell lines that export every session and secret variable of the pane's side tab,
-/// for `eval "$(terminescu var env)"` in the prompt hook. Prints nothing outside a pane or while
-/// the daemon is down, so the prompt never breaks.
+/// The names `var env` exported last time, space-separated, so the next call can unset the ones
+/// that went away.
+const NAMES_ENV: &str = "TERMINESCU_VARS";
+/// `<daemon instance>:<generation>` of the variables loaded last time. Unchanged means nothing
+/// to print; the instance part keeps a restarted daemon's generations from matching old ones.
+const GEN_ENV: &str = "TERMINESCU_VARS_GEN";
+
+/// Prints shell lines that bring the shell's variables in line with the pane's side tab, for
+/// `eval "$(terminescu var env)"` before each prompt and command (D35). Prints nothing when
+/// nothing changed, outside a pane or while the daemon is down, so the prompt never breaks.
 fn env(args: &[String]) -> ExitCode {
     let fish = match args {
         [] => false,
@@ -42,29 +49,73 @@ fn env(args: &[String]) -> ExitCode {
     let Some(pane) = pane_id() else {
         return ExitCode::SUCCESS;
     };
-    let Ok(Control::Vars { vars, .. }) = call(ENV_TIMEOUT, |req| Control::VarGet {
-        req,
-        pane,
-        name: None,
-    }) else {
+    let Ok(mut client) = connect(ENV_TIMEOUT) else {
         return ExitCode::SUCCESS;
     };
-    print!("{}", env_lines(&vars, fish));
+    let Ok(Control::Vars {
+        generation, vars, ..
+    }) = ask(
+        &mut client,
+        Control::VarGet {
+            req: REQ,
+            pane,
+            name: None,
+        },
+    )
+    else {
+        return ExitCode::SUCCESS;
+    };
+    let loaded = Loaded {
+        key: format!("{}:{generation}", client.instance),
+        names: std::env::var(NAMES_ENV).unwrap_or_default(),
+    };
+    if std::env::var(GEN_ENV).is_ok_and(|k| k == loaded.key) {
+        return ExitCode::SUCCESS;
+    }
+    print!("{}", env_lines(&vars, &loaded, fish));
     ExitCode::SUCCESS
 }
 
-fn env_lines(vars: &[Var], fish: bool) -> String {
-    vars.iter()
-        // The daemon checks names on set; check again, since this output goes to eval.
-        .filter(|v| is_var_name(&v.name))
-        .map(|v| {
-            if fish {
-                format!("set -gx {} {}\n", v.name, fish_quote(&v.value))
-            } else {
-                format!("export {}={}\n", v.name, sh_quote(&v.value))
-            }
-        })
-        .collect()
+/// What the shell holds now, from its environment.
+struct Loaded {
+    key: String,
+    names: String,
+}
+
+fn env_lines(vars: &[Var], loaded: &Loaded, fish: bool) -> String {
+    // The daemon checks names on set; check again, since this output goes to eval.
+    let vars: Vec<&Var> = vars.iter().filter(|v| is_var_name(&v.name)).collect();
+    let mut out = String::new();
+    for gone in loaded
+        .names
+        .split_whitespace()
+        .filter(|n| is_var_name(n) && !vars.iter().any(|v| v.name == *n))
+    {
+        if fish {
+            out += &format!("set -e {gone}\n");
+        } else {
+            out += &format!("unset {gone}\n");
+        }
+    }
+    let names = vars
+        .iter()
+        .map(|v| v.name.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let mut assignments: Vec<(&str, &str)> = vars
+        .iter()
+        .map(|v| (v.name.as_str(), v.value.as_str()))
+        .collect();
+    assignments.push((NAMES_ENV, &names));
+    assignments.push((GEN_ENV, &loaded.key));
+    for (name, value) in assignments {
+        if fish {
+            out += &format!("set -gx {name} {}\n", fish_quote(value));
+        } else {
+            out += &format!("export {name}={}\n", sh_quote(value));
+        }
+    }
+    out
 }
 
 /// POSIX single quotes: nothing inside is special except the quote itself.
@@ -296,9 +347,16 @@ fn read_stdin_value() -> io::Result<String> {
 /// Sends one request to the daemon and waits for its answer. A daemon error comes back as
 /// `Err` with a message for the person.
 fn call(timeout: Duration, build: impl FnOnce(u64) -> Control) -> Result<Control, String> {
-    let mut client =
-        Client::connect_timeout(&ptyd_socket(), "terminescu-cli", timeout).map_err(describe)?;
-    client.send(&Frame::Control(build(REQ))).map_err(describe)?;
+    let mut client = connect(timeout)?;
+    ask(&mut client, build(REQ))
+}
+
+fn connect(timeout: Duration) -> Result<Client, String> {
+    Client::connect_timeout(&ptyd_socket(), "terminescu-cli", timeout).map_err(describe)
+}
+
+fn ask(client: &mut Client, request: Control) -> Result<Control, String> {
+    client.send(&Frame::Control(request)).map_err(describe)?;
     let answer = client
         .recv_until(|f| match f {
             Frame::Control(
@@ -346,18 +404,29 @@ mod tests {
     }
 
     #[test]
-    fn env_lines_quote_values() {
+    fn env_lines_quote_values_and_unset_what_went() {
         let vars = [
             v("TICKET", "PROJ-482", VarMode::Session),
             v("NOTE", r"it's $HOME \n", VarMode::Secret),
         ];
+        let loaded = Loaded {
+            key: "i-1:7".into(),
+            names: "OLD TICKET bad-name".into(),
+        };
         assert_eq!(
-            env_lines(&vars, false),
-            "export TICKET='PROJ-482'\nexport NOTE='it'\\''s $HOME \\n'\n"
+            env_lines(&vars, &loaded, false),
+            "unset OLD\n\
+             export TICKET='PROJ-482'\n\
+             export NOTE='it'\\''s $HOME \\n'\n\
+             export TERMINESCU_VARS='TICKET NOTE'\n\
+             export TERMINESCU_VARS_GEN='i-1:7'\n"
         );
         assert_eq!(
-            env_lines(&vars, true),
-            "set -gx TICKET 'PROJ-482'\nset -gx NOTE 'it\\'s $HOME \\\\n'\n"
+            env_lines(&vars[..1], &loaded, true),
+            "set -e OLD\n\
+             set -gx TICKET 'PROJ-482'\n\
+             set -gx TERMINESCU_VARS 'TICKET'\n\
+             set -gx TERMINESCU_VARS_GEN 'i-1:7'\n"
         );
     }
 

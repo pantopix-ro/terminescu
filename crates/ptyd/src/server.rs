@@ -4,6 +4,7 @@
 //! reader, a writer and a waiter thread per pane. Each client has a bounded queue; a client that
 //! falls behind gets disconnected and reattaches with a fresh snapshot.
 
+use crate::osc::{OscScanner, ShellTracker};
 use crate::screen::Screen;
 use crate::vars::Vars;
 use portable_pty::{ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
@@ -34,6 +35,9 @@ pub struct Options {
     pub socket: PathBuf,
     pub lock: PathBuf,
     pub core_socket: PathBuf,
+    /// The `terminescu` CLI the shell integration calls for `var env` and puts on `PATH`
+    /// (D36). Without it the integration still reports prompts, exit codes and the cwd.
+    pub cli: Option<PathBuf>,
     /// Exit after this long with no live pane and no client (D32).
     pub idle: Duration,
 }
@@ -53,6 +57,8 @@ struct PaneState {
     subscribers: Vec<Subscriber>,
     side_tab: Option<String>,
     exited: Option<i32>,
+    osc: OscScanner,
+    shell: ShellTracker,
 }
 
 struct Pane {
@@ -146,13 +152,15 @@ impl Shared {
                 pixel_height: 0,
             })
             .map_err(io::Error::other)?;
+        let login_shell = spec.argv.as_ref().is_none_or(|a| a.is_empty());
         let mut cmd = match &spec.argv {
             Some(argv) if !argv.is_empty() => {
                 let mut c = CommandBuilder::new(&argv[0]);
                 c.args(&argv[1..]);
                 c
             }
-            // The login shell (D8): portable-pty runs `$SHELL` with a leading dash in argv[0].
+            // The login shell (D8): portable-pty runs `$SHELL` with a leading dash in argv[0];
+            // `shell::inject` swaps in the integration for zsh, bash and fish.
             _ => CommandBuilder::new_default_prog(),
         };
         let cwd = spec.cwd.clone().or_else(|| std::env::var("HOME").ok());
@@ -160,7 +168,9 @@ impl Shared {
             cmd.cwd(cwd);
         }
         for (key, _) in std::env::vars_os() {
-            if key.to_string_lossy().starts_with("CLAUDE") {
+            let k = key.to_string_lossy();
+            // A daemon started from a pane must not hand that pane's bookkeeping on.
+            if k.starts_with("CLAUDE") || (k.starts_with("TERMINESCU_") && k != "TERMINESCU_HOME") {
                 cmd.env_remove(key);
             }
         }
@@ -177,6 +187,9 @@ impl Shared {
         for (k, v) in &spec.env {
             cmd.env(k, v);
         }
+        if login_shell {
+            crate::shell::inject(&mut cmd, &self.shell_dir(), self.opts.cli.as_ref());
+        }
 
         let mut child = pair.slave.spawn_command(cmd).map_err(io::Error::other)?;
         drop(pair.slave);
@@ -191,6 +204,8 @@ impl Shared {
                 subscribers: Vec::new(),
                 side_tab: spec.side_tab,
                 exited: None,
+                osc: OscScanner::default(),
+                shell: ShellTracker::default(),
             }),
             master: Mutex::new(pair.master),
             input,
@@ -217,6 +232,10 @@ impl Shared {
                     });
                     let mut st = lock(&p.state);
                     st.screen.feed(&buf[..n]);
+                    let PaneState { osc, shell, .. } = &mut *st;
+                    osc.feed(&buf[..n], |payload| {
+                        shell.apply(payload);
+                    });
                     st.subscribers
                         .retain(|s| shared.push(s.client, &s.tx, frame.clone()));
                 }
@@ -250,10 +269,10 @@ impl Shared {
     }
 
     fn info(&self, pane: &Pane) -> PaneInfo {
-        let (cols, rows, side_tab, exited) = {
+        let (cols, rows, side_tab, exited, shell) = {
             let st = lock(&pane.state);
             let (c, r) = st.screen.size();
-            (c, r, st.side_tab.clone(), st.exited)
+            (c, r, st.side_tab.clone(), st.exited, st.shell.state.clone())
         };
         let foreground = if exited.is_none() {
             lock(&pane.master)
@@ -270,7 +289,17 @@ impl Shared {
             side_tab,
             foreground,
             exited,
+            shell,
         }
+    }
+
+    /// Where `run` wrote the shell integration: next to the socket, in the private run folder.
+    fn shell_dir(&self) -> PathBuf {
+        self.opts
+            .socket
+            .parent()
+            .unwrap_or(Path::new("."))
+            .join("shell")
     }
 
     fn live_panes(&self) -> usize {
@@ -576,6 +605,11 @@ pub fn run(opts: Options) -> io::Result<bool> {
     // We hold the lock, so a socket file left here belongs to a daemon that died.
     let _ = std::fs::remove_file(&opts.socket);
     let listener = UnixListener::bind(&opts.socket)?;
+    if let Some(dir) = opts.socket.parent()
+        && let Err(e) = crate::shell::install(&dir.join("shell"))
+    {
+        eprintln!("ptyd: shell integration not installed, shells start without it: {e}");
+    }
     std::fs::set_permissions(&opts.socket, std::fs::Permissions::from_mode(0o600))?;
 
     let shared = Arc::new(Shared {

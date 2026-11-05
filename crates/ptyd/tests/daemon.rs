@@ -354,6 +354,7 @@ fn default_program_is_the_login_shell() {
         spec: SpawnSpec {
             cols: 80,
             rows: 24,
+            env: vec![("SHELL".into(), "/bin/zsh".into())],
             ..Default::default()
         },
     }))
@@ -365,14 +366,14 @@ fn default_program_is_the_login_shell() {
         })
         .unwrap();
     c.send(&Frame::Control(Control::Attach { pane })).unwrap();
-    // A login shell has a leading dash in argv[0] (D8).
+    // The integration starts zsh with -l, so it stays a login shell (D8, D9).
     c.send(&Frame::Input {
         pane,
-        data: b"echo login:$0:$((40+2))\n".to_vec(),
+        data: b"[[ -o login ]] && echo login:yes:$((40+2))\n".to_vec(),
     })
     .unwrap();
     let out = read_until(&mut c, pane, ":42\r\n");
-    assert!(out.contains("login:-"), "{out}");
+    assert!(out.contains("login:yes:42"), "{out}");
 }
 
 fn var_call(c: &mut Client, frame: Control) -> Control {

@@ -184,6 +184,7 @@ impl Daemon {
             lock: dir.join("ptyd.lock"),
             core_socket: dir.join("core.sock"),
             socket: socket.clone(),
+            cli: Some(env!("CARGO_BIN_EXE_terminescu").into()),
             idle: Duration::from_secs(60),
         };
         std::thread::spawn(move || terminescu_ptyd::server::run(opts));
@@ -263,10 +264,28 @@ fn variables_live_in_the_daemon_while_the_app_is_closed() {
 
     let env = d.run(&["var", "env"]);
     assert!(env.status.success());
+    let env = stdout(&env);
+    let lines: Vec<&str> = env.lines().collect();
     assert_eq!(
-        stdout(&env),
-        "export API_TOKEN='tok-example-1'\nexport TICKET='PROJ-482'\n"
+        lines[..3],
+        [
+            "export API_TOKEN='tok-example-1'",
+            "export TICKET='PROJ-482'",
+            "export TERMINESCU_VARS='API_TOKEN TICKET'",
+        ]
     );
+    let key = lines[3]
+        .strip_prefix("export TERMINESCU_VARS_GEN='")
+        .and_then(|k| k.strip_suffix('\''))
+        .unwrap()
+        .to_string();
+    // A shell that already loaded this generation gets nothing to eval.
+    let same = d
+        .cli(&["var", "env"])
+        .env("TERMINESCU_VARS_GEN", &key)
+        .output()
+        .unwrap();
+    assert!(same.status.success() && same.stdout.is_empty());
 
     let list = d.run(&["var", "list"]);
     assert_eq!(
@@ -282,9 +301,17 @@ fn variables_live_in_the_daemon_while_the_app_is_closed() {
     assert!(d.run(&["var", "unset", "TICKET"]).status.success());
     let gone = d.run(&["var", "get", "TICKET"]);
     assert_eq!(gone.status.code(), Some(1));
-    assert_eq!(
-        stdout(&d.run(&["var", "env", "--fish"])),
-        "set -gx API_TOKEN 'tok-example-1'\n"
+    // The shell still holds TICKET from the last load: it gets an unset line.
+    let after = d
+        .cli(&["var", "env", "--fish"])
+        .env("TERMINESCU_VARS", "API_TOKEN TICKET")
+        .env("TERMINESCU_VARS_GEN", &key)
+        .output()
+        .unwrap();
+    let after = stdout(&after);
+    assert!(
+        after.starts_with("set -e TICKET\nset -gx API_TOKEN 'tok-example-1'\n"),
+        "{after}"
     );
 }
 

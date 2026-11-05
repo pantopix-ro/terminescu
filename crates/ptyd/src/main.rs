@@ -44,6 +44,7 @@ fn main() -> ExitCode {
                 lock: socket.with_extension("lock"),
                 core_socket: dir.join("core.sock"),
                 socket,
+                cli: cli(),
                 idle,
             }
         }
@@ -57,6 +58,7 @@ fn main() -> ExitCode {
                 socket: p.ptyd_socket,
                 lock: p.ptyd_lock,
                 core_socket: p.core_socket,
+                cli: cli(),
                 idle,
             }
         }
@@ -72,6 +74,12 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// The CLI copy installed next to this daemon (D36).
+fn cli() -> Option<PathBuf> {
+    let path = std::env::current_exe().ok()?.parent()?.join("terminescu");
+    path.is_file().then_some(path)
 }
 
 fn usage() -> ExitCode {
