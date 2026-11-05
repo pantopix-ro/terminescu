@@ -29,11 +29,12 @@ import { createPortal } from "react-dom";
 import { INSERT_EVENT, type InsertDetail } from "./events";
 import { claimPane, paneElement, releasePane } from "./pane-registry";
 import { eolOf, exactState, textOf, type Eol } from "./text";
+import { refreshChips, varChips, type VarInfo } from "./varchips";
 
 /** How long typing pauses before the text goes to the core (D28). */
 export const SYNC_MS = 300;
 
-export type TextHost = Pick<Host, "document" | "editDocument" | "onDocument" | "reloadDocument" | "keepMine">;
+export type TextHost = Pick<Host, "document" | "editDocument" | "onDocument" | "reloadDocument" | "keepMine" | "pasteImage">;
 
 export interface TextPaneProps {
   paneId: string;
@@ -44,6 +45,9 @@ export interface TextPaneProps {
   host: TextHost;
   /** The document's title, dirty flag and bars changed. */
   onDoc?(doc: DocView): void;
+  /** The side tab's variables, names and modes only, for `{{variable}}` chips (D29); absent
+   * keeps the last list, as for a side tab not on screen. */
+  variables?: readonly VarInfo[];
 }
 
 /** What the app asks of a text pane: send pending text before a save, read the selection. */
@@ -77,6 +81,13 @@ const theme = EditorView.theme(
     },
     ".cm-panels": { backgroundColor: "var(--bg)", color: "var(--fg)" },
     ".cm-searchMatch": { backgroundColor: "color-mix(in srgb, var(--amber) 25%, transparent)" },
+    ".cm-var-chip": {
+      backgroundColor: "color-mix(in srgb, var(--amber) 18%, transparent)",
+      border: "1px solid color-mix(in srgb, var(--amber) 45%, transparent)",
+      borderRadius: "4px",
+    },
+    ".cm-var-secret": { borderStyle: "dashed" },
+    ".cm-var-unknown": { textDecoration: "underline wavy var(--red)", textUnderlineOffset: "3px" },
   },
   { dark: true },
 );
@@ -94,8 +105,9 @@ function languageFor(doc: DocView): LanguageDescription | "markdown" | undefined
 const searchKeys = searchKeymap.filter((k) => k.key !== "Mod-d");
 const editKeys = defaultKeymap.filter((k) => k.key !== "Mod-Enter");
 
-function baseExtensions(language: Compartment, readOnly: Compartment, onUpdate: Extension): Extension {
+function baseExtensions(language: Compartment, readOnly: Compartment, onUpdate: Extension, extra: Extension): Extension {
   return [
+    extra,
     lineNumbers(),
     highlightActiveLineGutter(),
     highlightSpecialChars(),
@@ -139,7 +151,7 @@ interface Cursor {
  * element from the registry, so a split or a tab move keeps its state. Typing reaches the core
  * after a pause; the core sends reloads and the changed-on-disk state back.
  */
-export function TextPane({ paneId, docId, visible, focused, onFocus, host, onDoc }: TextPaneProps) {
+export function TextPane({ paneId, docId, visible, focused, onFocus, host, onDoc, variables }: TextPaneProps) {
   const holder = useRef<HTMLDivElement>(null);
   const editor = useRef<EditorView | null>(null);
   const [doc, setDoc] = useState<DocView | null>(null);
@@ -149,6 +161,8 @@ export function TextPane({ paneId, docId, visible, focused, onFocus, host, onDoc
   const [langName, setLangName] = useState("Plain text");
   const callbacks = useRef({ host, onDoc, onFocus });
   callbacks.current = { host, onDoc, onFocus };
+  // What the chips read: on for prompts, buffers, variables and Markdown files.
+  const chips = useRef<{ on: boolean; vars: readonly VarInfo[] }>({ on: false, vars: variables ?? [] });
   // Synced with the core: the last document seen and the edits queued in order.
   const sync = useRef({ rev: -1, timer: 0, pending: false, chain: Promise.resolve() as Promise<void> });
   // Puts text from the core into the editor; set while the editor lives.
@@ -169,6 +183,32 @@ export function TextPane({ paneId, docId, visible, focused, onFocus, host, onDoc
     const readOnly = new Compartment();
     let disposed = false;
     const s = sync.current;
+    const pasteImage = (file: File, view: EditorView) => {
+      const ext = file.type.slice("image/".length).replace("jpeg", "jpg");
+      void file
+        .arrayBuffer()
+        .then((b) => callbacks.current.host.pasteImage(docId, new Uint8Array(b), ext))
+        .then(
+          (name) => {
+            if (disposed || view.state.readOnly) return;
+            const link = chips.current.on ? `![](${encodeURI(name)})` : name;
+            view.dispatch(view.state.replaceSelection(link));
+          },
+          (e: unknown) => !disposed && setError(String(e)),
+        );
+    };
+    const extra: Extension = [
+      varChips(() => chips.current),
+      EditorView.domEventHandlers({
+        paste(e, view) {
+          const file = [...(e.clipboardData?.files ?? [])].find((f) => /^image\/(png|jpeg|gif|webp)$/.test(f.type));
+          if (!file || view.state.readOnly) return false;
+          e.preventDefault();
+          pasteImage(file, view);
+          return true;
+        },
+      }),
+    ];
 
     const send = (): Promise<void> => {
       clearTimeout(s.timer);
@@ -207,7 +247,7 @@ export function TextPane({ paneId, docId, visible, focused, onFocus, host, onDoc
       s.pending = false;
       clearTimeout(s.timer);
       const keep = Math.min(view.state.selection.main.head, d.text.length);
-      view.setState(exactState(d.text, baseExtensions(language, readOnly, onUpdate)));
+      view.setState(exactState(d.text, baseExtensions(language, readOnly, onUpdate, extra)));
       view.dispatch({
         selection: { anchor: Math.min(keep, view.state.doc.length) },
         effects: readOnly.reconfigure(EditorState.readOnly.of(d.readOnly)),
@@ -215,6 +255,7 @@ export function TextPane({ paneId, docId, visible, focused, onFocus, host, onDoc
       });
       setEol(eolOf(d.text));
       const lang = languageFor(d);
+      chips.current.on = lang === "markdown";
       if (lang === "markdown") {
         setLangName("Markdown");
         view.dispatch({ effects: language.reconfigure(markdown({ codeLanguages: languages })) });
@@ -231,7 +272,7 @@ export function TextPane({ paneId, docId, visible, focused, onFocus, host, onDoc
     loader.current = load;
     editor.current = new EditorView({
       parent: holder.current!,
-      state: exactState("", baseExtensions(language, readOnly, onUpdate)),
+      state: exactState("", baseExtensions(language, readOnly, onUpdate, extra)),
     });
     const handle: TextHandle = {
       docId,
@@ -287,6 +328,14 @@ export function TextPane({ paneId, docId, visible, focused, onFocus, host, onDoc
       releasePane(paneId);
     };
   }, [paneId, docId]);
+
+  // New variables redraw the chips; names and modes only, so a value change does nothing.
+  const varsKey = variables?.map((v) => `${v.name}:${v.mode}`).join(",");
+  useEffect(() => {
+    if (!variables) return;
+    chips.current.vars = variables;
+    if (editor.current) refreshChips(editor.current);
+  }, [varsKey]);
 
   useEffect(() => {
     paneElement(paneId).hidden = !visible;

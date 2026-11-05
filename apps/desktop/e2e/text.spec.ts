@@ -300,3 +300,36 @@ test("a file Claude edits twice shows once in Files as added and opens on click"
   await files.first().getByRole("button", { name: "Forget src/audit.ts" }).click();
   await expect(files).toHaveCount(0);
 });
+
+test("{{variables}} show as chips, an unknown name is underlined, a secret completes as $NAME", async ({ page }) => {
+  await start(page);
+  const side = await page.evaluate(() => (window as any).__terminescu.host.workspace().windows[0].sideTabs[0].id as string);
+  await page.evaluate((side) => {
+    const h = (window as any).__terminescu.host;
+    return Promise.all([
+      h.addVariable(side, { name: "ticket", value: "PROJ-482", mode: "saved", source: "typed", originTabId: null }),
+      h.addVariable(side, { name: "API_TOKEN", value: "tok-example", mode: "secret", source: "typed", originTabId: null }),
+    ]);
+  }, side);
+  await page.keyboard.press("Meta+Alt+KeyT");
+  const editor = page.locator(".text-pane .cm-content");
+  await expect(editor).toBeFocused();
+  await page.keyboard.insertText("Fix {{ticket}} not {{tikcet}} ");
+  await expect(editor.locator(".cm-var-chip")).toHaveText("{{ticket}}");
+  await expect(editor.locator(".cm-var-unknown")).toHaveText("{{tikcet}}");
+  await expect(editor.locator(".cm-var-unknown")).toHaveAttribute("title", "unknown variable");
+  await page.keyboard.type("{{");
+  const list = page.locator(".cm-tooltip-autocomplete li");
+  await expect(list).toHaveText(["{{ticket}}", "$API_TOKEN", "{{pins}}"].map((l) => new RegExp(l.replace(/[{}$]/g, "\\$&"))));
+  await list.nth(1).click();
+  await expect(editor).toContainText("not {{tikcet}} $API_TOKEN");
+  await expect(editor).not.toContainText("tok-example");
+
+  // A pasted image goes next to the file and lands as a Markdown link.
+  await editor.evaluate((el) => {
+    const dt = new DataTransfer();
+    dt.items.add(new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "shot.png", { type: "image/png" }));
+    el.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+  });
+  await expect(editor).toContainText("![](pasted-1.png)");
+});

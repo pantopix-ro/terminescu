@@ -23,6 +23,7 @@ export { dragSizes, PaneSlot, SplitView, type SplitViewProps } from "./SplitView
 export { TabBar, type TabBarProps } from "./TabBar";
 export { SYNC_MS, TextPane, textPane, type TextHandle, type TextHost, type TextPaneProps } from "./TextPane";
 export { eolOf, exactState, separatorOf, textOf, type Eol } from "./text";
+export { varOptions, varRefs, type VarInfo } from "./varchips";
 export { REVEAL_ROWS_EVENT, TerminalPane, type TerminalPaneProps } from "./TerminalPane";
 export { ExtractDialog, type ExtractDialogProps } from "./ExtractDialog";
 export { WEBGL_LIMIT, webglBudget } from "./webgl-budget";

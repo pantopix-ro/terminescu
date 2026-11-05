@@ -177,3 +177,42 @@ fn an_untitled_buffer_takes_its_file_name_once_saved() {
         }
     );
 }
+
+#[test]
+fn a_pasted_image_lands_next_to_the_file_and_an_untitled_one_on_its_first_save() {
+    let d = dir();
+    let path = d.join("proposal.md");
+    std::fs::write(&path, "# Proposal\n").unwrap();
+    let docs = Documents::new(db());
+    let file = docs.open_file(&path, None).unwrap();
+    let png = vec![0x89, b'P', b'N', b'G'];
+    let a = docs.paste_image(&file.id, png.clone(), "PNG").unwrap();
+    let b = docs.paste_image(&file.id, png.clone(), "png").unwrap();
+    assert_ne!(a, b);
+    assert!(a.starts_with("pasted-") && a.ends_with(".png"));
+    assert_eq!(std::fs::read(d.join(&a)).unwrap(), png);
+    assert!(matches!(
+        docs.paste_image(&file.id, png.clone(), "svg"),
+        Err(DocError::NotImage(_))
+    ));
+
+    let untitled = docs.untitled(None).unwrap();
+    let c = docs.paste_image(&untitled.id, png.clone(), "jpeg").unwrap();
+    assert!(c.ends_with(".jpg"));
+    let notes = d.join("notes").join("draft.md");
+    std::fs::create_dir_all(notes.parent().unwrap()).unwrap();
+    docs.edit(&untitled.id, format!("![]({c})\n")).unwrap();
+    docs.save_file(&untitled.id, Some(&notes)).unwrap();
+    assert_eq!(
+        std::fs::read(notes.parent().unwrap().join(&c)).unwrap(),
+        png
+    );
+
+    let var = docs
+        .open_text(Source::Untitled, "Untitled", "", true, None)
+        .unwrap();
+    assert!(matches!(
+        docs.paste_image(&var.id, png, "png"),
+        Err(DocError::NoFolder(_))
+    ));
+}

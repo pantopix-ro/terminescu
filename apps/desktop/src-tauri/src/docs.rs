@@ -224,6 +224,30 @@ pub fn doc_return(state: State<'_, AppState>, id: Id) -> Result<(), String> {
     state.docs.set_request(&id, false).map(|_| ()).map_err(err)
 }
 
+/// A pasted image as the raw request body, the document and extension in headers; answers the
+/// file name to link (D29).
+#[tauri::command(async)]
+pub fn doc_paste_image(
+    state: State<'_, AppState>,
+    request: tauri::ipc::Request<'_>,
+) -> Result<String, String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("a pasted image comes as raw bytes".into());
+    };
+    let header = |k: &str| {
+        request
+            .headers()
+            .get(k)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string()
+    };
+    state
+        .docs
+        .paste_image(&header("x-doc"), bytes.clone(), &header("x-ext"))
+        .map_err(err)
+}
+
 /// `⌥⌘T`: an Untitled buffer.
 #[tauri::command(async)]
 pub fn doc_new(

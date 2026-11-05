@@ -1466,6 +1466,7 @@ fn main() {
             docs::doc_reload,
             docs::doc_keep_mine,
             docs::doc_return,
+            docs::doc_paste_image,
             docs::files_list
         ])
         .build(tauri::generate_context!())

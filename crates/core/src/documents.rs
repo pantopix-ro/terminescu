@@ -99,6 +99,10 @@ pub enum DocError {
     NeedsPath(String),
     #[error("{0} is session only and never goes to disk")]
     SessionOnly(String),
+    #[error("{0} has no folder to put a pasted image in")]
+    NoFolder(String),
+    #[error("{0} is not a png, jpg, gif or webp image")]
+    NotImage(String),
     #[error("{path}: {source}")]
     Io {
         path: String,
@@ -124,6 +128,9 @@ pub struct Disk {
     pub read_only: bool,
     pub missing: bool,
 }
+
+/// The largest image a paste saves.
+pub const MAX_IMAGE: usize = 20 * 1024 * 1024;
 
 fn io_err(path: &Path, source: std::io::Error) -> DocError {
     DocError::Io {
@@ -208,6 +215,9 @@ struct Doc {
     side_tab: Option<Id>,
     /// The text of the buffer, kept here because `view.text` only carries changes.
     text: String,
+    /// Images pasted into an Untitled buffer, by file name; the first save writes them next to
+    /// the file (D29).
+    images: Vec<(String, Vec<u8>)>,
 }
 
 impl Doc {
@@ -299,6 +309,7 @@ impl Documents {
                 sig: None,
                 side_tab,
                 text: String::new(),
+                images: Vec::new(),
             };
             match &source {
                 Source::File { path } => match read_disk(Path::new(path)) {
@@ -412,6 +423,7 @@ impl Documents {
             saved: disk.text,
             sig: disk.sig,
             side_tab: side_tab.map(Into::into),
+            images: Vec::new(),
         };
         self.insert(doc)
     }
@@ -451,6 +463,7 @@ impl Documents {
             text: text.into(),
             sig: None,
             side_tab: side_tab.map(Into::into),
+            images: Vec::new(),
         };
         self.insert(doc)
     }
@@ -504,6 +517,15 @@ impl Documents {
             }
             bytes.extend_from_slice(doc.text.as_bytes());
             std::fs::write(&path, &bytes).map_err(|e| io_err(&path, e))?;
+            if let Some(dir) = path.parent() {
+                for (name, image) in std::mem::take(&mut doc.images) {
+                    let to = dir.join(&name);
+                    // A file already there under that name stays; the link then points at it.
+                    if !to.exists() {
+                        std::fs::write(&to, image).map_err(|e| io_err(&to, e))?;
+                    }
+                }
+            }
             let meta = std::fs::metadata(&path).map_err(|e| io_err(&path, e))?;
             let shown = path.display().to_string();
             doc.sig = Some(sig_of(&meta));
@@ -516,6 +538,48 @@ impl Documents {
             doc.view.note = None;
             doc.refresh_dirty();
             Ok(doc.meta())
+        })
+    }
+
+    /// Saves a pasted image next to the document's file and returns its file name, for a link in
+    /// the text (D29). An Untitled buffer keeps the image until its first save; a variable or a
+    /// prompt has no folder and refuses.
+    pub fn paste_image(&self, id: &str, bytes: Vec<u8>, ext: &str) -> Result<String, DocError> {
+        let ext = match ext.to_ascii_lowercase().as_str() {
+            "png" => "png",
+            "jpg" | "jpeg" => "jpg",
+            "gif" => "gif",
+            "webp" => "webp",
+            other => return Err(DocError::NotImage(other.into())),
+        };
+        if bytes.len() > MAX_IMAGE {
+            return Err(DocError::TooLarge("the pasted image".into()));
+        }
+        self.with(id, |doc| {
+            let dir = match &doc.view.source {
+                Source::File { path } => Path::new(path).parent().map(Path::to_path_buf),
+                Source::Untitled if !doc.view.session_only => None,
+                _ => return Err(DocError::NoFolder(doc.view.title.clone())),
+            };
+            let stamp = crate::now_ms();
+            let taken = |name: &str| {
+                doc.images.iter().any(|(n, _)| n == name)
+                    || dir.as_ref().is_some_and(|d| d.join(name).exists())
+            };
+            let mut name = format!("pasted-{stamp}.{ext}");
+            let mut n = 2;
+            while taken(&name) {
+                name = format!("pasted-{stamp}-{n}.{ext}");
+                n += 1;
+            }
+            match dir {
+                Some(d) => {
+                    let to = d.join(&name);
+                    std::fs::write(&to, bytes).map_err(|e| io_err(&to, e))?;
+                }
+                None => doc.images.push((name.clone(), bytes)),
+            }
+            Ok(name)
         })
     }
 

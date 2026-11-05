@@ -333,9 +333,13 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       dirty buffer and gets the conflict event, not a reload.
       Done: 1 s poll by size and mtime in `docs.rs`, `host://document` events, the bar in
       `TextPane`; `tests/watch.rs` and `e2e/text.spec.ts`.
-- [ ] 7.7 `{{variable}}` chips, autocomplete from the side tab's context, unknown-name warning,
+- [x] 7.7 `{{variable}}` chips, autocomplete from the side tab's context, unknown-name warning,
       secrets as `$NAME` only; pasted images saved next to the file (D29). Verify:
       `varchips.test.ts` flags `{{tikcet}}` and offers `$API_TOKEN` for a secret.
+      Done: `varchips.ts` marks `{{name}}` over the plain text (chip, dashed for a secret, wavy
+      underline titled "unknown variable") in Markdown, buffers, prompts and variables; `{{`
+      completes names, a secret as `$NAME`. A pasted image goes next to the file as
+      `pasted-<ms>.png`; an Untitled buffer holds it until its first save. Tests: varchips, e2e.
 - [x] 7.8 Send to pane (`⌘⇧↵`) as bracketed paste without Enter. Verify: test reads the
       paste markers and no `\r` on the target pty.
       Done: `sendToPane` in App.tsx pastes the selection, or the whole text, into the tab's last

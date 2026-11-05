@@ -288,6 +288,7 @@ export function createMockHost(initial?: Workspace): MockHost {
   const secretKey = (side: string, name: string) => `${side}\u0000${name}`;
   const itemList: Item[] = [];
   const touched: TouchedFile[] = [];
+  let pastes = 1;
   const live = (side: string) => {
     const now = Date.now();
     for (let i = vars.length - 1; i >= 0; i--) {
@@ -1005,6 +1006,16 @@ export function createMockHost(initial?: Workspace): MockHost {
       const id = newDoc({ kind: "variable", sideTabId, name }, name, v.value ?? "");
       docs.get(id)!.view.sessionOnly = v.mode === "session";
       return showDoc(sideTabId, id, beside);
+    },
+    async pasteImage(docId, bytes, ext) {
+      const d = docOrFail(docId);
+      const kind = { png: "png", jpg: "jpg", jpeg: "jpg", gif: "gif", webp: "webp" }[ext.toLowerCase()];
+      if (!kind) throw new Error(`${ext} is not a png, jpg, gif or webp image`);
+      const src = d.view.source;
+      if (src.kind !== "file" && src.kind !== "untitled") throw new Error(`${d.view.title} has no folder to put a pasted image in`);
+      const name = `pasted-${pastes++}.${kind}`;
+      if (src.kind === "file") host.files.set(`${src.path.slice(0, src.path.lastIndexOf("/"))}/${name}`, `[${bytes.length} image bytes]`);
+      return name;
     },
     async returnEdit(docId) {
       const d = docOrFail(docId);

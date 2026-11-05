@@ -81,7 +81,7 @@ import {
   type SortMode,
 } from "@terminescu/ui";
 import type { Terminal } from "@xterm/xterm";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 
 export interface AppProps {
@@ -576,6 +576,11 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     };
   }, [host, sideId]);
   const shownCtx: Ctx = ctx.side === sideId ? ctx : { variables: [], items: [], pins: [], files: [] };
+  // Names and modes for the editor's chips; values stay out of the text panes (D35).
+  const chipVars = useMemo(
+    () => (ctx.side === sideId ? ctx.variables.map((v) => ({ name: v.name, mode: v.mode })) : undefined),
+    [ctx, sideId],
+  );
 
   // The library, last used first, for the panel's Prompts section and `⌘I` (D14).
   const [prompts, setPrompts] = useState<Prompt[]>([]);
@@ -1071,6 +1076,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                     onFocus={() => focusIn(tab.id, paneId)}
                     host={host}
                     onDoc={noteDoc}
+                    variables={side.id === sideId ? chipVars : undefined}
                   />,
                 ]
               : [];
