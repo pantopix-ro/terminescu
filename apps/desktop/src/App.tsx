@@ -53,6 +53,9 @@ import {
   insertText,
   ExtractDialog,
   MergeDialog,
+  ContextMenu,
+  type MenuEntry,
+  type MenuTarget,
   PIN_EVENT,
   PromptLibrary,
   InsertDialog,
@@ -847,6 +850,70 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     void send({ type: "MoveTabToNewSideTab", tabId, windowId, index: target.newAt });
   };
 
+  // Right-click menus on the sidebar (task 8.7). Rename edits the name in place.
+  const [menu, setMenu] = useState<{ x: number; y: number; target: MenuTarget }>();
+  const [renaming, setRenaming] = useState<string>();
+  const [closingSide, setClosingSide] = useState<SideTab>();
+  const rename = (id: string, title: string | null) => {
+    setRenaming(undefined);
+    const side = sideTabs.some((sd) => sd.id === id);
+    void send(side ? { type: "RenameSideTab", sideTabId: id, title } : { type: "RenameTab", tabId: id, title });
+    refocus();
+  };
+  const closeSide = (side: SideTab) => {
+    setClosingSide(undefined);
+    void closeWith(
+      side.tabs.flatMap((t) => panesOf(t.layout)),
+      { type: "CloseSideTab", sideTabId: side.id },
+    );
+  };
+  const editStatus = (side: string, tab?: string) => {
+    if (tab) selectTab(side, tab);
+    else setSideTabId(side);
+    setSheet("status");
+  };
+  const menuItems = (target: MenuTarget): MenuEntry[] => {
+    const side = sideTabs.find((sd) => sd.id === target.sideTabId);
+    if (!side) return [];
+    const others = sideTabs.filter((sd) => sd.id !== side.id);
+    if (target.kind === "side") {
+      return [
+        { id: "rename", label: "Rename…", run: () => setRenaming(side.id) },
+        { id: "new-tab", label: "New tab", run: () => void send({ type: "CreateTab", sideTabId: side.id }) },
+        { id: "status", label: "Edit status…", run: () => editStatus(side.id) },
+        "-",
+        {
+          id: "merge",
+          label: "Merge into",
+          disabled: !others.length,
+          items: others.map((o) => ({ id: `merge:${o.id}`, label: sideTabName(o, docs), run: () => startMerge(side.id, o.id) })),
+        },
+        { id: "window", label: "Move to new window", run: () => void send({ type: "MoveSideTabToNewWindow", sideTabId: side.id }) },
+        "-",
+        { id: "close", label: "Close side tab…", danger: true, run: () => setClosingSide(side) },
+      ];
+    }
+    const tab = side.tabs.find((t) => t.id === target.tabId);
+    if (!tab) return [];
+    return [
+      { id: "rename", label: "Rename…", run: () => setRenaming(tab.id) },
+      { id: "status", label: "Edit status…", run: () => editStatus(side.id, tab.id) },
+      "-",
+      {
+        id: "move",
+        label: "Move to",
+        items: [
+          { id: "move:new", label: "New side tab", disabled: side.tabs.length === 1, run: () => moveTab(tab.id, { newAt: sideTabs.length }) },
+          { id: "move:window", label: "New window", run: () => void send({ type: "MoveTabToNewWindow", tabId: tab.id }) },
+          ...(others.length ? (["-"] as MenuEntry[]) : []),
+          ...others.map((o) => ({ id: `move:${o.id}`, label: sideTabName(o, docs), run: () => moveTab(tab.id, { side: o.id }) })),
+        ],
+      },
+      "-",
+      { id: "close", label: "Close tab", danger: true, run: () => closeTab(tab.id) },
+    ];
+  };
+
   // Drop a side tab onto another (D5): straight in without a clash, else the dialog asks.
   const startMerge = (fromId: string, intoId: string) => {
     const from = sideTabs.find((s) => s.id === fromId);
@@ -1065,12 +1132,28 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                 refocus();
               }}
               onNew={() => act("new_side_tab")}
+              onMenu={(at, target) => setMenu({ ...at, target })}
+              renaming={renaming}
+              onRename={rename}
+              onRenameEnd={() => {
+                setRenaming(undefined);
+                refocus();
+              }}
             />
             <CommandsSection
               commands={commands}
               enabled={!!activeSide}
               onAdd={(d) =>
                 host.createCommand({
+                  sideTabId: d.global ? null : (activeSide?.id ?? null),
+                  name: d.name,
+                  body: d.body,
+                  target: d.target,
+                  launcher: d.launcher && !d.global,
+                })
+              }
+              onUpdate={(id, d) =>
+                host.updateCommand(id, {
                   sideTabId: d.global ? null : (activeSide?.id ?? null),
                   name: d.name,
                   body: d.body,
@@ -1387,6 +1470,53 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           onError={setError}
           onClose={closeSheet}
         />
+      )}
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          label={menu.target.kind === "side" ? "Side tab" : "Tab"}
+          items={menuItems(menu.target)}
+          onClose={() => setMenu(undefined)}
+        />
+      )}
+      {closingSide && (
+        <div className="sheet-back" onPointerDown={() => setClosingSide(undefined)}>
+          <div
+            className="ao-frame close-dialog"
+            role="alertdialog"
+            aria-label="Close side tab"
+            onPointerDown={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key !== "Escape") return;
+              setClosingSide(undefined);
+              refocus();
+            }}
+          >
+            <div className="ao-frame-body">
+              <p>
+                Close {sideTabName(closingSide, docs)} and its {closingSide.tabs.length === 1 ? "tab" : `${closingSide.tabs.length} tabs`}?
+              </p>
+              <p className="small ao-dim">Its shells end, and its context goes with it: variables, pins, links, files and its own commands.</p>
+              <div className="close-actions">
+                <span className="grow" />
+                <button
+                  type="button"
+                  className="ao-btn ghost"
+                  onClick={() => {
+                    setClosingSide(undefined);
+                    refocus();
+                  }}
+                >
+                  Cancel
+                </button>
+                <button type="button" className="ao-btn primary" autoFocus onClick={() => closeSide(closingSide)}>
+                  Close side tab
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
       {closing && (
         <div className="sheet-back" onPointerDown={() => void finishClose("cancel")}>

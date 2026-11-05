@@ -108,6 +108,12 @@ export type Command =
   /** Drop outside every window (D20): a new window with one side tab holding the tab. */
   | { type: "MoveTabToNewWindow"; tabId: Id }
   | { type: "RenameTab"; tabId: Id; title: string | null }
+  /** A side tab's own name; null or blank goes back to its first tab's name (task 8.7). */
+  | { type: "RenameSideTab"; sideTabId: Id; title: string | null }
+  /** Closes a side tab with its tabs and its context (task 8.7). */
+  | { type: "CloseSideTab"; sideTabId: Id }
+  /** A new window holding the side tab, its tabs and its context (task 8.7). */
+  | { type: "MoveSideTabToNewWindow"; sideTabId: Id }
   | { type: "SplitPane"; paneId: Id; dir: Dir }
   | { type: "OpenTranscript"; paneId: Id; session: string }
   /** A text pane editing `docId`: beside `beside` on the right, or in a new tab (D27). */
@@ -126,6 +132,7 @@ export type Patch =
   | { type: "WindowClosed"; windowId: Id }
   | { type: "SideTabCreated"; windowId: Id; index: number; sideTab: SideTab }
   | { type: "SideTabClosed"; sideTabId: Id }
+  | { type: "SideTabRenamed"; sideTabId: Id; title: string | null }
   | { type: "TabCreated"; sideTabId: Id; index: number; tab: Tab }
   | { type: "TabClosed"; tabId: Id }
   | { type: "TabMoved"; tabId: Id; toSideTabId: Id; index: number }

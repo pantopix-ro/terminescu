@@ -527,6 +527,22 @@ export function createMockHost(initial?: Workspace): MockHost {
           ...closed,
         ];
       }
+      case "RenameSideTab": {
+        sideTab(c.sideTabId);
+        return [{ type: "SideTabRenamed", sideTabId: c.sideTabId, title: c.title?.trim() || null }];
+      }
+      case "CloseSideTab":
+        sideTab(c.sideTabId);
+        return [{ type: "SideTabClosed", sideTabId: c.sideTabId }];
+      case "MoveSideTabToNewWindow": {
+        const moved = structuredClone(sideTab(c.sideTabId));
+        const windowId = id();
+        return [
+          { type: "WindowCreated", windowId },
+          { type: "SideTabClosed", sideTabId: c.sideTabId },
+          { type: "SideTabCreated", windowId, index: 0, sideTab: moved },
+        ];
+      }
       case "RenameTab": {
         holder(c.tabId);
         const title = c.title?.trim() || null;

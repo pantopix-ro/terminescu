@@ -1,5 +1,6 @@
 import type { CommandTarget, Id, RunOutcome, SavedCommand, Shown } from "@terminescu/host";
 import { useRef, useState } from "react";
+import { ContextMenu, type MenuEntry } from "./ContextMenu";
 
 export const TARGET_LABEL: Record<CommandTarget, string> = {
   focused: "focused pane",
@@ -22,6 +23,8 @@ export interface CommandsSectionProps {
   /** No side tab, no commands to run or add. */
   enabled: boolean;
   onAdd(draft: CommandDraft): Promise<unknown>;
+  /** Saves an edit; a command keeps its scope (task 8.7). */
+  onUpdate?(id: Id, draft: CommandDraft): Promise<unknown>;
   onDelete(id: string): Promise<unknown>;
   /** Run sends Enter, insert does not; `extra` holds values typed for missing names. */
   onRun(command: SavedCommand, run: boolean, extra: Record<string, string>): Promise<RunOutcome>;
@@ -47,9 +50,12 @@ interface Asking {
  * the line and Enter into the command's target, Insert types it without Enter. A missing name
  * is asked for here and never saved.
  */
-export function CommandsSection({ commands, enabled, onAdd, onDelete, onRun, statuses, onRestart }: CommandsSectionProps) {
+export function CommandsSection({ commands, enabled, onAdd, onUpdate, onDelete, onRun, statuses, onRestart }: CommandsSectionProps) {
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState<CommandDraft>({ name: "", body: "", target: "newTab", global: true, launcher: false });
+  // The command the form edits; none when it adds one.
+  const [editing, setEditing] = useState<SavedCommand>();
+  const [menu, setMenu] = useState<{ x: number; y: number; command: SavedCommand }>();
   const wasGlobal = useRef(true);
   const [asking, setAsking] = useState<Asking>();
   const [error, setError] = useState<string>();
@@ -70,13 +76,41 @@ export function CommandsSection({ commands, enabled, onAdd, onDelete, onRun, sta
   const save = async () => {
     setError(undefined);
     try {
-      await onAdd(draft);
+      if (editing && onUpdate) await onUpdate(editing.id, draft);
+      else await onAdd(draft);
       setDraft({ name: "", body: "", target: draft.target, global: true, launcher: false });
       setAdding(false);
+      setEditing(undefined);
     } catch (e) {
       setError(String(e));
     }
   };
+  const draftOf = (c: SavedCommand): CommandDraft => ({ name: c.name, body: c.body, target: c.target, global: c.sideTabId === null, launcher: c.launcher });
+  const edit = (c: SavedCommand) => {
+    setError(undefined);
+    setEditing(c);
+    setDraft(draftOf(c));
+    wasGlobal.current = c.sideTabId === null;
+    setAdding(true);
+  };
+  const duplicate = (c: SavedCommand) => {
+    setError(undefined);
+    const taken = new Set(commands.map((x) => x.name));
+    let name = `${c.name} copy`;
+    for (let n = 2; taken.has(name); n++) name = `${c.name} copy ${n}`;
+    void onAdd({ ...draftOf(c), name }).catch((e: unknown) => setError(String(e)));
+  };
+  const remove = (c: SavedCommand) => void onDelete(c.id).catch((e: unknown) => setError(String(e)));
+  const menuItems = (c: SavedCommand): MenuEntry[] => [
+    ...(c.launcher && !launcherUp(c, statuses) ? [{ id: "restart", label: "Restart", disabled: !enabled, run: () => restart(c.id) }] : []),
+    { id: "run", label: "Run", disabled: !enabled, run: () => void go(c, true) },
+    { id: "insert", label: "Insert without running", disabled: !enabled, run: () => void go(c, false) },
+    "-",
+    { id: "edit", label: "Edit…", disabled: !onUpdate, run: () => edit(c) },
+    { id: "duplicate", label: "Duplicate", run: () => duplicate(c) },
+    "-",
+    { id: "delete", label: "Delete", danger: true, run: () => remove(c) },
+  ];
 
   const restart = (id?: Id) => {
     setError(undefined);
@@ -93,13 +127,31 @@ export function CommandsSection({ commands, enabled, onAdd, onDelete, onRun, sta
             Restart down
           </button>
         )}
-        <button type="button" className="ao-btn ghost cmd-new" aria-label="New command" disabled={!enabled} onClick={() => setAdding((a) => !a)}>
+        <button
+          type="button"
+          className="ao-btn ghost cmd-new"
+          aria-label="New command"
+          disabled={!enabled}
+          onClick={() => {
+            if (editing) {
+              setEditing(undefined);
+              setDraft({ name: "", body: "", target: draft.target, global: true, launcher: false });
+              setAdding(true);
+            } else setAdding((a) => !a);
+          }}
+        >
           +
         </button>
       </header>
       {adding && (
         <form
           className="cmd-form"
+          aria-label={editing ? `Edit ${editing.name}` : "New command"}
+          onKeyDown={(e) => {
+            if (e.key !== "Escape") return;
+            setAdding(false);
+            setEditing(undefined);
+          }}
           onSubmit={(e) => {
             e.preventDefault();
             void save();
@@ -122,10 +174,10 @@ export function CommandsSection({ commands, enabled, onAdd, onDelete, onRun, sta
                 </option>
               ))}
             </select>
-            <label className="small">
+            <label className="small" title={editing ? "An edit keeps the scope; Duplicate makes a copy" : undefined}>
               <input
                 type="checkbox"
-                disabled={draft.launcher}
+                disabled={draft.launcher || !!editing}
                 checked={!draft.global}
                 onChange={(e) => setDraft({ ...draft, global: !e.target.checked })}
               />{" "}
@@ -134,6 +186,7 @@ export function CommandsSection({ commands, enabled, onAdd, onDelete, onRun, sta
             <label className="small" title="Runs in its own tab when the side tab opens and after a reboot; stays in this side tab">
               <input
                 type="checkbox"
+                disabled={!!editing && editing.sideTabId === null}
                 checked={draft.launcher}
                 onChange={(e) => {
                   // A launcher stays in this side tab; unticking it gives back the scope it had.
@@ -144,6 +197,18 @@ export function CommandsSection({ commands, enabled, onAdd, onDelete, onRun, sta
               launcher
             </label>
             <span className="grow" />
+            {editing && (
+              <button
+                type="button"
+                className="ao-btn ghost"
+                onClick={() => {
+                  setAdding(false);
+                  setEditing(undefined);
+                }}
+              >
+                Cancel
+              </button>
+            )}
             <button type="submit" className="ao-btn">
               Save
             </button>
@@ -153,7 +218,21 @@ export function CommandsSection({ commands, enabled, onAdd, onDelete, onRun, sta
       <div className="cmd-list">
         {!commands.length && !adding && <p className="small ao-dim cmd-empty">No commands yet.</p>}
         {commands.map((c) => (
-          <div key={c.id} className="cmd-row" data-command={c.name}>
+          <div
+            key={c.id}
+            className={`cmd-row${editing?.id === c.id ? " editing" : ""}`}
+            data-command={c.name}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setMenu({ x: e.clientX, y: e.clientY, command: c });
+            }}
+            onKeyDown={(e) => {
+              if (e.key !== "ContextMenu" && !(e.key === "F10" && e.shiftKey)) return;
+              e.preventDefault();
+              const r = e.currentTarget.getBoundingClientRect();
+              setMenu({ x: r.left + 16, y: r.bottom, command: c });
+            }}
+          >
             <span className="cmd-name">{c.name}</span>
             <span className="cmd-body" title={c.body}>
               {c.body}
@@ -177,7 +256,7 @@ export function CommandsSection({ commands, enabled, onAdd, onDelete, onRun, sta
               <button type="button" className="ao-btn ghost" aria-label={`Insert ${c.name}`} disabled={!enabled} onClick={() => void go(c, false)}>
                 Insert
               </button>
-              <button type="button" className="ao-btn ghost" aria-label={`Delete ${c.name}`} onClick={() => void onDelete(c.id).catch((e: unknown) => setError(String(e)))}>
+              <button type="button" className="ao-btn ghost" aria-label={`Delete ${c.name}`} onClick={() => remove(c)}>
                 ×
               </button>
             </span>
@@ -221,6 +300,7 @@ export function CommandsSection({ commands, enabled, onAdd, onDelete, onRun, sta
           {error}
         </p>
       )}
+      {menu && <ContextMenu x={menu.x} y={menu.y} label={`Command ${menu.command.name}`} items={menuItems(menu.command)} onClose={() => setMenu(undefined)} />}
     </section>
   );
 }

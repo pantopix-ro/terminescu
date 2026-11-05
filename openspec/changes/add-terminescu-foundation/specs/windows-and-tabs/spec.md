@@ -51,6 +51,27 @@ without a dialog and offer undo for 10 s.
 - **WHEN** PROJ-477 with `branch=feature/PROJ-477` is dropped onto PROJ-482 with `branch=feature/PROJ-482`
 - **THEN** the merge dialog lists `branch` as a clash and keeping both renames the source's to `branch_477`
 
+### Requirement: Sidebar right-click menus
+A right click, Shift F10 or the menu key on a side tab, a tab listed under it or a saved command
+SHALL open an in-app menu of that element's actions. Arrow keys SHALL move through it, Enter
+SHALL run an item, and Esc SHALL close it.
+
+#### Scenario: Rename a side tab
+- **WHEN** the person right-clicks a side tab, picks Rename and types `PROJ-482`
+- **THEN** the row shows `PROJ-482`, and a blank name goes back to its first tab's name
+
+#### Scenario: Side tab actions
+- **WHEN** the person opens a side tab's menu
+- **THEN** it offers rename, new tab, edit status, merge into, move to new window and close, and close asks first since the context goes with it
+
+#### Scenario: Move a side tab to a new window
+- **WHEN** the person picks "Move to new window" on PROJ-482
+- **THEN** a new window opens holding PROJ-482 with its tabs and its context
+
+#### Scenario: Tab and command actions
+- **WHEN** the person opens the menu of a tab under its side tab, or of a saved command
+- **THEN** a tab offers rename, edit status, move to and close; a command offers run, insert, restart when down, edit (keeping its scope), duplicate and delete
+
 ### Requirement: Layout persistence
 Windows, side tabs, tabs, splits, sizes and the active tab SHALL persist, each row with an
 `owner_id`, and SHALL be restored

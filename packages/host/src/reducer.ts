@@ -77,6 +77,9 @@ export function applyPatch(ws: Workspace, p: Patch): void {
       target.tabs.splice(p.index, 0, tab);
       return;
     }
+    case "SideTabRenamed":
+      findSideTab(ws, p.sideTabId).title = p.title;
+      return;
     case "TabRenamed":
       findTab(ws, p.tabId).title = p.title;
       return;

@@ -83,6 +83,19 @@ pub enum Command {
         tab_id: Id,
         title: Option<String>,
     },
+    /// A side tab's own name; `None` or blank goes back to its first tab's name (task 8.7).
+    RenameSideTab {
+        side_tab_id: Id,
+        title: Option<String>,
+    },
+    /// Closes a side tab with every tab in it; its context goes with it (task 8.7).
+    CloseSideTab {
+        side_tab_id: Id,
+    },
+    /// A new window holding the side tab, its tabs and its context (task 8.7).
+    MoveSideTabToNewWindow {
+        side_tab_id: Id,
+    },
     /// Drop a side tab onto another (D5): its tabs move to the end of `into` and it closes.
     /// The contexts merge outside the workspace, in [`crate::merge`].
     MergeSideTab {
@@ -163,6 +176,10 @@ pub enum Patch {
     },
     SideTabClosed {
         side_tab_id: Id,
+    },
+    SideTabRenamed {
+        side_tab_id: Id,
+        title: Option<String>,
     },
     TabCreated {
         side_tab_id: Id,
@@ -416,6 +433,12 @@ pub fn apply(ws: &mut Workspace, patch: &Patch) -> Result<(), CommandError> {
                 .expect("checked above")
                 .tabs
                 .insert(*index, tab);
+        }
+        Patch::SideTabRenamed { side_tab_id, title } => {
+            let s = ws
+                .side_tab_mut(side_tab_id)
+                .ok_or_else(|| CommandError::UnknownSideTab(side_tab_id.clone()))?;
+            s.title = title.clone();
         }
         Patch::TabRenamed { tab_id, title } => {
             let tab = ws
@@ -816,6 +839,38 @@ impl Core {
                     .map(|t| t.trim().to_string())
                     .filter(|t| !t.is_empty());
                 vec![Patch::TabRenamed { tab_id, title }]
+            }
+            Command::RenameSideTab { side_tab_id, title } => {
+                ws.side_tab(&side_tab_id)
+                    .ok_or(CommandError::UnknownSideTab(side_tab_id.clone()))?;
+                let title = title
+                    .map(|t| t.trim().to_string())
+                    .filter(|t| !t.is_empty());
+                vec![Patch::SideTabRenamed { side_tab_id, title }]
+            }
+            Command::CloseSideTab { side_tab_id } => {
+                ws.side_tab(&side_tab_id)
+                    .ok_or(CommandError::UnknownSideTab(side_tab_id.clone()))?;
+                vec![Patch::SideTabClosed { side_tab_id }]
+            }
+            Command::MoveSideTabToNewWindow { side_tab_id } => {
+                let side_tab = ws
+                    .side_tab(&side_tab_id)
+                    .ok_or(CommandError::UnknownSideTab(side_tab_id.clone()))?
+                    .clone();
+                // The same side tab, id and all, so its saved context follows it.
+                let window_id = (self.new_id)();
+                vec![
+                    Patch::WindowCreated {
+                        window_id: window_id.clone(),
+                    },
+                    Patch::SideTabClosed { side_tab_id },
+                    Patch::SideTabCreated {
+                        window_id,
+                        index: 0,
+                        side_tab,
+                    },
+                ]
             }
             Command::SplitPane { .. } | Command::OpenTranscript { .. } => {
                 let (pane_id, dir, new) = match cmd {
@@ -1259,6 +1314,62 @@ mod tests {
         })
         .unwrap();
         assert_eq!(shape(&c), vec![vec![vec!["id2", "id5"]]]);
+    }
+
+    #[test]
+    fn a_side_tab_renames_closes_and_moves_to_a_new_window() {
+        let mut c = core();
+        let side = c.workspace().windows[0].side_tabs[0].id.clone();
+        c.handle(Command::RenameSideTab {
+            side_tab_id: side.clone(),
+            title: Some(" PROJ-482 ".into()),
+        })
+        .unwrap();
+        assert_eq!(
+            c.workspace().side_tab(&side).unwrap().title.as_deref(),
+            Some("PROJ-482")
+        );
+        c.handle(Command::RenameSideTab {
+            side_tab_id: side.clone(),
+            title: Some("  ".into()),
+        })
+        .unwrap();
+        assert_eq!(c.workspace().side_tab(&side).unwrap().title, None);
+
+        let window = c.workspace().windows[0].id.clone();
+        c.handle(Command::CreateSideTab {
+            window_id: window,
+            index: None,
+        })
+        .unwrap();
+        let before = c.workspace().side_tab(&side).unwrap().clone();
+        let b = c
+            .handle(Command::MoveSideTabToNewWindow {
+                side_tab_id: side.clone(),
+            })
+            .unwrap();
+        // The same side tab, with its tabs, alone in a new window; the old window stays.
+        assert_eq!(c.workspace().windows.len(), 2);
+        assert_eq!(c.workspace().windows[1].side_tabs, vec![before]);
+        assert!(matches!(&b.patches[0], Patch::WindowCreated { .. }));
+
+        // Closing it empties the new window, which closes; the first stays.
+        let b = c
+            .handle(Command::CloseSideTab {
+                side_tab_id: side.clone(),
+            })
+            .unwrap();
+        assert!(c.workspace().side_tab(&side).is_none());
+        assert_eq!(c.workspace().windows.len(), 1);
+        assert!(
+            b.patches
+                .iter()
+                .any(|p| matches!(p, Patch::WindowClosed { .. }))
+        );
+        assert!(
+            c.handle(Command::CloseSideTab { side_tab_id: side })
+                .is_err()
+        );
     }
 
     #[test]

@@ -1,6 +1,6 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { leaf, panesOf, type AgentView, type Shown, type SideTab, type Tab } from "@terminescu/host";
-import { useState } from "react";
+import { useState, type KeyboardEvent, type MouseEvent } from "react";
 import { DOT, tabAgent, type Agents } from "./agents";
 import { StatusChip } from "./StatusChip";
 import { chipOf, rowStyle, SORTS, type Builtins, type SortMode } from "./status";
@@ -26,6 +26,58 @@ export interface SideTabListProps {
   onSort?(mode: SortMode): void;
   /** Text panes' documents, for tab names. */
   docs?: DocMarks;
+  /** A right click, Shift F10 or the menu key on a row (task 8.7), at a window point. */
+  onMenu?(at: { x: number; y: number }, target: MenuTarget): void;
+  /** The side tab or tab id whose name is being edited in place. */
+  renaming?: string;
+  /** A new name, or null to go back to the generated one. */
+  onRename?(id: string, title: string | null): void;
+  onRenameEnd?(): void;
+}
+
+/** What a sidebar right click was on. */
+export type MenuTarget = { kind: "side"; sideTabId: string } | { kind: "tab"; sideTabId: string; tabId: string };
+
+/** The point a menu opens at: the click, or under the row for the keyboard. */
+function menuAt(e: MouseEvent | KeyboardEvent): { x: number; y: number } {
+  if ("clientX" in e && e.type === "contextmenu" && (e.clientX || e.clientY)) return { x: e.clientX, y: e.clientY };
+  const r = (e.currentTarget as Element).getBoundingClientRect();
+  return { x: r.left + 16, y: r.bottom };
+}
+
+const menuKey = (e: KeyboardEvent) => e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey);
+
+/** A name edited in place: Enter or leaving the field saves, Esc keeps the old one. */
+function RenameInput({ value, label, onDone, onCancel }: { value: string; label: string; onDone(v: string): void; onCancel(): void }) {
+  const [text, setText] = useState(value);
+  // Esc and Enter end the edit once; the blur that follows must not save again.
+  const [ended, setEnded] = useState(false);
+  const end = (save: boolean) => {
+    if (ended) return;
+    setEnded(true);
+    if (save) onDone(text);
+    else onCancel();
+  };
+  return (
+    <input
+      className="ao-input side-rename"
+      aria-label={label}
+      value={text}
+      autoFocus
+      spellCheck={false}
+      onFocus={(e) => e.currentTarget.select()}
+      onChange={(e) => setText(e.target.value)}
+      // The row drags and selects on these; typing a name does neither.
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") end(true);
+        else if (e.key === "Escape") end(false);
+      }}
+      onBlur={() => end(true)}
+    />
+  );
 }
 
 /** A side tab's name: its own title, else its first tab's name, else "shell". */
@@ -94,6 +146,10 @@ function Row(props: {
   onSelect(): void;
   onSelectTab(tabId: string): void;
   onToggle(): void;
+  onMenu?(at: { x: number; y: number }, target: MenuTarget): void;
+  renaming?: string;
+  onRename?(id: string, title: string | null): void;
+  onRenameEnd?(): void;
 }) {
   const { side, active, expanded, dragging, agents, statuses, builtins, docs } = props;
   const shown = statuses[side.id];
@@ -126,10 +182,30 @@ function Row(props: {
         data-side={side.id}
         aria-current={active ? "true" : undefined}
         onClick={props.onSelect}
-        onKeyDown={(e) => e.key === "Enter" && props.onSelect()}
+        onContextMenu={(e) => {
+          if (!props.onMenu) return;
+          e.preventDefault();
+          props.onMenu(menuAt(e), { kind: "side", sideTabId: side.id });
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") props.onSelect();
+          else if (menuKey(e) && props.onMenu) {
+            e.preventDefault();
+            props.onMenu(menuAt(e), { kind: "side", sideTabId: side.id });
+          }
+        }}
       >
         <i className={`ao-i ${group ? "ao-i-group" : side.tabs[0] && tabAgent(side.tabs[0], agents) ? "ao-i-agent" : "ao-i-term"}`} />
-        <span className="t">{sideTabName(side, docs)}</span>
+        {props.renaming === side.id ? (
+          <RenameInput
+            value={side.title ?? sideTabName(side, docs)}
+            label="Side tab name"
+            onDone={(v) => props.onRename?.(side.id, v.trim() || null)}
+            onCancel={() => props.onRenameEnd?.()}
+          />
+        ) : (
+          <span className="t">{sideTabName(side, docs)}</span>
+        )}
         <span className="side-trail">
         <StatusChip chip={chip} />
         {group && !active && (
@@ -168,9 +244,29 @@ function Row(props: {
               className={`ao-st-kid${active && t.id === props.activeTabId ? " active" : ""}`}
               data-kid={t.id}
               onClick={() => props.onSelectTab(t.id)}
+              onContextMenu={(e) => {
+                if (!props.onMenu) return;
+                e.preventDefault();
+                props.onMenu(menuAt(e), { kind: "tab", sideTabId: side.id, tabId: t.id });
+              }}
+              onKeyDown={(e) => {
+                if (menuKey(e) && props.onMenu) {
+                  e.preventDefault();
+                  props.onMenu(menuAt(e), { kind: "tab", sideTabId: side.id, tabId: t.id });
+                }
+              }}
             >
               <KidIcon agent={tabAgent(t, agents)} />
-              <span className="grow">{tabName(t, docs)}</span>
+              {props.renaming === t.id ? (
+                <RenameInput
+                  value={t.title ?? tabName(t, docs)}
+                  label="Tab name"
+                  onDone={(v) => props.onRename?.(t.id, v.trim() || null)}
+                  onCancel={() => props.onRenameEnd?.()}
+                />
+              ) : (
+                <span className="grow">{tabName(t, docs)}</span>
+              )}
               {statuses[t.id]?.look && <StatusChip chip={chipOf(statuses[t.id], builtins)} />}
               {active && <span>{tabChord(i, side.tabs.length)}</span>}
             </div>
@@ -210,6 +306,10 @@ export function SideTabList({
   sort = "manual",
   onSort,
   docs = {},
+  onMenu,
+  renaming,
+  onRename,
+  onRenameEnd,
 }: SideTabListProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   return (
@@ -252,6 +352,10 @@ export function SideTabList({
               onSelect={() => onSelect(s.id)}
               onSelectTab={(t) => onSelectTab(s.id, t)}
               onToggle={() => setExpanded((m) => ({ ...m, [s.id]: !m[s.id] }))}
+              onMenu={onMenu}
+              renaming={renaming}
+              onRename={onRename}
+              onRenameEnd={onRenameEnd}
             />
           </div>
         ))}

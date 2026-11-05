@@ -58,7 +58,8 @@
         { "type": "StatusSet", "id": "t2", "status": { "label": "Blocked", "accent": "red", "background": null } }
       ]
     },
-    { "rev": 10, "patches": [{ "type": "StatusSet", "id": "t2", "status": null }] }
+    { "rev": 10, "patches": [{ "type": "StatusSet", "id": "t2", "status": null }] },
+    { "rev": 11, "patches": [{ "type": "SideTabRenamed", "sideTabId": "s2", "title": "PROJ-482" }] }
   ],
   "end": {
     "windows": [
@@ -73,7 +74,7 @@
           },
           {
             "id": "s2",
-            "title": null,
+            "title": "PROJ-482",
             "tabs": [
               {
                 "id": "t1",
@@ -100,6 +101,9 @@
     { "type": "MoveTab", "tabId": "t1", "toSideTabId": "s2", "index": 0 },
     { "type": "MoveTabToNewSideTab", "tabId": "t2", "windowId": "w1", "index": 1 },
     { "type": "RenameTab", "tabId": "t3", "title": "claude" },
+    { "type": "RenameSideTab", "sideTabId": "s2", "title": "PROJ-482" },
+    { "type": "CloseSideTab", "sideTabId": "s2" },
+    { "type": "MoveSideTabToNewWindow", "sideTabId": "s2" },
     { "type": "SplitPane", "paneId": "p1", "dir": "row" },
     { "type": "OpenText", "sideTabId": "s1", "docId": "d1", "beside": "p1" },
     { "type": "OpenText", "sideTabId": "s1", "docId": "d2", "beside": null },

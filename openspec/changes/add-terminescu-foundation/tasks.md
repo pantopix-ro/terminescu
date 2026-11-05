@@ -396,6 +396,14 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       locks it. Saved commands keep their scope. `commands.spec.ts` runs a command saved in one
       side tab from another with that side tab's `pr_api`.
 
+- [x] 8.7 Right-click menus on the sidebar (owner request, 2026-11-05): side tabs (rename in
+      place, new tab, edit status, merge into, move to new window, close with a confirmation),
+      their tabs (rename, edit status, move to, close) and saved commands (run, insert, restart,
+      edit, duplicate, delete). In-app HTML menu. Verify: Playwright opens each menu by mouse
+      and keyboard and checks every action against the mock host.
+      Done: `ContextMenu` (arrows, Enter, right and left for submenus, Esc, kept inside the
+      window); core `RenameSideTab`, `CloseSideTab`, `MoveSideTabToNewWindow` (same id, so the
+      context follows); host-protocol.json checks both reducers. `sidebar-menu.spec.ts` (6).
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves
