@@ -33,3 +33,5 @@ export { StatusEditor, type StatusEditorProps } from "./StatusEditor";
 export { StatusSettings, type StatusSettingsProps } from "./StatusSettings";
 export { Swatches } from "./Swatches";
 export { BUILTIN_LOOKS, builtinLook, chipOf, chipStyle, rowStyle, SORTS, sortSideTabs, type Builtins, type Chip, type SortMode } from "./status";
+export { attentionCounts, StatusLine, type StatusLineProps } from "./StatusLine";
+export { playChime } from "./chime";

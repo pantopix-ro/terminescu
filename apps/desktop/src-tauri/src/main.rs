@@ -10,6 +10,8 @@ use std::time::Duration;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WebviewUrl, WebviewWindowBuilder, Wry};
+use terminescu_core::agent::AgentUpdate;
+use terminescu_core::attention::{self, Attention};
 use terminescu_core::context;
 use terminescu_core::core_socket;
 use terminescu_core::daemon::DaemonClient;
@@ -36,6 +38,10 @@ const CONTEXT_EVENT: &str = "host://context";
 const STATUS_EVENT: &str = "host://status";
 /// Saved statuses, rules or built-in looks changed; windows reload [`status_config`].
 const STATUS_CONFIG_EVENT: &str = "host://status-config";
+/// To one window: focus this pane, after `⌘⇧A` picked it (workbench-ui "Attention signals").
+const REVEAL_EVENT: &str = "host://reveal-pane";
+/// To one window: play the chime, when Settings › Notifications turned it on.
+const CHIME_EVENT: &str = "host://chime";
 /// Event that carries an app action from the menu to the focused window (D17).
 const ACTION_EVENT: &str = "menu://action";
 
@@ -58,6 +64,97 @@ struct ActionDef {
 struct AppState {
     runtime: Runtime,
     db: Arc<Mutex<Db>>,
+    attention: Arc<Mutex<Attention>>,
+}
+
+/// Focuses the pane that has waited longest, raising its window. `None` when nothing waits.
+#[tauri::command]
+fn attention_jump(app: AppHandle, state: State<'_, AppState>) -> Option<Id> {
+    let ws = state.runtime.snapshot().workspace;
+    let pane = {
+        let mut a = lock(&state.attention);
+        if a.retain(&ws) {
+            set_badge(&app, a.count());
+        }
+        a.oldest().cloned()?
+    };
+    let place = attention::place_of(&ws, &pane)?;
+    if let Some(w) = app.get_webview_window(&place.window) {
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+    }
+    if let Err(e) = app.emit_to(place.window.as_str(), REVEAL_EVENT, &pane) {
+        eprintln!("terminescu: jump to the waiting pane not sent: {e}");
+    }
+    Some(pane)
+}
+
+#[tauri::command]
+fn attention_settings(state: State<'_, AppState>) -> Result<attention::Settings, String> {
+    attention::settings(&lock(&state.db)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn attention_set(state: State<'_, AppState>, settings: attention::Settings) -> Result<(), String> {
+    attention::set_settings(&lock(&state.db), settings).map_err(|e| e.to_string())
+}
+
+/// The dock badge carries the waiting count; zero clears it.
+fn set_badge(app: &AppHandle, count: usize) {
+    let badge = (count > 0).then_some(count as i64);
+    if let Some(w) = app.webview_windows().values().next()
+        && let Err(e) = w.set_badge_count(badge)
+    {
+        eprintln!("terminescu: dock badge not set: {e}");
+    }
+}
+
+/// Feeds agent updates into [`Attention`] off the runtime's locks: the badge follows the count,
+/// and a pane that starts waiting posts a notification while no window has focus, and the chime
+/// when it is on. The notification names the side tab and tab and plays no sound.
+fn watch_attention(
+    app: AppHandle,
+    runtime: Runtime,
+    db: Arc<Mutex<Db>>,
+    attention: Arc<Mutex<Attention>>,
+    updates: std::sync::mpsc::Receiver<AgentUpdate>,
+) {
+    use tauri_plugin_notification::NotificationExt;
+    std::thread::spawn(move || {
+        for u in updates {
+            let ws = runtime.snapshot().workspace;
+            let (fresh, count) = {
+                let mut a = lock(&attention);
+                let fresh = a.update(&u, terminescu_core::now_ms());
+                a.retain(&ws);
+                (fresh, a.count())
+            };
+            set_badge(&app, count);
+            if !fresh {
+                continue;
+            }
+            let Some(place) = attention::place_of(&ws, &u.pane) else {
+                continue;
+            };
+            let settings = attention::settings(&lock(&db)).unwrap_or_default();
+            let windows = app.webview_windows();
+            let focused = windows.values().any(|w| w.is_focused().unwrap_or(false));
+            if settings.notify && !focused {
+                let shown = app
+                    .notification()
+                    .builder()
+                    .title(format!("{} › {}", place.side_name, place.tab_name))
+                    .body("Claude is waiting for you")
+                    .show();
+                if let Err(e) = shown {
+                    eprintln!("terminescu: notification not posted: {e}");
+                }
+            }
+            if settings.chime {
+                let _ = app.emit_to(place.window.as_str(), CHIME_EVENT, ());
+            }
+        }
+    });
 }
 
 #[tauri::command]
@@ -532,10 +629,14 @@ fn sidecar(name: &str) -> std::io::Result<PathBuf> {
 
 /// Installs the daemon and CLI copies (D32, D36) and starts the runtime on the daemon, from the
 /// saved layout when there is one (task 3.3). Returns the runtime and its window ids.
+#[allow(clippy::type_complexity)]
 fn start_runtime(
     app: &AppHandle,
     db: Arc<Mutex<Db>>,
-) -> Result<(Runtime, Vec<String>), Box<dyn std::error::Error>> {
+) -> Result<
+    (Runtime, Vec<String>, std::sync::mpsc::Receiver<AgentUpdate>),
+    Box<dyn std::error::Error>,
+> {
     let bin = paths::bin_dir();
     let daemon = launcher::install(&sidecar("terminescu-ptyd")?, &bin)?;
     match launcher::install_cli(&sidecar("terminescu")?, &bin) {
@@ -617,10 +718,15 @@ fn start_runtime(
         persist,
     )?;
     let handle = app.clone();
+    let (to_attention, updates) = std::sync::mpsc::channel();
+    for u in runtime.agents() {
+        let _ = to_attention.send(u);
+    }
     runtime.on_agent(Box::new(move |update| {
         if let Err(e) = handle.emit(AGENT_EVENT, update) {
             eprintln!("terminescu: agent broadcast failed: {e}");
         }
+        let _ = to_attention.send(update.clone());
     }));
     let handle = app.clone();
     runtime.on_status(Box::new(move |map| {
@@ -634,7 +740,7 @@ fn start_runtime(
     }));
     runtime.set_status_rules(rules);
     let _ = hooks.set(runtime.clone());
-    Ok((runtime, windows))
+    Ok((runtime, windows, updates))
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -802,6 +908,7 @@ fn send_action(app: &AppHandle, id: &str) {
 
 fn main() {
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .menu(build_menu)
         .on_menu_event(|app, event| send_action(app, event.id().as_ref()))
         .setup(|app| {
@@ -813,8 +920,20 @@ fn main() {
                 eprintln!("terminescu: seed prompts not imported: {e}");
             }
             let db = Arc::new(Mutex::new(db));
-            let (runtime, windows) = start_runtime(app.handle(), db.clone())?;
-            app.manage(AppState { runtime, db });
+            let (runtime, windows, updates) = start_runtime(app.handle(), db.clone())?;
+            let attention = Arc::new(Mutex::new(Attention::default()));
+            watch_attention(
+                app.handle().clone(),
+                runtime.clone(),
+                db.clone(),
+                attention.clone(),
+                updates,
+            );
+            app.manage(AppState {
+                runtime,
+                db,
+                attention,
+            });
             for id in &windows {
                 open_window(app.handle(), id)?;
             }
@@ -843,6 +962,9 @@ fn main() {
             prompt_duplicate,
             prompt_archive,
             prompt_used,
+            attention_jump,
+            attention_settings,
+            attention_set,
             host_statuses,
             status_config,
             status_save,

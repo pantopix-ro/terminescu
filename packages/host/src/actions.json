@@ -86,6 +86,12 @@
    "accel": "Cmd+Backslash"
   },
   {
+   "id": "jump_waiting",
+   "label": "Jump to Waiting Session",
+   "menu": "View",
+   "accel": "Cmd+Shift+A"
+  },
+  {
    "id": "focus_left",
    "label": "Focus Pane Left",
    "menu": "View",

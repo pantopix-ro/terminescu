@@ -1,6 +1,9 @@
 html, body, #root { height: 100%; }
 body { overflow: hidden; user-select: none; -webkit-user-select: none; }
-.app { position: relative; display: grid; grid-template-columns: 272px minmax(0, 1fr) 12px; height: 100%; }
+.app { position: relative; display: grid; grid-template-columns: 272px minmax(0, 1fr) 12px; grid-template-rows: minmax(0, 1fr) auto; height: 100%; }
+/* The status line runs under all three columns (workbench-ui "Attention signals"). */
+.app-status { grid-column: 1 / -1; }
+.app-status .need { border: 0; font: inherit; cursor: pointer; }
 .app[data-context="pinned"] { grid-template-columns: 272px minmax(0, 1fr) 304px; }
 .app button { font: inherit; border: 0; background: none; color: inherit; cursor: default; }
 .app .grow { flex: 1; min-width: 0; }

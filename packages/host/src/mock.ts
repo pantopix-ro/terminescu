@@ -11,6 +11,7 @@ import {
   TINTS,
   type AgentUpdate,
   type AgentView,
+  type AttentionSettings,
   type Command,
   type Entry,
   type Id,
@@ -54,6 +55,8 @@ export interface MockHost extends Host {
   readonly typed: Map<string, string>;
   /** Every byte a pane view sent as input, per pane, keys and inserts alike. */
   readonly inputs: Map<string, string>;
+  /** How many times the chime was asked for. */
+  chimes(): number;
   /** Plays the core's part for hook events: sets or clears a pane's agent. */
   setAgent(pane: string, agent: AgentView | null): void;
   /** Appends entries to a session's fake transcript. */
@@ -139,6 +142,13 @@ export function createMockHost(initial?: Workspace): MockHost {
   const inputs = new Map<string, string>();
   const agents = new Map<string, AgentView>();
   const agentListeners = new Set<(u: AgentUpdate) => void>();
+  // Waiting panes and when they started, as crates/core/src/attention.rs keeps them.
+  const waitingSince = new Map<string, number>();
+  let waitClock = 0;
+  let attention: AttentionSettings = { notify: true, chime: false };
+  let chimes = 0;
+  const revealListeners = new Set<(pane: Id) => void>();
+  const chimeListeners = new Set<() => void>();
   const transcripts = new Map<string, Entry[]>();
   const pinList: Pin[] = [];
   const vars: Variable[] = [];
@@ -413,6 +423,14 @@ export function createMockHost(initial?: Workspace): MockHost {
     setAgent(pane, agent) {
       if (agent) agents.set(pane, agent);
       else agents.delete(pane);
+      if (agent?.state !== "waiting") waitingSince.delete(pane);
+      else if (!waitingSince.has(pane)) {
+        waitingSince.set(pane, ++waitClock);
+        if (attention.chime) {
+          chimes++;
+          for (const l of chimeListeners) l();
+        }
+      }
       for (const l of agentListeners) l({ pane, agent });
       recompute();
     },
@@ -517,6 +535,29 @@ export function createMockHost(initial?: Workspace): MockHost {
       agentListeners.add(listener);
       return () => agentListeners.delete(listener);
     },
+    async jumpWaiting() {
+      const live = new Set(ws.windows.flatMap((w) => w.sideTabs.flatMap((s) => s.tabs.flatMap((t) => panesOf(t.layout)))));
+      for (const p of waitingSince.keys()) if (!live.has(p)) waitingSince.delete(p);
+      let oldest: Id | null = null;
+      for (const [p, at] of waitingSince) if (oldest === null || at < waitingSince.get(oldest)!) oldest = p;
+      if (oldest !== null) for (const l of revealListeners) l(oldest);
+      return oldest;
+    },
+    async onRevealPane(listener) {
+      revealListeners.add(listener);
+      return () => revealListeners.delete(listener);
+    },
+    async onChime(listener) {
+      chimeListeners.add(listener);
+      return () => chimeListeners.delete(listener);
+    },
+    async attentionSettings() {
+      return { ...attention };
+    },
+    async setAttentionSettings(settings) {
+      attention = { ...settings };
+    },
+    chimes: () => chimes,
     appendTranscript(session, entries) {
       const list = transcripts.get(session) ?? [];
       // Offsets stand in for byte positions: one per entry.

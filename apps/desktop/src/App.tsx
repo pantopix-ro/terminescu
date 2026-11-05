@@ -58,7 +58,9 @@ import {
   SORTS,
   sortSideTabs,
   StatusEditor,
+  StatusLine,
   StatusSettings,
+  playChime,
   type SortMode,
 } from "@terminescu/ui";
 import type { Terminal } from "@xterm/xterm";
@@ -305,6 +307,11 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         return setSheet((s) => (s === "prompts" ? undefined : "prompts"));
       case "context_panel":
         return changeMode(mode === "pinned" ? "auto" : "pinned");
+      case "jump_waiting":
+        return void host.jumpWaiting().then(
+          (pane) => pane ?? setNotice("No session is waiting."),
+          (e: unknown) => setError(String(e)),
+        );
       case "focus_left":
       case "focus_right":
       case "focus_up":
@@ -483,6 +490,29 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   };
   const [notice, setNotice] = useState<string>();
   const sideOfTab = (tabId: string) => sideTabs.find((s) => s.tabs.some((t) => t.id === tabId))?.id;
+
+  // `⌘⇧A` lands here in the window holding the pane: select its side tab and tab, focus it.
+  const revealPane = (paneId: string) => {
+    const side = sideTabs.find((s) => s.tabs.some((t) => panesOf(t.layout).includes(paneId)));
+    const tab = side?.tabs.find((t) => panesOf(t.layout).includes(paneId));
+    if (!side || !tab) return;
+    selectTab(side.id, tab.id);
+    focusIn(tab.id, paneId);
+    setTimeout(() => focusPane(paneId));
+  };
+  const revealRef = useRef(revealPane);
+  revealRef.current = revealPane;
+  useEffect(() => {
+    const offs: (() => void)[] = [];
+    let gone = false;
+    const keep = (o: () => void) => (gone ? o() : offs.push(o));
+    void host.onRevealPane((p) => revealRef.current(p)).then(keep);
+    void host.onChime(playChime).then(keep);
+    return () => {
+      gone = true;
+      offs.forEach((o) => o());
+    };
+  }, [host]);
 
   const actRef = useRef(act);
   actRef.current = act;
@@ -719,6 +749,12 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               setSheet("prompts");
             }}
             onOpenUrl={(url) => void host.openUrl(url).catch((e: unknown) => setError(String(e)))}
+          />
+          <StatusLine
+            agents={agents}
+            sideTabs={sideTabs.length}
+            tabs={sideTabs.reduce((n, s) => n + s.tabs.length, 0)}
+            onJump={() => act("jump_waiting")}
           />
         </div>
         <DragOverlay dropAnimation={null}>

@@ -297,3 +297,9 @@ export function variablesOf(body: string): string[] {
 export function isVariableName(name: string): boolean {
   return /^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(name) && !name.startsWith("TERMINESCU_");
 }
+
+/** Settings › Notifications (workbench-ui "Attention signals"). */
+export interface AttentionSettings {
+  notify: boolean;
+  chime: boolean;
+}

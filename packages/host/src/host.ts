@@ -1,5 +1,6 @@
 import type {
   AgentUpdate,
+  AttentionSettings,
   Auto,
   Command,
   Id,
@@ -58,6 +59,18 @@ export interface Host {
   agents(): Promise<AgentUpdate[]>;
   /** Resolves once the listener is registered, with a function that removes it. */
   onAgent(listener: (update: AgentUpdate) => void): Promise<() => void>;
+  /**
+   * `⌘⇧A`: the core picks the pane that has waited longest, raises its window and tells that
+   * window through `onRevealPane`. Resolves with the pane, or null when nothing waits.
+   */
+  jumpWaiting(): Promise<Id | null>;
+  /** This window must show and focus a pane. Resolves with a function that removes the listener. */
+  onRevealPane(listener: (paneId: Id) => void): Promise<() => void>;
+  /** This window plays the chime: a session started waiting and the chime is on. */
+  onChime(listener: () => void): Promise<() => void>;
+  /** Settings › Notifications: notification on, chime off by default. */
+  attentionSettings(): Promise<AttentionSettings>;
+  setAttentionSettings(settings: AttentionSettings): Promise<void>;
   /** Entries a session's transcript gained since `offset`; start at 0 (task 4.4). */
   readTranscript(session: string, offset: number): Promise<TranscriptChunk>;
   pins(sideTabId: Id): Promise<Pin[]>;

@@ -251,8 +251,14 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       of 3 or more characters, longest first, and a secret by its `$NAME`; each becomes a
       ticked `{{name}}` the person can untick, with a live preview. `insert.test.ts` and
       `prompts.spec.ts` cover the `branch` case from both entry points.
-- [ ] 6.6 Attention: status line count, dock badge, macOS notification on by default without
+- [x] 6.6 Attention: status line count, dock badge, macOS notification on by default without
       sound, chime off by default, `⌘⇧A`. Verify: manual with a waiting session in the background.
+      Done: `core::attention` keeps waiting panes and since when, and the settings in `app_state`
+      (notify on, chime off). The app feeds agent updates to it on a thread: dock badge, a
+      notification "side tab › tab" when no window has focus, the chime event. `⌘⇧A` and the
+      amber status line segment ask the core for the oldest wait, which raises its window and
+      reveals the pane. `e2e/attention.spec.ts` covers the count, the jump and the chime on the
+      mock; the badge and the notification stay manual.
 
 - [ ] 6.7 Commands: saved per side tab or global, sidebar section, run or insert, targets (D24).
       Verify: `commands.test.rs` resolves `{{pr_api}}` and run writes `\r`, insert does not.

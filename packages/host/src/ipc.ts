@@ -4,6 +4,7 @@ import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type { Host, PaneView } from "./host";
 import type {
   AgentUpdate,
+  AttentionSettings,
   Command,
   Id,
   Item,
@@ -26,6 +27,9 @@ export const CONTEXT_EVENT = "host://context";
 export const PROMPTS_EVENT = "host://prompts";
 export const STATUS_EVENT = "host://status";
 export const STATUS_CONFIG_EVENT = "host://status-config";
+/** The core sends these to one window: the one holding the pane, for `⌘⇧A` and the chime. */
+export const REVEAL_EVENT = "host://reveal-pane";
+export const CHIME_EVENT = "host://chime";
 /** The app menu sends each action to the focused window only. */
 export const ACTION_EVENT = "menu://action";
 
@@ -50,6 +54,11 @@ export function createIpcHost(): Host {
     },
     agents: () => invoke<AgentUpdate[]>("host_agents"),
     onAgent: (listener) => listen<AgentUpdate>(AGENT_EVENT, (e) => listener(e.payload)),
+    jumpWaiting: () => invoke<Id | null>("attention_jump"),
+    onRevealPane: (listener) => getCurrentWebviewWindow().listen<Id>(REVEAL_EVENT, (e) => listener(e.payload)),
+    onChime: (listener) => getCurrentWebviewWindow().listen(CHIME_EVENT, () => listener()),
+    attentionSettings: () => invoke<AttentionSettings>("attention_settings"),
+    setAttentionSettings: (settings) => invoke("attention_set", { settings }),
     readTranscript: (session, offset) => invoke<TranscriptChunk>("transcript_read", { session, offset }),
     pins: (sideTab) => invoke<Pin[]>("pins_list", { sideTab }),
     addPin: (pin) => invoke<Pin>("pin_add", { pin: { ...pin, id: "", createdAt: 0 } }),

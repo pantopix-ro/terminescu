@@ -2,6 +2,7 @@
 //! contexts (D6), persisted in SQLite (D18).
 
 pub mod agent;
+pub mod attention;
 pub mod context;
 pub mod core_socket;
 pub mod daemon;
