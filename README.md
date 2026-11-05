@@ -9,7 +9,12 @@ whichever of your 20 terminals it lives in.
 It doesn't orchestrate Claude. You start every session yourself by typing `claude` in a
 shell, and Terminescu never starts a turn on its own.
 
-> Status: P1, milestones M1 to M3 built; text tabs (M4) come next. The spikes are done and the skeleton (tasks 1.1 to 1.4) builds:
+> Status: P1 and P2 are built (task groups 1 to 8), including text tabs, cross-window drag,
+> side tab merge, sidebar right-click menus and zoom. Signing, notarization and auto-update
+> (group 9) wait for an Apple developer account. To run or install the app, read
+> [Getting started](docs/getting-started.md).
+>
+> How it grew: the spikes came first, then the skeleton (tasks 1.1 to 1.4):
 > an app window with side tabs and tabs over the core's command and patch protocol, the
 > SQLite schema, and the design tokens. The pty daemon (task 2.1) runs shells and restores
 > their screens on reattach. The app starts it and gives each tab a shell that outlives the
@@ -51,7 +56,7 @@ All links are private claude.ai artifacts. Only the owner can open them until th
 |---|---|
 | Plan page: proposal, 53 tasks, decisions D1 to D36, risks, confidence | https://claude.ai/artifact/NxQVoq2agT798FUijmKxmQ |
 | Reel: an 80-second animated walkthrough in 11 scenes | https://claude.ai/artifact/9xWiUJnmsdS2z4aYauTGik |
-| Screens: 12 canvas boards (main window, drags, merge, statuses, extract, insert, prompts, hidden context panel, settings, text editor, editor request) | https://claude.ai/artifact/RGGKUzakwC7mZqvNZ3tPpH |
+| Screens: 15 canvas boards (main window, drags, merge, statuses, extract, insert, prompts, hidden context panel, settings, text editor, editor request, three app icon boards) | https://claude.ai/artifact/RGGKUzakwC7mZqvNZ3tPpH |
 | Workbench: the design system (tokens, 8x8 icons, components) | https://claude.ai/artifact/AhrMAGQJ1CGCzb6JYYBojH |
 | UI directions from 2026-11-03, from back when the project was called agent-orch | https://claude.ai/artifact/VjG2fC1eTnc2QTogGHNpmq |
 
@@ -127,6 +132,7 @@ foundation:
 | [specs/](openspec/changes/add-terminescu-foundation/specs) | Requirements and scenarios for 9 capabilities |
 | [sequence.mmd](openspec/changes/add-terminescu-foundation/sequence.mmd) | The needs-you flow, from Claude Code hook to amber side tab |
 | [review](docs/review-2026-11-04.md) | Plan review: issues found, fixes, risks, confidence |
+| [getting started](docs/getting-started.md) | Run from source, build a `.dmg`, install, update, remove |
 | [spikes](docs/spikes) | Spike notes 0.1 to 0.5: reattach, keys, daemon lifetime, throughput, hooks |
 
 Delivery runs in three phases:
@@ -192,14 +198,17 @@ macOS 14 or later, Rust stable, Node 24, pnpm, and Claude Code with a logged-in 
 
 ## Build and run
 
+[Getting started](docs/getting-started.md) has the full steps: tools, development mode, the
+`.dmg` build, install, update and removal.
+
 ```
 pnpm install
 pnpm dev                      # the app with hot reload
-cargo test --workspace        # Rust tests
+pnpm build --bundles dmg      # Terminescu.app and a .dmg, in target/release/bundle
+pnpm build --debug            # a faster debug bundle, in target/debug/bundle
 pnpm check:rust               # rustfmt, clippy and Rust tests: run before every commit
 pnpm test                     # TypeScript tests
-pnpm --filter @terminescu/desktop e2e   # Playwright WebKit on the mock host
-pnpm build --debug            # Terminescu.app with both sidecars, in target/debug/bundle
+pnpm --filter @terminescu/desktop e2e   # Playwright on the mock host
 pnpm tokens                   # after editing design/system/build_tokens.py
 ```
 
