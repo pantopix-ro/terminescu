@@ -321,6 +321,14 @@ and never reaches disk. A file changed on disk reloads when the buffer is clean;
 files are refused. Text tab statuses: Idle, Changed on disk, and Waiting (amber) for an editor
 request; unsaved changes show as a dot on the tab, not a status color.
 
+Amended 2026-11-05 after the group 7 review: every edit carries the revision it was typed
+over, and an edit over a reload the editor had not seen keeps the typed text and raises the
+changed-on-disk bar. `⌘S` refuses while that bar shows or while the disk moved since the last
+read. One file opens once whatever the spelling (`..`, symlinks). An `edit --wait` ends when
+its pane closes early or its caller hangs up. A variable that stops being Saved under an open
+document leaves disk. Buffers above 2 MB skip hot exit. Known gap: the text write is not
+atomic (temp file plus rename comes with the release work).
+
 ### D29. CodeMirror 6 as the editor
 Text stays byte-exact (spacing, line endings), because Claude and other tools edit the same
 files. Rich display comes from decorations over plain text, the approach Obsidian's live

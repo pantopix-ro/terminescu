@@ -147,7 +147,7 @@ export function createIpcHost(): Host {
         if (e.payload.type === "drop" && e.payload.paths.length) listener(e.payload.paths);
       }),
     document: (id) => invoke<DocView>("doc_get", { id }),
-    editDocument: (id, text) => invoke<DocView>("doc_edit", { id, text }),
+    editDocument: (id, text, rev) => invoke<DocView>("doc_edit", { id, text, rev: rev ?? null }),
     saveDocument: (id, path) => invoke<DocView>("doc_save", { id, path: path ?? null }),
     reloadDocument: (id) => invoke<DocView>("doc_reload", { id }),
     keepMine: (id) => invoke<DocView>("doc_keep_mine", { id }),

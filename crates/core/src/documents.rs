@@ -99,6 +99,8 @@ pub enum DocError {
     NeedsPath(String),
     #[error("{0} is session only and never goes to disk")]
     SessionOnly(String),
+    #[error("{0} changed on disk: pick Reload or Keep mine before saving")]
+    Conflict(String),
     #[error("{0} has no folder to put a pasted image in")]
     NoFolder(String),
     #[error("{0} is not a png, jpg, gif or webp image")]
@@ -128,6 +130,27 @@ pub struct Disk {
     pub read_only: bool,
     pub missing: bool,
 }
+
+/// `path` with `.` and `..` worked out on the text alone, so one file has one spelling.
+pub fn normalize(path: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut out = PathBuf::new();
+    for c in path.components() {
+        match c {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !out.pop() {
+                    out.push(c);
+                }
+            }
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+/// The largest buffer whose unsaved text the database keeps for hot exit (D28).
+pub const MAX_HOT_EXIT: usize = 2 * 1024 * 1024;
 
 /// The largest image a paste saves.
 pub const MAX_IMAGE: usize = 20 * 1024 * 1024;
@@ -373,11 +396,22 @@ impl Documents {
     }
 
     /// The open document of a file, if any.
+    /// The document open on this file, whatever spelling reaches it (`..`, a symlink).
     pub fn find_file(&self, path: &Path) -> Option<Id> {
-        let want = path.display().to_string();
+        let want = normalize(path);
+        let real = std::fs::canonicalize(&want).ok();
         lock(&self.docs)
             .values()
-            .find(|d| matches!(&d.view.source, Source::File { path } if *path == want))
+            .find(|d| match &d.view.source {
+                Source::File { path } => {
+                    let have = Path::new(path);
+                    have == want
+                        || real
+                            .as_ref()
+                            .is_some_and(|r| std::fs::canonicalize(have).ok().as_ref() == Some(r))
+                }
+                _ => false,
+            })
             .map(|d| d.view.id.clone())
     }
 
@@ -401,6 +435,7 @@ impl Documents {
         if !path.is_absolute() {
             return Err(DocError::Relative(path.display().to_string()));
         }
+        let path = &normalize(path);
         let disk = read_disk(path)?;
         let shown = path.display().to_string();
         let doc = Doc {
@@ -484,9 +519,25 @@ impl Documents {
 
     /// The editor's whole text after a pause in typing.
     pub fn edit(&self, id: &str, text: String) -> Result<DocView, DocError> {
+        self.edit_from(id, None, text)
+    }
+
+    /// An edit typed over revision `base`. When the core has loaded newer text since (a reload
+    /// from disk the editor had not seen yet), the edit still wins in the buffer but the
+    /// document shows the changed-on-disk bar, so nothing typed is lost and nothing is
+    /// overwritten unasked.
+    pub fn edit_from(
+        &self,
+        id: &str,
+        base: Option<u64>,
+        text: String,
+    ) -> Result<DocView, DocError> {
         self.with(id, |doc| {
             if doc.view.read_only {
                 return Err(DocError::ReadOnly(doc.view.title.clone()));
+            }
+            if base.is_some_and(|b| b != doc.view.rev) && text != doc.text {
+                doc.view.conflict = true;
             }
             doc.text = text;
             doc.refresh_dirty();
@@ -511,21 +562,34 @@ impl Documents {
             if doc.view.read_only && to.is_none() {
                 return Err(DocError::ReadOnly(doc.view.title.clone()));
             }
+            if to.is_none() {
+                // The disk moved since the buffer last matched it: the poll may not have seen
+                // it yet. Saving now would overwrite someone else's change unasked.
+                let now = std::fs::metadata(&path).ok().map(|m| sig_of(&m));
+                if now.is_some() && now != doc.sig {
+                    doc.view.conflict = true;
+                }
+                if doc.view.conflict {
+                    return Err(DocError::Conflict(doc.view.title.clone()));
+                }
+            }
             let mut bytes = Vec::with_capacity(doc.text.len() + BOM.len());
             if doc.view.bom {
                 bytes.extend_from_slice(BOM);
             }
             bytes.extend_from_slice(doc.text.as_bytes());
-            std::fs::write(&path, &bytes).map_err(|e| io_err(&path, e))?;
+            // Images first: a failed one leaves the text unsaved and the images still held.
             if let Some(dir) = path.parent() {
-                for (name, image) in std::mem::take(&mut doc.images) {
-                    let to = dir.join(&name);
+                for (name, image) in &doc.images {
+                    let to = dir.join(name);
                     // A file already there under that name stays; the link then points at it.
                     if !to.exists() {
                         std::fs::write(&to, image).map_err(|e| io_err(&to, e))?;
                     }
                 }
             }
+            std::fs::write(&path, &bytes).map_err(|e| io_err(&path, e))?;
+            doc.images.clear();
             let meta = std::fs::metadata(&path).map_err(|e| io_err(&path, e))?;
             let shown = path.display().to_string();
             doc.sig = Some(sig_of(&meta));
@@ -648,6 +712,27 @@ impl Documents {
         })
     }
 
+    /// A document without its text.
+    pub fn meta(&self, id: &str) -> Option<DocView> {
+        lock(&self.docs).get(id).map(Doc::meta)
+    }
+
+    /// From now on the document stays in memory only, and its saved row goes (D35): a variable
+    /// that became session only or secret under an open document.
+    pub fn keep_off_disk(&self, id: &str) -> Result<DocView, DocError> {
+        let view = self.with(id, |doc| {
+            doc.view.session_only = true;
+            Ok(doc.meta())
+        })?;
+        let db = lock(&self.db);
+        let owner = db.local_owner()?;
+        db.conn().execute(
+            "DELETE FROM documents WHERE owner_id = ?1 AND id = ?2",
+            params![owner, id],
+        )?;
+        Ok(view)
+    }
+
     /// Forgets documents whose panes closed, rows included.
     pub fn close(&self, ids: &[Id]) -> Result<(), DocError> {
         let mut docs = lock(&self.docs);
@@ -745,7 +830,10 @@ impl Documents {
         }
         let db = lock(&self.db);
         let owner = db.local_owner()?;
-        let keep_text = doc.view.dirty || doc.view.source == Source::Untitled;
+        // A very large buffer is not copied into SQLite at every typing pause; it still saves
+        // with ⌘S, but unsaved edits to it do not survive a crash.
+        let keep_text = (doc.view.dirty || doc.view.source == Source::Untitled)
+            && doc.text.len() <= MAX_HOT_EXIT;
         let source = serde_json::to_string(&doc.view.source).expect("a source serializes");
         db.conn().execute(
             "INSERT INTO documents (id, owner_id, side_tab_id, source_kind, source_ref, title, content,

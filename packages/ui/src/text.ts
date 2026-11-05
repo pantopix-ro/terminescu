@@ -29,6 +29,19 @@ export function exactState(text: string, extensions: Extension = []): EditorStat
   });
 }
 
+/**
+ * Text from outside (a paste, a drop, an insert) with its line breaks turned into the
+ * document's own: CodeMirror splits only on the separator, so a `\n` pasted into a CRLF file
+ * would stay a bare LF byte in the middle of a line. A Mixed file takes text as it comes.
+ */
+export function fitBreaks(text: string, state: EditorState): string {
+  const doc = textOf(state);
+  const eol = doc.includes("\n") ? eolOf(doc) : state.lineBreak === "\r\n" ? "CRLF" : "LF";
+  if (eol === "CRLF") return text.replace(/\r?\n/g, "\r\n");
+  if (eol === "LF") return text.replace(/\r\n/g, "\n");
+  return text;
+}
+
 /** The document joined with its own separator, as it goes back to the core. */
 export function textOf(state: EditorState): string {
   return state.sliceDoc();

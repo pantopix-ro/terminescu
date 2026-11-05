@@ -28,7 +28,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { INSERT_EVENT, type InsertDetail } from "./events";
 import { claimPane, paneElement, releasePane } from "./pane-registry";
-import { eolOf, exactState, textOf, type Eol } from "./text";
+import { eolOf, exactState, fitBreaks, textOf, type Eol } from "./text";
 import { refreshChips, varChips, type VarInfo } from "./varchips";
 
 /** How long typing pauses before the text goes to the core (D28). */
@@ -164,11 +164,14 @@ export function TextPane({ paneId, docId, visible, focused, onFocus, host, onDoc
   // What the chips read: on for prompts, buffers, variables and Markdown files.
   const chips = useRef<{ on: boolean; vars: readonly VarInfo[] }>({ on: false, vars: variables ?? [] });
   // Synced with the core: the last document seen and the edits queued in order.
-  const sync = useRef({ rev: -1, timer: 0, pending: false, chain: Promise.resolve() as Promise<void> });
+  // `inflight` counts edits sent and not answered yet.
+  const sync = useRef({ rev: -1, timer: 0, pending: false, inflight: 0, chain: Promise.resolve() as Promise<void> });
   // Puts text from the core into the editor; set while the editor lives.
   const loader = useRef<((d: DocView) => void) | null>(null);
 
   const shown = (d: DocView) => {
+    // A reply carries the core's revision; a skipped reload already has a stale edit queued.
+    sync.current.rev = d.rev;
     const { text: _text, ...rest } = d;
     setDoc(rest);
     callbacks.current.onDoc?.(rest);
@@ -198,6 +201,7 @@ export function TextPane({ paneId, docId, visible, focused, onFocus, host, onDoc
         );
     };
     const extra: Extension = [
+      EditorView.clipboardInputFilter.of(fitBreaks),
       varChips(() => chips.current),
       EditorView.domEventHandlers({
         paste(e, view) {
@@ -216,13 +220,18 @@ export function TextPane({ paneId, docId, visible, focused, onFocus, host, onDoc
       if (!s.pending || !view) return s.chain;
       s.pending = false;
       const text = textOf(view.state);
+      const base = s.rev;
+      s.inflight++;
       s.chain = s.chain
-        .then(() => callbacks.current.host.editDocument(docId, text))
+        .then(() => callbacks.current.host.editDocument(docId, text, base))
         .then((d) => {
           if (!disposed) shown(d);
         })
         .catch((e: unknown) => {
           if (!disposed) setError(String(e));
+        })
+        .finally(() => {
+          s.inflight--;
         });
       return s.chain;
     };
@@ -291,7 +300,7 @@ export function TextPane({ paneId, docId, visible, focused, onFocus, host, onDoc
       const view = editor.current;
       const d = (e as CustomEvent<InsertDetail>).detail;
       if (!view || !d?.text || view.state.readOnly) return;
-      view.dispatch(view.state.replaceSelection(d.text));
+      view.dispatch(view.state.replaceSelection(fitBreaks(d.text, view.state)));
       view.focus();
     };
     el.addEventListener(INSERT_EVENT, onInsert);
@@ -300,8 +309,15 @@ export function TextPane({ paneId, docId, visible, focused, onFocus, host, onDoc
     void (async () => {
       const off = await callbacks.current.host.onDocument((d) => {
         if (d.id !== docId || disposed) return;
-        if (d.text !== undefined && d.rev !== s.rev) load(d);
-        else shown(d);
+        if (d.text !== undefined && d.rev !== s.rev) {
+          // Typing the core has not seen yet stays: the edit goes over the old revision and
+          // comes back as a conflict, which shows Reload and Keep mine (D28).
+          if (s.pending || s.inflight > 0) {
+            if (s.pending) void send();
+            return;
+          }
+          load(d);
+        } else shown(d);
       });
       if (disposed) return off();
       unlisten = off;

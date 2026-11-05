@@ -1192,57 +1192,59 @@ fn serve_core_socket(
     }
     core_socket::serve(
         path,
-        Arc::new(move |message: CoreMessage| match message.request {
-            // The session a hook names drives the tab's agent state (task 4.2) and the resume
-            // offer (task 3.4).
-            CoreRequest::Hook { event } => {
-                // Replies at once; the hook thread does the work in arrival order (D34).
-                let _ = hooks_tx.send((message.pane, event));
-                CoreReply::Ok
-            }
-            // A status from `terminescu status`; it lives until it expires or the app quits.
-            CoreRequest::Status {
-                label,
-                color,
-                expiry,
-            } => match runtime.get() {
-                Some(rt) => match rt.status_from_cli(message.pane, label, color, expiry) {
-                    Ok(()) => CoreReply::Ok,
-                    Err(e) => CoreReply::error("bad_status", e),
-                },
-                None => CoreReply::error("starting", "Terminescu is still starting"),
-            },
-            // `terminescu var set NAME value` without a mode: a saved variable, replacing any
-            // value under that name except a secret's.
-            CoreRequest::VarSet { name, value } => {
-                let Some(rt) = runtime.get() else {
-                    return CoreReply::error("starting", "Terminescu is still starting");
-                };
-                let Some((side, tab)) = rt.place_of_daemon(message.pane) else {
-                    return CoreReply::error("no_side_tab", "this pane is not in the layout");
-                };
-                let new = vars::NewVariable {
-                    name,
-                    value,
-                    mode: context::Mode::Saved,
-                    ttl_secs: None,
-                    source: "typed".into(),
-                    origin_tab_id: Some(tab),
-                };
-                let daemon = rt.daemon();
-                match vars::add(&*db, daemon.as_deref(), &side, &new, true) {
-                    Ok(_) => {
-                        rt.context_changed(&side);
-                        CoreReply::Ok
-                    }
-                    Err(e) => CoreReply::error("bad_var", e.to_string()),
+        Arc::new(
+            move |message: CoreMessage, caller: &core_socket::Caller| match message.request {
+                // The session a hook names drives the tab's agent state (task 4.2) and the resume
+                // offer (task 3.4).
+                CoreRequest::Hook { event } => {
+                    // Replies at once; the hook thread does the work in arrival order (D34).
+                    let _ = hooks_tx.send((message.pane, event));
+                    CoreReply::Ok
                 }
-            }
-            // `terminescu edit`; with `--wait` this call thread blocks until the pane returns.
-            CoreRequest::Edit { path, wait } => {
-                docs::edit_from_cli(&app, message.pane, &path, wait)
-            }
-        }),
+                // A status from `terminescu status`; it lives until it expires or the app quits.
+                CoreRequest::Status {
+                    label,
+                    color,
+                    expiry,
+                } => match runtime.get() {
+                    Some(rt) => match rt.status_from_cli(message.pane, label, color, expiry) {
+                        Ok(()) => CoreReply::Ok,
+                        Err(e) => CoreReply::error("bad_status", e),
+                    },
+                    None => CoreReply::error("starting", "Terminescu is still starting"),
+                },
+                // `terminescu var set NAME value` without a mode: a saved variable, replacing any
+                // value under that name except a secret's.
+                CoreRequest::VarSet { name, value } => {
+                    let Some(rt) = runtime.get() else {
+                        return CoreReply::error("starting", "Terminescu is still starting");
+                    };
+                    let Some((side, tab)) = rt.place_of_daemon(message.pane) else {
+                        return CoreReply::error("no_side_tab", "this pane is not in the layout");
+                    };
+                    let new = vars::NewVariable {
+                        name,
+                        value,
+                        mode: context::Mode::Saved,
+                        ttl_secs: None,
+                        source: "typed".into(),
+                        origin_tab_id: Some(tab),
+                    };
+                    let daemon = rt.daemon();
+                    match vars::add(&*db, daemon.as_deref(), &side, &new, true) {
+                        Ok(_) => {
+                            rt.context_changed(&side);
+                            CoreReply::Ok
+                        }
+                        Err(e) => CoreReply::error("bad_var", e.to_string()),
+                    }
+                }
+                // `terminescu edit`; with `--wait` this call thread blocks until the pane returns.
+                CoreRequest::Edit { path, wait } => {
+                    docs::edit_from_cli(&app, message.pane, &path, wait, caller)
+                }
+            },
+        ),
     )
 }
 

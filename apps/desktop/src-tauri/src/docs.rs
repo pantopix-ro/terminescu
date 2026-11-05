@@ -3,7 +3,7 @@
 use crate::{AppState, lock};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -159,7 +159,13 @@ fn reveal(app: &AppHandle, runtime: &Runtime, doc: &str) {
 /// `terminescu edit <file>` from the pane `daemon`: the file opens in a new tab of the caller's
 /// side tab, or beside the caller with `wait`, and a file already open is revealed where it
 /// is. With `wait` the call returns once the document returns or closes.
-pub fn edit_from_cli(app: &AppHandle, daemon: PaneId, path: &str, wait: bool) -> CoreReply {
+pub fn edit_from_cli(
+    app: &AppHandle,
+    daemon: PaneId,
+    path: &str,
+    wait: bool,
+    client: &terminescu_core::core_socket::Caller,
+) -> CoreReply {
     let Some(state) = app.try_state::<AppState>() else {
         return CoreReply::error("starting", "Terminescu is still starting");
     };
@@ -201,17 +207,40 @@ pub fn edit_from_cli(app: &AppHandle, daemon: PaneId, path: &str, wait: bool) ->
             }
         }
     };
-    let ended = wait.then(|| {
+    let ended = if wait {
         let rx = state.waits.add(&view.id);
-        if let Ok(v) = state.docs.set_request(&view.id, true) {
-            let _ = app.emit(DOCUMENT_EVENT, &v);
+        // The pane may have closed since it opened; its close already ended every wait, so
+        // this one would never end.
+        match state.docs.set_request(&view.id, true) {
+            Ok(v) => {
+                let _ = app.emit(DOCUMENT_EVENT, &v);
+            }
+            Err(e) => {
+                state.waits.end(std::slice::from_ref(&view.id));
+                return CoreReply::error("closed", e.to_string());
+            }
         }
-        rx
-    });
+        Some(rx)
+    } else {
+        None
+    };
     reveal(app, &state.runtime, &view.id);
     if let Some(rx) = ended {
-        // A sender dropped by a quitting app ends the wait as well.
-        let _ = rx.recv();
+        loop {
+            match rx.recv_timeout(Duration::from_millis(500)) {
+                // A sender dropped by a quitting app ends the wait as well.
+                Ok(()) | Err(RecvTimeoutError::Disconnected) => break,
+                Err(RecvTimeoutError::Timeout) if client.gone() => {
+                    // The program that asked is gone (Ctrl-C on `git commit`): the tab stops
+                    // waiting and stays open as a plain file.
+                    if let Ok(v) = state.docs.set_request(&view.id, false) {
+                        let _ = app.emit(DOCUMENT_EVENT, &v);
+                    }
+                    break;
+                }
+                Err(RecvTimeoutError::Timeout) => {}
+            }
+        }
     }
     CoreReply::Ok
 }
@@ -350,14 +379,15 @@ fn resolve(path: &str, cwd: Option<&Path>, home: Option<&Path>) -> Option<PathBu
     if path.is_empty() {
         return None;
     }
-    if let Some(rest) = path.strip_prefix("~/") {
-        return Some(home?.join(rest));
-    }
     let p = Path::new(path);
-    if p.is_absolute() {
-        return Some(p.to_path_buf());
-    }
-    Some(cwd?.join(p.strip_prefix("./").unwrap_or(p)))
+    let full = if let Some(rest) = path.strip_prefix("~/") {
+        home?.join(rest)
+    } else if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        cwd?.join(p)
+    };
+    Some(terminescu_core::documents::normalize(&full))
 }
 
 /// `⌘`-click on a path in a terminal pane: resolved against the pane's OSC 7 cwd, and only an
@@ -390,8 +420,23 @@ pub fn doc_get(state: State<'_, AppState>, id: Id) -> Result<DocView, String> {
 
 /// The editor's whole text after a pause in typing.
 #[tauri::command(async)]
-pub fn doc_edit(state: State<'_, AppState>, id: Id, text: String) -> Result<DocView, String> {
-    state.docs.edit(&id, text).map_err(err)
+pub fn doc_edit(
+    state: State<'_, AppState>,
+    id: Id,
+    text: String,
+    rev: Option<u64>,
+) -> Result<DocView, String> {
+    // A variable that stopped being Saved under its open document: the text leaves disk.
+    if let Some(DocView {
+        source: source @ Source::Variable { .. },
+        session_only: false,
+        ..
+    }) = state.docs.meta(&id)
+        && source_text(&lock(&state.db), &source).is_none()
+    {
+        state.docs.keep_off_disk(&id).map_err(err)?;
+    }
+    state.docs.edit_from(&id, rev, text).map_err(err)
 }
 
 /// `⌘S`: a file to disk, a variable or prompt through its own store. `path` saves a file or an
@@ -556,6 +601,7 @@ mod tests {
         assert_eq!(r("./README.md"), Some(cwd.join("README.md")));
         assert_eq!(r("~/notes.md"), Some(home.join("notes.md")));
         assert_eq!(r("/etc/hosts"), Some(PathBuf::from("/etc/hosts")));
+        assert_eq!(r("../web/./app.ts"), Some(home.join("web/app.ts")));
         assert_eq!(r(""), None);
         assert_eq!(resolve("src/main.rs", None, Some(home)), None);
     }

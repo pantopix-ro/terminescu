@@ -19,7 +19,26 @@ const READ_TIMEOUT: Duration = Duration::from_secs(2);
 /// Largest message accepted. Hook events carry tool input, which can be a whole file.
 const MAX_MESSAGE: usize = 4 * 1024 * 1024;
 
-pub type Handler = Arc<dyn Fn(CoreMessage) -> CoreReply + Send + Sync>;
+pub type Handler = Arc<dyn Fn(CoreMessage, &Caller) -> CoreReply + Send + Sync>;
+
+/// The CLI on the other end of a call, for a handler that blocks (`edit --wait`).
+pub struct Caller<'a>(&'a UnixStream);
+
+impl Caller<'_> {
+    /// Whether the CLI hung up, as when `git commit` got Ctrl-C. It sends nothing after its
+    /// message, so anything readable is the end of the stream.
+    pub fn gone(&self) -> bool {
+        use std::os::fd::AsRawFd;
+        let mut fd = libc::pollfd {
+            fd: self.0.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        // SAFETY: one valid pollfd for the length of the call, no wait.
+        let n = unsafe { libc::poll(&mut fd, 1, 0) };
+        n > 0 && fd.revents & (libc::POLLIN | libc::POLLHUP | libc::POLLERR) != 0
+    }
+}
 
 /// Binds the socket and serves it on a background thread. Fails with `AddrInUse` when another
 /// app already answers on it; a socket file nobody answers on is stale and gets replaced.
@@ -74,7 +93,7 @@ fn serve_call(mut stream: UnixStream, handler: &Handler) {
         return;
     }
     let is_hook = matches!(message.request, CoreRequest::Hook { .. });
-    let reply = handler(message);
+    let reply = handler(message, &Caller(&stream));
     // The hook has already gone; it never waits for an answer.
     if !is_hook {
         let _ = stream.write_all(&encode_message(&reply));
@@ -121,7 +140,7 @@ mod tests {
         let s = seen.clone();
         serve(
             &path,
-            Arc::new(move |m| {
+            Arc::new(move |m, _| {
                 s.lock().unwrap().push(m);
                 CoreReply::Ok
             }),
@@ -154,7 +173,7 @@ mod tests {
         assert_eq!(seen.lock().unwrap()[1], hook);
 
         // A second app steps aside; a stale file gets replaced.
-        let again = serve(&path, Arc::new(|_| CoreReply::Ok));
+        let again = serve(&path, Arc::new(|_, _| CoreReply::Ok));
         assert_eq!(again.unwrap_err().kind(), io::ErrorKind::AddrInUse);
         let _ = std::fs::remove_file(&path);
     }
@@ -164,7 +183,7 @@ mod tests {
         let path = socket("b");
         drop(UnixListener::bind(&path).unwrap());
         assert!(path.exists());
-        serve(&path, Arc::new(|_| CoreReply::error("x", "y"))).unwrap();
+        serve(&path, Arc::new(|_, _| CoreReply::error("x", "y"))).unwrap();
         let m = CoreMessage::new(
             1,
             CoreRequest::VarSet {
@@ -176,6 +195,42 @@ mod tests {
             request(&path, &m, Duration::from_secs(1)).unwrap(),
             CoreReply::error("x", "y")
         );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_blocking_handler_sees_the_cli_hang_up() {
+        let path = socket("c");
+        let gone = Arc::new(Mutex::new(None));
+        let g = gone.clone();
+        serve(
+            &path,
+            Arc::new(move |_, caller| {
+                let start = std::time::Instant::now();
+                let still_there = !caller.gone();
+                while !caller.gone() && start.elapsed() < Duration::from_secs(3) {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                *g.lock().unwrap() = Some((still_there, caller.gone()));
+                CoreReply::Ok
+            }),
+        )
+        .unwrap();
+        let m = CoreMessage::new(
+            1,
+            CoreRequest::Edit {
+                path: "/tmp/COMMIT_EDITMSG".into(),
+                wait: true,
+            },
+        );
+        // The CLI gives up after 100 ms and closes its end.
+        assert!(request(&path, &m, Duration::from_millis(100)).is_err());
+        let start = std::time::Instant::now();
+        while gone.lock().unwrap().is_none() {
+            assert!(start.elapsed() < Duration::from_secs(4));
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(*gone.lock().unwrap(), Some((true, true)));
         let _ = std::fs::remove_file(&path);
     }
 }

@@ -199,7 +199,11 @@ export interface Host {
   /** A document with its text. */
   document(docId: Id): Promise<DocView>;
   /** The editor's whole text, after a pause in typing (D28). */
-  editDocument(docId: Id, text: string): Promise<DocView>;
+  /**
+   * The editor's text, typed over revision `rev`. When the core has loaded newer text since,
+   * the text still wins but the document reports a conflict (the changed-on-disk bar).
+   */
+  editDocument(docId: Id, text: string, rev?: number): Promise<DocView>;
   /** `⌘S`; `path` saves under a new name. Untitled without a path fails: ask for one first. */
   saveDocument(docId: Id, path?: string | null): Promise<DocView>;
   /** Changed on disk: take the disk's text. */

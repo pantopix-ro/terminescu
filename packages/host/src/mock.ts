@@ -1056,9 +1056,10 @@ export function createMockHost(initial?: Workspace): MockHost {
     async document(docId) {
       return full(docOrFail(docId));
     },
-    async editDocument(docId, text) {
+    async editDocument(docId, text, rev) {
       const d = docOrFail(docId);
       if (d.view.readOnly) throw new Error(`${d.view.title} opened read-only`);
+      if (rev !== undefined && rev !== d.view.rev && text !== d.text) d.view.conflict = true;
       d.text = text;
       d.view.dirty = d.text !== d.saved;
       return meta(d);
@@ -1071,6 +1072,8 @@ export function createMockHost(initial?: Workspace): MockHost {
         d.view.source = { kind: "file", path };
       } else if (src.kind === "untitled") {
         throw new Error(`${d.view.title} needs a file name to save`);
+      } else if (src.kind === "file" && d.view.conflict) {
+        throw new Error(`${d.view.title} changed on disk: pick Reload or Keep mine before saving`);
       } else if (src.kind === "prompt") {
         await library.save(src.promptId, d.text);
       } else if (src.kind === "variable") {

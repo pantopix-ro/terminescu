@@ -50,10 +50,11 @@ pub fn touched(event: &serde_json::Value) -> Option<Touch> {
     };
     let cwd = s(event, "cwd").filter(|c| Path::new(c).is_absolute());
     let path = if Path::new(&path).is_absolute() {
-        path
+        Path::new(&path).to_path_buf()
     } else {
-        Path::new(cwd.as_deref()?).join(&path).display().to_string()
+        Path::new(cwd.as_deref()?).join(&path)
     };
+    let path = crate::documents::normalize(&path).display().to_string();
     // Write reports `"type": "create"` for a new file and `"update"` over an old one.
     let created = tool == "Write"
         && event

@@ -32,3 +32,16 @@ describe("byte-exact text (task 7.1, D29)", () => {
     expect(textOf(exactState("a\r\nb"))).toBe("a\r\nb");
   });
 });
+
+describe("pasted line breaks (D29)", () => {
+  it("take the file's own endings, and a Mixed file takes them as they come", async () => {
+    const { fitBreaks } = await import("../src/text");
+    const crlf = exactState("a\r\nb\r\n");
+    const pasted = fitBreaks("x\ny\r\nz", crlf);
+    expect(pasted).toBe("x\r\ny\r\nz");
+    const after = crlf.update({ changes: { from: 1, insert: crlf.toText(pasted) } }).state;
+    expect(eolOf(textOf(after))).toBe("CRLF");
+    expect(fitBreaks("x\r\ny", exactState("a\nb\n"))).toBe("x\ny");
+    expect(fitBreaks("x\r\ny", exactState("a\r\nb\nc"))).toBe("x\r\ny");
+  });
+});
