@@ -1,5 +1,5 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import { leaf, panesOf, type AgentView, type Icon, type Shown, type SideTab, type Tab } from "@terminescu/host";
+import { leaf, panesOf, type AgentView, type Icon, type Neon, type Shown, type SideTab, type Tab } from "@terminescu/host";
 import { useEffect, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { DOT, tabAgent, type Agents } from "./agents";
 import { StatusChip } from "./StatusChip";
@@ -307,13 +307,12 @@ function Row(props: {
         )}
         </span>
         <span className="m">
-          {group && (
-            <span className="ao-strip" aria-hidden="true">
-              {side.tabs.map((t) => (
-                <i key={t.id} className="ao-cell" />
-              ))}
-            </span>
-          )}
+          {/* One square per tab, in the tab's neon (task 8.26). */}
+          <span className="ao-strip" aria-hidden="true">
+            {side.tabs.map((t) => (
+              <i key={t.id} className="ao-cell" data-cell={t.id} style={t.accent && { background: `var(--neon-${t.accent})` }} />
+            ))}
+          </span>
           {side.tabs.length} {side.tabs.length === 1 ? "tab" : "tabs"}
         </span>
       </div>
@@ -342,6 +341,7 @@ function Row(props: {
               <KidIcon
                 agent={tabAgent(t, agents)}
                 icon={t.icon}
+                accent={t.accent}
                 onDoubleClick={(e) => {
                   e.stopPropagation();
                   props.onIconPick?.(t.id, pickAt(e));
@@ -390,11 +390,12 @@ function Row(props: {
  * tabs under the row; the active group stays open, a chevron opens the others (D3).
  */
 /** A tab's icon: the one picked, else Claude's or a terminal's; Claude's state dot stays either way. */
-export function KidIcon({ agent, icon, onDoubleClick }: { agent: AgentView | undefined; icon?: Icon; onDoubleClick?(e: MouseEvent): void }) {
+export function KidIcon({ agent, icon, accent, onDoubleClick }: { agent: AgentView | undefined; icon?: Icon; accent?: Neon; onDoubleClick?(e: MouseEvent): void }) {
   return (
     <>
       <i
         className={`ao-i x1 ao-i-${icon ?? (agent ? "agent" : "term")}`}
+        style={accent && { color: `var(--neon-${accent})` }}
         aria-label={agent && !icon ? "Claude" : undefined}
         title={onDoubleClick && "Double-click to change the icon"}
         onDoubleClick={onDoubleClick}

@@ -64,6 +64,7 @@ fn db_at(path: &std::path::Path) -> Db {
                 id: "s1".into(),
                 title: Some("PROJ-482".into()),
                 tabs: vec![Tab {
+                    accent: None,
                     status: None,
                     icon: None,
                     id: "t1".into(),

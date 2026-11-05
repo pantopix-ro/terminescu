@@ -14,6 +14,7 @@ use terminescu_core::vars;
 
 fn tab(id: &str, pane: &str) -> Tab {
     Tab {
+        accent: None,
         status: None,
         icon: None,
         id: id.into(),

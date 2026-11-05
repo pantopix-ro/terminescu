@@ -1312,10 +1312,14 @@ fn start_runtime(
         )?;
         DaemonClient::connect(&run.ptyd_socket, events)
     });
-    let (saved, rules) = {
+    let (mut saved, rules) = {
         let db = lock(&db);
         (persist::load(&db)?, status_store::rules(&db)?)
     };
+    // Rows and tabs saved before neons existed get one now, kept by the next save (8.26).
+    if let Some(s) = saved.as_mut() {
+        terminescu_core::state::fill_accents(&mut s.workspace);
+    }
     let editor = {
         let db = lock(&db);
         settings::get(&db).map(|s| s.editor).unwrap_or(false)

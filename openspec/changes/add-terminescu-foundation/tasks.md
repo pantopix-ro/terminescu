@@ -481,6 +481,10 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       from a hash of the side tab id, saved in the existing `side_tabs.accent` column; rows from
       before keep the neutral edge. The owner picked the Wash look on 2026-11-05: the neon also
       mixes 12% into the row's background. Verify: core and persist tests, `sidebar-neon.spec.ts`.
+- [x] 8.26 A neon per tab (owner request, 2026-11-05): `pick_tab_neon` keeps a side tab's tabs
+      apart (`tabs.accent`, migration 0009); the tab's icon in the sidebar and the tab bar and
+      its square under the row name take it; every row now shows its squares. `fill_accents`
+      gives saved rows and tabs a neon at start. Verify: core tests, `sidebar-neon.spec.ts` (2).
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

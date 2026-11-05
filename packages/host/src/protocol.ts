@@ -27,6 +27,8 @@ export interface Tab {
   status?: ManualStatus;
   /** One of {@link ICONS}; absent shows the default icon (task 8.16). */
   icon?: Icon;
+  /** A neon given when the tab is made (task 8.26): its icon and its square in the sidebar. */
+  accent?: Neon;
 }
 
 export interface SideTab {

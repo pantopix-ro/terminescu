@@ -47,3 +47,27 @@ test("new side tabs open with different neon edges", async ({ page }) => {
     }, accents[i]));
   }
 });
+
+// Task 8.26: each tab has its own neon on its icon and on its square under the row's name.
+test("a side tab's tabs show their neons on their icons and squares", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+  await page.locator(".term-pane").first().click();
+  for (let i = 0; i < 2; i++) await page.getByRole("button", { name: "New tab", exact: true }).click();
+  const side = (await workspace(page)).windows[0].sideTabs[0];
+  const neons: string[] = side.tabs.map((t: { accent?: string }) => t.accent);
+  expect(neons).toHaveLength(3);
+  expect(new Set(neons).size).toBe(3);
+
+  const row = page.locator(".ao-st").first();
+  const cells = row.locator(".ao-strip .ao-cell");
+  await expect(cells).toHaveCount(3);
+  for (let i = 0; i < 3; i++) {
+    await expect(cells.nth(i)).toHaveAttribute("style", `background: var(--neon-${neons[i]});`);
+    await expect(page.locator(`.ao-st-kid[data-kid="${side.tabs[i].id}"] .ao-i`)).toHaveAttribute("style", `color: var(--neon-${neons[i]});`);
+    await expect(page.locator(`.ao-tab[data-tab="${side.tabs[i].id}"] .ao-i`)).toHaveAttribute("style", `color: var(--neon-${neons[i]});`);
+  }
+  // A one-tab row shows its single square too.
+  await page.getByRole("button", { name: "Add a side tab" }).click();
+  await expect(page.locator(".ao-st").nth(1).locator(".ao-cell")).toHaveCount(1);
+});

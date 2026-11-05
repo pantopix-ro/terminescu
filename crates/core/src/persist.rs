@@ -87,13 +87,13 @@ pub fn save(db: &Db, saved: &Saved) -> Result<()> {
             for (ti, t) in s.tabs.iter().enumerate() {
                 let layout = serde_json::to_string(&t.layout).expect("a layout serializes");
                 tx.execute(
-                    "INSERT INTO tabs (id, owner_id, side_tab_id, position, title, layout_json, status_json, created_at, icon)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?8, ?7, ?9)
+                    "INSERT INTO tabs (id, owner_id, side_tab_id, position, title, layout_json, status_json, created_at, icon, accent)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?8, ?7, ?9, ?10)
                      ON CONFLICT (id) DO UPDATE SET side_tab_id = excluded.side_tab_id,
                        position = excluded.position, title = excluded.title,
                        layout_json = excluded.layout_json, status_json = excluded.status_json,
-                       icon = excluded.icon",
-                    params![t.id, owner, s.id, ti as i64, t.title, layout, now, status_json(&t.status), t.icon],
+                       icon = excluded.icon, accent = excluded.accent",
+                    params![t.id, owner, s.id, ti as i64, t.title, layout, now, status_json(&t.status), t.icon, t.accent],
                 )?;
                 ids[2].push(&t.id);
                 if let Some(old) = was.get(&t.id).filter(|old| **old != s.id) {
@@ -230,10 +230,11 @@ pub fn load(db: &Db) -> Result<Option<Saved>> {
         String,
         Option<String>,
         Option<String>,
+        Option<String>,
     );
     let tabs: Vec<TabRow> = conn
-        .prepare("SELECT side_tab_id, id, title, layout_json, status_json, icon FROM tabs WHERE owner_id = ?1 ORDER BY position")?
-        .query_map([&owner], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)))?
+        .prepare("SELECT side_tab_id, id, title, layout_json, status_json, icon, accent FROM tabs WHERE owner_id = ?1 ORDER BY position")?
+        .query_map([&owner], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?)))?
         .collect::<rusqlite::Result<_>>()?;
     let mut panes: HashMap<Id, PaneRecord> = conn
         .prepare("SELECT id, daemon_pane_id, cwd, session_id FROM panes WHERE owner_id = ?1")?
@@ -248,7 +249,7 @@ pub fn load(db: &Db) -> Result<Option<Saved>> {
             ))
         })?
         .collect::<rusqlite::Result<_>>()?;
-    for (side_tab_id, id, title, layout_json, status_json, icon) in tabs {
+    for (side_tab_id, id, title, layout_json, status_json, icon, accent) in tabs {
         let mut layout = serde_json::from_str::<Layout>(&layout_json).unwrap_or_else(|e| {
             eprintln!(
                 "terminescu: tab {id} has an unreadable layout, it restarts with one pane: {e}"
@@ -289,6 +290,7 @@ pub fn load(db: &Db) -> Result<Option<Saved>> {
                 layout,
                 status: status_of(status_json),
                 icon: icon_of(icon),
+                accent: accent_of(accent),
             });
         }
     }
@@ -339,6 +341,7 @@ mod tests {
                         title: Some("PROJ-482".into()),
                         tabs: vec![
                             Tab {
+                                accent: None,
                                 status: None,
                                 icon: None,
                                 id: "t1".into(),
@@ -346,6 +349,7 @@ mod tests {
                                 layout,
                             },
                             Tab {
+                                accent: None,
                                 status: None,
                                 icon: None,
                                 id: "t2".into(),
@@ -361,6 +365,7 @@ mod tests {
                         id: "s2".into(),
                         title: None,
                         tabs: vec![Tab {
+                            accent: None,
                             status: None,
                             icon: None,
                             id: "t3".into(),
@@ -421,6 +426,7 @@ mod tests {
         side.icon = Some("pin".into());
         side.accent = Some("lime".into());
         side.tabs[0].icon = Some("doc".into());
+        side.tabs[0].accent = Some("rose".into());
         save(&db, &saved).unwrap();
         assert_eq!(load(&db).unwrap(), Some(saved.clone()));
 

@@ -78,6 +78,7 @@ function TabItem({
         <KidIcon
           agent={agent}
           icon={tab.icon}
+          accent={tab.accent}
           onDoubleClick={(e) => {
             e.stopPropagation();
             onIconPick?.(tab.id, pickAt(e));
