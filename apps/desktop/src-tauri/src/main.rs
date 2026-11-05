@@ -12,6 +12,7 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WebviewUrl, WebviewWindowBuilder, Wry};
 use terminescu_core::agent::AgentUpdate;
 use terminescu_core::attention::{self, Attention};
+use terminescu_core::commands::{self, NewCommand, SavedCommand, Target};
 use terminescu_core::context;
 use terminescu_core::core_socket;
 use terminescu_core::daemon::DaemonClient;
@@ -38,6 +39,8 @@ const CONTEXT_EVENT: &str = "host://context";
 const STATUS_EVENT: &str = "host://status";
 /// Saved statuses, rules or built-in looks changed; windows reload [`status_config`].
 const STATUS_CONFIG_EVENT: &str = "host://status-config";
+/// Saved commands changed; windows reload [`commands_list`].
+const COMMANDS_EVENT: &str = "host://commands";
 /// To one window: focus this pane, after `⌘⇧A` picked it (workbench-ui "Attention signals").
 const REVEAL_EVENT: &str = "host://reveal-pane";
 /// To one window: play the chime, when Settings › Notifications turned it on.
@@ -97,6 +100,124 @@ fn attention_settings(state: State<'_, AppState>) -> Result<attention::Settings,
 #[tauri::command]
 fn attention_set(state: State<'_, AppState>, settings: attention::Settings) -> Result<(), String> {
     attention::set_settings(&lock(&state.db), settings).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn commands_list(
+    state: State<'_, AppState>,
+    side_tab: Option<Id>,
+) -> Result<Vec<SavedCommand>, String> {
+    commands::list(&lock(&state.db), side_tab.as_deref()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn command_create(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    command: NewCommand,
+) -> Result<SavedCommand, String> {
+    let saved = commands::create(&lock(&state.db), &command).map_err(|e| e.to_string())?;
+    let _ = app.emit(COMMANDS_EVENT, ());
+    Ok(saved)
+}
+
+#[tauri::command]
+fn command_update(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: Id,
+    command: NewCommand,
+) -> Result<SavedCommand, String> {
+    let saved = commands::update(&lock(&state.db), &id, &command).map_err(|e| e.to_string())?;
+    let _ = app.emit(COMMANDS_EVENT, ());
+    Ok(saved)
+}
+
+#[tauri::command]
+fn command_delete(app: AppHandle, state: State<'_, AppState>, id: Id) -> Result<(), String> {
+    commands::delete(&lock(&state.db), &id).map_err(|e| e.to_string())?;
+    let _ = app.emit(COMMANDS_EVENT, ());
+    Ok(())
+}
+
+/// How a run went: names to ask for, names whose value must not meet Enter, or the pane that
+/// got the line.
+#[derive(serde::Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+enum RunOutcome {
+    Missing { names: Vec<String> },
+    Unsafe { names: Vec<String> },
+    Done { pane: Option<Id> },
+}
+
+/// Runs (`run`) or inserts a saved command from a side tab, filled from that side tab's
+/// variables and `extra`. `target` overrides the saved one; `pane` is the focused pane.
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+fn command_run(
+    state: State<'_, AppState>,
+    window_id: Id,
+    side_tab: Id,
+    id: Id,
+    target: Option<Target>,
+    pane: Option<Id>,
+    run: bool,
+    extra: BTreeMap<String, String>,
+) -> Result<RunOutcome, String> {
+    let (command, vars) = {
+        let db = lock(&state.db);
+        let command = commands::get(&db, &id).map_err(|e| e.to_string())?;
+        let daemon = state.runtime.daemon();
+        let vars = vars::list(&db, daemon.as_deref(), &side_tab).map_err(|e| e.to_string())?;
+        (command, vars)
+    };
+    if command.side_tab_id.as_ref().is_some_and(|s| *s != side_tab) {
+        return Err("this command belongs to another side tab".into());
+    }
+    let resolved = commands::resolve(&command.body, &vars, &extra);
+    if !resolved.missing.is_empty() {
+        return Ok(RunOutcome::Missing {
+            names: resolved.missing,
+        });
+    }
+    if run && !resolved.unsafe_for_run.is_empty() {
+        return Ok(RunOutcome::Unsafe {
+            names: resolved.unsafe_for_run,
+        });
+    }
+    let bytes = commands::type_bytes(&resolved.text, run);
+    let rt = &state.runtime;
+    let pane = match target.unwrap_or(command.target) {
+        Target::Focused => {
+            let pane = pane.ok_or("focus a terminal pane first")?;
+            let ws = rt.workspace();
+            if ws.locate_pane(&pane).map(|(s, _)| &s.id) != Some(&side_tab) {
+                return Err("the focused pane is in another side tab".into());
+            }
+            if !rt.type_into(&pane, bytes) {
+                return Err("this pane has no shell right now".into());
+            }
+            Some(pane)
+        }
+        Target::NewTab => rt
+            .command_then_type(
+                Command::CreateTab {
+                    side_tab_id: side_tab,
+                },
+                bytes,
+            )
+            .map_err(|e| e.to_string())?,
+        Target::NewSideTab => rt
+            .command_then_type(
+                Command::CreateSideTab {
+                    window_id,
+                    index: None,
+                },
+                bytes,
+            )
+            .map_err(|e| e.to_string())?,
+    };
+    Ok(RunOutcome::Done { pane })
 }
 
 /// The dock badge carries the waiting count; zero clears it.
@@ -963,6 +1084,11 @@ fn main() {
             prompt_archive,
             prompt_used,
             attention_jump,
+            commands_list,
+            command_create,
+            command_update,
+            command_delete,
+            command_run,
             attention_settings,
             attention_set,
             host_statuses,

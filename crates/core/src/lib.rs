@@ -3,6 +3,7 @@
 
 pub mod agent;
 pub mod attention;
+pub mod commands;
 pub mod context;
 pub mod core_socket;
 pub mod daemon;

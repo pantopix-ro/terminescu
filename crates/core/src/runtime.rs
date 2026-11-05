@@ -501,6 +501,41 @@ impl Runtime {
         Ok(batch.rev)
     }
 
+    /// Types bytes into a pane's shell as if the person typed them (commands, D24). False when
+    /// the pane has no shell right now.
+    pub fn type_into(&self, pane: &str, bytes: Vec<u8>) -> bool {
+        match (self.daemon_of(pane), self.daemon()) {
+            (Some(d), Some(client)) => client.input(d, bytes).is_ok(),
+            _ => false,
+        }
+    }
+
+    /// Runs a command that opens a tab or a side tab, then types `bytes` into its new pane. The
+    /// shell holds them as typeahead until its prompt reads them. Returns the new pane.
+    pub fn command_then_type(
+        &self,
+        cmd: Command,
+        bytes: Vec<u8>,
+    ) -> Result<Option<Id>, CommandError> {
+        let before: std::collections::HashSet<Id> = self
+            .workspace()
+            .terminal_sides()
+            .into_iter()
+            .map(|(p, _)| p)
+            .collect();
+        self.command(cmd)?;
+        let pane = self
+            .workspace()
+            .terminal_sides()
+            .into_iter()
+            .map(|(p, _)| p)
+            .find(|p| !before.contains(p));
+        if let Some(p) = &pane {
+            self.type_into(p, bytes);
+        }
+        Ok(pane)
+    }
+
     /// The cwd the shell integration reports now, else the last one seen.
     fn live_cwd(&self, pane: &str) -> Option<String> {
         let client = self.daemon();

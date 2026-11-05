@@ -1,6 +1,10 @@
 import type {
   AgentUpdate,
   AttentionSettings,
+  NewCommand,
+  RunOutcome,
+  RunRequest,
+  SavedCommand,
   Auto,
   Command,
   Id,
@@ -71,6 +75,16 @@ export interface Host {
   /** Settings › Notifications: notification on, chime off by default. */
   attentionSettings(): Promise<AttentionSettings>;
   setAttentionSettings(settings: AttentionSettings): Promise<void>;
+  /** A side tab's own commands, then the global ones; `null` for the global ones only (D24). */
+  commands(sideTabId: Id | null): Promise<SavedCommand[]>;
+  createCommand(command: NewCommand): Promise<SavedCommand>;
+  /** New name, body, target and launcher flag; the scope stays. */
+  updateCommand(id: Id, command: NewCommand): Promise<SavedCommand>;
+  deleteCommand(id: Id): Promise<void>;
+  /** Fills and types a command: Run with Enter, Insert without (D24). */
+  runSavedCommand(request: RunRequest): Promise<RunOutcome>;
+  /** Commands changed in any window. Resolves with a function that removes the listener. */
+  onCommands(listener: () => void): Promise<() => void>;
   /** Entries a session's transcript gained since `offset`; start at 0 (task 4.4). */
   readTranscript(session: string, offset: number): Promise<TranscriptChunk>;
   pins(sideTabId: Id): Promise<Pin[]>;

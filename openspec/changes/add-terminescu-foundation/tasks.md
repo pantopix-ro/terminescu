@@ -260,8 +260,13 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       reveals the pane. `e2e/attention.spec.ts` covers the count, the jump and the chime on the
       mock; the badge and the notification stay manual.
 
-- [ ] 6.7 Commands: saved per side tab or global, sidebar section, run or insert, targets (D24).
+- [x] 6.7 Commands: saved per side tab or global, sidebar section, run or insert, targets (D24).
       Verify: `commands.test.rs` resolves `{{pr_api}}` and run writes `\r`, insert does not.
+      Done: `core::commands` stores, resolves and types; the core types into the focused pane
+      or the new tab's pane (`Runtime::command_then_type`), so launchers (6.8) reuse it. A secret
+      goes in as `$NAME`; a missing name is asked for once and never saved; Run refuses a value
+      with a line break, Insert pastes it bracketed. `crates/core/tests/commands.rs`,
+      `e2e/commands.spec.ts`.
 - [ ] 6.8 Launcher side tabs: run on open and after a reboot, restart, `n/m up` status (D24).
       Verify: manual, kill one process and see `1/2 up` with restart.
 - [ ] 6.9 Settings screen: Statuses, Commands, Variable defaults, Extraction rules (read-only),

@@ -12,6 +12,7 @@ import {
   type AgentUpdate,
   type AgentView,
   type AttentionSettings,
+  type SavedCommand,
   type Command,
   type Entry,
   type Id,
@@ -148,6 +149,38 @@ export function createMockHost(initial?: Workspace): MockHost {
   let attention: AttentionSettings = { notify: true, chime: false };
   let chimes = 0;
   const revealListeners = new Set<(pane: Id) => void>();
+  let savedCommands: SavedCommand[] = [];
+  const commandListeners = new Set<() => void>();
+  const commandsChanged = () => commandListeners.forEach((l) => l());
+  const checkCommand = (name: string, body: string) => {
+    const clean = body.replace(/[\r\n]+$/, "");
+    if (!name.trim() || name.trim().length > 80) throw new Error("a command needs a name of at most 80 characters");
+    if (!clean.trim()) throw new Error("the command is empty");
+    return { name: name.trim(), body: clean };
+  };
+  // As crates/core/src/commands.rs: a secret becomes $NAME, a missing name stays.
+  const resolveCommand = (body: string, side: string, extra: Record<string, string>) => {
+    const missing: string[] = [];
+    const unsafe: string[] = [];
+    const text = body.replace(/\{\{([^{}]*)\}\}/g, (whole, raw: string) => {
+      const name = raw.trim();
+      const v = live(side).find((x) => x.name === name);
+      const value = v ? (v.mode === "secret" ? `$${v.name}` : (v.value ?? "")) : extra[name] || undefined;
+      if (value === undefined) {
+        if (isVariableName(name) && !missing.includes(name)) missing.push(name);
+        return whole;
+      }
+      if (/[\x00-\x1f\x7f]/.test(value) && !unsafe.includes(name)) unsafe.push(name);
+      return value;
+    });
+    return { text, missing, unsafe };
+  };
+  const typeBytes = (text: string, run: boolean) => {
+    const clean = text.replaceAll("\x1b[200~", "").replaceAll("\x1b[201~", "").replace(/\r\n?/g, "\n");
+    return (clean.includes("\n") ? `\x1b[200~${clean}\x1b[201~` : clean) + (run ? "\r" : "");
+  };
+  const typeInto = (pane: string, bytes: string) => typed.set(pane, (typed.get(pane) ?? "") + bytes);
+  const terminalPanes = () => ws.windows.flatMap((w) => w.sideTabs.flatMap((s) => s.tabs.flatMap((t) => terminalsOf(t.layout))));
   const chimeListeners = new Set<() => void>();
   const transcripts = new Map<string, Entry[]>();
   const pinList: Pin[] = [];
@@ -534,6 +567,57 @@ export function createMockHost(initial?: Workspace): MockHost {
     async onAgent(listener) {
       agentListeners.add(listener);
       return () => agentListeners.delete(listener);
+    },
+    async commands(side) {
+      const mine = savedCommands.filter((c) => side !== null && c.sideTabId === side);
+      const global = savedCommands.filter((c) => c.sideTabId === null);
+      const order = (a: SavedCommand, b: SavedCommand) => a.position - b.position;
+      return structuredClone([...mine.sort(order), ...global.sort(order)]);
+    },
+    async createCommand(c) {
+      const { name, body } = checkCommand(c.name, c.body);
+      const position = savedCommands.filter((x) => x.sideTabId === c.sideTabId).length;
+      const saved: SavedCommand = { ...c, name, body, id: id(), position, createdAt: Date.now() };
+      savedCommands.push(saved);
+      commandsChanged();
+      return structuredClone(saved);
+    },
+    async updateCommand(cid, c) {
+      const old = savedCommands.find((x) => x.id === cid);
+      if (!old) throw new Error(`no command ${cid}`);
+      const { name, body } = checkCommand(c.name, c.body);
+      Object.assign(old, { name, body, target: c.target, launcher: c.launcher });
+      commandsChanged();
+      return structuredClone(old);
+    },
+    async deleteCommand(cid) {
+      savedCommands = savedCommands.filter((x) => x.id !== cid);
+      commandsChanged();
+    },
+    async runSavedCommand(r) {
+      const c = savedCommands.find((x) => x.id === r.id);
+      if (!c) throw new Error(`no command ${r.id}`);
+      if (c.sideTabId !== null && c.sideTabId !== r.sideTabId) throw new Error("this command belongs to another side tab");
+      const { text, missing, unsafe } = resolveCommand(c.body, r.sideTabId, r.extra ?? {});
+      if (missing.length) return { kind: "missing", names: missing };
+      if (r.run && unsafe.length) return { kind: "unsafe", names: unsafe };
+      const bytes = typeBytes(text, r.run);
+      const target = r.target ?? c.target;
+      if (target === "focused") {
+        if (!r.paneId) throw new Error("focus a terminal pane first");
+        if (holder(tabOfPane(r.paneId).id).id !== r.sideTabId) throw new Error("the focused pane is in another side tab");
+        typeInto(r.paneId, bytes);
+        return { kind: "done", pane: r.paneId };
+      }
+      const before = new Set(terminalPanes());
+      await host.send(target === "newTab" ? { type: "CreateTab", sideTabId: r.sideTabId } : { type: "CreateSideTab", windowId: r.windowId });
+      const pane = terminalPanes().find((p) => !before.has(p)) ?? null;
+      if (pane) typeInto(pane, bytes);
+      return { kind: "done", pane };
+    },
+    async onCommands(listener) {
+      commandListeners.add(listener);
+      return () => commandListeners.delete(listener);
     },
     async jumpWaiting() {
       const live = new Set(ws.windows.flatMap((w) => w.sideTabs.flatMap((s) => s.tabs.flatMap((t) => panesOf(t.layout)))));

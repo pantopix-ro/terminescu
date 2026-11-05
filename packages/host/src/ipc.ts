@@ -5,6 +5,8 @@ import type { Host, PaneView } from "./host";
 import type {
   AgentUpdate,
   AttentionSettings,
+  RunOutcome,
+  SavedCommand,
   Command,
   Id,
   Item,
@@ -25,6 +27,7 @@ export const PATCHES_EVENT = "host://patches";
 export const AGENT_EVENT = "host://agent";
 export const CONTEXT_EVENT = "host://context";
 export const PROMPTS_EVENT = "host://prompts";
+export const COMMANDS_EVENT = "host://commands";
 export const STATUS_EVENT = "host://status";
 export const STATUS_CONFIG_EVENT = "host://status-config";
 /** The core sends these to one window: the one holding the pane, for `⌘⇧A` and the chime. */
@@ -59,6 +62,21 @@ export function createIpcHost(): Host {
     onChime: (listener) => getCurrentWebviewWindow().listen(CHIME_EVENT, () => listener()),
     attentionSettings: () => invoke<AttentionSettings>("attention_settings"),
     setAttentionSettings: (settings) => invoke("attention_set", { settings }),
+    commands: (sideTab) => invoke<SavedCommand[]>("commands_list", { sideTab }),
+    createCommand: (command) => invoke<SavedCommand>("command_create", { command }),
+    updateCommand: (id, command) => invoke<SavedCommand>("command_update", { id, command }),
+    deleteCommand: (id) => invoke("command_delete", { id }),
+    runSavedCommand: (r) =>
+      invoke<RunOutcome>("command_run", {
+        windowId: r.windowId,
+        sideTab: r.sideTabId,
+        id: r.id,
+        target: r.target ?? null,
+        pane: r.paneId ?? null,
+        run: r.run,
+        extra: r.extra ?? {},
+      }),
+    onCommands: (listener) => listen(COMMANDS_EVENT, () => listener()),
     readTranscript: (session, offset) => invoke<TranscriptChunk>("transcript_read", { session, offset }),
     pins: (sideTab) => invoke<Pin[]>("pins_list", { sideTab }),
     addPin: (pin) => invoke<Pin>("pin_add", { pin: { ...pin, id: "", createdAt: 0 } }),

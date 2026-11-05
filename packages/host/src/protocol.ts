@@ -303,3 +303,47 @@ export interface AttentionSettings {
   notify: boolean;
   chime: boolean;
 }
+
+/** Where a saved command runs (D24). */
+export type CommandTarget = "focused" | "newTab" | "newSideTab";
+export const COMMAND_TARGETS: readonly CommandTarget[] = ["focused", "newTab", "newSideTab"];
+
+/** A saved shell line with `{{variables}}`, for one side tab or global (`sideTabId` null). */
+export interface SavedCommand {
+  id: Id;
+  sideTabId: Id | null;
+  name: string;
+  body: string;
+  target: CommandTarget;
+  launcher: boolean;
+  position: number;
+  createdAt: number;
+}
+
+export interface NewCommand {
+  sideTabId: Id | null;
+  name: string;
+  body: string;
+  target: CommandTarget;
+  launcher: boolean;
+}
+
+export interface RunRequest {
+  windowId: Id;
+  sideTabId: Id;
+  id: Id;
+  /** Overrides the saved target. */
+  target?: CommandTarget;
+  /** The focused pane, for the "focused" target. */
+  paneId?: Id | null;
+  /** Run sends Enter; insert does not. */
+  run: boolean;
+  /** Values typed for missing names. */
+  extra?: Record<string, string>;
+}
+
+/** Ask for `missing` names; refuse Run on values with line breaks; or the pane that got it. */
+export type RunOutcome =
+  | { kind: "missing"; names: string[] }
+  | { kind: "unsafe"; names: string[] }
+  | { kind: "done"; pane: Id | null };

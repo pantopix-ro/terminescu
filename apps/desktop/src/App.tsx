@@ -23,6 +23,7 @@ import {
   type StatusConfig,
   type Variable,
   type Prompt,
+  type SavedCommand,
   type Command,
   type Host,
   type Workspace,
@@ -60,6 +61,7 @@ import {
   StatusEditor,
   StatusLine,
   StatusSettings,
+  CommandsSection,
   playChime,
   type SortMode,
 } from "@terminescu/ui";
@@ -417,6 +419,32 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     };
   }, [host]);
 
+  // Saved commands of the side tab in front, then the global ones (D24).
+  const [commands, setCommands] = useState<SavedCommand[]>([]);
+  const commandSide = activeSide?.id ?? null;
+  useEffect(() => {
+    let gone = false;
+    let off: (() => void) | undefined;
+    const load = () =>
+      void host
+        .commands(commandSide)
+        .then((c) => !gone && setCommands(c))
+        .catch((e: unknown) => !gone && setError(String(e)));
+    load();
+    void host.onCommands(load).then((o) => (gone ? o() : (off = o)));
+    return () => {
+      gone = true;
+      off?.();
+    };
+  }, [host, commandSide]);
+  const runCommand = async (c: SavedCommand, run: boolean, extra: Record<string, string>) => {
+    if (!activeSide) throw new Error("No side tab.");
+    const paneId = focused && activeTab && !transcriptOf(activeTab.layout, focused) ? focused : null;
+    const out = await host.runSavedCommand({ windowId, sideTabId: activeSide.id, id: c.id, paneId, run, extra });
+    if (out.kind === "done" && out.pane) revealPane(out.pane);
+    return out;
+  };
+
   // A pin to show: the transcript pane of its session scrolls to it; a terminal pin scrolls its
   // pane, when that pane is still open in this side tab.
   const [reveal, setReveal] = useState<Reveal & { session: string }>();
@@ -491,14 +519,19 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const [notice, setNotice] = useState<string>();
   const sideOfTab = (tabId: string) => sideTabs.find((s) => s.tabs.some((t) => t.id === tabId))?.id;
 
-  // `⌘⇧A` lands here in the window holding the pane: select its side tab and tab, focus it.
+  // Shows a pane: selects its side tab and tab and focuses it, now or once its patch arrives.
+  // `⌘⇧A` lands here in the window holding the pane, and so does a command run in a new tab.
   const revealPane = (paneId: string) => {
-    const side = sideTabs.find((s) => s.tabs.some((t) => panesOf(t.layout).includes(paneId)));
-    const tab = side?.tabs.find((t) => panesOf(t.layout).includes(paneId));
-    if (!side || !tab) return;
-    selectTab(side.id, tab.id);
-    focusIn(tab.id, paneId);
-    setTimeout(() => focusPane(paneId));
+    const show = (w: Workspace) => {
+      const side = sidesOf(w).find((s) => s.tabs.some((t) => panesOf(t.layout).includes(paneId)));
+      const tab = side?.tabs.find((t) => panesOf(t.layout).includes(paneId));
+      if (!side || !tab) return false;
+      selectTab(side.id, tab.id);
+      focusIn(tab.id, paneId);
+      setTimeout(() => focusPane(paneId));
+      return true;
+    };
+    if (!show(workspace.store.getState().workspace)) setFollow(show);
   };
   const revealRef = useRef(revealPane);
   revealRef.current = revealPane;
@@ -624,6 +657,21 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                 refocus();
               }}
               onNew={() => act("new_side_tab")}
+            />
+            <CommandsSection
+              commands={commands}
+              enabled={!!activeSide}
+              onAdd={(d) =>
+                host.createCommand({
+                  sideTabId: d.global ? null : (activeSide?.id ?? null),
+                  name: d.name,
+                  body: d.body,
+                  target: d.target,
+                  launcher: false,
+                })
+              }
+              onDelete={(id) => host.deleteCommand(id)}
+              onRun={runCommand}
             />
           </aside>
           <main className="app-main">
