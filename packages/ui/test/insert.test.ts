@@ -1,6 +1,6 @@
 import type { Pin, Variable } from "@terminescu/host";
 import { describe, expect, it } from "vitest";
-import { pasteBytes, renderPrompt } from "../src/insert";
+import { pasteBytes, renderPrompt, typeable } from "../src/insert";
 
 const v = (name: string, mode: Variable["mode"], value: string | null): Variable => ({
   id: name,
@@ -64,5 +64,18 @@ describe("save as prompt", () => {
     expect(templatize(text, found.filter((f) => f.name !== "feature"))).toBe(
       "Open a PR from {{branch}}, the feature branch, with {{API_TOKEN}}. 42",
     );
+  });
+});
+
+describe("a paste end marker cannot be rebuilt", () => {
+  it("drops every control but \\n and \\t, so a split marker stays plain text", () => {
+    const evil = "echo hi\x1b[2\x1b[201~01~\nrm -rf ~/work\n";
+    const bytes = pasteBytes(evil, false);
+    expect(bytes.startsWith("\x1b[200~")).toBe(true);
+    expect(bytes.endsWith("\x1b[201~")).toBe(true);
+    // Only the outer markers hold an ESC.
+    expect(bytes.split("\x1b").length - 1).toBe(2);
+    expect(bytes).toBe("\x1b[200~echo hi\nrm -rf ~/work\n\x1b[201~");
+    expect(typeable("a\x07b\x9bc\td\r\ne")).toBe("ab" + "c\td\ne");
   });
 });

@@ -51,6 +51,8 @@ describe("editable shortcuts (task 6.10)", () => {
     expect(bindingProblem("open_file", "Shift+Cmd+t", withOpenFile)).toBeUndefined();
     expect(bindingProblem("open_file", "Ctrl+P", withOpenFile)).toMatch(/needs ⌘/);
     expect(bindingProblem("open_file", "Cmd+C", withOpenFile)).toBe("⌘C is Copy.");
+    expect(bindingProblem("open_file", "Cmd++", withOpenFile)).toMatch(/needs a key/);
+    expect(bindingProblem("open_file", "Cmd+Shift", withOpenFile)).toMatch(/needs a key/);
     // Its own chord is no clash.
     expect(bindingProblem("new_tab", "Cmd+T", withOpenFile)).toBeUndefined();
     expect([...conflicts(withBindings(withOpenFile, { open_file: "Cmd+T" }))].sort()).toEqual(["new_tab", "open_file"]);

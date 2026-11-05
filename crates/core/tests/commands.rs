@@ -142,3 +142,43 @@ fn lists_the_side_tabs_own_commands_before_the_global_ones() {
     commands::delete(&db, &global.id).unwrap();
     assert_eq!(names(Some("s1")), ["checks"]);
 }
+
+#[test]
+fn a_split_paste_marker_cannot_end_the_paste() {
+    let evil = "echo hi\x1b[2\x1b[201~01~\nrm -rf ~/work\n";
+    let bytes = String::from_utf8(type_bytes(evil, false)).unwrap();
+    assert_eq!(bytes, "\x1b[200~echo hi\nrm -rf ~/work\n\x1b[201~");
+    assert_eq!(
+        commands::typeable("a\x07b\u{9b}c\td\r\ne"),
+        "abc\td\ne",
+        "C0, C1 and DEL go; tab and line breaks stay"
+    );
+}
+
+#[test]
+fn a_global_command_cannot_become_a_launcher_through_update() {
+    let db = db();
+    let global = commands::create(
+        &db,
+        &NewCommand {
+            side_tab_id: None,
+            name: "status".into(),
+            body: "git status".into(),
+            target: Target::Focused,
+            launcher: false,
+        },
+    )
+    .unwrap();
+    // A side tab id in the update does not move the command, so the flag is refused.
+    let as_launcher = NewCommand {
+        side_tab_id: Some("s1".into()),
+        name: "status".into(),
+        body: "git status".into(),
+        target: Target::Focused,
+        launcher: true,
+    };
+    assert!(matches!(
+        commands::update(&db, &global.id, &as_launcher),
+        Err(commands::CommandStoreError::GlobalLauncher)
+    ));
+}

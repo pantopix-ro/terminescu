@@ -203,8 +203,14 @@ pub fn create(db: &Db, new: &NewCommand) -> Result<SavedCommand> {
 }
 
 /// New name, body, target and launcher flag; the scope and the place stay.
+/// Changes name, body, target and the launcher flag. The side tab stays the stored one, so the
+/// launcher check runs against it, not against `new.side_tab_id`.
 pub fn update(db: &Db, id: &str, new: &NewCommand) -> Result<SavedCommand> {
-    let (name, body) = check(new)?;
+    let stored = get(db, id)?;
+    let (name, body) = check(&NewCommand {
+        side_tab_id: stored.side_tab_id.clone(),
+        ..new.clone()
+    })?;
     let owner = db.local_owner()?;
     let n = db.conn().execute(
         "UPDATE commands SET name = ?3, body = ?4, target = ?5, launcher = ?6
@@ -316,15 +322,31 @@ pub fn resolve(body: &str, vars: &[Variable], extra: &BTreeMap<String, String>) 
     }
 }
 
+/// `text` with `\r\n` and `\r` as `\n`, and every control character but `\n` and `\t` gone:
+/// C0, DEL and C1 (which some terminals read as CSI).
+pub fn typeable(text: &str) -> String {
+    // Whole markers go first, until none is left: removing one can join the halves of another.
+    let mut text = text.to_string();
+    loop {
+        let next = text.replace(PASTE_START, "").replace(PASTE_END, "");
+        if next == text {
+            break;
+        }
+        text = next;
+    }
+    text.replace("\r\n", "\n")
+        .replace('\r', "\n")
+        .chars()
+        .filter(|&c| c == '\n' || c == '\t' || !c.is_control())
+        .collect()
+}
+
 /// The bytes a command types into a shell, as `pasteBytes` in packages/ui does without a known
 /// paste mode: line breaks become `\n` and never `\r`, more than one line goes in as a bracketed
-/// paste, and paste markers inside are dropped. `run` adds the one `\r`.
+/// paste, and every other control character is dropped, ESC included, so no escape sequence
+/// (a paste end marker above all) can end the paste early. `run` adds the one `\r`.
 pub fn type_bytes(text: &str, run: bool) -> Vec<u8> {
-    let clean = text
-        .replace(PASTE_START, "")
-        .replace(PASTE_END, "")
-        .replace("\r\n", "\n")
-        .replace('\r', "\n");
+    let clean = typeable(text);
     let mut out = if clean.contains('\n') {
         format!("{PASTE_START}{clean}{PASTE_END}")
     } else {

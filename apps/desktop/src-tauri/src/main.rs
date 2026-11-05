@@ -16,7 +16,7 @@ use terminescu_core::commands::{self, NewCommand, SavedCommand, Target};
 use terminescu_core::context;
 use terminescu_core::core_socket;
 use terminescu_core::daemon::DaemonClient;
-use terminescu_core::db::Db;
+use terminescu_core::db::{Db, DbAccess};
 use terminescu_core::hook_install;
 use terminescu_core::keys;
 use terminescu_core::launcher;
@@ -72,6 +72,8 @@ struct AppState {
     runtime: Runtime,
     db: Arc<Mutex<Db>>,
     attention: Arc<Mutex<Attention>>,
+    /// The window whose Settings › Keys records a chord, while the menu holds no chords.
+    recording: Mutex<Option<String>>,
 }
 
 /// Focuses the pane that has waited longest, raising its window. `None` when nothing waits.
@@ -108,7 +110,11 @@ fn attention_set(state: State<'_, AppState>, settings: attention::Settings) -> R
 
 /// The line a launcher command types, filled from its side tab's variables. A launcher runs
 /// with no one to ask, so a missing name refuses it.
-fn launcher_bytes(db: &Db, rt: &Runtime, command: &SavedCommand) -> Result<Vec<u8>, String> {
+fn launcher_bytes(
+    db: &impl DbAccess,
+    rt: &Runtime,
+    command: &SavedCommand,
+) -> Result<Vec<u8>, String> {
     let side = command
         .side_tab_id
         .as_deref()
@@ -137,7 +143,7 @@ fn launcher_bytes(db: &Db, rt: &Runtime, command: &SavedCommand) -> Result<Vec<u
 /// side tab, which it then remembers. Takes the database lock only briefly: opening a tab saves
 /// the layout, which locks the database too.
 fn launch(db: &Mutex<Db>, rt: &Runtime, command: &SavedCommand) -> Result<(), String> {
-    let bytes = launcher_bytes(&lock(db), rt, command)?;
+    let bytes = launcher_bytes(db, rt, command)?;
     let ws = rt.workspace();
     let pane = command.tab_id.as_deref().and_then(|tab| {
         ws.windows
@@ -147,16 +153,28 @@ fn launch(db: &Mutex<Db>, rt: &Runtime, command: &SavedCommand) -> Result<(), St
             .find(|t| t.id == tab)
             .and_then(|t| t.layout.terminals().into_iter().next().cloned())
     });
+    let not_typed = || {
+        format!(
+            "{}: its tab has no shell right now; restart it",
+            command.name
+        )
+    };
     if let Some(pane) = pane {
-        rt.type_into(&pane, bytes);
-        return Ok(());
+        return if rt.type_into(&pane, bytes) {
+            Ok(())
+        } else {
+            Err(not_typed())
+        };
     }
     let side = command.side_tab_id.clone().unwrap_or_default();
-    let pane = rt
+    let (pane, typed) = rt
         .command_then_type(Command::CreateTab { side_tab_id: side }, bytes)
         .map_err(|e| e.to_string())?;
     let tab = pane.and_then(|p| rt.workspace().locate_pane(&p).map(|(_, t)| t.id.clone()));
-    commands::set_tab(&lock(db), &command.id, tab.as_deref()).map_err(|e| e.to_string())
+    // The tab stays the command's even when nothing was typed: it reads down, and restart
+    // types into it.
+    commands::set_tab(&lock(db), &command.id, tab.as_deref()).map_err(|e| e.to_string())?;
+    if typed { Ok(()) } else { Err(not_typed()) }
 }
 
 /// Hands the runtime every launcher side tab and its commands' tabs, for `n/m up`.
@@ -175,13 +193,15 @@ fn refresh_launchers(db: &Db, rt: &Runtime) {
 }
 
 /// After a reboot each launcher tab has a fresh shell: run its command there again (D23).
-fn rerun_launchers(db: &Db, rt: &Runtime) {
+/// Takes the database lock per step, never while typing.
+fn rerun_launchers(db: &Mutex<Db>, rt: &Runtime) {
     let fresh = rt.take_respawned();
     if fresh.is_empty() {
         return;
     }
     let ws = rt.workspace();
-    for c in commands::launchers(db).unwrap_or_default() {
+    let list = commands::launchers(&lock(db)).unwrap_or_default();
+    for c in list {
         let Some(tab) = c.tab_id.as_deref() else {
             continue;
         };
@@ -204,7 +224,7 @@ fn rerun_launchers(db: &Db, rt: &Runtime) {
 }
 
 /// Runs the launcher commands that are down again: one, or every one of a side tab.
-#[tauri::command]
+#[tauri::command(async)]
 fn launcher_restart(
     state: State<'_, AppState>,
     side_tab: Id,
@@ -264,18 +284,46 @@ fn keys_set(
         keys::set(&lock(&state.db), &default_chords(), bindings).map_err(|e| e.to_string())?;
     let menu = build_menu(&app, &saved, true).map_err(|e| e.to_string())?;
     app.set_menu(menu).map_err(|e| e.to_string())?;
+    *lock(&state.recording) = None;
     let _ = app.emit(KEYS_EVENT, ());
     Ok(saved)
 }
 
-/// Takes the action chords off the menu while Settings › Keys records one, and puts them back.
-#[tauri::command]
-fn keys_record(app: AppHandle, state: State<'_, AppState>, on: bool) -> Result<(), String> {
-    let saved = keys::get(&lock(&state.db)).map_err(|e| e.to_string())?;
+/// Builds the menu from the saved chords, with them or without them.
+fn set_chords(app: &AppHandle, db: &Mutex<Db>, chords: bool) -> Result<(), String> {
+    let saved = keys::get(&lock(db)).map_err(|e| e.to_string())?;
     let bindings = keys::check(&default_chords(), saved).unwrap_or_default();
-    let menu = build_menu(&app, &bindings, !on).map_err(|e| e.to_string())?;
+    let menu = build_menu(app, &bindings, chords).map_err(|e| e.to_string())?;
     app.set_menu(menu).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// Takes the action chords off the menu while Settings › Keys records one, and puts them back.
+#[tauri::command]
+fn keys_record(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    state: State<'_, AppState>,
+    on: bool,
+) -> Result<(), String> {
+    set_chords(&app, &state.db, !on)?;
+    *lock(&state.recording) = on.then(|| window.label().to_string());
+    Ok(())
+}
+
+/// The recording window reloaded or closed before it said it stopped: the chords come back.
+fn end_recording(app: &AppHandle, label: &str) {
+    let Some(state) = app.try_state::<AppState>() else {
+        return;
+    };
+    let mut rec = lock(&state.recording);
+    if rec.as_deref() == Some(label) {
+        *rec = None;
+        drop(rec);
+        if let Err(e) = set_chords(app, &state.db, true) {
+            eprintln!("terminescu: shortcuts not restored: {e}");
+        }
+    }
 }
 
 #[tauri::command]
@@ -299,7 +347,7 @@ fn settings_set(
     Ok(saved)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn command_create(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -317,7 +365,7 @@ fn command_create(
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn command_update(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -340,7 +388,7 @@ fn command_update(
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn command_delete(app: AppHandle, state: State<'_, AppState>, id: Id) -> Result<(), String> {
     let db = lock(&state.db);
     commands::delete(&db, &id).map_err(|e| e.to_string())?;
@@ -362,7 +410,7 @@ enum RunOutcome {
 /// Runs (`run`) or inserts a saved command from a side tab, filled from that side tab's
 /// variables and `extra`. `target` overrides the saved one; `pane` is the focused pane.
 #[allow(clippy::too_many_arguments)]
-#[tauri::command]
+#[tauri::command(async)]
 fn command_run(
     state: State<'_, AppState>,
     window_id: Id,
@@ -373,13 +421,9 @@ fn command_run(
     run: bool,
     extra: BTreeMap<String, String>,
 ) -> Result<RunOutcome, String> {
-    let (command, vars) = {
-        let db = lock(&state.db);
-        let command = commands::get(&db, &id).map_err(|e| e.to_string())?;
-        let daemon = state.runtime.daemon();
-        let vars = vars::list(&db, daemon.as_deref(), &side_tab).map_err(|e| e.to_string())?;
-        (command, vars)
-    };
+    let command = commands::get(&lock(&state.db), &id).map_err(|e| e.to_string())?;
+    let daemon = state.runtime.daemon();
+    let vars = vars::list(&*state.db, daemon.as_deref(), &side_tab).map_err(|e| e.to_string())?;
     if command.side_tab_id.as_ref().is_some_and(|s| *s != side_tab) {
         return Err("this command belongs to another side tab".into());
     }
@@ -408,23 +452,24 @@ fn command_run(
             }
             Some(pane)
         }
-        Target::NewTab => rt
-            .command_then_type(
-                Command::CreateTab {
+        Target::NewTab | Target::NewSideTab => {
+            let cmd = match target.unwrap_or(command.target) {
+                Target::NewTab => Command::CreateTab {
                     side_tab_id: side_tab,
                 },
-                bytes,
-            )
-            .map_err(|e| e.to_string())?,
-        Target::NewSideTab => rt
-            .command_then_type(
-                Command::CreateSideTab {
+                _ => Command::CreateSideTab {
                     window_id,
                     index: None,
                 },
-                bytes,
-            )
-            .map_err(|e| e.to_string())?,
+            };
+            let (pane, typed) = rt
+                .command_then_type(cmd, bytes)
+                .map_err(|e| e.to_string())?;
+            if pane.is_some() && !typed {
+                return Err("the new tab has no shell yet; run the command there again".into());
+            }
+            pane
+        }
     };
     Ok(RunOutcome::Done { pane })
 }
@@ -561,7 +606,7 @@ fn vars_list(
     side_tab: String,
 ) -> Result<Vec<context::Variable>, String> {
     let daemon = state.runtime.daemon();
-    vars::list(&lock(&state.db), daemon.as_deref(), &side_tab).map_err(|e| e.to_string())
+    vars::list(&*state.db, daemon.as_deref(), &side_tab).map_err(|e| e.to_string())
 }
 
 /// Adds a variable from the panel or an extract. A name in use is refused unless `replace`.
@@ -574,14 +619,8 @@ fn var_add(
     replace: bool,
 ) -> Result<context::Variable, String> {
     let daemon = state.runtime.daemon();
-    let v = vars::add(
-        &lock(&state.db),
-        daemon.as_deref(),
-        &side_tab,
-        &variable,
-        replace,
-    )
-    .map_err(|e| e.to_string())?;
+    let v = vars::add(&*state.db, daemon.as_deref(), &side_tab, &variable, replace)
+        .map_err(|e| e.to_string())?;
     let _ = app.emit(CONTEXT_EVENT, &side_tab);
     Ok(v)
 }
@@ -595,14 +634,8 @@ fn var_change(
     change: vars::VariableChange,
 ) -> Result<context::Variable, String> {
     let daemon = state.runtime.daemon();
-    let v = vars::change(
-        &lock(&state.db),
-        daemon.as_deref(),
-        &side_tab,
-        &name,
-        &change,
-    )
-    .map_err(|e| e.to_string())?;
+    let v = vars::change(&*state.db, daemon.as_deref(), &side_tab, &name, &change)
+        .map_err(|e| e.to_string())?;
     let _ = app.emit(CONTEXT_EVENT, &side_tab);
     Ok(v)
 }
@@ -615,8 +648,7 @@ fn var_remove(
     name: String,
 ) -> Result<(), String> {
     let daemon = state.runtime.daemon();
-    vars::remove(&lock(&state.db), daemon.as_deref(), &side_tab, &name)
-        .map_err(|e| e.to_string())?;
+    vars::remove(&*state.db, daemon.as_deref(), &side_tab, &name).map_err(|e| e.to_string())?;
     let _ = app.emit(CONTEXT_EVENT, &side_tab);
     Ok(())
 }
@@ -1134,7 +1166,7 @@ fn serve_core_socket(
                     origin_tab_id: Some(tab),
                 };
                 let daemon = rt.daemon();
-                match vars::add(&lock(&db), daemon.as_deref(), &side, &new, true) {
+                match vars::add(&*db, daemon.as_deref(), &side, &new, true) {
                     Ok(_) => {
                         rt.context_changed(&side);
                         CoreReply::Ok
@@ -1263,6 +1295,11 @@ fn main() {
         .plugin(tauri_plugin_notification::init())
         .menu(|app| build_menu(app, &keys::Bindings::new(), true))
         .on_menu_event(|app, event| send_action(app, event.id().as_ref()))
+        .on_page_load(|webview, payload| {
+            if payload.event() == tauri::webview::PageLoadEvent::Started {
+                end_recording(webview.app_handle(), webview.label());
+            }
+        })
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
@@ -1282,9 +1319,9 @@ fn main() {
                 updates,
             );
             {
-                let db = lock(&db);
-                refresh_launchers(&db, &runtime);
+                refresh_launchers(&lock(&db), &runtime);
                 rerun_launchers(&db, &runtime);
+                let db = lock(&db);
                 // Chords from Settings › Keys; ones that no longer pass the checks (an action
                 // renamed, a new default that clashes) fall back to the defaults.
                 let saved = keys::get(&db).unwrap_or_default();
@@ -1300,6 +1337,7 @@ fn main() {
                 runtime,
                 db,
                 attention,
+                recording: Mutex::new(None),
             });
             for id in &windows {
                 open_window(app.handle(), id)?;
@@ -1366,6 +1404,14 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("Terminescu failed to start");
     app.run(|app, event| {
+        if let RunEvent::WindowEvent {
+            label,
+            event: tauri::WindowEvent::Destroyed,
+            ..
+        } = &event
+        {
+            end_recording(app, label);
+        }
         // A last save with fresh cwds, so a reboot after quitting restarts shells where they were.
         if let RunEvent::Exit = event
             && let Some(state) = app.try_state::<AppState>()

@@ -53,6 +53,14 @@ fn refuses_a_clash_a_chord_without_cmd_a_reserved_one_and_an_unknown_action() {
         KeysError::Reserved(_)
     ));
     assert!(matches!(
+        err(one("open_file", "Cmd++")),
+        KeysError::NoKey(_)
+    ));
+    assert!(matches!(
+        err(one("open_file", "Cmd+Shift")),
+        KeysError::NoKey(_)
+    ));
+    assert!(matches!(
         err(one("nope", "Cmd+P")),
         KeysError::UnknownAction(_)
     ));

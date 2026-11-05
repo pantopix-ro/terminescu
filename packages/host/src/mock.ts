@@ -185,7 +185,10 @@ export function createMockHost(initial?: Workspace): MockHost {
     return { text, missing, unsafe };
   };
   const typeBytes = (text: string, run: boolean) => {
-    const clean = text.replaceAll("\x1b[200~", "").replaceAll("\x1b[201~", "").replace(/\r\n?/g, "\n");
+    // As `typeable` in the core: every control but \n and \t goes, ESC included.
+    let t = text;
+    for (let prev = ""; prev !== t; ) [prev, t] = [t, t.replaceAll("\x1b[200~", "").replaceAll("\x1b[201~", "")];
+    const clean = t.replace(/\r\n?/g, "\n").replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, "");
     return (clean.includes("\n") ? `\x1b[200~${clean}\x1b[201~` : clean) + (run ? "\r" : "");
   };
   const typeInto = (pane: string, bytes: string) => typed.set(pane, (typed.get(pane) ?? "") + bytes);
@@ -795,7 +798,12 @@ export function createMockHost(initial?: Workspace): MockHost {
       if (old.mode === "secret" && mode !== "secret") {
         throw new Error(`${name} is a secret and stays one; remove it and add it again to change its mode`);
       }
-      const value = change.value ?? old.value ?? secrets.get(secretKey(side, name))!;
+      // As in the core: the daemon never hands a secret back, so a new TTL needs the value again.
+      if (change.value == null && old.value == null) {
+        if (change.ttlSecs == null) return structuredClone(old);
+        throw new Error(`type the value of ${name} again to change its TTL`);
+      }
+      const value = (change.value ?? old.value)!;
       const ttlSecs = change.ttlSecs ?? (old.expiresAt ? Math.max(1, Math.round((old.expiresAt - Date.now()) / 1000)) : null);
       return putVariable(side, { name, value, mode, ttlSecs, source: old.source ?? "typed", originTabId: old.originTabId }, true);
     },

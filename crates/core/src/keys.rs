@@ -30,6 +30,8 @@ pub type Bindings = BTreeMap<String, String>;
 pub enum KeysError {
     #[error("no action {0}")]
     UnknownAction(String),
+    #[error("{0} names no key: use a word such as Equal for the + key")]
+    NoKey(String),
     #[error("{0} needs ⌘, so plain keys stay with the terminal")]
     NoCmd(String),
     #[error("{0} is kept by macOS")]
@@ -90,6 +92,11 @@ pub fn check(defaults: &[(String, String)], bindings: Bindings) -> Result<Bindin
     for (id, default) in defaults {
         let accel = kept.get(id).unwrap_or(default);
         let n = normal(accel);
+        // `Cmd++` splits into empty parts, and `Cmd+Shift` has no key at all.
+        let key = n.rsplit('+').next().unwrap_or_default();
+        if key.is_empty() || ["ctrl", "alt", "shift", "cmd"].contains(&key) {
+            return Err(KeysError::NoKey(accel.clone()));
+        }
         if !n.split('+').any(|m| m == "cmd") {
             return Err(KeysError::NoCmd(accel.clone()));
         }

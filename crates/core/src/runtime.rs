@@ -517,12 +517,13 @@ impl Runtime {
     }
 
     /// Runs a command that opens a tab or a side tab, then types `bytes` into its new pane. The
-    /// shell holds them as typeahead until its prompt reads them. Returns the new pane.
+    /// shell holds them as typeahead until its prompt reads them. Returns the new pane and
+    /// whether the bytes reached it.
     pub fn command_then_type(
         &self,
         cmd: Command,
         bytes: Vec<u8>,
-    ) -> Result<Option<Id>, CommandError> {
+    ) -> Result<(Option<Id>, bool), CommandError> {
         let before: std::collections::HashSet<Id> = self
             .workspace()
             .terminal_sides()
@@ -536,10 +537,8 @@ impl Runtime {
             .into_iter()
             .map(|(p, _)| p)
             .find(|p| !before.contains(p));
-        if let Some(p) = &pane {
-            self.type_into(p, bytes);
-        }
-        Ok(pane)
+        let typed = pane.as_ref().is_some_and(|p| self.type_into(p, bytes));
+        Ok((pane, typed))
     }
 
     /// The cwd the shell integration reports now, else the last one seen.

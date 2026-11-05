@@ -229,7 +229,10 @@ in Claude's own JSONL; the insert dialog says so for secrets.
 Built in group 6, on 2026-11-05. Limits: daemon values do not follow a moved tab yet (group
 8); they end when the daemon exits idle with no panes; a side tab closed while the app was down
 keeps its daemon values until the daemon exits. Settings › Variables sets the mode and TTL that
-Extract starts with.
+Extract starts with. A pin copies terminal text as it stands, so a secret the shell echoed (an
+`echo $TOKEN`) lands in the pin; D35 covers what Terminescu types, not what the shell prints.
+Paste and Insert drop control characters and paste markers, so a value cannot end a bracketed
+paste early.
 
 ### D22. The web app is a remote view of the Mac
 Later, the core serves the same commands, patches and pty streams over WebSocket with `axum`,

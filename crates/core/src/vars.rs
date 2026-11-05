@@ -4,7 +4,7 @@
 
 use crate::context::{self, ContextError, Mode, Variable};
 use crate::daemon::DaemonClient;
-use crate::db::Db;
+use crate::db::DbAccess;
 use serde::Deserialize;
 use terminescu_protocol::VarMode;
 
@@ -90,22 +90,22 @@ fn in_daemon(daemon: Option<&DaemonClient>, side_tab: &str) -> Result<Vec<Variab
 
 /// Saved variables first, in the order they were added, then the daemon's by name.
 pub fn list(
-    db: &Db,
+    db: &impl DbAccess,
     daemon: Option<&DaemonClient>,
     side_tab: &str,
 ) -> Result<Vec<Variable>, ContextError> {
-    let mut all = context::saved_variables(db, side_tab)?;
+    let mut all = db.with(|db| context::saved_variables(db, side_tab))?;
     all.extend(in_daemon(daemon, side_tab)?);
     Ok(all)
 }
 
 fn find(
-    db: &Db,
+    db: &impl DbAccess,
     daemon: Option<&DaemonClient>,
     side_tab: &str,
     name: &str,
 ) -> Result<Option<Variable>, ContextError> {
-    if let Some(v) = context::saved_variable(db, side_tab, name)? {
+    if let Some(v) = db.with(|db| context::saved_variable(db, side_tab, name))? {
         return Ok(Some(v));
     }
     Ok(in_daemon(daemon, side_tab)?
@@ -116,7 +116,7 @@ fn find(
 /// Adds a variable. A name in use in either store is refused unless `replace`, which then
 /// moves the name to the new mode.
 pub fn add(
-    db: &Db,
+    db: &impl DbAccess,
     daemon: Option<&DaemonClient>,
     side_tab: &str,
     new: &NewVariable,
@@ -138,19 +138,26 @@ pub fn add(
         }
     }
     let Some(mode) = daemon_mode(new.mode) else {
-        let v = context::put_saved(
-            db,
-            side_tab,
-            &new.name,
-            &new.value,
-            &new.source,
-            new.origin_tab_id.as_deref(),
-            true,
-        )?;
+        let v = db.with(|db| {
+            context::put_saved(
+                db,
+                side_tab,
+                &new.name,
+                &new.value,
+                &new.source,
+                new.origin_tab_id.as_deref(),
+                true,
+            )
+        })?;
         if existing.is_some_and(|o| o.mode != Mode::Saved) {
-            need(daemon)?
-                .side_var_unset(side_tab, &new.name)
-                .map_err(daemon_err)?;
+            // The name was the daemon's alone; when the daemon keeps it, take the new row back
+            // so one name never lives in both stores.
+            let unset = need(daemon)
+                .and_then(|d| d.side_var_unset(side_tab, &new.name).map_err(daemon_err));
+            if let Err(e) = unset {
+                db.with(|db| context::remove_saved(db, side_tab, &new.name))?;
+                return Err(e);
+            }
         }
         return Ok(v);
     };
@@ -158,20 +165,23 @@ pub fn add(
     // Into the daemon first, so a failure leaves the saved copy where it was.
     d.side_var_set(side_tab, &new.name, new.value.clone(), mode, new.ttl_secs)
         .map_err(daemon_err)?;
-    if context::remove_saved(db, side_tab, &new.name)? {
-        db.scrub()?;
-    }
+    db.with(|db| -> Result<(), ContextError> {
+        if context::remove_saved(db, side_tab, &new.name)? {
+            db.scrub()?;
+        }
+        Ok(())
+    })?;
     find(db, daemon, side_tab, &new.name)?.ok_or_else(|| ContextError::NoVariable(new.name.clone()))
 }
 
 /// Removes a variable from whichever store holds it.
 pub fn remove(
-    db: &Db,
+    db: &impl DbAccess,
     daemon: Option<&DaemonClient>,
     side_tab: &str,
     name: &str,
 ) -> Result<(), ContextError> {
-    if context::remove_saved(db, side_tab, name)? {
+    if db.with(|db| context::remove_saved(db, side_tab, name))? {
         return Ok(());
     }
     if let Some(d) = daemon.filter(|d| d.side_vars) {
@@ -183,7 +193,7 @@ pub fn remove(
 /// Changes a variable's value, mode or TTL. A secret stays a secret, and changing its TTL needs
 /// its value again, since the daemon never hands a secret back.
 pub fn change(
-    db: &Db,
+    db: &impl DbAccess,
     daemon: Option<&DaemonClient>,
     side_tab: &str,
     name: &str,

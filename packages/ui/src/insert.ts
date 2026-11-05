@@ -4,14 +4,26 @@ const START = "\x1b[200~";
 const END = "\x1b[201~";
 
 /**
+ * `text` with `\r\n` and `\r` as `\n`, and every control character but `\n` and `\t` gone:
+ * C0, DEL and C1 (which some terminals read as CSI). With ESC gone, no escape sequence (a paste
+ * end marker above all) survives, however it was split up. Same as `typeable` in the core.
+ */
+export function typeable(text: string): string {
+  let t = text;
+  // Whole markers go first, until none is left: removing one can join the halves of another.
+  for (let prev = ""; prev !== t; ) [prev, t] = [t, t.replaceAll(START, "").replaceAll(END, "")];
+  return t.replace(/\r\n?/g, "\n").replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, "");
+}
+
+/**
  * The bytes an insert writes to a terminal (D13). Line breaks become `\n` and the text never
  * carries `\r`, so nothing runs by itself. Text with a line break always goes in as a bracketed
  * paste, even when the program did not ask for one: an unbracketed `\n` would run each line.
- * Paste markers inside the text are dropped so it cannot end the paste early. `send` adds the
- * one `\r` of "insert and send".
+ * Control characters inside are dropped (`typeable`) so it cannot end the paste early. `send`
+ * adds the one `\r` of "insert and send".
  */
 export function pasteBytes(text: string, bracketed: boolean, send = false): string {
-  const clean = text.replaceAll(START, "").replaceAll(END, "").replace(/\r\n?/g, "\n");
+  const clean = typeable(text);
   const wrap = bracketed || clean.includes("\n");
   return (wrap ? `${START}${clean}${END}` : clean) + (send ? "\r" : "");
 }

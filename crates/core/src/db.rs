@@ -97,6 +97,25 @@ pub fn migrate(conn: &mut Connection) -> Result<u32> {
     Ok(SCHEMA_VERSION)
 }
 
+/// Runs a step against the database: a `Db` directly, a `Mutex<Db>` under its lock for that
+/// step only. Code that also talks to the daemon takes this, so the lock never spans a daemon
+/// request (which may wait up to its timeout) and layout changes are not held up behind it.
+pub trait DbAccess {
+    fn with<R>(&self, f: impl FnOnce(&Db) -> R) -> R;
+}
+
+impl DbAccess for Db {
+    fn with<R>(&self, f: impl FnOnce(&Db) -> R) -> R {
+        f(self)
+    }
+}
+
+impl DbAccess for std::sync::Mutex<Db> {
+    fn with<R>(&self, f: impl FnOnce(&Db) -> R) -> R {
+        f(&self.lock().unwrap_or_else(|e| e.into_inner()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

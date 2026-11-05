@@ -141,6 +141,8 @@ export const RESERVED: readonly { accel: string; label: string }[] = [
  * stay with the pane, and it may not be another action's chord or one macOS keeps.
  */
 export function bindingProblem(id: string, accel: string, actions: readonly ActionDef[]): string | undefined {
+  const key = parseAccel(accel).key.toLowerCase();
+  if (!key || ["cmd", "ctrl", "alt", "shift"].includes(key)) return "A shortcut needs a key besides the modifiers.";
   if (!parseAccel(accel).meta) return "An app shortcut needs ⌘, so plain keys stay with the terminal.";
   const want = normalAccel(accel);
   const reserved = RESERVED.find((r) => normalAccel(r.accel) === want);
