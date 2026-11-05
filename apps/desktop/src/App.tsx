@@ -1001,6 +1001,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
             onChangeVariable={(name, change) => (sideId ? host.changeVariable(sideId, name, change) : Promise.resolve())}
             onInsertVariable={focused && activeTab && !transcriptOf(activeTab.layout, focused) ? insertVariable : undefined}
             onRemoveVariable={(name) => (sideId ? host.removeVariable(sideId, name) : Promise.resolve())}
+            onEditVariable={(v) =>
+              sideId && void host.openVariable(sideId, v.name).then((d) => revealDoc(d.id), (e: unknown) => setError(String(e)))
+            }
             onAddItem={(kind, value) => (sideId ? host.addItem(sideId, kind, value, "pasted", activeTab?.id ?? null) : Promise.resolve())}
             onRemoveItem={(id) => host.removeItem(id)}
             prompts={prompts}
@@ -1144,7 +1147,19 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           </div>
         </div>
       )}
-      {sheet === "prompts" && <PromptLibrary host={host} selectKey={libraryKey} onError={setError} onClose={closeSheet} />}
+      {sheet === "prompts" && (
+        <PromptLibrary
+          host={host}
+          selectKey={libraryKey}
+          onError={setError}
+          onClose={closeSheet}
+          onEditInText={(promptId) => {
+            if (!activeSide) return;
+            setSheet(undefined);
+            void host.openPrompt(activeSide.id, promptId).then((d) => revealDoc(d.id), (e: unknown) => setError(String(e)));
+          }}
+        />
+      )}
       {sheet === "settings" && (
         <SettingsSheet
           section={settingsSection}

@@ -976,6 +976,23 @@ export function createMockHost(initial?: Workspace): MockHost {
       if (!files.has(abs)) throw new Error(`No file ${abs}`);
       return host.openFile(sideTabId, abs, beside);
     },
+    async openPrompt(sideTabId, promptId, beside) {
+      const open = [...docs.values()].find((d) => d.view.source.kind === "prompt" && d.view.source.promptId === promptId);
+      if (open) return full(open);
+      const p = [...library.search(""), ...library.search("", true)].find((x) => x.id === promptId);
+      if (!p) throw new Error(`no prompt ${promptId}`);
+      return showDoc(sideTabId, newDoc({ kind: "prompt", promptId }, p.name, p.body), beside);
+    },
+    async openVariable(sideTabId, name, beside) {
+      const open = [...docs.values()].find((d) => d.view.source.kind === "variable" && d.view.source.sideTabId === sideTabId && d.view.source.name === name);
+      if (open) return full(open);
+      const v = (await host.variables(sideTabId)).find((x) => x.name === name);
+      if (!v) throw new Error(`no variable ${name}`);
+      if (v.mode === "secret") throw new Error(`${name} is a secret; its value never leaves the daemon`);
+      const id = newDoc({ kind: "variable", sideTabId, name }, name, v.value ?? "");
+      docs.get(id)!.view.sessionOnly = v.mode === "session";
+      return showDoc(sideTabId, id, beside);
+    },
     async returnEdit(docId) {
       const d = docOrFail(docId);
       d.view.request = false;

@@ -21,6 +21,8 @@ export interface PromptLibraryProps {
   selectKey?: string;
   onError(message: string): void;
   onClose(): void;
+  /** Opens the prompt in a text tab, where `⌘S` saves a version (D14, D27). */
+  onEditInText?(promptId: string): void;
 }
 
 const tagsOf = (text: string) =>
@@ -29,7 +31,19 @@ const tagsOf = (text: string) =>
     .map((t) => t.trim())
     .filter(Boolean);
 
-function Detail({ prompt, host, run, onSelect }: { prompt: Prompt; host: Api; run<T>(p: Promise<T>): Promise<T | undefined>; onSelect(id: string): void }) {
+function Detail({
+  prompt,
+  host,
+  run,
+  onSelect,
+  onEditInText,
+}: {
+  prompt: Prompt;
+  host: Api;
+  run<T>(p: Promise<T>): Promise<T | undefined>;
+  onSelect(id: string): void;
+  onEditInText?(promptId: string): void;
+}) {
   const [name, setName] = useState(prompt.name);
   const [tags, setTags] = useState(prompt.tags.join(", "));
   const [body, setBody] = useState(prompt.body);
@@ -84,6 +98,11 @@ function Detail({ prompt, host, run, onSelect }: { prompt: Prompt; host: Api; ru
         <span className="small ao-dim grow">
           {prompt.variables.length ? prompt.variables.map((v) => `{{${v}}}`).join(" ") : "no variables"}
         </span>
+        {onEditInText && (
+          <button type="button" className="ao-btn ghost" onClick={() => onEditInText(prompt.id)}>
+            edit in a text tab
+          </button>
+        )}
         <button type="button" className="ao-btn ghost" onClick={() => setShowVersions((s) => !s)} aria-expanded={showVersions}>
           versions
         </button>
@@ -147,7 +166,7 @@ function NewPromptForm({ host, run, onDone }: { host: Api; run<T>(p: Promise<T>)
 }
 
 /** The prompt library (D14): search, tags, versions with restore, duplicate, archive. */
-export function PromptLibrary({ host, selectKey, onError, onClose }: PromptLibraryProps) {
+export function PromptLibrary({ host, selectKey, onError, onClose, onEditInText }: PromptLibraryProps) {
   const [query, setQuery] = useState("");
   const [archived, setArchived] = useState(false);
   const [list, setList] = useState<Prompt[]>([]);
@@ -275,7 +294,7 @@ export function PromptLibrary({ host, selectKey, onError, onClose }: PromptLibra
               }}
             />
           ) : current ? (
-            <Detail key={current.id} prompt={current} host={host} run={run} onSelect={setSelected} />
+            <Detail key={current.id} prompt={current} host={host} run={run} onSelect={setSelected} onEditInText={onEditInText} />
           ) : (
             <p className="small ao-dim pl-detail">Pick a prompt, or add one.</p>
           )}

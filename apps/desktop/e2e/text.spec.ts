@@ -226,3 +226,53 @@ test("⌘⇧↵ sends the selection to the terminal as a bracketed paste with no
     .toBe(`${before}\x1b[200~Review PROJ-482\nthen check acme/api\n\x1b[201~`);
   await expect(editor).toBeFocused();
 });
+
+test("a prompt edited in a text tab gets a version per ⌘S", async ({ page }) => {
+  await start(page);
+  await page.keyboard.press("Meta+Shift+KeyI");
+  await page.getByRole("list", { name: "Prompts" }).getByText("Review plan").click();
+  await page.getByRole("button", { name: "edit in a text tab" }).click();
+  const tab = page.locator(".app-main .ao-tab").nth(1);
+  await expect(tab).toContainText("Review plan");
+  const editor = page.locator(".text-pane .cm-content");
+  await expect(editor).toContainText("Review the plan for {{ticket}}");
+  await expect(editor).toBeFocused();
+  await page.keyboard.press("Meta+ArrowDown");
+  await page.keyboard.type("Check acme/api too.");
+  await page.keyboard.press("Meta+KeyS");
+  await expect(tab.locator(".tab-dirty")).toHaveCount(0);
+  await page.keyboard.type(" Then report.");
+  await page.keyboard.press("Meta+KeyS");
+  await expect(tab.locator(".tab-dirty")).toHaveCount(0);
+  const versions = await page.evaluate(async () => {
+    const h = (window as any).__terminescu.host;
+    const p = (await h.searchPrompts("")).find((x: any) => x.name === "Review plan");
+    return (await h.promptVersions(p.id)).map((v: any) => v.body);
+  });
+  expect(versions).toEqual([
+    "Review the plan for {{ticket}}. Rate your confidence from 1 to 10.\nCheck acme/api too. Then report.",
+    "Review the plan for {{ticket}}. Rate your confidence from 1 to 10.\nCheck acme/api too.",
+    "Review the plan for {{ticket}}. Rate your confidence from 1 to 10.\n",
+  ]);
+});
+
+test("a variable opens in a text tab, saves its value, and a secret has no edit button", async ({ page }) => {
+  await start(page);
+  const side = await page.evaluate(() => (window as any).__terminescu.host.workspace().windows[0].sideTabs[0].id as string);
+  await page.evaluate((side) => {
+    const h = (window as any).__terminescu.host;
+    void h.addVariable(side, { name: "plan_notes", value: "first draft", mode: "saved", source: "typed", originTabId: null });
+    return h.addVariable(side, { name: "API_TOKEN", value: "tok-example", mode: "secret", source: "typed", originTabId: null });
+  }, side);
+  await page.keyboard.press("Meta+Backslash");
+  const panel = page.locator("aside.ctx-pinned");
+  await expect(panel.getByRole("button", { name: "Edit API_TOKEN in a text tab" })).toHaveCount(0);
+  await panel.getByRole("button", { name: "Edit plan_notes in a text tab" }).click();
+  const editor = page.locator(".text-pane .cm-content");
+  await expect(editor).toContainText("first draft");
+  await editor.click();
+  await page.keyboard.press("Meta+ArrowDown");
+  await page.keyboard.type(", second pass");
+  await page.keyboard.press("Meta+KeyS");
+  await expect(panel.locator('.ctx-var[data-var="plan_notes"] .ctx-value')).toHaveText("first draft, second pass");
+});

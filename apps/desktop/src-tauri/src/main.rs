@@ -1430,6 +1430,8 @@ fn main() {
             docs::doc_new,
             docs::doc_open_file,
             docs::doc_open_path,
+            docs::doc_open_prompt,
+            docs::doc_open_variable,
             docs::doc_get,
             docs::doc_edit,
             docs::doc_save,

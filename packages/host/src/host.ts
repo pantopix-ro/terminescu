@@ -178,6 +178,10 @@ export interface Host {
    * with `~`. Only an existing file opens.
    */
   openPath(sideTabId: Id, paneId: Id, path: string, beside?: Id | null): Promise<DocView>;
+  /** A prompt in a text tab; `⌘S` saves a new version (D14). An open one comes back as it is. */
+  openPrompt(sideTabId: Id, promptId: Id, beside?: Id | null): Promise<DocView>;
+  /** A saved or session variable in a text tab; `⌘S` changes its value. Secrets never open. */
+  openVariable(sideTabId: Id, name: string, beside?: Id | null): Promise<DocView>;
   /** `⌘↵`: the `terminescu edit --wait` call on this document returns. Save and close around it. */
   returnEdit(docId: Id): Promise<void>;
   /** Files dropped from Finder on the window, as absolute paths. */

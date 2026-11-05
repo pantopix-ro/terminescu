@@ -21,6 +21,8 @@ export interface ContextPanelProps {
   onRemoveVariable?(name: string): Promise<unknown>;
   /** Types the variable into the focused terminal; absent when no terminal has focus. */
   onInsertVariable?(variable: Variable): void;
+  /** Opens a saved or session variable in a text tab (D27); secrets never open. */
+  onEditVariable?(variable: Variable): void;
   onAddItem?(kind: ItemKind, value: string): Promise<unknown>;
   onRemoveItem?(id: string): Promise<unknown>;
   onOpenUrl?(url: string): void;
@@ -116,6 +118,11 @@ function VariableRow({ v, props, fail }: { v: Variable; props: ContextPanelProps
             onClick={() => props.onInsertVariable?.(v)}
           >
             insert
+          </button>
+        )}
+        {props.onEditVariable && !secret && (
+          <button type="button" className="ao-btn ghost" aria-label={`Edit ${v.name} in a text tab`} onClick={() => props.onEditVariable?.(v)}>
+            edit
           </button>
         )}
         <button type="button" className="ctx-pin-x" aria-label={`Remove ${v.name}`} onClick={() => void props.onRemoveVariable?.(v.name)?.catch(fail)}>

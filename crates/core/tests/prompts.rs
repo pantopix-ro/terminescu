@@ -103,6 +103,45 @@ fn restore_creates_a_version_and_keeps_the_history() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+/// Task 7.9: a prompt edited in a text tab gets a version per `⌘S`, as the app's `doc_save`
+/// does it: the prompt store first, then the document is marked saved.
+#[test]
+fn a_prompt_document_saves_a_version_each_time() {
+    use std::sync::{Arc, Mutex};
+    use terminescu_core::documents::{Documents, Source};
+    let (db, dir) = db();
+    let p = prompts::create(&db, &new("Review plan", &[], "Review {{ticket}}.")).unwrap();
+    let db = Arc::new(Mutex::new(db));
+    let docs = Documents::new(db.clone());
+    let source = Source::Prompt {
+        prompt_id: p.id.clone(),
+    };
+    let doc = docs
+        .open_text(source.clone(), &p.name, &p.body, false, None)
+        .unwrap();
+    assert_eq!(docs.find_source(&source), Some(doc.id.clone()));
+    for body in [
+        "Review {{ticket}} for PROJ-482.",
+        "Review {{ticket}} twice.",
+    ] {
+        assert!(docs.edit(&doc.id, body.into()).unwrap().dirty);
+        let (_, text) = docs.text_of(&doc.id).unwrap();
+        prompts::save(&db.lock().unwrap(), &p.id, &text).unwrap();
+        assert!(!docs.mark_saved(&doc.id).unwrap().dirty);
+    }
+    let versions = prompts::versions(&db.lock().unwrap(), &p.id).unwrap();
+    let bodies: Vec<&str> = versions.iter().map(|v| v.body.as_str()).collect();
+    assert_eq!(
+        bodies,
+        [
+            "Review {{ticket}} twice.",
+            "Review {{ticket}} for PROJ-482.",
+            "Review {{ticket}}."
+        ]
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 #[test]
 fn duplicate_rename_and_keys() {
     let (db, dir) = db();

@@ -342,8 +342,11 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       focused terminal (else a Claude pane, else the first, then the side tab's other tabs) via
       `INSERT_EVENT` with `stay`, so the editor keeps focus. `e2e/text.spec.ts` checks the markers
       and that no `\r` reaches the pane.
-- [ ] 7.9 Prompt library editing in the text editor, `⌘S` creating a version (D14). Verify:
+- [x] 7.9 Prompt library editing in the text editor, `⌘S` creating a version (D14). Verify:
       `prompts.test.rs` saves twice and lists two versions.
+      Done: `doc_open_prompt` and `doc_open_variable` (secrets refused, session variables stay
+      session only) reuse an open document; "edit in a text tab" in the library and "edit" on
+      context variables. `prompts.rs` saves a prompt document twice and lists both versions.
 - [ ] 7.10 Files section: `PostToolUse` payloads of Write, Edit, MultiEdit, NotebookEdit, paths
       relative to the side tab's cwd, added or modified, one entry per path, click opens a text
       tab (D30). Verify: `files.test.rs` feeds two hook payloads for one path and gets one entry.

@@ -254,6 +254,72 @@ pub fn doc_open_file(
     show(&state, &side_tab, view, beside)
 }
 
+/// The document over `source`, or a new one shown in a text pane.
+fn open_source(
+    state: &AppState,
+    side_tab: &str,
+    source: Source,
+    title: &str,
+    text: &str,
+    session_only: bool,
+    beside: Option<Id>,
+) -> Result<DocView, String> {
+    if let Some(id) = state.docs.find_source(&source)
+        && let Some(view) = state.docs.get(&id)
+    {
+        return Ok(view);
+    }
+    let view = state
+        .docs
+        .open_text(source, title, text, session_only, Some(side_tab))
+        .map_err(err)?;
+    show(state, side_tab, view, beside)
+}
+
+/// A prompt in a text tab; `⌘S` saves a new version (D14).
+#[tauri::command(async)]
+pub fn doc_open_prompt(
+    state: State<'_, AppState>,
+    side_tab: Id,
+    prompt_id: Id,
+    beside: Option<Id>,
+) -> Result<DocView, String> {
+    let p = prompts::get(&lock(&state.db), &prompt_id).map_err(err)?;
+    let source = Source::Prompt {
+        prompt_id: p.id.clone(),
+    };
+    open_source(&state, &side_tab, source, &p.name, &p.body, false, beside)
+}
+
+/// A variable of the side tab in a text tab; `⌘S` changes its value. A secret never opens: its
+/// value stays in the daemon (D35). A session variable's buffer stays off the disk.
+#[tauri::command(async)]
+pub fn doc_open_variable(
+    state: State<'_, AppState>,
+    side_tab: Id,
+    name: String,
+    beside: Option<Id>,
+) -> Result<DocView, String> {
+    let daemon = state.runtime.daemon();
+    let v = vars::list(&*state.db, daemon.as_deref(), &side_tab)
+        .map_err(err)?
+        .into_iter()
+        .find(|v| v.name == name)
+        .ok_or_else(|| format!("no variable {name}"))?;
+    if v.mode == context::Mode::Secret {
+        return Err(format!(
+            "{name} is a secret; its value never leaves the daemon"
+        ));
+    }
+    let source = Source::Variable {
+        side_tab_id: side_tab.clone(),
+        name: name.clone(),
+    };
+    let text = v.value.unwrap_or_default();
+    let session = v.mode == context::Mode::Session;
+    open_source(&state, &side_tab, source, &name, &text, session, beside)
+}
+
 /// A path as terminal output shows it: absolute, under `~`, or relative to the pane's cwd.
 fn resolve(path: &str, cwd: Option<&Path>, home: Option<&Path>) -> Option<PathBuf> {
     let path = path.trim();

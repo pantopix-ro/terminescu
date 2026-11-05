@@ -370,6 +370,14 @@ impl Documents {
             .map(|d| d.view.id.clone())
     }
 
+    /// The open document over a variable or a prompt, if any.
+    pub fn find_source(&self, source: &Source) -> Option<Id> {
+        lock(&self.docs)
+            .values()
+            .find(|d| d.view.source == *source)
+            .map(|d| d.view.id.clone())
+    }
+
     fn insert(&self, doc: Doc) -> Result<DocView, DocError> {
         self.persist(&doc)?;
         let view = doc.full();
