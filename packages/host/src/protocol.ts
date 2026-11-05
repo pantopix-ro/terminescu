@@ -25,6 +25,8 @@ export interface Tab {
   layout: Layout;
   /** Set by hand in the status editor; absent means the generated status shows (D15). */
   status?: ManualStatus;
+  /** One of {@link ICONS}; absent shows the default icon (task 8.16). */
+  icon?: Icon;
 }
 
 export interface SideTab {
@@ -32,7 +34,15 @@ export interface SideTab {
   title: string | null;
   tabs: Tab[];
   status?: ManualStatus;
+  icon?: Icon;
 }
+
+/** The icons a side tab or tab can pick; each is an `ao-i-*` class. Mirrors `ICONS` in state.rs. */
+export const ICONS = [
+  "term", "agent", "group", "tab", "window", "split", "doc", "tpl", "prompt", "var", "link",
+  "pin", "play", "check", "bp", "pr", "merge", "save", "in", "out",
+] as const;
+export type Icon = (typeof ICONS)[number];
 
 /** Accent hues a status may take; amber stays reserved for "needs you" (D16). */
 export const ACCENTS = ["blue", "cyan", "green", "magenta", "red", "fg"] as const;
@@ -123,6 +133,7 @@ export type Command =
   | { type: "ResumePane"; paneId: Id }
   | { type: "DismissResume"; paneId: Id }
   | { type: "SetStatus"; targetId: Id; status: ManualStatus | null }
+  | { type: "SetIcon"; targetId: Id; icon: Icon | null }
   | { type: "RestyleStatus"; statusId: Id; status: ManualStatus | null };
 
 export type Patch =
@@ -138,7 +149,8 @@ export type Patch =
   | { type: "TabMoved"; tabId: Id; toSideTabId: Id; index: number }
   | { type: "TabRenamed"; tabId: Id; title: string | null }
   | { type: "LayoutChanged"; tabId: Id; layout: Layout }
-  | { type: "StatusSet"; id: Id; status: ManualStatus | null };
+  | { type: "StatusSet"; id: Id; status: ManualStatus | null }
+  | { type: "IconSet"; id: Id; icon: Icon | null };
 
 export interface PatchBatch {
   rev: number;
@@ -162,7 +174,8 @@ export interface CommandError {
     | "NothingToResume"
     | "PaneTooSmall"
     | "BadSession"
-    | "BadStatus";
+    | "BadStatus"
+    | "BadIcon";
   id: Id | number;
 }
 

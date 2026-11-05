@@ -1,11 +1,11 @@
 import { horizontalListSortingStrategy, SortableContext, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { Shown, Tab } from "@terminescu/host";
-import { DOT, tabAgent, type Agents } from "./agents";
+import { tabAgent, type Agents } from "./agents";
 import { StatusChip } from "./StatusChip";
 import { chipOf, rowStyle, type Builtins } from "./status";
 import { useEffect, useRef, useState } from "react";
-import { tabDirty, tabName, tabRequest, type DocMarks } from "./SideTabList";
+import { KidIcon, pickAt, RenameInput, tabDirty, tabName, tabRequest, type DocMarks } from "./SideTabList";
 
 export interface TabBarProps {
   tabs: Tab[];
@@ -22,6 +22,14 @@ export interface TabBarProps {
   builtins?: Builtins;
   /** Text panes' documents: their title names the tab, unsaved edits show a dot (D27). */
   docs?: DocMarks;
+  /** The tab whose name is being edited in place; a double click on a name starts it. */
+  renaming?: string;
+  onRenameStart?(tabId: string): void;
+  /** A new name, or null to go back to the generated one. */
+  onRename?(tabId: string, title: string | null): void;
+  onRenameEnd?(): void;
+  /** A double click on a tab's icon, at a window point: pick another (task 8.16). */
+  onIconPick?(tabId: string, at: { x: number; y: number }): void;
 }
 
 function TabItem({
@@ -33,7 +41,13 @@ function TabItem({
   docs,
   onSelect,
   onClose,
-}: {
+  renaming,
+  onRenameStart,
+  onRename,
+  onRenameEnd,
+  onIconPick,
+}: Pick<TabBarProps, "onRenameStart" | "onRename" | "onRenameEnd" | "onIconPick"> & {
+  renaming: boolean;
   tab: Tab;
   active: boolean;
   agents: Agents;
@@ -60,13 +74,35 @@ function TabItem({
       onClick={onSelect}
       onKeyDown={(e) => e.key === "Enter" && onSelect()}
     >
-      {agent && (
-        <>
-          <i className="ao-i x1 ao-i-agent" aria-label="Claude" />
-          <span className={`ao-dot ${DOT[agent.state]}`} title={agent.state} />
-        </>
+      {(agent || tab.icon) && (
+        <KidIcon
+          agent={agent}
+          icon={tab.icon}
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            onIconPick?.(tab.id, pickAt(e));
+          }}
+        />
       )}
-      <span className="n">{tabName(tab, docs)}</span>
+      {renaming ? (
+        <RenameInput
+          value={tab.title ?? tabName(tab, docs)}
+          label="Tab name"
+          onDone={(v) => onRename?.(tab.id, v.trim() || null)}
+          onCancel={() => onRenameEnd?.()}
+        />
+      ) : (
+        <span
+          className="n"
+          title="Double-click to rename"
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            onRenameStart?.(tab.id);
+          }}
+        >
+          {tabName(tab, docs)}
+        </span>
+      )}
       {tabDirty(tab, docs) && <span className="tab-dirty" title="Unsaved changes" aria-label="Unsaved changes" />}
       {shown?.look && <StatusChip chip={chipOf(shown, builtins)} />}
       <button
@@ -137,7 +173,7 @@ function NewMenu({ onNew, onNewText }: { onNew(): void; onNewText(beside: boolea
   );
 }
 
-export function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNewText, agents = {}, statuses = {}, builtins = {}, docs = {} }: TabBarProps) {
+export function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNewText, agents = {}, statuses = {}, builtins = {}, docs = {}, renaming, onRenameStart, onRename, onRenameEnd, onIconPick }: TabBarProps) {
   return (
     <div className="ao-tabs" role="tablist" data-tauri-drag-region>
       <SortableContext items={tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
@@ -152,6 +188,11 @@ export function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNewText, ag
             docs={docs}
             onSelect={() => onSelect(t.id)}
             onClose={() => onClose(t.id)}
+            renaming={renaming === t.id}
+            onRenameStart={onRenameStart}
+            onRename={onRename}
+            onRenameEnd={onRenameEnd}
+            onIconPick={onIconPick}
           />
         ))}
       </SortableContext>

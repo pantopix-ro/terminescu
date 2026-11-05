@@ -276,6 +276,12 @@ export function PromptLibrary({ host, selectKey, onError, onClose, onEditInText 
                 </li>
               ))}
               {list.length === 0 && <li className="small ao-dim">{query ? "Nothing matches." : "No prompts."}</li>}
+              {/* The empty space under the last row: hovering it shows a + that adds a prompt, as in the sidebar. */}
+              <li className="pl-fill">
+                <button type="button" className="side-add" aria-label="Add a prompt" title="New prompt" onClick={() => setCreating(true)}>
+                  <i className="ao-i ao-i-plus" />
+                </button>
+              </li>
             </ul>
           </aside>
           {creating ? (

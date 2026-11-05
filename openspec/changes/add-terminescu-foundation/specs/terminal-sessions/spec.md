@@ -42,6 +42,10 @@ A new tab or pane SHALL start `$SHELL -l` in the cwd of the focused pane, never 
 - **WHEN** the person presses `⌘T` while the focused pane's cwd is `~/work/api`
 - **THEN** the new tab runs the login shell in `~/work/api`
 
+#### Scenario: Colored ls by default
+- **WHEN** a new shell starts and neither `CLICOLOR` nor `NO_COLOR` is set
+- **THEN** the shell gets `CLICOLOR=1`, so BSD `ls` prints colors; a value the person set wins
+
 ### Requirement: Shell integration
 The daemon SHALL inject an integration for zsh, bash and fish that reports prompt, command
 start, command end with exit code (OSC 133), the command line, and cwd (OSC 7). It SHALL run

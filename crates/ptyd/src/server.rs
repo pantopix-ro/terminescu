@@ -213,6 +213,11 @@ impl Shared {
         if std::env::var_os("LANG").is_none() {
             cmd.env("LANG", "en_US.UTF-8");
         }
+        // BSD `ls` and friends print colour only with CLICOLOR. A value the person set, or
+        // NO_COLOR (no-color.org), wins.
+        if std::env::var_os("CLICOLOR").is_none() && std::env::var_os("NO_COLOR").is_none() {
+            cmd.env("CLICOLOR", "1");
+        }
         cmd.env(PANE_ID_ENV, id.to_string());
         cmd.env(PTYD_SOCKET_ENV, &self.opts.socket);
         cmd.env(CORE_SOCKET_ENV, &self.opts.core_socket);

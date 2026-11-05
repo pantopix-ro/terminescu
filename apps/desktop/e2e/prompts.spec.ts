@@ -215,3 +215,13 @@ test("the insert dialog saves its edited text as a prompt", async ({ page }) => 
   // `branch` was typed, not in the context: nothing to offer, the text is kept as written.
   expect(body).toBe("Open a PR from feature/audit-export into main.");
 });
+
+test("the empty space under the last prompt shows a + that opens a new prompt", async ({ page }) => {
+  const lib = await open(page);
+  const add = lib.getByRole("button", { name: "Add a prompt" });
+  await expect(add).toHaveCSS("opacity", "0");
+  await lib.locator(".pl-fill").hover();
+  await expect(add).toHaveCSS("opacity", "1");
+  await add.click();
+  await expect(lib.getByRole("form", { name: "New prompt" })).toBeVisible();
+});

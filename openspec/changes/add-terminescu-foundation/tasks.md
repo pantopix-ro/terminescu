@@ -433,6 +433,28 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       error that Tauri turns into an abort with no message. Not reproduced since. Done: stderr
       goes to `logs/app.log` when no terminal is attached (every `terminescu:` line and the
       panic text, stamped), and a setup error shows an alert and quits.
+- [x] 8.14 Terminal colors (owner request, 2026-11-05, after the colors spike): new shells get
+      `CLICOLOR=1` unless `CLICOLOR` or `NO_COLOR` is set, and a status background tints the
+      terminal. Verify: daemon test reads the env; Playwright sets a side tab and a tab status.
+      Done: the tab's own background wins over its side tab's; `themeFor` recolors the running
+      xterm and the pane slot follows in CSS. `terminal-tint.spec.ts` (1). A running daemon
+      keeps its env; quit it to apply `CLICOLOR` to new shells.
+- [x] 8.15 Rename with a double click (owner request, 2026-11-05) on a side tab's or a tab's
+      name, in the sidebar and the tab bar. Verify: Playwright renames all three, Esc keeps.
+      Done: the rename state records where it started, so one field opens; a pane focus queued
+      by the row click no longer steals the field. `rename-dblclick.spec.ts` (3).
+- [x] 8.16 Icon picker (owner request, 2026-11-05): a double click on a side tab's or a tab's
+      icon opens 20 predefined icons (`ICONS` in `state.rs` and `protocol.ts`), also under
+      "Change icon…" in the menus. Verify: core and persist tests, Playwright picks by mouse,
+      arrows and the menu. Done: `SetIcon` / `IconSet`, migration 0008 adds `icon` to
+      `side_tabs` and `tabs`, an unknown saved icon drops on load. The tab bar shows a tab's
+      icon when one is set or Claude runs. `icon-picker.spec.ts` (3).
+- [x] 8.17 Prompt library `+` (owner request, 2026-11-05): hovering the space under the last
+      prompt shows a `+` that opens the new prompt form. `prompts.spec.ts` (1 more).
+- [x] 8.18 Quick status pick (owner request, 2026-11-05, replaces 8.9's editor): a click on a
+      sidebar status chip opens a small menu with Auto, this side tab's and the global
+      statuses, the current one checked, and "Edit status…" for the full editor. Done: menu
+      items can show a status chip; `sidebar-status.spec.ts` rewritten (3).
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

@@ -56,6 +56,7 @@ import {
   MergeDialog,
   ContextMenu,
   type MenuEntry,
+  chipOf,
   type MenuTarget,
   PIN_EVENT,
   PromptLibrary,
@@ -85,6 +86,7 @@ import {
   SORTS,
   sortSideTabs,
   StatusEditor,
+  IconPicker,
   StatusLine,
   SettingsSheet,
   type SettingsSection,
@@ -883,8 +885,44 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
 
   // Right-click menus on the sidebar (task 8.7). Rename edits the name in place.
   const [menu, setMenu] = useState<{ x: number; y: number; target: MenuTarget }>();
-  const [renaming, setRenaming] = useState<string>();
+  // Where a name is being edited: the sidebar, or the tab bar, which shows the same tabs.
+  const [renaming, setRenaming] = useState<{ id: string; in: "list" | "bar" }>();
   const [closingSide, setClosingSide] = useState<SideTab>();
+  // The side tab or tab whose icon is being picked, and where the picker opens (task 8.16).
+  const [picking, setPicking] = useState<{ id: string; x: number; y: number }>();
+  // A click on a sidebar status chip: the saved statuses for a quick pick, the editor behind them.
+  const [quickStatus, setQuickStatus] = useState<{ sideTabId: string; tabId?: string; x: number; y: number }>();
+  const quickStatusItems = (q: NonNullable<typeof quickStatus>): MenuEntry[] => {
+    const side = sideTabs.find((sd) => sd.id === q.sideTabId);
+    const owner = q.tabId ? side?.tabs.find((t) => t.id === q.tabId) : side;
+    if (!side || !owner) return [];
+    const auto = statuses[owner.id]?.auto ?? "idle";
+    const saved = (sideTabId: string | null) =>
+      statusConfig.statuses
+        .filter((st) => st.sideTabId === sideTabId)
+        .map((st): MenuEntry => ({
+          id: `status:${st.id}`,
+          label: st.label,
+          chip: { ...st, set: true, need: false },
+          checked: owner.status?.statusId === st.id,
+          run: () => void setStatus(owner.id, { statusId: st.id, label: st.label, accent: st.accent, background: st.background }),
+        }));
+    const local = saved(side.id);
+    const global = saved(null);
+    return [
+      {
+        id: "auto",
+        label: "Auto",
+        chip: chipOf({ auto, waiting: false, source: "auto" }, statusConfig.builtins),
+        checked: !owner.status,
+        run: () => void setStatus(owner.id, null),
+      },
+      ...(local.length ? ["-" as const, ...local] : []),
+      ...(global.length ? ["-" as const, ...global] : []),
+      "-",
+      { id: "edit", label: "Edit status…", hint: "⌘⇧S", run: () => editStatus(side.id, q.tabId) },
+    ];
+  };
   const rename = (id: string, title: string | null) => {
     setRenaming(undefined);
     const side = sideTabs.some((sd) => sd.id === id);
@@ -921,7 +959,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     const others = sideTabs.filter((sd) => sd.id !== side.id);
     if (target.kind === "side") {
       return [
-        { id: "rename", label: "Rename…", run: () => setRenaming(side.id) },
+        { id: "rename", label: "Rename…", run: () => setRenaming({ id: side.id, in: "list" }) },
+        { id: "icon", label: "Change icon…", run: () => menu && setPicking({ id: side.id, x: menu.x, y: menu.y }) },
         { id: "new-tab", label: "New tab", run: () => void send({ type: "CreateTab", sideTabId: side.id }) },
         { id: "status", label: "Edit status…", run: () => editStatus(side.id) },
         "-",
@@ -939,7 +978,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     const tab = side.tabs.find((t) => t.id === target.tabId);
     if (!tab) return [];
     return [
-      { id: "rename", label: "Rename…", run: () => setRenaming(tab.id) },
+      { id: "rename", label: "Rename…", run: () => setRenaming({ id: tab.id, in: "list" }) },
+      { id: "icon", label: "Change icon…", run: () => menu && setPicking({ id: tab.id, x: menu.x, y: menu.y }) },
       { id: "status", label: "Edit status…", run: () => editStatus(side.id, tab.id) },
       "-",
       {
@@ -1178,9 +1218,11 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               }}
               onNew={() => act("new_side_tab")}
               onMenu={(at, target) => setMenu({ ...at, target })}
-              renaming={renaming}
+              renaming={renaming?.in === "list" ? renaming.id : undefined}
+              onRenameStart={(id) => setRenaming({ id, in: "list" })}
               onRename={rename}
-              onStatus={editStatus}
+              onStatus={(sideTabId, tabId, at) => setQuickStatus({ sideTabId, tabId, ...at })}
+              onIconPick={(id, at) => setPicking({ id, ...at })}
               onRenameEnd={() => {
                 setRenaming(undefined);
                 refocus();
@@ -1221,6 +1263,14 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               statuses={statuses}
               builtins={statusConfig.builtins}
               docs={docs}
+              renaming={renaming?.in === "bar" ? renaming.id : undefined}
+              onRenameStart={(id) => setRenaming({ id, in: "bar" })}
+              onRename={rename}
+              onIconPick={(id, at) => setPicking({ id, ...at })}
+              onRenameEnd={() => {
+                setRenaming(undefined);
+                refocus();
+              }}
               onSelect={(id) => {
                 if (activeSide) selectTab(activeSide.id, id);
                 refocus();
@@ -1374,6 +1424,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
             <TerminalPane
               key={paneId}
               paneId={paneId}
+              tint={statuses[tab.id]?.look?.background ?? statuses[side.id]?.look?.background}
               visible={tab.id === activeTab?.id}
               focused={paneId === focused}
               onFocus={() => focusIn(tab.id, paneId)}
@@ -1517,6 +1568,34 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           }}
           onError={setError}
           onClose={closeSheet}
+        />
+      )}
+      {picking &&
+        (() => {
+          const side = sideTabs.find((sd) => sd.id === picking.id);
+          const tab = side ? undefined : sideTabs.flatMap((sd) => sd.tabs).find((t) => t.id === picking.id);
+          if (!side && !tab) return null;
+          return (
+            <IconPicker
+              x={picking.x}
+              y={picking.y}
+              name={side ? sideTabName(side, docs) : tabName(tab!, docs)}
+              current={(side ?? tab)!.icon}
+              onPick={(icon) => void send({ type: "SetIcon", targetId: picking.id, icon })}
+              onClose={() => {
+                setPicking(undefined);
+                refocus();
+              }}
+            />
+          );
+        })()}
+      {quickStatus && (
+        <ContextMenu
+          x={quickStatus.x}
+          y={quickStatus.y}
+          label="Status"
+          items={quickStatusItems(quickStatus)}
+          onClose={() => setQuickStatus(undefined)}
         />
       )}
       {menu && (

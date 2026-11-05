@@ -22,6 +22,7 @@ export {
   type MenuTarget,
 } from "./SideTabList";
 export { ContextMenu, type ContextMenuProps, type MenuEntry } from "./ContextMenu";
+export { ICON_LABELS, IconPicker, type IconPickerProps } from "./IconPicker";
 export { dragSizes, PaneSlot, SplitView, type SplitViewProps } from "./SplitView";
 export { TabBar, type TabBarProps } from "./TabBar";
 export { SYNC_MS, TextPane, textPane, type TextHandle, type TextHost, type TextPaneProps } from "./TextPane";

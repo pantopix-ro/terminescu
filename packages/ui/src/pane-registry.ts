@@ -59,7 +59,14 @@ export function releasePane(paneId: string) {
 }
 
 /** Gives the pane's terminal or editor the keyboard. */
+/**
+ * A name edited in place or an open icon picker keeps the keyboard: the click that selected
+ * the row queued a pane focus before the double click opened them.
+ */
+export const keyboardHeld = () => !!document.activeElement?.closest(".side-rename, .icon-picker");
+
 export function focusPane(paneId: string) {
+  if (keyboardHeld()) return;
   const el = elements.get(paneId);
   const target = el?.querySelector<HTMLElement>(".cm-content") ?? el?.querySelector<HTMLTextAreaElement>("textarea");
   if (target) return target.focus();

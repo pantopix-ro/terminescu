@@ -25,10 +25,12 @@ fn db() -> Db {
     let db = Db::open_in_memory().unwrap();
     let side = |id: &str, tab: &str, pane: &str| SideTab {
         status: None,
+        icon: None,
         id: id.into(),
         title: None,
         tabs: vec![Tab {
             status: None,
+            icon: None,
             id: tab.into(),
             title: None,
             layout: Layout::pane(pane),
