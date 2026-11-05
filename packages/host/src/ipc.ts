@@ -2,11 +2,26 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type { Host, PaneView } from "./host";
-import type { AgentUpdate, Command, PatchBatch, Pin, Snapshot, TranscriptChunk, Variable } from "./protocol";
+import type {
+  AgentUpdate,
+  Command,
+  Id,
+  PatchBatch,
+  Pin,
+  Rule,
+  SavedStatus,
+  Shown,
+  Snapshot,
+  StatusConfig,
+  TranscriptChunk,
+  Variable,
+} from "./protocol";
 
 export const PATCHES_EVENT = "host://patches";
 export const AGENT_EVENT = "host://agent";
 export const CONTEXT_EVENT = "host://context";
+export const STATUS_EVENT = "host://status";
+export const STATUS_CONFIG_EVENT = "host://status-config";
 /** The app menu sends each action to the focused window only. */
 export const ACTION_EVENT = "menu://action";
 
@@ -38,6 +53,19 @@ export function createIpcHost(): Host {
     variables: (sideTab) => invoke<Variable[]>("vars_list", { sideTab }),
     extractVariable: (sideTab, name, value) => invoke<Variable>("var_extract", { sideTab, name, value }),
     onContext: (listener) => listen<string>(CONTEXT_EVENT, (e) => listener(e.payload)),
+    statuses: () => invoke<Record<Id, Shown>>("host_statuses"),
+    onStatuses: (listener) => listen<Record<Id, Shown>>(STATUS_EVENT, (e) => listener(e.payload)),
+    statusConfig: () => invoke<StatusConfig>("status_config"),
+    onStatusConfig: (listener) => listen(STATUS_CONFIG_EVENT, () => listener()),
+    saveStatus: (sideTab, look) => invoke<SavedStatus>("status_save", { sideTab, look }),
+    updateStatus: (id, look) => invoke<SavedStatus>("status_update", { id, look }),
+    deleteStatus: (id) => invoke("status_delete", { id }),
+    makeGlobal: (id) => invoke<SavedStatus>("status_make_global", { id }),
+    reorderStatuses: (ids) => invoke("status_reorder", { ids }),
+    addRule: (statusId, kind) => invoke<Rule>("rule_add", { statusId, kind }),
+    toggleRule: (id, enabled) => invoke("rule_toggle", { id, enabled }),
+    deleteRule: (id) => invoke("rule_delete", { id }),
+    setBuiltin: (auto, look) => invoke("builtin_set", { auto, look }),
     openUrl: (url) => invoke("open_url", { url }),
     onAction: (listener) => getCurrentWebviewWindow().listen<string>(ACTION_EVENT, (e) => listener(e.payload)),
   };

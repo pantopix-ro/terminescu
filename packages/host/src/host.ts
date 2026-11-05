@@ -1,4 +1,21 @@
-import type { AgentUpdate, Command, Id, NewPin, PatchBatch, Pin, Snapshot, TranscriptChunk, Variable } from "./protocol";
+import type {
+  AgentUpdate,
+  Auto,
+  Command,
+  Id,
+  Look,
+  NewPin,
+  PatchBatch,
+  Pin,
+  Rule,
+  RuleKind,
+  SavedStatus,
+  Shown,
+  Snapshot,
+  StatusConfig,
+  TranscriptChunk,
+  Variable,
+} from "./protocol";
 
 /** One window's view of a pane (D33). */
 export interface PaneView {
@@ -44,6 +61,28 @@ export interface Host {
   extractVariable(sideTabId: Id, name: string, value: string): Promise<Variable>;
   /** A side tab's pins or variables changed. Resolves with a function that removes the listener. */
   onContext(listener: (sideTabId: Id) => void): Promise<() => void>;
+  /** Every tab's and side tab's shown status, by id (D15). */
+  statuses(): Promise<Record<Id, Shown>>;
+  /** The whole map again whenever a status changes. Resolves with a function that removes the listener. */
+  onStatuses(listener: (statuses: Record<Id, Shown>) => void): Promise<() => void>;
+  /** Saved statuses, rules and built-in looks, for the editor and Settings › Statuses. */
+  statusConfig(): Promise<StatusConfig>;
+  /** The config changed in some window. Resolves with a function that removes the listener. */
+  onStatusConfig(listener: () => void): Promise<() => void>;
+  /** Saves a status, local to a side tab or global (`null`). */
+  saveStatus(sideTabId: Id | null, look: Look): Promise<SavedStatus>;
+  /** Edits a saved status; every tab using it takes the new look. */
+  updateStatus(id: Id, look: Look): Promise<SavedStatus>;
+  /** Deletes a saved status and its rules; tabs using it go back to auto. */
+  deleteStatus(id: Id): Promise<void>;
+  makeGlobal(id: Id): Promise<SavedStatus>;
+  /** Puts the global statuses in this order. */
+  reorderStatuses(ids: Id[]): Promise<void>;
+  addRule(statusId: Id, kind: RuleKind): Promise<Rule>;
+  toggleRule(id: Id, enabled: boolean): Promise<void>;
+  deleteRule(id: Id): Promise<void>;
+  /** Renames or recolors a built-in status; `null` restores its default. */
+  setBuiltin(auto: Auto, look: Look | null): Promise<void>;
   /** Opens an http(s) link in the default browser. */
   openUrl(url: string): Promise<void>;
 }

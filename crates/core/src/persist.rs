@@ -7,6 +7,7 @@
 use crate::db::{Db, Result};
 use crate::layout::Layout;
 use crate::state::{Id, SideTab, Tab, Window, Workspace};
+use crate::status::ManualStatus;
 use rusqlite::{OptionalExtension, params};
 use std::collections::HashMap;
 use terminescu_protocol::PaneId;
@@ -30,6 +31,19 @@ pub struct Saved {
     pub instance: Option<String>,
 }
 
+fn status_json(status: &Option<ManualStatus>) -> Option<String> {
+    status
+        .as_ref()
+        .map(|s| serde_json::to_string(s).expect("a status serializes"))
+}
+
+/// A saved manual status, dropped when it no longer parses or checks.
+fn status_of(json: Option<String>) -> Option<ManualStatus> {
+    serde_json::from_str::<ManualStatus>(&json?)
+        .ok()
+        .filter(|s| s.look.check().is_ok())
+}
+
 pub fn save(db: &Db, saved: &Saved) -> Result<()> {
     let owner = db.local_owner()?;
     let now = crate::now_ms();
@@ -45,22 +59,23 @@ pub fn save(db: &Db, saved: &Saved) -> Result<()> {
         ids[0].push(&w.id);
         for (si, s) in w.side_tabs.iter().enumerate() {
             tx.execute(
-                "INSERT INTO side_tabs (id, owner_id, window_id, position, title, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                "INSERT INTO side_tabs (id, owner_id, window_id, position, title, status_json, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?7, ?6)
                  ON CONFLICT (id) DO UPDATE SET window_id = excluded.window_id,
-                   position = excluded.position, title = excluded.title",
-                params![s.id, owner, w.id, si as i64, s.title, now],
+                   position = excluded.position, title = excluded.title,
+                   status_json = excluded.status_json",
+                params![s.id, owner, w.id, si as i64, s.title, now, status_json(&s.status)],
             )?;
             ids[1].push(&s.id);
             for (ti, t) in s.tabs.iter().enumerate() {
                 let layout = serde_json::to_string(&t.layout).expect("a layout serializes");
                 tx.execute(
-                    "INSERT INTO tabs (id, owner_id, side_tab_id, position, title, layout_json, created_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                    "INSERT INTO tabs (id, owner_id, side_tab_id, position, title, layout_json, status_json, created_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?8, ?7)
                      ON CONFLICT (id) DO UPDATE SET side_tab_id = excluded.side_tab_id,
                        position = excluded.position, title = excluded.title,
-                       layout_json = excluded.layout_json",
-                    params![t.id, owner, s.id, ti as i64, t.title, layout, now],
+                       layout_json = excluded.layout_json, status_json = excluded.status_json",
+                    params![t.id, owner, s.id, ti as i64, t.title, layout, now, status_json(&t.status)],
                 )?;
                 ids[2].push(&t.id);
                 let terminals = t.layout.terminals();
@@ -133,7 +148,7 @@ pub fn load(db: &Db) -> Result<Option<Saved>> {
     }
     let mut side_tabs: Vec<(Id, SideTab)> = conn
         .prepare(
-            "SELECT window_id, id, title FROM side_tabs WHERE owner_id = ?1 ORDER BY position",
+            "SELECT window_id, id, title, status_json FROM side_tabs WHERE owner_id = ?1 ORDER BY position",
         )?
         .query_map([&owner], |r| {
             Ok((
@@ -142,13 +157,15 @@ pub fn load(db: &Db) -> Result<Option<Saved>> {
                     id: r.get(1)?,
                     title: r.get(2)?,
                     tabs: vec![],
+                    status: status_of(r.get(3)?),
                 },
             ))
         })?
         .collect::<rusqlite::Result<_>>()?;
-    let tabs: Vec<(Id, Id, Option<String>, String)> = conn
-        .prepare("SELECT side_tab_id, id, title, layout_json FROM tabs WHERE owner_id = ?1 ORDER BY position")?
-        .query_map([&owner], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+    type TabRow = (Id, Id, Option<String>, String, Option<String>);
+    let tabs: Vec<TabRow> = conn
+        .prepare("SELECT side_tab_id, id, title, layout_json, status_json FROM tabs WHERE owner_id = ?1 ORDER BY position")?
+        .query_map([&owner], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))?
         .collect::<rusqlite::Result<_>>()?;
     let mut panes: HashMap<Id, PaneRecord> = conn
         .prepare("SELECT id, daemon_pane_id, cwd, session_id FROM panes WHERE owner_id = ?1")?
@@ -163,7 +180,7 @@ pub fn load(db: &Db) -> Result<Option<Saved>> {
             ))
         })?
         .collect::<rusqlite::Result<_>>()?;
-    for (side_tab_id, id, title, layout_json) in tabs {
+    for (side_tab_id, id, title, layout_json, status_json) in tabs {
         let mut layout = serde_json::from_str::<Layout>(&layout_json).unwrap_or_else(|e| {
             eprintln!(
                 "terminescu: tab {id} has an unreadable layout, it restarts with one pane: {e}"
@@ -198,7 +215,12 @@ pub fn load(db: &Db) -> Result<Option<Saved>> {
             layout = Layout::pane(crate::new_id());
         }
         if let Some((_, s)) = side_tabs.iter_mut().find(|(_, s)| s.id == side_tab_id) {
-            s.tabs.push(Tab { id, title, layout });
+            s.tabs.push(Tab {
+                id,
+                title,
+                layout,
+                status: status_of(status_json),
+            });
         }
     }
     for (window_id, s) in side_tabs {
@@ -241,15 +263,18 @@ mod tests {
                 id: "w1".into(),
                 side_tabs: vec![
                     SideTab {
+                        status: None,
                         id: "s1".into(),
                         title: Some("PROJ-482".into()),
                         tabs: vec![
                             Tab {
+                                status: None,
                                 id: "t1".into(),
                                 title: None,
                                 layout,
                             },
                             Tab {
+                                status: None,
                                 id: "t2".into(),
                                 title: Some("dev server".into()),
                                 layout: Layout::pane("p3"),
@@ -257,9 +282,11 @@ mod tests {
                         ],
                     },
                     SideTab {
+                        status: None,
                         id: "s2".into(),
                         title: None,
                         tabs: vec![Tab {
+                            status: None,
                             id: "t3".into(),
                             title: None,
                             layout: Layout::pane("p4"),

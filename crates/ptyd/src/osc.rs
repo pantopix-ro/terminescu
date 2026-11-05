@@ -110,6 +110,7 @@ fn apply(state: &mut ShellState, text: &str) -> bool {
             Some("C") => {
                 state.running = true;
                 state.last_exit = None;
+                state.started += 1;
             }
             Some("D") => {
                 state.running = false;
@@ -117,6 +118,7 @@ fn apply(state: &mut ShellState, text: &str) -> bool {
                     return false;
                 };
                 state.last_exit = Some(code);
+                state.ended += 1;
             }
             _ => return false,
         }

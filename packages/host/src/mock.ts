@@ -4,22 +4,33 @@
 import type { Host, PaneView } from "./host";
 import { actionFor } from "./keys";
 import { hasSplit, isSessionId, leaf, panesOf, removePane, resizeSplit, splitPane, terminalsOf } from "./layout";
-import type {
-  AgentUpdate,
-  AgentView,
-  Command,
-  Entry,
-  Pin,
-  Variable,
-  CommandError,
-  Patch,
-  PatchBatch,
-  SideTab,
-  Snapshot,
-  Tab,
-  Workspace,
+import {
+  ACCENTS,
+  MAX_LABEL,
+  TINTS,
+  type AgentUpdate,
+  type AgentView,
+  type Command,
+  type Entry,
+  type Id,
+  type Look,
+  type ManualStatus,
+  type Pin,
+  type Variable,
+  type CommandError,
+  type Patch,
+  type PatchBatch,
+  type Rule,
+  type SavedStatus,
+  type Shown,
+  type SideTab,
+  type Snapshot,
+  type StatusConfig,
+  type Tab,
+  type Workspace,
 } from "./protocol";
 import { applyBatch } from "./reducer";
+import { computeStatuses, type PaneDynamic, type PaneFacts } from "./status";
 
 export class MockCommandError extends Error {
   constructor(readonly error: CommandError) {
@@ -41,6 +52,34 @@ export interface MockHost extends Host {
   setAgent(pane: string, agent: AgentView | null): void;
   /** Appends entries to a session's fake transcript. */
   appendTranscript(session: string, entries: Entry[]): void;
+  /**
+   * Plays the shell integration: `command` starts in the pane and, unless `exit` is null, ends
+   * with that code. Exit-code rules fire as in the core.
+   */
+  runCommand(pane: string, command: string, exit: number | null): void;
+  /**
+   * Plays `terminescu status` in a pane; `null` is `--clear`. The mock has no `--for` or
+   * `--until-exit` and no Claude idle rules; `crates/core/tests/rules.rs` covers those.
+   */
+  setCliStatus(pane: string, look: Look | null): void;
+}
+
+/** `*` matches any run of characters, `?` one; the whole text must match (as `glob` in the core). */
+export function glob(pattern: string, text: string): boolean {
+  const re = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".");
+  return new RegExp(`^${re}$`, "s").test(text);
+}
+
+/** The core's `Look::check`, with the same messages. */
+export function lookError(look: Look): string | undefined {
+  const label = look.label.trim();
+  if (!label) return "a status needs a label";
+  if ([...label].length > MAX_LABEL) return `a status label has at most ${MAX_LABEL} characters`;
+  if (look.accent !== null && !(ACCENTS as readonly string[]).includes(look.accent)) return `${look.accent} is not a status accent`;
+  if (look.background !== null && !(TINTS as readonly string[]).includes(look.background)) {
+    return `${look.background} is not a status background`;
+  }
+  return undefined;
 }
 
 const encoder = new TextEncoder();
@@ -100,6 +139,54 @@ export function createMockHost(initial?: Workspace): MockHost {
   const contextChanged = (side: string) => {
     for (const l of contextListeners) l(side);
   };
+  // Statuses (D15): shell facts and dynamic statuses per pane, the saved config, and the last
+  // map sent, so listeners hear only changes.
+  const shellFacts = new Map<string, NonNullable<PaneFacts["shell"]> & { command: string }>();
+  // One dynamic status per pane and origin (a rule id, or "cli"), as the core keeps them.
+  type Dyn = PaneDynamic & { pane: string; ruleId?: Id };
+  const dynamic = new Map<string, Dyn>();
+  const dynKey = (pane: string, origin: string) => `${pane} ${origin}`;
+  const newestByPane = () => {
+    const out = new Map<string, PaneDynamic>();
+    for (const d of dynamic.values()) if ((out.get(d.pane)?.order ?? -1) < d.order) out.set(d.pane, d);
+    return out;
+  };
+  let order = 0;
+  let config: StatusConfig = { statuses: [], rules: [], builtins: {} };
+  let shown: Record<Id, Shown> = {};
+  const statusListeners = new Set<(s: Record<Id, Shown>) => void>();
+  const configListeners = new Set<() => void>();
+  const recompute = () => {
+    const facts = new Map<string, PaneFacts>();
+    for (const [p, a] of agents) facts.set(p, { agent: a.state });
+    for (const [p, sh] of shellFacts) facts.set(p, { ...facts.get(p), shell: sh });
+    const next = computeStatuses(ws, facts, newestByPane());
+    if (JSON.stringify(next) === JSON.stringify(shown)) return;
+    shown = next;
+    for (const l of statusListeners) l(structuredClone(next));
+  };
+  const configChanged = () => {
+    // A rule carries its status's look, as `rules()` in the store joins it.
+    config.rules = config.rules.flatMap((r) => {
+      const st = config.statuses.find((x) => x.id === r.statusId);
+      return st ? [{ ...r, look: { label: st.label, accent: st.accent, background: st.background } }] : [];
+    });
+    for (const [k, d] of dynamic) {
+      const rule = d.ruleId && config.rules.find((r) => r.id === d.ruleId && r.enabled);
+      if (d.ruleId && !rule) dynamic.delete(k);
+      else if (rule) d.look = rule.look;
+    }
+    recompute();
+    for (const l of configListeners) l();
+  };
+  const checked = (look: Look): Look => {
+    const err = lookError(look);
+    if (err) throw new Error(err);
+    return { label: look.label.trim(), accent: look.accent, background: look.background };
+  };
+  const savedStatus = (sid: Id) => config.statuses.find((x) => x.id === sid) ?? (() => {
+    throw new Error(`no status ${sid}`);
+  })();
 
   function firstStart(): Workspace {
     const windowId = id();
@@ -195,6 +282,20 @@ export function createMockHost(initial?: Workspace): MockHost {
         if (typeof layout === "string") return fail("BadSizes", c.splitId);
         return [{ type: "LayoutChanged", tabId: tab.id, layout }];
       }
+      case "SetStatus": {
+        const known = allSideTabs().some((s) => s.id === c.targetId || s.tabs.some((t) => t.id === c.targetId));
+        if (!known) return fail("UnknownTab", c.targetId);
+        if (c.status) {
+          const err = lookError(c.status);
+          if (err) return fail("BadStatus", err);
+        }
+        const status: ManualStatus | null = c.status && { ...c.status, label: c.status.label.trim() };
+        return [{ type: "StatusSet", id: c.targetId, status }];
+      }
+      case "RestyleStatus": {
+        const users = [...allSideTabs(), ...allSideTabs().flatMap((s) => s.tabs)].filter((x) => x.status?.statusId === c.statusId);
+        return users.map((u) => ({ type: "StatusSet", id: u.id, status: c.status && { ...c.status, statusId: c.statusId } }));
+      }
       case "ResumePane":
       case "DismissResume": {
         const tab = tabOfPane(c.paneId);
@@ -208,7 +309,7 @@ export function createMockHost(initial?: Workspace): MockHost {
     }
   }
 
-  return {
+  const host: MockHost = {
     batches,
     openedUrls,
     resizes,
@@ -223,6 +324,7 @@ export function createMockHost(initial?: Workspace): MockHost {
       rev = batch.rev;
       batches.push(batch);
       for (const l of listeners) l(structuredClone(batch));
+      recompute();
       return rev;
     },
     async onPatches(listener) {
@@ -255,6 +357,101 @@ export function createMockHost(initial?: Workspace): MockHost {
       if (agent) agents.set(pane, agent);
       else agents.delete(pane);
       for (const l of agentListeners) l({ pane, agent });
+      recompute();
+    },
+    runCommand(pane, command, exit) {
+      // A rule status holds until its command runs again.
+      const matching = config.rules.filter((r) => r.kind === "exitCode" && glob(r.pattern, command));
+      for (const r of matching) dynamic.delete(dynKey(pane, r.id));
+      shellFacts.set(pane, { running: exit === null, lastExit: exit, command });
+      if (exit !== null && exit !== 0) {
+        for (const r of matching.filter((r) => r.enabled)) {
+          dynamic.set(dynKey(pane, r.id), { pane, look: r.look, source: "rule", order: ++order, ruleId: r.id });
+        }
+      }
+      recompute();
+    },
+    setCliStatus(pane, look) {
+      if (look) dynamic.set(dynKey(pane, "cli"), { pane, look: checked(look), source: "cli", order: ++order });
+      else dynamic.delete(dynKey(pane, "cli"));
+      recompute();
+    },
+    async statuses() {
+      recompute();
+      return structuredClone(shown);
+    },
+    async onStatuses(listener) {
+      statusListeners.add(listener);
+      return () => statusListeners.delete(listener);
+    },
+    async statusConfig() {
+      return structuredClone(config);
+    },
+    async onStatusConfig(listener) {
+      configListeners.add(listener);
+      return () => configListeners.delete(listener);
+    },
+    async saveStatus(sideTabId, look) {
+      const st: SavedStatus = { id: id(), sideTabId, ...checked(look) };
+      config.statuses.push(st);
+      configChanged();
+      return structuredClone(st);
+    },
+    async updateStatus(sid, look) {
+      const st = Object.assign(savedStatus(sid), checked(look));
+      configChanged();
+      await host.send({ type: "RestyleStatus", statusId: sid, status: { ...checked(look), statusId: sid } });
+      return structuredClone(st);
+    },
+    async deleteStatus(sid) {
+      config.statuses = config.statuses.filter((x) => x.id !== sid);
+      configChanged();
+      await host.send({ type: "RestyleStatus", statusId: sid, status: null });
+    },
+    async makeGlobal(sid) {
+      const st = savedStatus(sid);
+      st.sideTabId = null;
+      // A promoted status goes last among the globals.
+      config.statuses = [...config.statuses.filter((x) => x.sideTabId === null && x !== st), st, ...config.statuses.filter((x) => x.sideTabId !== null)];
+      configChanged();
+      return structuredClone(st);
+    },
+    async reorderStatuses(ids) {
+      const at = (x: SavedStatus) => (ids.includes(x.id) ? ids.indexOf(x.id) : ids.length);
+      config.statuses = [...config.statuses].sort((a, b) => at(a) - at(b));
+      configChanged();
+    },
+    async addRule(statusId, kind) {
+      const st = savedStatus(statusId);
+      if (kind.kind === "exitCode" && !kind.pattern.trim()) throw new Error("a rule needs a command pattern");
+      if (kind.kind === "claudeIdle" && !(kind.minutes >= 1 && kind.minutes <= 1440)) throw new Error("an idle rule waits 1 to 1440 minutes");
+      const rule = {
+        id: id(),
+        statusId,
+        look: { label: st.label, accent: st.accent, background: st.background },
+        enabled: true,
+        ...(kind.kind === "exitCode" ? { kind: "exitCode", pattern: kind.pattern.trim() } : kind),
+      } as Rule;
+      config.rules.push(rule);
+      configChanged();
+      return structuredClone(rule);
+    },
+    async toggleRule(rid, enabled) {
+      config.rules = config.rules.map((r) => (r.id === rid ? { ...r, enabled } : r));
+      configChanged();
+    },
+    async deleteRule(rid) {
+      config.rules = config.rules.filter((r) => r.id !== rid);
+      configChanged();
+    },
+    async setBuiltin(auto, look) {
+      const builtins = { ...config.builtins };
+      if (look) {
+        if (auto === "waiting" && (look.accent || look.background)) throw new Error("Waiting stays amber");
+        builtins[auto] = checked(look);
+      } else delete builtins[auto];
+      config = { ...config, builtins };
+      configChanged();
     },
     async agents() {
       return [...agents].map(([pane, agent]) => ({ pane, agent }));
@@ -327,4 +524,5 @@ export function createMockHost(initial?: Workspace): MockHost {
       return () => target.removeEventListener?.("keydown", onKey, true);
     },
   };
+  return host;
 }

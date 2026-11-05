@@ -1,7 +1,9 @@
 import { useDroppable } from "@dnd-kit/core";
-import type { AgentView, SideTab, Tab } from "@terminescu/host";
+import type { AgentView, Shown, SideTab, Tab } from "@terminescu/host";
 import { useState } from "react";
 import { DOT, tabAgent, type Agents } from "./agents";
+import { StatusChip } from "./StatusChip";
+import { chipOf, rowStyle, SORTS, type Builtins, type SortMode } from "./status";
 
 export interface SideTabListProps {
   sideTabs: SideTab[];
@@ -14,6 +16,12 @@ export interface SideTabListProps {
   dragging: boolean;
   /** Claude sessions by pane: a side tab with one waiting gets the amber marker (D34). */
   agents?: Agents;
+  /** Shown statuses by tab and side tab id (D15). */
+  statuses?: Readonly<Record<string, Shown>>;
+  builtins?: Builtins;
+  /** The order `sideTabs` comes in; drops between rows only make sense in manual order. */
+  sort?: SortMode;
+  onSort?(mode: SortMode): void;
 }
 
 /** A side tab's name: its own title, else its first tab's title, else "shell". */
@@ -58,16 +66,21 @@ function Row(props: {
   activeTabId: string | undefined;
   dragging: boolean;
   agents: Agents;
+  statuses: Readonly<Record<string, Shown>>;
+  builtins: Builtins;
   onSelect(): void;
   onSelectTab(tabId: string): void;
   onToggle(): void;
 }) {
-  const { side, active, expanded, dragging, agents } = props;
-  const need = side.tabs.some((t) => tabAgent(t, agents)?.state === "waiting");
+  const { side, active, expanded, dragging, agents, statuses, builtins } = props;
+  const shown = statuses[side.id];
+  const need = shown?.waiting || side.tabs.some((t) => tabAgent(t, agents)?.state === "waiting");
+  const chip = chipOf(shown, builtins);
   const { setNodeRef, isOver } = useDroppable({ id: dropInto(side.id), disabled: !dragging || active });
   const group = side.tabs.length > 1;
   const open = group && (active || expanded);
-  const style = active ? ({ "--st-bg": "var(--panel-2)" } as React.CSSProperties) : undefined;
+  // A status background tints the row; otherwise the active row takes the raised panel.
+  const style = { ...(active ? { "--st-bg": "var(--panel-2)" } : {}), ...rowStyle(shown?.look, "st") } as React.CSSProperties;
   return (
     <>
       <div
@@ -83,7 +96,9 @@ function Row(props: {
       >
         <i className={`ao-i ${group ? "ao-i-group" : side.tabs[0] && tabAgent(side.tabs[0], agents) ? "ao-i-agent" : "ao-i-term"}`} />
         <span className="t">{sideTabName(side)}</span>
-        {group && !active ? (
+        <span className="side-trail">
+        <StatusChip chip={chip} />
+        {group && !active && (
           <button
             type="button"
             className="side-chev"
@@ -96,9 +111,8 @@ function Row(props: {
           >
             <i className={`ao-i ${expanded ? "ao-i-chev" : "ao-i-chevr"}`} />
           </button>
-        ) : (
-          <span />
         )}
+        </span>
         <span className="m">
           {group && (
             <span className="ao-strip" aria-hidden="true">
@@ -123,6 +137,7 @@ function Row(props: {
             >
               <KidIcon agent={tabAgent(t, agents)} />
               <span className="grow">{tabName(t)}</span>
+              {statuses[t.id]?.look && <StatusChip chip={chipOf(statuses[t.id], builtins)} />}
               {active && <span>{tabChord(i, side.tabs.length)}</span>}
             </div>
           ))}
@@ -155,6 +170,10 @@ export function SideTabList({
   onNew,
   dragging,
   agents = {},
+  statuses = {},
+  builtins = {},
+  sort = "manual",
+  onSort,
 }: SideTabListProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   return (
@@ -162,6 +181,18 @@ export function SideTabList({
       <div className="side-head">
         <span className="ao-pixel ao-dim">Side tabs</span>
         <span className="grow" />
+        {onSort && (
+          <label className="small ao-dim side-sort">
+            sort
+            <select className="ao-input" value={sort} aria-label="Sort side tabs" onChange={(e) => onSort(e.target.value as SortMode)}>
+              {SORTS.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <button type="button" className="ao-btn ghost side-new" aria-label="New side tab" onClick={onNew}>
           <i className="ao-i ao-i-plus" />
         </button>
@@ -169,7 +200,7 @@ export function SideTabList({
       <div className="side-list">
         {sideTabs.map((s, i) => (
           <div key={s.id} className="side-item">
-            <Gap index={i} dragging={dragging} />
+            <Gap index={i} dragging={dragging && sort === "manual"} />
             <Row
               side={s}
               index={i}
@@ -178,13 +209,15 @@ export function SideTabList({
               activeTabId={activeTabId}
               dragging={dragging}
               agents={agents}
+              statuses={statuses}
+              builtins={builtins}
               onSelect={() => onSelect(s.id)}
               onSelectTab={(t) => onSelectTab(s.id, t)}
               onToggle={() => setExpanded((m) => ({ ...m, [s.id]: !m[s.id] }))}
             />
           </div>
         ))}
-        <Gap index={sideTabs.length} dragging={dragging} />
+        <Gap index={sideTabs.length} dragging={dragging && sort === "manual"} />
         <Gap index={sideTabs.length} dragging={dragging} end />
       </div>
       <div className="side-foot small ao-dim">

@@ -44,6 +44,10 @@ pub enum Control {
     Hello {
         versions: Vec<u32>,
         client: String,
+        /// Optional pushes the client wants, such as [`FEATURE_SHELL`]. A daemon that predates a
+        /// feature ignores it, and an older client never gets a message it can't read.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        features: Vec<String>,
     },
     Spawn {
         req: u64,
@@ -105,6 +109,10 @@ pub enum Control {
         /// Differs for every daemon process. Pane ids restart with a new daemon, so a client that
         /// reconnects compares this before trusting the ids it holds.
         instance: String,
+        /// The features of the client's Hello that this daemon serves. A daemon from before
+        /// features sends none.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        features: Vec<String>,
     },
     Spawned {
         req: u64,
@@ -118,6 +126,12 @@ pub enum Control {
     Exited {
         pane: PaneId,
         code: Option<i32>,
+    },
+    /// A pane's shell state changed: a command started or ended, or the cwd moved. Sent only
+    /// to clients that asked for [`FEATURE_SHELL`].
+    Shell {
+        pane: PaneId,
+        shell: ShellState,
     },
     Panes {
         req: u64,
@@ -155,6 +169,9 @@ pub struct SpawnSpec {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub side_tab: Option<String>,
 }
+
+/// The `Hello` feature for [`Control::Shell`] pushes.
+pub const FEATURE_SHELL: &str = "shell";
 
 /// Where a variable lives (D21). Saved variables live in the core's SQLite, never here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -220,6 +237,12 @@ pub struct ShellState {
     pub running: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_exit: Option<i32>,
+    /// Commands started and ended so far. A command that starts and ends between two reads
+    /// still moves them, so a reader sees every run. Zero from a daemon that predates them.
+    #[serde(default)]
+    pub started: u64,
+    #[serde(default)]
+    pub ended: u64,
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -389,6 +412,7 @@ mod tests {
         roundtrip(Frame::Control(Control::Hello {
             versions: vec![1],
             client: "test".into(),
+            features: vec![FEATURE_SHELL.into()],
         }));
         roundtrip(Frame::Output {
             pane: 7,
@@ -481,6 +505,7 @@ mod tests {
             version: 1,
             daemon: "0.1.0".into(),
             instance: "i1".into(),
+            features: vec![],
         })
         .unwrap();
         assert_eq!(

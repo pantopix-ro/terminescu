@@ -27,6 +27,11 @@ shell, and Terminescu never starts a turn on its own.
 > shows the agent icon and turns amber while Claude waits on a permission prompt, clearing when
 > the prompt is answered or denied (tasks 4.1 to 4.3). `⌘⇧L` opens a read-only transcript beside
 > a Claude pane, where a selection pins to the context or extracts to a variable (task 4.4).
+> Every tab and side tab shows a status: Running, Done or Failed from the shell, Waiting from
+> Claude, or one you set with `⌘⇧S`. Settings › Statuses (`⌘,`) holds the global statuses and
+> the rules, such as `pnpm test*` failing sets `Tests red`; `terminescu status "Deploying"
+> --until-exit` sets one from any shell. The sidebar sorts by hand, background, status or name
+> (tasks 5.1 to 5.3).
 
 ## See it
 

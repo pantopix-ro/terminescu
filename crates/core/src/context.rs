@@ -231,9 +231,11 @@ mod tests {
             windows: vec![Window {
                 id: "w1".into(),
                 side_tabs: vec![SideTab {
+                    status: None,
                     id: "s1".into(),
                     title: Some("PROJ-482".into()),
                     tabs: vec![Tab {
+                        status: None,
                         id: "t1".into(),
                         title: None,
                         layout: crate::layout::Layout::pane("p1"),

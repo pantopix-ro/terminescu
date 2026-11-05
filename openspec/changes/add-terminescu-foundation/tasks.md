@@ -186,12 +186,18 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
 
 ## 5. Statuses (P1)
 
-- [ ] 5.1 Auto status per tab and side tab (D15). Verify: unit test of the urgency order.
-- [ ] 5.2 Status editor (`⌘⇧S`): label, back to auto, accent, background, save local, make
+- [x] 5.1 Auto status per tab and side tab (D15). Verify: unit test of the urgency order.
+      Done 2026-11-05; `status.rs` computes every status, `ptyd` pushes shell changes with run
+      counters to a core that asks (`FEATURE_SHELL`), an older daemon gets a 1 s poll.
+- [x] 5.2 Status editor (`⌘⇧S`): label, back to auto, accent, background, save local, make
       global; needs-you marker over any status; sidebar sort. Verify: manual against the canvas.
-- [ ] 5.3 Global statuses in Settings and the rules engine (exit code, Claude idle time),
+      Done 2026-11-05; `StatusEditor.tsx`, sort select in the sidebar (kept per window in
+      localStorage), `e2e/statuses.spec.ts`; manual check against the canvas in the test steps.
+- [x] 5.3 Global statuses in Settings and the rules engine (exit code, Claude idle time),
       expiry, precedence manual > rule > auto (D15). Verify: `rules.test.rs` covers precedence,
-      expiry and deleting a status in use.
+      expiry and deleting a status in use. Done 2026-11-05; `crates/core/tests/rules.rs` (7
+      tests), `status_store.rs` in SQLite (migration 0003), Settings › Statuses on `⌘,`; the
+      full Settings screen comes with 6.9. CLI statuses are not persisted (D15 notes).
 
 ## 6. Context and prompts (P1)
 

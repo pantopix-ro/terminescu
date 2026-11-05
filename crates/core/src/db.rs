@@ -6,6 +6,7 @@ use std::path::Path;
 const MIGRATIONS: &[(u32, &str)] = &[
     (1, include_str!("../migrations/0001_init.sql")),
     (2, include_str!("../migrations/0002_app_state.sql")),
+    (3, include_str!("../migrations/0003_statuses.sql")),
 ];
 
 pub const SCHEMA_VERSION: u32 = MIGRATIONS[MIGRATIONS.len() - 1].0;

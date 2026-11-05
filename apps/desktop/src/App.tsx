@@ -16,7 +16,10 @@ import {
   terminalsOf,
   transcriptOf,
   type AgentUpdate,
+  type ManualStatus,
   type Pin,
+  type Shown,
+  type StatusConfig,
   type Variable,
   type Command,
   type Host,
@@ -42,6 +45,11 @@ import {
   TerminalPane,
   type ContextMode,
   type PaletteItem,
+  SORTS,
+  sortSideTabs,
+  StatusEditor,
+  StatusSettings,
+  type SortMode,
 } from "@terminescu/ui";
 import type { Terminal } from "@xterm/xterm";
 import { useEffect, useRef, useState } from "react";
@@ -74,6 +82,23 @@ function saveMode(mode: ContextMode) {
     localStorage.setItem(MODE_KEY, mode);
   } catch {
     // Storage can be off; the mode then lasts until the window closes.
+  }
+}
+
+const SORT_KEY = "terminescu.sideSort";
+function loadSort(): SortMode {
+  try {
+    const v = localStorage.getItem(SORT_KEY);
+    return (SORTS as readonly string[]).includes(v ?? "") ? (v as SortMode) : "manual";
+  } catch {
+    return "manual";
+  }
+}
+function saveSort(mode: SortMode) {
+  try {
+    localStorage.setItem(SORT_KEY, mode);
+  } catch {
+    // Storage can be off; the sort then lasts until the window closes.
   }
 }
 
@@ -112,6 +137,13 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const win = ws.windows.find((w) => w.id === windowId);
   const sideTabs = win?.sideTabs ?? [];
 
+  // Shown statuses and the saved config, from the core (D15).
+  const [statuses, setStatuses] = useState<Record<string, Shown>>({});
+  const [statusConfig, setStatusConfig] = useState<StatusConfig>({ statuses: [], rules: [], builtins: {} });
+  const [sort, setSort] = useState<SortMode>(loadSort);
+  // The sidebar order; ⌃⌘1 to ⌃⌘9 follow what the person sees.
+  const shownSides = sortSideTabs(sideTabs, statuses, sort, sideTabName);
+
   const [sideTabId, setSideTabId] = useState<string>();
   const activeSide = sideTabs.find((s) => s.id === pick(sideTabs.map((s) => s.id), sideTabId));
   const tabs = activeSide?.tabs ?? [];
@@ -125,6 +157,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const [palette, setPalette] = useState(false);
   const [mode, setMode] = useState<ContextMode>(loadMode);
   const [dragging, setDragging] = useState<string>();
+  const [sheet, setSheet] = useState<"status" | "settings">();
 
   const send = (c: Command): Promise<boolean> =>
     host.send(c).then(
@@ -209,7 +242,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const act = (id: string) => {
     const nth = /^(tab|side)_(\d)$/.exec(id);
     if (nth) {
-      const list = nth[1] === "tab" ? tabs : sideTabs;
+      const list = nth[1] === "tab" ? tabs : shownSides;
       const n = Number(nth[2]);
       const target = n === 9 ? list.at(-1) : list[n - 1];
       if (!target) return;
@@ -249,6 +282,11 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         return;
       case "palette":
         return setPalette((p) => !p);
+      case "status_editor":
+        if (activeSide) setSheet((s) => (s === "status" ? undefined : "status"));
+        return;
+      case "settings":
+        return setSheet((s) => (s === "settings" ? undefined : "settings"));
       case "context_panel":
         return changeMode(mode === "pinned" ? "auto" : "pinned");
       case "focus_left":
@@ -280,6 +318,41 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       off?.();
     };
   }, [host]);
+
+  useEffect(() => {
+    let gone = false;
+    const offs: (() => void)[] = [];
+    const keep = (o: () => void) => (gone ? o() : offs.push(o));
+    const loadConfig = () =>
+      void host
+        .statusConfig()
+        .then((c) => !gone && setStatusConfig(c))
+        .catch((e: unknown) => !gone && setError(String(e)));
+    // An event is newer than the first read, so a late read never overwrites one.
+    let heard = false;
+    void host
+      .onStatuses((m) => {
+        heard = true;
+        if (!gone) setStatuses(m);
+      })
+      .then(keep);
+    void host.onStatusConfig(loadConfig).then(keep);
+    void host.statuses().then((m) => !gone && !heard && setStatuses(m));
+    loadConfig();
+    return () => {
+      gone = true;
+      offs.forEach((o) => o());
+    };
+  }, [host]);
+  const setStatus = (targetId: string, status: ManualStatus | null) => send({ type: "SetStatus", targetId, status });
+  const closeSheet = () => {
+    setSheet(undefined);
+    refocus();
+  };
+  const report = (e: unknown) => {
+    setError(String(e));
+    throw e;
+  };
 
   // The active side tab's variables and pins, read again whenever the core says they changed.
   const [ctx, setCtx] = useState<{ side?: string; variables: Variable[]; pins: Pin[] }>({ variables: [], pins: [] });
@@ -402,7 +475,14 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           <aside className="app-side">
             <div className="app-traffic" data-tauri-drag-region />
             <SideTabList
-              sideTabs={sideTabs}
+              sideTabs={shownSides}
+              statuses={statuses}
+              builtins={statusConfig.builtins}
+              sort={sort}
+              onSort={(m) => {
+                setSort(m);
+                saveSort(m);
+              }}
               activeId={activeSide?.id}
               activeTabId={activeTab?.id}
               dragging={!!dragging}
@@ -423,6 +503,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               tabs={tabs}
               activeId={activeTab?.id}
               agents={agents}
+              statuses={statuses}
+              builtins={statusConfig.builtins}
               onSelect={(id) => {
                 if (activeSide) selectTab(activeSide.id, id);
                 refocus();
@@ -543,6 +625,22 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           )),
         ),
       )}
+      {sheet === "status" && activeSide && (
+        <StatusEditor
+          side={activeSide}
+          tab={activeTab}
+          sideName={sideTabName(activeSide)}
+          tabName={activeTab && tabName(activeTab)}
+          statuses={statuses}
+          config={statusConfig}
+          onSet={setStatus}
+          onSave={(side, look) => host.saveStatus(side, look).catch(report)}
+          onMakeGlobal={(id) => host.makeGlobal(id).catch(report)}
+          onSettings={() => setSheet("settings")}
+          onClose={closeSheet}
+        />
+      )}
+      {sheet === "settings" && <StatusSettings config={statusConfig} host={host} onError={setError} onClose={closeSheet} />}
       {palette && (
         <Palette
           items={paletteItems}

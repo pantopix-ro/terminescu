@@ -3,6 +3,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use serde::Deserialize;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
@@ -17,7 +18,9 @@ use terminescu_core::hook_install;
 use terminescu_core::launcher;
 use terminescu_core::persist;
 use terminescu_core::runtime::Runtime;
-use terminescu_core::state::{Command, CommandError, Core, Snapshot, Workspace};
+use terminescu_core::state::{Command, CommandError, Core, Id, Snapshot, Workspace};
+use terminescu_core::status::{Auto, Look, ManualStatus, RuleKind, Shown};
+use terminescu_core::status_store::{self, SavedStatus, StatusConfig};
 use terminescu_core::views::ViewId;
 use terminescu_protocol::core::{CoreMessage, CoreReply, CoreRequest};
 use terminescu_protocol::paths;
@@ -27,6 +30,10 @@ const PATCHES_EVENT: &str = "host://patches";
 const AGENT_EVENT: &str = "host://agent";
 /// A side tab's pins or variables changed; the payload is its id.
 const CONTEXT_EVENT: &str = "host://context";
+/// Every tab's and side tab's shown status, whenever one changes (D15).
+const STATUS_EVENT: &str = "host://status";
+/// Saved statuses, rules or built-in looks changed; windows reload [`status_config`].
+const STATUS_CONFIG_EVENT: &str = "host://status-config";
 /// Event that carries an app action from the menu to the focused window (D17).
 const ACTION_EVENT: &str = "menu://action";
 
@@ -140,6 +147,140 @@ fn var_extract(
 }
 
 #[tauri::command]
+fn host_statuses(state: State<'_, AppState>) -> BTreeMap<Id, Shown> {
+    state.runtime.statuses()
+}
+
+#[tauri::command(async)]
+fn status_config(state: State<'_, AppState>) -> Result<StatusConfig, String> {
+    status_store::config(&lock(&state.db)).map_err(|e| e.to_string())
+}
+
+/// Runs a change to the saved statuses, then hands the rules to the runtime and tells every
+/// window to reload the config.
+fn config_change<T>(
+    app: &AppHandle,
+    state: &AppState,
+    f: impl FnOnce(&Db) -> Result<T, status_store::StoreError>,
+) -> Result<T, String> {
+    let db = lock(&state.db);
+    let out = f(&db).map_err(|e| e.to_string())?;
+    match status_store::rules(&db) {
+        Ok(rules) => state.runtime.set_status_rules(rules),
+        Err(e) => eprintln!("terminescu: status rules not reloaded: {e}"),
+    }
+    drop(db);
+    let _ = app.emit(STATUS_CONFIG_EVENT, ());
+    Ok(out)
+}
+
+#[tauri::command(async)]
+fn status_save(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    side_tab: Option<String>,
+    look: Look,
+) -> Result<SavedStatus, String> {
+    config_change(&app, &state, |db| {
+        status_store::add_status(db, side_tab.as_deref(), &look)
+    })
+}
+
+/// Edits a saved status; every tab using it takes the new look.
+#[tauri::command(async)]
+fn status_update(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    look: Look,
+) -> Result<SavedStatus, String> {
+    let saved = config_change(&app, &state, |db| {
+        status_store::update_status(db, &id, &look)
+    })?;
+    state
+        .runtime
+        .command(Command::RestyleStatus {
+            status_id: id,
+            status: Some(ManualStatus {
+                status_id: Some(saved.id.clone()),
+                look: saved.look.clone(),
+            }),
+        })
+        .map_err(|e| e.to_string())?;
+    Ok(saved)
+}
+
+/// Deletes a saved status and its rules; tabs using it go back to auto.
+#[tauri::command(async)]
+fn status_delete(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<(), String> {
+    config_change(&app, &state, |db| status_store::delete_status(db, &id))?;
+    state
+        .runtime
+        .command(Command::RestyleStatus {
+            status_id: id,
+            status: None,
+        })
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command(async)]
+fn status_make_global(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<SavedStatus, String> {
+    config_change(&app, &state, |db| status_store::make_global(db, &id))
+}
+
+#[tauri::command(async)]
+fn status_reorder(app: AppHandle, state: State<'_, AppState>, ids: Vec<Id>) -> Result<(), String> {
+    config_change(&app, &state, |db| status_store::reorder(db, &ids))
+}
+
+#[tauri::command(async)]
+fn rule_add(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    status_id: String,
+    kind: RuleKind,
+) -> Result<terminescu_core::status::Rule, String> {
+    config_change(&app, &state, |db| {
+        status_store::add_rule(db, &status_id, &kind)
+    })
+}
+
+#[tauri::command(async)]
+fn rule_toggle(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    enabled: bool,
+) -> Result<(), String> {
+    config_change(&app, &state, |db| {
+        status_store::set_rule_enabled(db, &id, enabled)
+    })
+}
+
+#[tauri::command(async)]
+fn rule_delete(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<(), String> {
+    config_change(&app, &state, |db| status_store::delete_rule(db, &id))
+}
+
+/// Renames or recolors a built-in status; `None` restores its default look.
+#[tauri::command(async)]
+fn builtin_set(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    auto: Auto,
+    look: Option<Look>,
+) -> Result<(), String> {
+    config_change(&app, &state, |db| {
+        status_store::set_builtin(db, auto, look.as_ref())
+    })
+}
+
+#[tauri::command]
 fn host_command(state: State<'_, AppState>, command: Command) -> Result<u64, CommandError> {
     // The runtime emits each batch under its core lock, so windows see them in rev order.
     state.runtime.command(command)
@@ -247,10 +388,35 @@ fn start_runtime(
         )?;
         DaemonClient::connect(&run.ptyd_socket, events)
     });
-    let saved = persist::load(&lock(&db))?;
+    let (saved, rules) = {
+        let db = lock(&db);
+        (persist::load(&db)?, status_store::rules(&db)?)
+    };
+    // Closing a side tab deletes its local statuses and their rules (ON DELETE CASCADE), so the
+    // runtime gets the rules again and windows reload the config.
+    let sides = Mutex::new(
+        saved
+            .as_ref()
+            .map(|s| side_ids(&s.workspace))
+            .unwrap_or_default(),
+    );
+    let rt = hooks.clone();
+    let handle = app.clone();
     let persist = Box::new(move |saved: &persist::Saved| {
-        if let Err(e) = persist::save(&lock(&db), saved) {
+        let db = lock(&db);
+        if let Err(e) = persist::save(&db, saved) {
             eprintln!("terminescu: layout not saved: {e}");
+            return;
+        }
+        let now = side_ids(&saved.workspace);
+        let closed = lock(&sides).difference(&now).next().is_some();
+        *lock(&sides) = now;
+        if let (true, Some(rt)) = (closed, rt.get()) {
+            match status_store::rules(&db) {
+                Ok(rules) => rt.set_status_rules(rules),
+                Err(e) => eprintln!("terminescu: status rules not reloaded: {e}"),
+            }
+            let _ = handle.emit(STATUS_CONFIG_EVENT, ());
         }
     });
     let (runtime, windows) = Runtime::start(
@@ -266,17 +432,30 @@ fn start_runtime(
             eprintln!("terminescu: agent broadcast failed: {e}");
         }
     }));
+    let handle = app.clone();
+    runtime.on_status(Box::new(move |map| {
+        if let Err(e) = handle.emit(STATUS_EVENT, map) {
+            eprintln!("terminescu: status broadcast failed: {e}");
+        }
+    }));
+    runtime.set_status_rules(rules);
     let _ = hooks.set(runtime.clone());
     Ok((runtime, windows))
 }
 
-fn lock(db: &Mutex<Db>) -> std::sync::MutexGuard<'_, Db> {
-    db.lock().unwrap_or_else(|e| e.into_inner())
+fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// Answers `terminescu hook`, `status` and saved `var set` (D34, D36). Statuses arrive with
-/// group 5 and saved variables with task 6.1; until then those calls get `not_built`, which the
-/// CLI turns into a warning.
+fn side_ids(ws: &Workspace) -> std::collections::HashSet<Id> {
+    ws.windows
+        .iter()
+        .flat_map(|w| w.side_tabs.iter().map(|s| s.id.clone()))
+        .collect()
+}
+
+/// Answers `terminescu hook`, `status` and saved `var set` (D34, D36). Saved variables arrive
+/// with task 6.1; until then `var set` gets `not_built`, which the CLI turns into a warning.
 fn serve_core_socket(path: &Path, runtime: Arc<OnceLock<Runtime>>) -> std::io::Result<()> {
     core_socket::serve(
         path,
@@ -289,9 +468,18 @@ fn serve_core_socket(path: &Path, runtime: Arc<OnceLock<Runtime>>) -> std::io::R
                 }
                 CoreReply::Ok
             }
-            CoreRequest::Status { .. } => {
-                CoreReply::error("not_built", "statuses arrive in a later version")
-            }
+            // A status from `terminescu status`; it lives until it expires or the app quits.
+            CoreRequest::Status {
+                label,
+                color,
+                expiry,
+            } => match runtime.get() {
+                Some(rt) => match rt.status_from_cli(message.pane, label, color, expiry) {
+                    Ok(()) => CoreReply::Ok,
+                    Err(e) => CoreReply::error("bad_status", e),
+                },
+                None => CoreReply::error("starting", "Terminescu is still starting"),
+            },
             CoreRequest::VarSet { .. } => {
                 CoreReply::error("not_built", "saved variables arrive in a later version")
             }
@@ -418,6 +606,17 @@ fn main() {
             pin_remove,
             vars_list,
             var_extract,
+            host_statuses,
+            status_config,
+            status_save,
+            status_update,
+            status_delete,
+            status_make_global,
+            status_reorder,
+            rule_add,
+            rule_toggle,
+            rule_delete,
+            builtin_set,
             host_command,
             pane_open,
             pane_close,

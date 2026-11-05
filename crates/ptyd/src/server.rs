@@ -21,8 +21,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 use terminescu_protocol::paths::{CORE_SOCKET_ENV, PANE_ID_ENV, PTYD_SOCKET_ENV, peer_uid};
 use terminescu_protocol::{
-    Control, Frame, PROTOCOL_VERSION, PaneId, PaneInfo, SpawnSpec, decode, encode, is_var_name,
-    negotiate,
+    Control, FEATURE_SHELL, Frame, PROTOCOL_VERSION, PaneId, PaneInfo, ShellState, SpawnSpec,
+    decode, encode, is_var_name, negotiate,
 };
 
 /// Frames a client may have queued before it counts as stuck.
@@ -73,6 +73,8 @@ struct Pane {
 struct ClientHandle {
     tx: SyncSender<Vec<u8>>,
     stream: UnixStream,
+    /// Asked for `Control::Shell` pushes in its `Hello`.
+    shell: bool,
 }
 
 struct Shared {
@@ -115,6 +117,19 @@ impl Shared {
         let bytes = encode(frame);
         let targets: Vec<(u64, SyncSender<Vec<u8>>)> = lock(&self.clients)
             .iter()
+            .map(|(id, c)| (*id, c.tx.clone()))
+            .collect();
+        for (id, tx) in targets {
+            self.push(id, &tx, bytes.clone());
+        }
+    }
+
+    /// A pane's new shell state, to the clients that asked for it.
+    fn broadcast_shell(&self, pane: PaneId, shell: ShellState) {
+        let bytes = encode(&Frame::Control(Control::Shell { pane, shell }));
+        let targets: Vec<(u64, SyncSender<Vec<u8>>)> = lock(&self.clients)
+            .iter()
+            .filter(|(_, c)| c.shell)
             .map(|(id, c)| (*id, c.tx.clone()))
             .collect();
         for (id, tx) in targets {
@@ -233,11 +248,18 @@ impl Shared {
                     let mut st = lock(&p.state);
                     st.screen.feed(&buf[..n]);
                     let PaneState { osc, shell, .. } = &mut *st;
+                    let mut changed = false;
                     osc.feed(&buf[..n], |payload| {
-                        shell.apply(payload);
+                        changed |= shell.apply(payload);
                     });
                     st.subscribers
                         .retain(|s| shared.push(s.client, &s.tx, frame.clone()));
+                    // One push per chunk: the counters carry runs that started and ended in it.
+                    let pushed = changed.then(|| st.shell.state.clone());
+                    drop(st);
+                    if let Some(state) = pushed {
+                        shared.broadcast_shell(p.id, state);
+                    }
                 }
             })?;
 
@@ -378,7 +400,12 @@ fn serve_client(shared: Arc<Shared>, mut stream: UnixStream) {
             };
             buf.drain(..used);
             if !greeted {
-                let Frame::Control(Control::Hello { versions, client }) = frame else {
+                let Frame::Control(Control::Hello {
+                    versions,
+                    client,
+                    features,
+                }) = frame
+                else {
                     reply(
                         &tx,
                         error("hello_first", "the first message must be hello", None),
@@ -405,6 +432,11 @@ fn serve_client(shared: Arc<Shared>, mut stream: UnixStream) {
                         version,
                         daemon: format!("terminescu-ptyd {}", env!("CARGO_PKG_VERSION")),
                         instance: shared.instance.clone(),
+                        features: features
+                            .iter()
+                            .filter(|f| f.as_str() == FEATURE_SHELL)
+                            .cloned()
+                            .collect(),
                     },
                 );
                 let Ok(handle) = stream.try_clone() else {
@@ -415,6 +447,7 @@ fn serve_client(shared: Arc<Shared>, mut stream: UnixStream) {
                     ClientHandle {
                         tx: tx.clone(),
                         stream: handle,
+                        shell: features.iter().any(|f| f == FEATURE_SHELL),
                     },
                 );
                 greeted = true;

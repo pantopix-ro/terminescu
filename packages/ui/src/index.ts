@@ -21,3 +21,8 @@ export { DOT, tabAgent, type Agents } from "./agents";
 export { anchor, quoteOf, QUOTE_CONTEXT, type Quote } from "./anchor";
 export { suggestName } from "./names";
 export { EXTRACT_EVENT, PIN_EVENT, TranscriptPane, type Reveal, type TextEntry } from "./TranscriptPane";
+export { StatusChip } from "./StatusChip";
+export { StatusEditor, type StatusEditorProps } from "./StatusEditor";
+export { StatusSettings, type StatusSettingsProps } from "./StatusSettings";
+export { Swatches } from "./Swatches";
+export { BUILTIN_LOOKS, builtinLook, chipOf, chipStyle, rowStyle, SORTS, sortSideTabs, type Builtins, type Chip, type SortMode } from "./status";

@@ -37,8 +37,8 @@ The sidebar SHALL keep manual order by default and SHALL sort by background, sta
 
 ### Requirement: Global and local statuses
 Settings > Statuses SHALL hold global statuses with label, accent, background and order,
-offered on every side tab and tab. A status saved from the editor SHALL be local to its side tab
-or tab and SHALL offer "make global". Deleting a status in use SHALL return those side tabs and
+offered on every side tab and tab. A status saved from the editor SHALL be local to its side tab,
+including one saved while editing a tab of it, and SHALL offer "make global". Deleting a status in use SHALL return those side tabs and
 tabs to their auto status.
 
 #### Scenario: Promote a local status

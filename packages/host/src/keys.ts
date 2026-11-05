@@ -13,6 +13,7 @@ export const ACTIONS: readonly ActionDef[] = actionsFile.actions;
 
 const KEY_NAMES: Record<string, string> = {
   backslash: "\\",
+  comma: ",",
   left: "ArrowLeft",
   right: "ArrowRight",
   up: "ArrowUp",
@@ -44,6 +45,7 @@ function keyOf(e: KeyboardEvent): string {
   if (/^Key[A-Z]$/.test(e.code)) return e.code.slice(3).toLowerCase();
   if (/^Digit[0-9]$/.test(e.code)) return e.code.slice(5);
   if (e.code === "Backslash") return "\\";
+  if (e.code === "Comma") return ",";
   return e.key.length === 1 ? e.key.toLowerCase() : e.key;
 }
 

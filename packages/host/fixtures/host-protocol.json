@@ -50,14 +50,27 @@
         }
       ]
     },
-    { "rev": 8, "patches": [{ "type": "LayoutChanged", "tabId": "t3", "layout": { "type": "pane", "id": "p3" } }] }
+    { "rev": 8, "patches": [{ "type": "LayoutChanged", "tabId": "t3", "layout": { "type": "pane", "id": "p3" } }] },
+    {
+      "rev": 9,
+      "patches": [
+        { "type": "StatusSet", "id": "s3", "status": { "statusId": "st-review", "label": "Review", "accent": "magenta", "background": "magenta" } },
+        { "type": "StatusSet", "id": "t2", "status": { "label": "Blocked", "accent": "red", "background": null } }
+      ]
+    },
+    { "rev": 10, "patches": [{ "type": "StatusSet", "id": "t2", "status": null }] }
   ],
   "end": {
     "windows": [
       {
         "id": "w1",
         "sideTabs": [
-          { "id": "s3", "title": null, "tabs": [{ "id": "t2", "title": "dev server", "layout": { "type": "pane", "id": "p2" } }] },
+          {
+            "id": "s3",
+            "title": null,
+            "tabs": [{ "id": "t2", "title": "dev server", "layout": { "type": "pane", "id": "p2" } }],
+            "status": { "statusId": "st-review", "label": "Review", "accent": "magenta", "background": "magenta" }
+          },
           {
             "id": "s2",
             "title": null,
@@ -91,6 +104,9 @@
     { "type": "ClosePane", "paneId": "p5" },
     { "type": "ResizeSplit", "splitId": "x1", "sizes": [300, 700] },
     { "type": "ResumePane", "paneId": "p3" },
-    { "type": "DismissResume", "paneId": "p3" }
+    { "type": "DismissResume", "paneId": "p3" },
+    { "type": "SetStatus", "targetId": "t2", "status": { "label": "Blocked", "accent": "red", "background": null } },
+    { "type": "SetStatus", "targetId": "s3", "status": null },
+    { "type": "RestyleStatus", "statusId": "st-review", "status": { "statusId": "st-review", "label": "Review", "accent": "magenta", "background": "magenta" } }
   ]
 }

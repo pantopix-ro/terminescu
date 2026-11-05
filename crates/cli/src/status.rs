@@ -84,7 +84,7 @@ pub fn run(args: &[String]) -> ExitCode {
     );
     match request(&core_socket(), &message, TIMEOUT) {
         Ok(CoreReply::Ok) => ExitCode::SUCCESS,
-        Ok(CoreReply::Error { code, message }) if code == "not_built" => {
+        Ok(CoreReply::Error { code, message }) if code == "not_built" || code == "starting" => {
             warn(&format!("status not set: {message}"))
         }
         Ok(CoreReply::Error { code, message }) => fail(&format!("{code}: {message}")),

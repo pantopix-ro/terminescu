@@ -12,7 +12,9 @@ use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use terminescu_protocol::client::{Client, ClientError};
-use terminescu_protocol::{Control, Frame, PaneId, PaneInfo, SpawnSpec, decode, encode};
+use terminescu_protocol::{
+    Control, FEATURE_SHELL, Frame, PaneId, PaneInfo, ShellState, SpawnSpec, decode, encode,
+};
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -30,6 +32,11 @@ pub enum DaemonEvent {
     Exited {
         pane: PaneId,
         code: Option<i32>,
+    },
+    /// A command started or ended, or the cwd moved (statuses, D15).
+    Shell {
+        pane: PaneId,
+        shell: ShellState,
     },
     /// The connection ended; the client is no longer usable.
     Disconnected,
@@ -57,6 +64,8 @@ pub struct DaemonClient {
     next_req: AtomicU64,
     pub version: u32,
     pub instance: String,
+    /// The daemon pushes shell changes (`FEATURE_SHELL`); an older one leaves them to polling.
+    pub pushes_shell: bool,
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -67,12 +76,14 @@ impl DaemonClient {
     /// Connects, completes the handshake and starts the reader thread, which sends every
     /// event to `events` and ends with `Disconnected`.
     pub fn connect(socket: &Path, events: Sender<DaemonEvent>) -> Result<Self, DaemonError> {
-        let client = Client::connect(
+        let client = Client::connect_with(
             socket,
             concat!("terminescu-core ", env!("CARGO_PKG_VERSION")),
+            &[FEATURE_SHELL],
         )?;
         let version = client.version;
         let instance = client.instance.clone();
+        let pushes_shell = client.features.iter().any(|f| f == FEATURE_SHELL);
         let (stream, leftover) = client.into_parts();
         stream.set_read_timeout(None)?;
         let reader = stream.try_clone()?;
@@ -87,6 +98,7 @@ impl DaemonClient {
             next_req: AtomicU64::new(1),
             version,
             instance,
+            pushes_shell,
         })
     }
 
@@ -185,6 +197,7 @@ fn read_loop(
                         Some(DaemonEvent::Attached { pane, cols, rows })
                     }
                     Control::Exited { pane, code } => Some(DaemonEvent::Exited { pane, code }),
+                    Control::Shell { pane, shell } => Some(DaemonEvent::Shell { pane, shell }),
                     Control::Spawned { req, .. }
                     | Control::Panes { req, .. }
                     | Control::Error { req: Some(req), .. } => {

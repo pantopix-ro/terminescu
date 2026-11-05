@@ -4,7 +4,8 @@
 //! in rev order. The daemon work a batch implies (spawn, close, side tab changes) runs after the
 //! core lock is released but under the effects lock, which the command takes before letting go
 //! of the core lock, so effects also run in rev order. Lock order: core, then effects, then the
-//! small locks (panes, views, daemon).
+//! small locks (panes, views, daemon). `shells` comes before `status`, so shell edges reach the
+//! status engine in the order they were stored.
 //!
 //! The daemon work comes from comparing the panes before and after a batch: a pane that appeared
 //! gets a shell, a pane that left loses it, a pane that changed side tab tells the daemon.
@@ -22,14 +23,16 @@ use crate::daemon::{DaemonClient, DaemonError, DaemonEvent};
 use crate::layout::Layout;
 use crate::persist::{PaneRecord, Saved};
 use crate::state::{Command, CommandError, Core, Id, PatchBatch, Snapshot, Workspace};
+use crate::status::{self, Engine, Look, PaneFacts, Rule, Shown, Until};
 use crate::transcript::Tail;
 use crate::views::{Action, Sink, ViewId, Views};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
-use terminescu_protocol::{PaneId, PaneInfo, SpawnSpec};
+use terminescu_protocol::core::Expiry;
+use terminescu_protocol::{PaneId, PaneInfo, ShellState, SpawnSpec};
 
 /// Size of a new pane until its view reports its own (task 2.5).
 const DEFAULT_SIZE: (u16, u16) = (80, 24);
@@ -38,6 +41,8 @@ const RECONNECT_DELAY: Duration = Duration::from_millis(500);
 const FRAME: Duration = Duration::from_millis(16);
 /// How often the cwds of the panes are read for the next start (D23).
 const CWD_POLL: Duration = Duration::from_secs(5);
+/// The poll for a daemon that does not push shell changes, so statuses lag at most this long.
+const SHELL_POLL: Duration = Duration::from_secs(1);
 /// How many unlinked exits `pane_exited` remembers for `spawn_for`.
 const EARLY_EXITS: usize = 64;
 /// How often a waiting session's transcript is read for a denial (D34).
@@ -46,6 +51,10 @@ const TAIL_POLL: Duration = Duration::from_millis(250);
 pub type Emit = Box<dyn Fn(&PatchBatch) + Send + Sync>;
 /// Receives each change of a pane's Claude session state (task 4.2).
 pub type AgentSink = Box<dyn Fn(&AgentUpdate) + Send + Sync>;
+/// Every tab's and side tab's status, sent whenever one changes (D15).
+pub type StatusSink = Box<dyn Fn(&BTreeMap<Id, Shown>) + Send + Sync>;
+/// How often expiries and Claude idle rules are checked when nothing else happens.
+const STATUS_TICK: Duration = Duration::from_secs(1);
 /// Makes sure a daemon runs, then connects to it. Called at start and after a drop.
 pub type Connect =
     Box<dyn Fn(mpsc::Sender<DaemonEvent>) -> Result<DaemonClient, DaemonError> + Send + Sync>;
@@ -115,6 +124,15 @@ impl Panes {
     }
 }
 
+#[derive(Default)]
+struct StatusState {
+    engine: Engine,
+    /// The map last sent, so an unchanged one is not sent again.
+    last: BTreeMap<Id, Shown>,
+    /// Per pane with a Claude session: its state and since when, for idle rules.
+    seen: HashMap<Id, (AgentState, i64)>,
+}
+
 struct Inner {
     core: Mutex<Core>,
     effects: Mutex<()>,
@@ -128,6 +146,13 @@ struct Inner {
     /// Transcript files found by session id, so a polled transcript pane walks the projects
     /// folder once.
     paths: Mutex<HashMap<String, std::path::PathBuf>>,
+    /// The last shell state per pane, from daemon pushes and the cwd poll.
+    shells: Mutex<HashMap<Id, ShellState>>,
+    status: Mutex<StatusState>,
+    /// Set when something a status depends on changed; the status thread wakes on it.
+    status_dirty: Mutex<bool>,
+    status_wake: Condvar,
+    status_sink: Mutex<Option<StatusSink>>,
     queued: Condvar,
     emit: Emit,
     connect: Connect,
@@ -248,6 +273,11 @@ impl Runtime {
                 agents: Mutex::default(),
                 agent_sink: Mutex::default(),
                 paths: Mutex::default(),
+                shells: Mutex::default(),
+                status: Mutex::default(),
+                status_dirty: Mutex::new(true),
+                status_wake: Condvar::new(),
+                status_sink: Mutex::default(),
                 queued: Condvar::new(),
                 emit,
                 connect,
@@ -274,6 +304,7 @@ impl Runtime {
         rt.thread("view-flush", |me| me.flush())?;
         rt.thread("cwd-poll", |me| me.poll_cwds())?;
         rt.thread("agent-tail", |me| me.tail_agents())?;
+        rt.thread("statuses", |me| me.run_statuses())?;
         Ok((rt, windows))
     }
 
@@ -309,6 +340,7 @@ impl Runtime {
         self.refresh_cwds();
         self.inner.stopped.store(true, Ordering::SeqCst);
         self.inner.queued.notify_all();
+        self.mark_status();
         if let Some(client) = lock(&self.inner.daemon).take() {
             client.shutdown();
         }
@@ -442,6 +474,7 @@ impl Runtime {
         };
         let batch = core.handle(cmd)?;
         (self.inner.emit)(&batch);
+        self.mark_status();
         let ws = core.workspace().clone();
         let guard = lock(&self.inner.effects);
         drop(core);
@@ -695,6 +728,8 @@ impl Runtime {
             }]);
         }
         drop(agents);
+        lock(&self.inner.shells).remove(pane);
+        self.mark_status();
     }
 
     /// Applies a hook event to the pane's agent and tells the UI when it shows differently.
@@ -724,8 +759,12 @@ impl Runtime {
                 agent: after,
             })
         };
+        let changed = update.is_some();
         self.tell(update.into_iter().collect());
         drop(agents);
+        if changed {
+            self.mark_status();
+        }
     }
 
     /// Reads the transcripts of waiting sessions: a denied prompt or a finished turn ends
@@ -770,15 +809,172 @@ impl Runtime {
                     *tail = Some(t);
                 }
             }
+            let changed = !updates.is_empty();
             self.tell(updates);
             drop(agents);
+            if changed {
+                self.mark_status();
+            }
+        }
+    }
+
+    /// Asks the status thread to compute the statuses again.
+    fn mark_status(&self) {
+        *lock(&self.inner.status_dirty) = true;
+        self.inner.status_wake.notify_one();
+    }
+
+    /// A pane's shell state from a daemon push or the poll. A stale poll result, with lower
+    /// run counters than a push already seen, is ignored.
+    fn shell_changed(&self, pane: &str, next: ShellState) {
+        {
+            // `shells` stays held while the engine sees the edge, so a push and a poll for the
+            // same pane reach it in the order they were stored.
+            let mut shells = lock(&self.inner.shells);
+            let prev = shells.get(pane).cloned();
+            if let Some(p) = &prev
+                && (next.started < p.started || next.ended < p.ended || *p == next)
+            {
+                return;
+            }
+            shells.insert(pane.into(), next.clone());
+            lock(&self.inner.status)
+                .engine
+                .shell(pane, prev.as_ref(), &next);
+        }
+        self.mark_status();
+    }
+
+    /// A pane got a new shell: its run counters start over, and statuses waiting for the old
+    /// shell's next command go.
+    fn shell_restarted(&self, pane: &str) {
+        let mut shells = lock(&self.inner.shells);
+        shells.remove(pane);
+        lock(&self.inner.status).engine.shell_restarted(pane);
+    }
+
+    /// `terminescu status` from a daemon pane (D15, D36): sets or clears the dynamic status of
+    /// that pane's tab.
+    pub fn status_from_cli(
+        &self,
+        daemon: PaneId,
+        label: Option<String>,
+        color: Option<String>,
+        expiry: Expiry,
+    ) -> Result<(), String> {
+        let pane = self
+            .pane_of_daemon(daemon)
+            .ok_or_else(|| "this pane is not in the layout".to_string())?;
+        let look = label
+            .map(|label| {
+                let look = Look {
+                    label: label.trim().into(),
+                    accent: color,
+                    background: None,
+                };
+                look.check().map(|_| look).map_err(|e| e.to_string())
+            })
+            .transpose()?;
+        let until = match expiry {
+            Expiry::Never => Until::Never,
+            Expiry::After { ms } => {
+                Until::At(crate::now_ms().saturating_add(i64::try_from(ms).unwrap_or(i64::MAX)))
+            }
+            Expiry::CommandEnd => Until::CommandEnd,
+        };
+        lock(&self.inner.status).engine.cli(&pane, look, until);
+        self.mark_status();
+        Ok(())
+    }
+
+    /// The rules from Settings › Statuses, after any change there.
+    pub fn set_status_rules(&self, rules: Vec<Rule>) {
+        lock(&self.inner.status).engine.set_rules(rules);
+        self.mark_status();
+    }
+
+    /// Where the UI gets status changes; the current ones come from [`Runtime::statuses`].
+    pub fn on_status(&self, sink: StatusSink) {
+        *lock(&self.inner.status_sink) = Some(sink);
+    }
+
+    /// Every tab's and side tab's status now.
+    pub fn statuses(&self) -> BTreeMap<Id, Shown> {
+        self.compute_statuses()
+    }
+
+    /// Recomputes the statuses and sends them when they changed. The send happens under the
+    /// `status` lock, so windows get the maps in the order they were made.
+    fn compute_statuses(&self) -> BTreeMap<Id, Shown> {
+        let ws = self.workspace();
+        let agents: HashMap<Id, AgentState> = lock(&self.inner.agents)
+            .iter()
+            .map(|(p, (a, _))| (p.clone(), a.state))
+            .collect();
+        let shells = lock(&self.inner.shells).clone();
+        let now = crate::now_ms();
+        let terminals: Vec<Id> = ws.terminal_sides().into_iter().map(|(p, _)| p).collect();
+        let mut st = lock(&self.inner.status);
+        let mut idle: HashMap<Id, Option<i64>> = HashMap::new();
+        for pane in &terminals {
+            let since = agents.get(pane).map(|state| {
+                let seen = st.seen.entry(pane.clone()).or_insert((*state, now));
+                if seen.0 != *state {
+                    *seen = (*state, now);
+                }
+                seen.1
+            });
+            let resting = matches!(agents.get(pane), Some(AgentState::Done | AgentState::Idle));
+            idle.insert(pane.clone(), since.filter(|_| resting));
+        }
+        st.seen.retain(|p, _| agents.contains_key(p));
+        st.engine.tick(now, &idle);
+        let live: HashSet<&str> = terminals.iter().map(String::as_str).collect();
+        st.engine.retain_panes(&live);
+        let facts: HashMap<Id, PaneFacts> = terminals
+            .iter()
+            .map(|p| {
+                (
+                    p.clone(),
+                    PaneFacts {
+                        agent: agents.get(p).copied(),
+                        shell: shells.get(p).cloned(),
+                    },
+                )
+            })
+            .collect();
+        let map = status::compute(&ws, &facts, &st.engine);
+        if map != st.last {
+            st.last = map.clone();
+            if let Some(sink) = lock(&self.inner.status_sink).as_ref() {
+                sink(&map);
+            }
+        }
+        map
+    }
+
+    /// Recomputes statuses when something changed, and every second for expiries.
+    fn run_statuses(self) {
+        while !self.inner.stopped.load(Ordering::SeqCst) {
+            {
+                let dirty = lock(&self.inner.status_dirty);
+                let (mut dirty, _) = self
+                    .inner
+                    .status_wake
+                    .wait_timeout_while(dirty, STATUS_TICK, |d| !*d)
+                    .unwrap_or_else(|e| e.into_inner());
+                *dirty = false;
+            }
+            self.compute_statuses();
         }
     }
 
     /// Reads each pane's cwd every few seconds, so a reboot restarts shells where they were.
     fn poll_cwds(self) {
         while !self.inner.stopped.load(Ordering::SeqCst) {
-            std::thread::sleep(CWD_POLL);
+            // A daemon without shell pushes gets polled faster, so statuses keep up.
+            let pushes = self.daemon().is_none_or(|c| c.pushes_shell);
+            std::thread::sleep(if pushes { CWD_POLL } else { SHELL_POLL });
             self.refresh_cwds();
         }
     }
@@ -791,6 +987,16 @@ impl Runtime {
         let Ok(list) = client.list() else {
             return;
         };
+        // The poll also covers a daemon too old to push shell changes.
+        let shells: Vec<(Id, ShellState)> = {
+            let panes = lock(&self.inner.panes);
+            list.iter()
+                .filter_map(|i| Some((panes.by_daemon.get(&i.pane)?.clone(), i.shell.clone())))
+                .collect()
+        };
+        for (pane, shell) in shells {
+            self.shell_changed(&pane, shell);
+        }
         self.update_meta(|panes| {
             let mut changed = false;
             for info in list {
@@ -826,6 +1032,11 @@ impl Runtime {
                         }
                     }
                     DaemonEvent::Exited { pane, .. } => self.pane_exited(pane),
+                    DaemonEvent::Shell { pane, shell } => {
+                        if let Some(p) = self.pane_of_daemon(pane) {
+                            self.shell_changed(&p, shell);
+                        }
+                    }
                     DaemonEvent::Disconnected => break,
                 }
             }
@@ -874,6 +1085,10 @@ impl Runtime {
                     // A new daemon reuses pane ids: none of ours mean anything there.
                     if lock(&self.inner.instance).as_str() != client.instance {
                         lock(&self.inner.panes).clear_links();
+                        let panes: Vec<Id> = lock(&self.inner.shells).keys().cloned().collect();
+                        for pane in panes {
+                            self.shell_restarted(&pane);
+                        }
                     }
                     let orphans = std::mem::take(&mut lock(&self.inner.panes).orphans);
                     for d in orphans {
@@ -910,8 +1125,10 @@ impl Runtime {
                             rec.session = None;
                             rec.cwd.clone()
                         };
+                        self.shell_restarted(&pane);
                         self.spawn_for(&client, &pane, &side, cwd.as_deref());
                     }
+                    self.mark_status();
                     lock(&self.inner.instance).clone_from(&client.instance);
                     *lock(&self.inner.daemon) = Some(client);
                     self.save(&ws);

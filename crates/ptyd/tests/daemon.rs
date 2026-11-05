@@ -283,6 +283,7 @@ fn unknown_protocol_version_is_refused() {
         Control::Hello {
             versions: vec![99],
             client: "future".into(),
+            features: vec![],
         },
     )))
     .unwrap();
@@ -457,4 +458,40 @@ fn a_secret_outlives_its_client_and_expires_after_its_ttl() {
         Control::Error { code, .. } => assert_eq!(code, "no_side_tab"),
         other => panic!("unexpected {other:?}"),
     }
+}
+
+#[test]
+fn a_client_that_asks_gets_shell_pushes_with_run_counters() {
+    let d = Daemon::start(60);
+    let mut c =
+        Client::connect_with(&d.socket, "test", &[terminescu_protocol::FEATURE_SHELL]).unwrap();
+    assert_eq!(c.features, [terminescu_protocol::FEATURE_SHELL]);
+    let plain = Client::connect_with(&d.socket, "test", &["telepathy"]).unwrap();
+    assert!(plain.features.is_empty(), "unknown features are not echoed");
+    c.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    // Two runs in one write: the counters still show both.
+    let script = r"printf '\033]633;E;pnpm test\007\033]133;C;src=terminescu\007\033]133;D;1;src=terminescu\007\033]133;C;src=terminescu\007\033]133;D;3;src=terminescu\007'; sleep 5";
+    let pane = spawn(&mut c, &["/bin/sh", "-c", script]);
+    let shell = c
+        .recv_until(|f| match f {
+            Frame::Control(Control::Shell { pane: p, shell }) if *p == pane && shell.ended == 2 => {
+                Some(shell.clone())
+            }
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(shell.started, 2);
+    assert_eq!(shell.last_exit, Some(3));
+    assert_eq!(shell.command.as_deref(), Some("pnpm test"));
+    assert!(!shell.running);
+
+    // A client that did not ask never sees one.
+    let mut quiet = d.client();
+    quiet
+        .set_read_timeout(Some(Duration::from_millis(300)))
+        .unwrap();
+    spawn(&mut quiet, &["/bin/sh", "-c", script]);
+    let got =
+        quiet.recv_until(|f| matches!(f, Frame::Control(Control::Shell { .. })).then_some(()));
+    assert!(got.is_err(), "no shell push without the feature");
 }

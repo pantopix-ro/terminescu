@@ -1,7 +1,9 @@
 import { horizontalListSortingStrategy, SortableContext, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { Tab } from "@terminescu/host";
+import type { Shown, Tab } from "@terminescu/host";
 import { DOT, tabAgent, type Agents } from "./agents";
+import { StatusChip } from "./StatusChip";
+import { chipOf, rowStyle, type Builtins } from "./status";
 import { tabName } from "./SideTabList";
 
 export interface TabBarProps {
@@ -12,18 +14,25 @@ export interface TabBarProps {
   onNew(): void;
   /** Claude sessions by pane: a tab with one shows the agent icon and its state (D34). */
   agents?: Agents;
+  /** Shown statuses by tab id: a set status shows as a chip and colors the tab (D15). */
+  statuses?: Readonly<Record<string, Shown>>;
+  builtins?: Builtins;
 }
 
 function TabItem({
   tab,
   active,
   agents,
+  shown,
+  builtins,
   onSelect,
   onClose,
 }: {
   tab: Tab;
   active: boolean;
   agents: Agents;
+  shown: Shown | undefined;
+  builtins: Builtins;
   onSelect(): void;
   onClose(): void;
 }) {
@@ -39,8 +48,8 @@ function TabItem({
       aria-selected={active}
       data-tab={tab.id}
       data-agent={agent?.state}
-      className={`ao-tab${active ? " active" : ""}${isDragging ? " placeholder" : ""}${agent?.state === "waiting" ? " wait" : ""}`}
-      style={{ transform: CSS.Translate.toString(transform), transition }}
+      className={`ao-tab${active ? " active" : ""}${isDragging ? " placeholder" : ""}${shown?.waiting || agent?.state === "waiting" ? " wait" : ""}`}
+      style={{ transform: CSS.Translate.toString(transform), transition, ...rowStyle(shown?.look, "tab") }}
       onClick={onSelect}
       onKeyDown={(e) => e.key === "Enter" && onSelect()}
     >
@@ -51,6 +60,7 @@ function TabItem({
         </>
       )}
       <span className="n">{tabName(tab)}</span>
+      {shown?.look && <StatusChip chip={chipOf(shown, builtins)} />}
       <button
         type="button"
         className="x"
@@ -68,7 +78,7 @@ function TabItem({
 }
 
 /** The active side tab's tabs, across the top like browser tabs. Drag one to reorder it. */
-export function TabBar({ tabs, activeId, onSelect, onClose, onNew, agents = {} }: TabBarProps) {
+export function TabBar({ tabs, activeId, onSelect, onClose, onNew, agents = {}, statuses = {}, builtins = {} }: TabBarProps) {
   return (
     <div className="ao-tabs" role="tablist" data-tauri-drag-region>
       <SortableContext items={tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
@@ -78,6 +88,8 @@ export function TabBar({ tabs, activeId, onSelect, onClose, onNew, agents = {} }
             tab={t}
             active={t.id === activeId}
             agents={agents}
+            shown={statuses[t.id]}
+            builtins={builtins}
             onSelect={() => onSelect(t.id)}
             onClose={() => onClose(t.id)}
           />

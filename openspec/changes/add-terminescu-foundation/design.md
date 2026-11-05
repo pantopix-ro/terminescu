@@ -128,6 +128,16 @@ auto status is its most urgent tab's. The amber needs-you marker shows over any 
 a Claude session inside waits. Deleting a status in use sends those tabs back to auto. Accents
 are six hues (`blue cyan green magenta red fg`), backgrounds five tints; the sidebar sorts by
 hand (default), or by background, status or name.
+
+Built in group 5, on 2026-11-05. Labels take up to 24 characters. Urgency runs Waiting,
+Running, Done, Failed, Idle; "sort by status" puts a waiting side tab first, then that order.
+A pane's auto status follows its Claude session, else its shell: running is Running, exit 0
+Done, any other exit Failed. The daemon pushes each shell change to a core that asks for it;
+with an older daemon the core polls every second and can miss a run shorter than that. Rule
+and CLI statuses live in the core's memory: a restart of the app clears them, and a respawned
+shell drops those tied to its runs. `--until-exit` ends with the command running in the pane
+when the status arrives; typed alone at a prompt, that command is `terminescu` itself, so it
+belongs in a script or before `&&`. Closing a side tab deletes its local statuses and rules.
 ### D16. Terminal-first visual system with pixel trim
 Chosen on 2026-11-03, kept on 2026-11-04 after a flatter all-terminal variant (1px lines, no
 pixel font, text glyphs for icons) read as too plain. Dark only in v1, every color a token, the

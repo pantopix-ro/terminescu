@@ -6,6 +6,7 @@
 //! batches; a window that sees a gap asks for a [`Snapshot`].
 
 use crate::layout::{Dir, Layout, LayoutError};
+use crate::status::ManualStatus;
 use serde::{Deserialize, Serialize};
 
 pub type Id = String;
@@ -30,6 +31,9 @@ pub struct SideTab {
     pub id: Id,
     pub title: Option<String>,
     pub tabs: Vec<Tab>,
+    /// Set by hand in the status editor; absent means the generated status shows (D15).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<ManualStatus>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -39,6 +43,8 @@ pub struct Tab {
     pub title: Option<String>,
     /// The tab's split tree; its leaves are panes (D3).
     pub layout: Layout,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<ManualStatus>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -100,6 +106,18 @@ pub enum Command {
     DismissResume {
         pane_id: Id,
     },
+    /// Sets the manual status of a tab or side tab (`target_id`), or goes back to auto with
+    /// `None` (D15).
+    SetStatus {
+        target_id: Id,
+        status: Option<ManualStatus>,
+    },
+    /// A saved status changed: every tab and side tab using it takes the new look, or goes
+    /// back to auto when it was deleted (`None`).
+    RestyleStatus {
+        status_id: Id,
+        status: Option<ManualStatus>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -134,6 +152,11 @@ pub enum Patch {
     LayoutChanged {
         tab_id: Id,
         layout: Layout,
+    },
+    /// A tab's or side tab's manual status (`id` names either).
+    StatusSet {
+        id: Id,
+        status: Option<ManualStatus>,
     },
 }
 
@@ -172,6 +195,8 @@ pub enum CommandError {
     PaneTooSmall(Id),
     #[error("{0} is not a Claude session id")]
     BadSession(String),
+    #[error("{0}")]
+    BadStatus(String),
 }
 
 impl Workspace {
@@ -339,6 +364,15 @@ pub fn apply(ws: &mut Workspace, patch: &Patch) -> Result<(), CommandError> {
                 .ok_or_else(|| CommandError::UnknownTab(tab_id.clone()))?;
             tab.layout = layout.clone();
         }
+        Patch::StatusSet { id, status } => {
+            if let Some(tab) = ws.tab_mut(id) {
+                tab.status = status.clone();
+            } else {
+                ws.side_tab_mut(id)
+                    .ok_or_else(|| CommandError::UnknownTab(id.clone()))?
+                    .status = status.clone();
+            }
+        }
     }
     Ok(())
 }
@@ -424,6 +458,7 @@ impl Core {
             id,
             title: None,
             layout: Layout::pane((self.new_id)()),
+            status: None,
         }
     }
 
@@ -437,6 +472,7 @@ impl Core {
             id: (self.new_id)(),
             title: None,
             tabs,
+            status: None,
         }
     }
 
@@ -532,6 +568,7 @@ impl Core {
                     id: (self.new_id)(),
                     title: None,
                     tabs: vec![],
+                    status: None,
                 };
                 let to_side_tab_id = side_tab.id.clone();
                 [
@@ -550,6 +587,55 @@ impl Core {
                 .into_iter()
                 .flatten()
                 .collect()
+            }
+            Command::SetStatus { target_id, status } => {
+                if ws.tab(&target_id).is_none() && ws.side_tab(&target_id).is_none() {
+                    return Err(CommandError::UnknownTab(target_id));
+                }
+                let status = status
+                    .map(|mut s| {
+                        s.look.label = s.look.label.trim().to_string();
+                        s.look
+                            .check()
+                            .map(|_| s)
+                            .map_err(|e| CommandError::BadStatus(e.to_string()))
+                    })
+                    .transpose()?;
+                vec![Patch::StatusSet {
+                    id: target_id,
+                    status,
+                }]
+            }
+            Command::RestyleStatus { status_id, status } => {
+                if let Some(s) = &status {
+                    s.look
+                        .check()
+                        .map_err(|e| CommandError::BadStatus(e.to_string()))?;
+                }
+                let uses = |m: &Option<ManualStatus>| {
+                    m.as_ref()
+                        .is_some_and(|m| m.status_id.as_deref() == Some(status_id.as_str()))
+                };
+                let status = status.map(|s| ManualStatus {
+                    status_id: Some(status_id.clone()),
+                    look: s.look,
+                });
+                let mut patches = Vec::new();
+                for side in ws.windows.iter().flat_map(|w| w.side_tabs.iter()) {
+                    if uses(&side.status) {
+                        patches.push(Patch::StatusSet {
+                            id: side.id.clone(),
+                            status: status.clone(),
+                        });
+                    }
+                    for tab in side.tabs.iter().filter(|t| uses(&t.status)) {
+                        patches.push(Patch::StatusSet {
+                            id: tab.id.clone(),
+                            status: status.clone(),
+                        });
+                    }
+                }
+                patches
             }
             Command::RenameTab { tab_id, title } => {
                 ws.locate_tab(&tab_id)

@@ -110,3 +110,23 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 .tr-extract { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-top: 2px solid var(--line-strong); background: var(--panel); }
 .tr-name { width: 160px; }
 .tr-value { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--dim); }
+
+/* Statuses (D15): the editor and Settings › Statuses open as sheets over the window. */
+.sheet-back { position: fixed; inset: 0; z-index: 20; display: flex; justify-content: center; align-items: flex-start; padding-top: 8vh; background: rgba(0, 0, 0, .35); }
+.status-editor { width: min(520px, calc(100% - 32px)); max-height: 84vh; display: flex; flex-direction: column; }
+.status-settings { width: min(860px, calc(100% - 32px)); max-height: 84vh; display: flex; flex-direction: column; }
+.status-body { display: flex; flex-direction: column; gap: var(--space-3); overflow-y: auto; }
+.status-body h3 { margin: var(--space-2) 0 var(--space-1); font-size: 8px; font-weight: 400; text-transform: uppercase; }
+.status-targets { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.status-presets { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.status-presets .preset { display: inline-flex; padding: 2px; background: none; border: 0; cursor: pointer; }
+.status-presets button.ao-stat { cursor: pointer; border: 0; }
+.status-presets button.ao-stat[disabled] { cursor: not-allowed; opacity: .5; }
+.srow { display: flex; align-items: center; gap: var(--space-3); min-height: 32px; padding: 2px 0; border-bottom: 2px solid var(--line); font-size: 12px; }
+.srow .ao-input { width: 160px; }
+.srow .grow { flex: 1; min-width: 0; }
+.link { background: none; border: 0; padding: 0; font: inherit; color: var(--blue); cursor: pointer; text-decoration: underline; }
+.side-trail { display: inline-flex; align-items: center; gap: var(--space-1); min-width: 0; }
+.side-sort { display: inline-flex; align-items: center; gap: var(--space-1); }
+.side-sort select { padding: 0 var(--space-1); font-size: 11px; height: 22px; }
+.ao-tab .ao-stat { margin: 0; }

@@ -13,6 +13,8 @@ describe("chords", () => {
     expect(actionFor(key("Digit3", { metaKey: true, ctrlKey: true }))).toBe("side_3");
     expect(actionFor(key("Backslash", { metaKey: true }, "\\"))).toBe("context_panel");
     expect(actionFor(key("ArrowLeft", { metaKey: true, altKey: true }, "ArrowLeft"))).toBe("focus_left");
+    expect(actionFor(key("KeyS", { metaKey: true, shiftKey: true }))).toBe("status_editor");
+    expect(actionFor(key("Comma", { metaKey: true }, ","))).toBe("settings");
     expect(actionFor(key("KeyT"))).toBeUndefined();
     expect(actionFor(key("KeyC", { ctrlKey: true }))).toBeUndefined();
     expect(actionFor(key("KeyC", { metaKey: true }))).toBeUndefined();
@@ -27,5 +29,6 @@ describe("chords", () => {
     expect(chordLabel("Ctrl+Cmd+1")).toBe("⌃⌘1");
     expect(chordLabel("Cmd+Shift+D")).toBe("⇧⌘D");
     expect(chordLabel("Cmd+Alt+Left")).toBe("⌥⌘←");
+    expect(chordLabel("Cmd+Comma")).toBe("⌘,");
   });
 });

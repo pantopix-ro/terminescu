@@ -50,6 +50,18 @@
    "accel": "Cmd+Shift+P"
   },
   {
+   "id": "status_editor",
+   "label": "Edit Status…",
+   "menu": "Shell",
+   "accel": "Cmd+Shift+S"
+  },
+  {
+   "id": "settings",
+   "label": "Settings…",
+   "menu": "View",
+   "accel": "Cmd+Comma"
+  },
+  {
    "id": "palette",
    "label": "Command Palette…",
    "menu": "View",

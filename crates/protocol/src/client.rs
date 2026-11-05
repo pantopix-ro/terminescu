@@ -27,12 +27,23 @@ pub struct Client {
     pub version: u32,
     /// The daemon process this client talks to; see `Control::Welcome`.
     pub instance: String,
+    /// The features the daemon agreed to serve.
+    pub features: Vec<String>,
 }
 
 impl Client {
     /// Connects and completes the handshake.
     pub fn connect(socket: &Path, client: &str) -> Result<Self, ClientError> {
-        Self::handshake(UnixStream::connect(socket)?, client)
+        Self::handshake(UnixStream::connect(socket)?, client, &[])
+    }
+
+    /// Like `connect`, asking for optional pushes such as `FEATURE_SHELL`.
+    pub fn connect_with(
+        socket: &Path,
+        client: &str,
+        features: &[&str],
+    ) -> Result<Self, ClientError> {
+        Self::handshake(UnixStream::connect(socket)?, client, features)
     }
 
     /// Like `connect`, but every read and write, the handshake included, gives up after
@@ -46,26 +57,32 @@ impl Client {
         let stream = UnixStream::connect(socket)?;
         stream.set_read_timeout(Some(timeout))?;
         stream.set_write_timeout(Some(timeout))?;
-        Self::handshake(stream, client)
+        Self::handshake(stream, client, &[])
     }
 
-    fn handshake(stream: UnixStream, client: &str) -> Result<Self, ClientError> {
+    fn handshake(stream: UnixStream, client: &str, features: &[&str]) -> Result<Self, ClientError> {
         let mut c = Self {
             stream,
             buf: Vec::new(),
             version: 0,
             instance: String::new(),
+            features: Vec::new(),
         };
         c.send(&Frame::Control(Control::Hello {
             versions: APP_SUPPORTED.collect(),
             client: client.into(),
+            features: features.iter().map(|f| f.to_string()).collect(),
         }))?;
         match c.recv()? {
             Frame::Control(Control::Welcome {
-                version, instance, ..
+                version,
+                instance,
+                features,
+                ..
             }) => {
                 c.version = version;
                 c.instance = instance;
+                c.features = features;
             }
             Frame::Control(Control::Error { code, message, .. }) => {
                 return Err(ClientError::Refused { code, message });

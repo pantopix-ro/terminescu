@@ -21,12 +21,70 @@ export interface Tab {
   id: Id;
   title: string | null;
   layout: Layout;
+  /** Set by hand in the status editor; absent means the generated status shows (D15). */
+  status?: ManualStatus;
 }
 
 export interface SideTab {
   id: Id;
   title: string | null;
   tabs: Tab[];
+  status?: ManualStatus;
+}
+
+/** Accent hues a status may take; amber stays reserved for "needs you" (D16). */
+export const ACCENTS = ["blue", "cyan", "green", "magenta", "red", "fg"] as const;
+export type Accent = (typeof ACCENTS)[number];
+/** Background tints a status may take. */
+export const TINTS = ["blue", "cyan", "green", "magenta", "red"] as const;
+export type Tint = (typeof TINTS)[number];
+/** Longest status label, in characters. Same as `MAX_LABEL` in crates/core/src/status.rs. */
+export const MAX_LABEL = 24;
+
+/** How a status looks. */
+export interface Look {
+  label: string;
+  accent: Accent | null;
+  background: Tint | null;
+}
+
+/** A status set by hand; `statusId` links it to a saved status, so edits there restyle it. */
+export interface ManualStatus extends Look {
+  statusId?: Id;
+}
+
+/** The built-in statuses, least urgent first. */
+export const AUTOS = ["idle", "failed", "done", "running", "waiting"] as const;
+export type Auto = (typeof AUTOS)[number];
+
+/** Where a shown status comes from: manual, then rule or CLI, then auto. */
+export type StatusSource = "manual" | "rule" | "cli" | "auto";
+
+/** What a tab or side tab shows. `look` is absent when the auto status shows. */
+export interface Shown {
+  auto: Auto;
+  /** A Claude session waits on the person: amber shows over any status. */
+  waiting: boolean;
+  source: StatusSource;
+  look?: Look;
+}
+
+/** A status from the editor or Settings; global when `sideTabId` is null. */
+export interface SavedStatus extends Look {
+  id: Id;
+  sideTabId: Id | null;
+}
+
+export type RuleKind = { kind: "exitCode"; pattern: string } | { kind: "claudeIdle"; minutes: number };
+
+export type Rule = { id: Id; statusId: Id; look: Look; enabled: boolean } & RuleKind;
+
+export interface StatusConfig {
+  /** Global statuses in their order, then local ones. */
+  statuses: SavedStatus[];
+  rules: Rule[];
+  /** Renamed or recolored built-ins; one left out keeps its default look. */
+  builtins: Partial<Record<Auto, Look>>;
 }
 
 export interface Window {
@@ -50,7 +108,9 @@ export type Command =
   | { type: "ClosePane"; paneId: Id }
   | { type: "ResizeSplit"; splitId: Id; sizes: number[] }
   | { type: "ResumePane"; paneId: Id }
-  | { type: "DismissResume"; paneId: Id };
+  | { type: "DismissResume"; paneId: Id }
+  | { type: "SetStatus"; targetId: Id; status: ManualStatus | null }
+  | { type: "RestyleStatus"; statusId: Id; status: ManualStatus | null };
 
 export type Patch =
   | { type: "SideTabCreated"; windowId: Id; index: number; sideTab: SideTab }
@@ -59,7 +119,8 @@ export type Patch =
   | { type: "TabClosed"; tabId: Id }
   | { type: "TabMoved"; tabId: Id; toSideTabId: Id; index: number }
   | { type: "TabRenamed"; tabId: Id; title: string | null }
-  | { type: "LayoutChanged"; tabId: Id; layout: Layout };
+  | { type: "LayoutChanged"; tabId: Id; layout: Layout }
+  | { type: "StatusSet"; id: Id; status: ManualStatus | null };
 
 export interface PatchBatch {
   rev: number;
@@ -82,7 +143,8 @@ export interface CommandError {
     | "BadSizes"
     | "NothingToResume"
     | "PaneTooSmall"
-    | "BadSession";
+    | "BadSession"
+    | "BadStatus";
   id: Id | number;
 }
 

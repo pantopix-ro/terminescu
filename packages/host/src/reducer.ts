@@ -71,6 +71,14 @@ export function applyPatch(ws: Workspace, p: Patch): void {
     case "LayoutChanged":
       findTab(ws, p.tabId).layout = structuredClone(p.layout);
       return;
+    case "StatusSet": {
+      const all = sideTabs(ws);
+      const target = all.flatMap((s) => s.tabs).find((t) => t.id === p.id) ?? all.find((s) => s.id === p.id);
+      if (!target) throw new PatchError(`unknown tab ${p.id}`);
+      if (p.status) target.status = structuredClone(p.status);
+      else delete target.status;
+      return;
+    }
   }
 }
 
