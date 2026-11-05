@@ -2,6 +2,7 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type { Host, PaneView } from "./host";
+import type { KeyBindings } from "./keys";
 import type {
   AgentUpdate,
   AttentionSettings,
@@ -30,6 +31,7 @@ export const CONTEXT_EVENT = "host://context";
 export const PROMPTS_EVENT = "host://prompts";
 export const COMMANDS_EVENT = "host://commands";
 export const SETTINGS_EVENT = "host://settings";
+export const KEYS_EVENT = "host://keys";
 export const STATUS_EVENT = "host://status";
 export const STATUS_CONFIG_EVENT = "host://status-config";
 /** The core sends these to one window: the one holding the pane, for `⌘⇧A` and the chime. */
@@ -69,6 +71,10 @@ export function createIpcHost(): Host {
     settings: () => invoke<AppSettings>("settings_get"),
     setSettings: (settings) => invoke<AppSettings>("settings_set", { settings }),
     onSettings: (listener) => listen(SETTINGS_EVENT, () => listener()),
+    keyBindings: () => invoke<KeyBindings>("keys_get"),
+    setKeyBindings: (bindings) => invoke<KeyBindings>("keys_set", { bindings }),
+    onKeyBindings: (listener) => listen(KEYS_EVENT, () => listener()),
+    recordKeys: (on) => invoke("keys_record", { on }),
     createCommand: (command) => invoke<SavedCommand>("command_create", { command }),
     updateCommand: (id, command) => invoke<SavedCommand>("command_update", { id, command }),
     deleteCommand: (id) => invoke("command_delete", { id }),

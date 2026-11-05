@@ -2,7 +2,7 @@
 // plans commands like crates/core/src/state.rs, with readable ids (m1, m2, ...).
 
 import type { Host, PaneView } from "./host";
-import { actionFor } from "./keys";
+import { ACTIONS, actionFor, bindingProblem, normalAccel, withBindings, type KeyBindings } from "./keys";
 import { PromptStore } from "./prompt-store";
 import { hasSplit, isSessionId, leaf, panesOf, removePane, resizeSplit, splitPane, terminalsOf } from "./layout";
 import {
@@ -152,6 +152,10 @@ export function createMockHost(initial?: Workspace): MockHost {
   let attention: AttentionSettings = { notify: true, chime: false };
   let settings: AppSettings = { ...DEFAULT_SETTINGS };
   const settingsListeners = new Set<() => void>();
+  let keyBindings: KeyBindings = {};
+  // As the app menu while Settings › Keys records: no action chords.
+  let recording = false;
+  const keyListeners = new Set<() => void>();
   let chimes = 0;
   const revealListeners = new Set<(pane: Id) => void>();
   let savedCommands: SavedCommand[] = [];
@@ -703,6 +707,33 @@ export function createMockHost(initial?: Workspace): MockHost {
       settingsListeners.forEach((l) => l());
       return { ...settings };
     },
+    async keyBindings() {
+      return { ...keyBindings };
+    },
+    // As keys::set in the core: checks every chord, drops the ones equal to the default.
+    async setKeyBindings(next) {
+      const kept: KeyBindings = {};
+      for (const [id, accel] of Object.entries(next)) {
+        const a = ACTIONS.find((x) => x.id === id);
+        if (!a) throw new Error(`no action ${id}`);
+        if (normalAccel(accel) !== normalAccel(a.accel)) kept[id] = accel;
+      }
+      const actions = withBindings(ACTIONS, kept);
+      for (const a of actions) {
+        const problem = bindingProblem(a.id, a.accel, actions);
+        if (problem) throw new Error(problem);
+      }
+      keyBindings = kept;
+      keyListeners.forEach((l) => l());
+      return { ...kept };
+    },
+    async recordKeys(on) {
+      recording = on;
+    },
+    async onKeyBindings(listener) {
+      keyListeners.add(listener);
+      return () => keyListeners.delete(listener);
+    },
     async onSettings(listener) {
       settingsListeners.add(listener);
       return () => settingsListeners.delete(listener);
@@ -840,7 +871,8 @@ export function createMockHost(initial?: Workspace): MockHost {
       const target = globalThis as Partial<typeof globalThis>;
       if (!target.addEventListener || !target.removeEventListener) return () => {};
       const onKey = (e: KeyboardEvent) => {
-        const action = actionFor(e);
+        if (recording) return;
+        const action = actionFor(e, withBindings(ACTIONS, keyBindings));
         if (!action) return;
         e.preventDefault();
         e.stopPropagation();

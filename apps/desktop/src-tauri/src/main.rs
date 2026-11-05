@@ -18,6 +18,7 @@ use terminescu_core::core_socket;
 use terminescu_core::daemon::DaemonClient;
 use terminescu_core::db::Db;
 use terminescu_core::hook_install;
+use terminescu_core::keys;
 use terminescu_core::launcher;
 use terminescu_core::persist;
 use terminescu_core::prompts::{self, NewPrompt, Prompt};
@@ -43,6 +44,7 @@ const STATUS_CONFIG_EVENT: &str = "host://status-config";
 /// Saved commands changed; windows reload [`commands_list`].
 const COMMANDS_EVENT: &str = "host://commands";
 const SETTINGS_EVENT: &str = "host://settings";
+const KEYS_EVENT: &str = "host://keys";
 /// To one window: focus this pane, after `⌘⇧A` picked it (workbench-ui "Attention signals").
 const REVEAL_EVENT: &str = "host://reveal-pane";
 /// To one window: play the chime, when Settings › Notifications turned it on.
@@ -243,6 +245,37 @@ fn commands_list(
     side_tab: Option<Id>,
 ) -> Result<Vec<SavedCommand>, String> {
     commands::list(&lock(&state.db), side_tab.as_deref()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn keys_get(state: State<'_, AppState>) -> Result<keys::Bindings, String> {
+    let saved = keys::get(&lock(&state.db)).map_err(|e| e.to_string())?;
+    Ok(keys::check(&default_chords(), saved).unwrap_or_default())
+}
+
+/// Saves the person's chords and rebuilds the menu, so the new chord wins at once (D17).
+#[tauri::command]
+fn keys_set(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    bindings: keys::Bindings,
+) -> Result<keys::Bindings, String> {
+    let saved =
+        keys::set(&lock(&state.db), &default_chords(), bindings).map_err(|e| e.to_string())?;
+    let menu = build_menu(&app, &saved, true).map_err(|e| e.to_string())?;
+    app.set_menu(menu).map_err(|e| e.to_string())?;
+    let _ = app.emit(KEYS_EVENT, ());
+    Ok(saved)
+}
+
+/// Takes the action chords off the menu while Settings › Keys records one, and puts them back.
+#[tauri::command]
+fn keys_record(app: AppHandle, state: State<'_, AppState>, on: bool) -> Result<(), String> {
+    let saved = keys::get(&lock(&state.db)).map_err(|e| e.to_string())?;
+    let bindings = keys::check(&default_chords(), saved).unwrap_or_default();
+    let menu = build_menu(&app, &bindings, !on).map_err(|e| e.to_string())?;
+    app.set_menu(menu).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -1126,14 +1159,33 @@ fn open_window(app: &AppHandle, window_id: &str) -> tauri::Result<()> {
     Ok(())
 }
 
+fn actions_file() -> ActionsFile {
+    serde_json::from_str(ACTIONS_JSON).expect("actions.json is checked by the host tests")
+}
+
+/// Each action's id and default chord, for the checks in `keys`.
+fn default_chords() -> Vec<(String, String)> {
+    actions_file()
+        .actions
+        .into_iter()
+        .map(|a| (a.id, a.accel))
+        .collect()
+}
+
 /// The app menu (D17): the standard macOS menus plus every action from actions.json under
-/// its menu, with its chord.
-fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
-    let file: ActionsFile =
-        serde_json::from_str(ACTIONS_JSON).expect("actions.json is checked by the host tests");
+/// its menu, with its chord or the one the person set in Settings › Keys.
+/// `chords: false` builds it with no action chords, while Settings › Keys records one: macOS
+/// gives a menu chord to the menu before the window sees the key.
+fn build_menu(
+    app: &AppHandle,
+    bindings: &keys::Bindings,
+    chords: bool,
+) -> tauri::Result<Menu<Wry>> {
+    let file = actions_file();
     let mut sections: Vec<(String, Vec<MenuItem<Wry>>)> = Vec::new();
     for a in &file.actions {
-        let item = MenuItem::with_id(app, &a.id, &a.label, true, Some(&a.accel))?;
+        let accel = bindings.get(&a.id).unwrap_or(&a.accel);
+        let item = MenuItem::with_id(app, &a.id, &a.label, true, chords.then_some(accel))?;
         match sections.iter_mut().find(|(name, _)| *name == a.menu) {
             Some((_, items)) => items.push(item),
             None => sections.push((a.menu.clone(), vec![item])),
@@ -1209,7 +1261,7 @@ fn send_action(app: &AppHandle, id: &str) {
 fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
-        .menu(build_menu)
+        .menu(|app| build_menu(app, &keys::Bindings::new(), true))
         .on_menu_event(|app, event| send_action(app, event.id().as_ref()))
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
@@ -1233,6 +1285,16 @@ fn main() {
                 let db = lock(&db);
                 refresh_launchers(&db, &runtime);
                 rerun_launchers(&db, &runtime);
+                // Chords from Settings › Keys; ones that no longer pass the checks (an action
+                // renamed, a new default that clashes) fall back to the defaults.
+                let saved = keys::get(&db).unwrap_or_default();
+                if !saved.is_empty() {
+                    let bindings = keys::check(&default_chords(), saved).unwrap_or_else(|e| {
+                        eprintln!("terminescu: saved shortcuts not applied: {e}");
+                        keys::Bindings::new()
+                    });
+                    app.set_menu(build_menu(app.handle(), &bindings, true)?)?;
+                }
             }
             app.manage(AppState {
                 runtime,
@@ -1272,6 +1334,9 @@ fn main() {
             commands_all,
             settings_get,
             settings_set,
+            keys_get,
+            keys_set,
+            keys_record,
             command_create,
             command_update,
             command_delete,

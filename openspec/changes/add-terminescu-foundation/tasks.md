@@ -283,9 +283,16 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       chime). `core::settings` keeps them in `app_state` (`app.settings`). The `EDITOR` box stays
       disabled until 7.4 adds `terminescu edit --wait`. `tests/settings.rs`,
       `e2e/settings.spec.ts`. The manual canvas check is still owed.
-- [ ] 6.10 Editable shortcuts in Settings › Keys with conflict detection; app chords win in
+- [x] 6.10 Editable shortcuts in Settings › Keys with conflict detection; app chords win in
       every pane kind, select-next on `⌃⌘G` (D17). Verify: `keys.test.ts` rebinds "Open file" to
       `⌘P`, flags a clash with `⌘T`, and `⌘D` in a text pane splits.
+      Done: Settings › Keys records a chord (click, press; Esc cancels) and refuses one without
+      ⌘, one macOS keeps (⌘C, ⌘Q…) or another action's, shown inline. `core::keys` stores the
+      changed chords in `app_state` (`keys.bindings`), runs the same checks and rebuilds the
+      menu; while recording the menu drops its action chords, since macOS hands a menu chord
+      to the menu first. Saved chords that stop passing fall back to the defaults at start.
+      "Open file" is a test fixture until 7.3 adds it to actions.json; select-next on `⌃⌘G`
+      comes with CodeMirror in 7.1. `tests/keys.rs`, `test/keys.test.ts`, `e2e/settings.spec.ts`.
 
 ## 7. Text tabs (P1)
 

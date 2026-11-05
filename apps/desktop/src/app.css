@@ -240,3 +240,6 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
   .settings-split { flex-direction: column; }
   .settings-nav { flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 2px solid var(--line); }
 }
+.set-chord.recording { color: var(--blue); }
+.key-problem { color: var(--red); }
+.key-clash { background: color-mix(in srgb, var(--red) 12%, transparent); }

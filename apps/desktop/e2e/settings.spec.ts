@@ -15,7 +15,7 @@ const mock = (page: Page, fn: string, ...args: unknown[]) =>
 async function openSettings(page: Page, section: string) {
   await page.keyboard.press("Meta+Comma");
   const dialog = page.getByRole("dialog");
-  await expect(dialog).toContainText("Settings › Statuses");
+  await expect(dialog).toContainText("Settings ›");
   await dialog.getByRole("navigation", { name: "Settings sections" }).getByRole("button", { name: section }).click();
   await expect(dialog).toContainText(`Settings › ${section}`);
   return dialog;
@@ -78,4 +78,33 @@ test("notification and chime toggles save the attention settings", async ({ page
   await expect(dialog.getByRole("checkbox", { name: "macOS notification" })).toBeChecked();
   await dialog.getByRole("checkbox", { name: "Chime" }).check();
   await expect.poll(() => mock(page, "attentionSettings")).toEqual({ notify: true, chime: true });
+});
+
+test("Keys: rebind New Side Tab to ⌘J, refuse ⌘T as a clash, reset", async ({ page }) => {
+  await start(page);
+  const dialog = await openSettings(page, "Keys");
+  const chord = dialog.getByRole("button", { name: "Shortcut for New Side Tab" });
+  await chord.click();
+  await expect(chord).toHaveText("press a chord");
+  // While recording, ⌘T is the chord being tried, not a new tab.
+  await page.keyboard.press("Meta+T");
+  await expect(dialog.getByRole("alert")).toHaveText("⌘T is already New Tab.");
+  await expect(page.locator(".app-main .ao-tab")).toHaveCount(1);
+  await page.keyboard.press("Meta+J");
+  await expect(chord).toHaveText("⌘J");
+  await expect.poll(() => mock(page, "keyBindings")).toEqual({ new_side_tab: "Cmd+J" });
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+
+  const sides = page.locator(".ao-st");
+  await page.locator(".term-pane").first().click();
+  await page.keyboard.press("Meta+N");
+  await expect(sides).toHaveCount(1);
+  await page.keyboard.press("Meta+J");
+  await expect(sides).toHaveCount(2);
+
+  const again = await openSettings(page, "Keys");
+  await again.getByRole("button", { name: "Reset New Side Tab" }).click();
+  await expect(again.getByRole("button", { name: "Shortcut for New Side Tab" })).toHaveText("⌘N");
+  await expect.poll(() => mock(page, "keyBindings")).toEqual({});
 });

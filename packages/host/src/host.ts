@@ -1,3 +1,4 @@
+import type { KeyBindings } from "./keys";
 import type {
   AgentUpdate,
   AttentionSettings,
@@ -84,6 +85,13 @@ export interface Host {
   setSettings(settings: AppSettings): Promise<AppSettings>;
   /** Settings changed in any window. */
   onSettings(listener: () => void): Promise<() => void>;
+  /** Chords changed in Settings › Keys, by action id (D17). */
+  keyBindings(): Promise<KeyBindings>;
+  /** Saves them all at once; a clash or a chord without ⌘ is refused. */
+  setKeyBindings(bindings: KeyBindings): Promise<KeyBindings>;
+  onKeyBindings(listener: () => void): Promise<() => void>;
+  /** While on, the menu holds no action chords, so a recorder sees every ⌘ key. */
+  recordKeys(on: boolean): Promise<void>;
   createCommand(command: NewCommand): Promise<SavedCommand>;
   /** New name, body, target and launcher flag; the scope stays. */
   updateCommand(id: Id, command: NewCommand): Promise<SavedCommand>;

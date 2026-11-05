@@ -13,11 +13,14 @@ import {
   ACTIONS,
   chordLabel,
   DEFAULT_SETTINGS,
+  withBindings,
   panesOf,
   terminalsOf,
   transcriptOf,
   type AgentUpdate,
   type AppSettings,
+  type ActionDef,
+  type KeyBindings,
   type ManualStatus,
   type Item,
   type Pin,
@@ -147,7 +150,7 @@ const collide: CollisionDetection = (args) => {
 };
 
 const selectable = new Set(["palette"]);
-const listed = ACTIONS.filter((a) => !selectable.has(a.id) && !/^(tab|side)_\d$/.test(a.id));
+const paletteActions = (actions: readonly ActionDef[]) => actions.filter((a) => !selectable.has(a.id) && !/^(tab|side)_\d$/.test(a.id));
 
 export function App({ windowId, host, workspace, terminals }: AppProps) {
   const ws = useStore(workspace.store, (s) => s.workspace);
@@ -486,6 +489,19 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     };
   }, [host]);
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("statuses");
+  // Settings › Keys: the palette shows the chords the person set.
+  const [keyBindings, setKeyBindings] = useState<KeyBindings>({});
+  useEffect(() => {
+    let gone = false;
+    let off: (() => void) | undefined;
+    const load = () => void host.keyBindings().then((b) => !gone && setKeyBindings(b), () => undefined);
+    load();
+    void host.onKeyBindings(load).then((o) => (gone ? o() : (off = o)));
+    return () => {
+      gone = true;
+      off?.();
+    };
+  }, [host]);
   const startExtract = (tabId: string, value: string, from: string) => {
     const side = sideOfTab(tabId);
     if (side) setExtracting({ side, tab: tabId, value, from });
@@ -618,7 +634,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   };
 
   const paletteItems: PaletteItem[] = [
-    ...listed.map((a) => ({ id: a.id, label: a.label, group: "Actions", hint: chordLabel(a.accel), run: () => act(a.id) })),
+    ...paletteActions(withBindings(ACTIONS, keyBindings)).map((a) => ({ id: a.id, label: a.label, group: "Actions", hint: chordLabel(a.accel), run: () => act(a.id) })),
     ...(activeTab
       ? [
           { id: "move:new", label: "New side tab", group: "Move tab to…", run: () => moveTab(activeTab.id, { newAt: sideTabs.length }) },

@@ -1,6 +1,11 @@
 import {
+  accelOf,
   ACTIONS,
+  bindingProblem,
   chordLabel,
+  conflicts,
+  withBindings,
+  type KeyBindings,
   COMMAND_TARGETS,
   MAX_TTL_SECS,
   VAR_MODES,
@@ -48,6 +53,10 @@ type Api = Pick<
   | "onSettings"
   | "attentionSettings"
   | "setAttentionSettings"
+  | "keyBindings"
+  | "setKeyBindings"
+  | "onKeyBindings"
+  | "recordKeys"
 >;
 
 export interface SettingsSheetProps {
@@ -109,7 +118,7 @@ export function SettingsSheet(props: SettingsSheetProps) {
             {section === "variables" && <VariableSettings {...props} />}
             {section === "extraction" && <ExtractionSettings />}
             {section === "shell" && <ShellSettings {...props} />}
-            {section === "keys" && <KeysSettings />}
+            {section === "keys" && <KeysSettings {...props} />}
             {section === "notifications" && <NotificationSettings {...props} />}
           </div>
         </div>
@@ -294,18 +303,101 @@ function ShellSettings({ host, onError }: SettingsSheetProps) {
   );
 }
 
-function KeysSettings() {
+function KeysSettings({ host, onError }: SettingsSheetProps) {
+  const [bindings, setBindings] = useState<KeyBindings>({});
+  const [recording, setRecording] = useState<string>();
+  const [problem, setProblem] = useState<{ id: string; text: string }>();
+  useEffect(() => {
+    let gone = false;
+    let off: (() => void) | undefined;
+    const load = () => void host.keyBindings().then((b) => !gone && setBindings(b), (e: unknown) => onError(String(e)));
+    load();
+    void host.onKeyBindings(load).then((o) => (gone ? o() : (off = o)));
+    return () => {
+      gone = true;
+      off?.();
+    };
+  }, [host, onError]);
+  // The menu gives up its chords while recording, and gets them back however recording ends.
+  useEffect(() => {
+    if (!recording) return;
+    void host.recordKeys(true).catch((e: unknown) => onError(String(e)));
+    return () => void host.recordKeys(false).catch((e: unknown) => onError(String(e)));
+  }, [host, onError, recording]);
+  const actions = withBindings(ACTIONS, bindings);
+  const clashing = conflicts(actions);
+  const save = (next: KeyBindings) => void host.setKeyBindings(next).then(setBindings, (e: unknown) => onError(String(e)));
+
+  // The next chord goes to the recorder wherever focus is (WebKit does not focus a clicked
+  // button), ahead of the sheet's Escape and the panes.
+  const latest = useRef({ actions, bindings });
+  latest.current = { actions, bindings };
+  useEffect(() => {
+    if (!recording) return;
+    const onKey = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === "Escape" && !e.metaKey) return setRecording(undefined);
+      const accel = accelOf(e);
+      if (!accel) return;
+      const { actions, bindings } = latest.current;
+      const why = bindingProblem(recording, accel, actions);
+      if (why) return setProblem({ id: recording, text: why });
+      setProblem(undefined);
+      setRecording(undefined);
+      save({ ...bindings, [recording]: accel });
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+    // `save` reads only host and onError, both in the deps.
+  }, [host, onError, recording]);
+
   return (
     <section aria-label="Keys">
       <h3 className="ao-pixel ao-dim">Keys</h3>
-      {ACTIONS.map((a) => (
-        <div key={a.id} className="srow" data-action={a.id}>
+      {actions.map((a) => (
+        <div key={a.id} className={`srow${clashing.has(a.id) ? " key-clash" : ""}`} data-action={a.id}>
           <span className="grow">{a.label}</span>
+          {problem?.id === a.id && (
+            <span className="small key-problem" role="alert">
+              {problem.text}
+            </span>
+          )}
           <span className="small ao-dim">{a.menu}</span>
-          <kbd className="set-chord">{chordLabel(a.accel)}</kbd>
+          {bindings[a.id] && (
+            <button
+              type="button"
+              className="link small"
+              aria-label={`Reset ${a.label}`}
+              onClick={() => {
+                const { [a.id]: _, ...rest } = bindings;
+                save(rest);
+              }}
+            >
+              reset
+            </button>
+          )}
+          <button
+            type="button"
+            className={`ao-btn ghost set-chord${recording === a.id ? " recording" : ""}`}
+            aria-label={`Shortcut for ${a.label}`}
+            onClick={() => {
+              setProblem(undefined);
+              setRecording(recording === a.id ? undefined : a.id);
+            }}
+          >
+            {recording === a.id ? "press a chord" : <kbd>{chordLabel(a.accel)}</kbd>}
+          </button>
         </div>
       ))}
-      <p className="small ao-dim">Plain keys always reach the focused terminal; app actions use ⌘ chords.</p>
+      <div className="srow">
+        <span className="small ao-dim grow">Click a shortcut, then press the new ⌘ chord; Esc cancels. Plain keys always reach the focused terminal.</span>
+        {Object.keys(bindings).length > 0 && (
+          <button type="button" className="ao-btn ghost" onClick={() => save({})}>
+            Reset all
+          </button>
+        )}
+      </div>
     </section>
   );
 }

@@ -4,7 +4,19 @@ export { ACTION_EVENT, AGENT_EVENT, CONTEXT_EVENT, createIpcHost, PATCHES_EVENT,
 export { ACCENTS, AUTOS, COMMAND_TARGETS, DEFAULT_SETTINGS, isVariableName, MAX_LABEL, MAX_TTL_SECS, TINTS, VAR_MODES, variablesOf } from "./protocol";
 export { keyOf } from "./prompt-store";
 export { computeStatuses, paneAuto, type PaneDynamic, type PaneFacts } from "./status";
-export { ACTIONS, actionFor, chordLabel, type ActionDef } from "./keys";
+export {
+  ACTIONS,
+  accelOf,
+  actionFor,
+  bindingProblem,
+  chordLabel,
+  conflicts,
+  normalAccel,
+  RESERVED,
+  withBindings,
+  type ActionDef,
+  type KeyBindings,
+} from "./keys";
 export * from "./layout";
 export { applyBatch, applyPatch, PatchError } from "./reducer";
 export { createWorkspaceStore, type WorkspaceState, type WorkspaceStore } from "./store";
