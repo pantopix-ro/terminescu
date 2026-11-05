@@ -373,7 +373,10 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       Hook events now run on one ordered thread so `terminescu hook` never waits on the db.
 - [ ] 8.4 Full transcript pane: tool calls, diffs, thinking; save as prompt from a sent
       message. Verify: manual against a recorded session.
-- [ ] 8.5 Send selection to another tab. Verify: manual, text lands in the target without Enter.
+- [x] 8.5 Send selection to another tab. Verify: manual, text lands in the target without Enter.
+      Done: ⌘⌥↵ "Send to Tab…" takes the focused selection (text, transcript or terminal),
+      lists the window's other tabs and pastes via `pane_send_text` (bracketed, no Enter);
+      Playwright covers it in text.spec.ts, the real-shell check stays manual.
 - [x] 8.6 Commands global by default (D24 amendment): the Commands form starts global, "this
       side tab only" opts into the side tab, launcher still forces the side tab; existing
       commands keep their scope. Verify: Playwright saves a command in one side tab and runs it

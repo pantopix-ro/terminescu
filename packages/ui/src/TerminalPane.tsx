@@ -98,6 +98,13 @@ function dropWebgl(live: Live, el: HTMLElement) {
   el.dataset.renderer = "dom";
 }
 
+const selections = new Map<string, () => string>();
+
+/** The selected text of the terminal on `paneId`, empty when it has none. */
+export function terminalSelection(paneId: string): string {
+  return selections.get(paneId)?.() ?? "";
+}
+
 /**
  * One xterm.js terminal on one pane (task 2.5, D33). It renders no React tree of its own: the
  * terminal lives in the pane's element from the registry, which the split view places. `⌘`
@@ -114,6 +121,8 @@ export function TerminalPane({ paneId, visible, focused, onFocus, open, openUrl,
     const el = claimPane(paneId);
     const focusIn = () => callbacks.current.onFocus?.();
     el.addEventListener("focusin", focusIn);
+    const selected = () => live.current?.term?.getSelection() ?? "";
+    selections.set(paneId, selected);
     // `⌘⇧P` and `⌘E` from the app act on the terminal's selection.
     const selection = (how: "pin" | "extract") => () => {
       const term = live.current?.term;
@@ -218,6 +227,7 @@ export function TerminalPane({ paneId, visible, focused, onFocus, open, openUrl,
     })();
 
     return () => {
+      if (selections.get(paneId) === selected) selections.delete(paneId);
       disposed = true;
       cancelAnimationFrame(frame);
       observer?.disconnect();

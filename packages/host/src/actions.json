@@ -38,6 +38,12 @@
    "accel": "Cmd+Shift+Enter"
   },
   {
+   "id": "send_to_tab",
+   "label": "Send to Tab…",
+   "menu": "File",
+   "accel": "Cmd+Alt+Enter"
+  },
+  {
    "id": "new_tab",
    "label": "New Tab",
    "menu": "Shell",

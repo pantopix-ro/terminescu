@@ -67,6 +67,7 @@ import {
   tabName,
   TerminalPane,
   TextPane,
+  terminalSelection,
   textPane,
   type ContextMode,
   type PaletteItem,
@@ -158,9 +159,9 @@ const collide: CollisionDetection = (args) => {
   return closestCenter({ ...args, droppableContainers: tabs });
 };
 
-const selectable = new Set(["palette"]);
+const selectable = new Set(["palette", "send_to_tab"]);
 /** Menu chords that a focused dialog field may use for itself. */
-const FIELD_CHORDS = new Set(["save", "save_as", "return_edit", "send_to_pane"]);
+const FIELD_CHORDS = new Set(["save", "save_as", "return_edit", "send_to_pane", "send_to_tab"]);
 const paletteActions = (actions: readonly ActionDef[]) => actions.filter((a) => !selectable.has(a.id) && !/^(tab|side)_\d$/.test(a.id));
 
 export function App({ windowId, host, workspace, terminals }: AppProps) {
@@ -341,16 +342,41 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   // `⌘⇧↵` in a text pane: the selection, or all of it, goes to a terminal as a paste without
   // Enter. The target is the tab's last focused terminal, else one running Claude, else the
   // first; then the other tabs of the side tab.
+  // The terminal a tab's text goes to: the one last focused, else a Claude pane, else the first.
+  const pickIn = (t: Tab) => {
+    const terms = terminalsOf(t.layout);
+    const last = lastTerminal.current[t.id];
+    return (last && terms.includes(last) ? last : undefined) ?? terms.find((p) => agents[p]) ?? terms[0];
+  };
+  // "Send to Tab…" (D13): the focused pane's selection, then a tab to paste it into.
+  const [sending, setSending] = useState<string>();
+  const sendToTab = () => {
+    if (!focused || !activeTab) return;
+    const text = textPane(focused)
+      ? textPane(focused)!.selectionOrAll()
+      : transcriptOf(activeTab.layout, focused)
+        ? (window.getSelection()?.toString() ?? "")
+        : terminalSelection(focused);
+    if (!text.trim()) return setError("Select text to send to another tab.");
+    setSending(text);
+  };
+  const sendItems: PaletteItem[] = sending
+    ? sideTabs.flatMap((sd) =>
+        sd.tabs
+          .filter((t) => t.id !== activeTab?.id && pickIn(t))
+          .map((t) => ({
+            id: `send:${t.id}`,
+            label: `${sideTabName(sd)} › ${tabName(t)}`,
+            group: "Send to tab",
+            run: () => void host.sendText(pickIn(t)!, sending).catch((e: unknown) => setError(String(e))),
+          })),
+      )
+    : [];
   const sendToPane = () => {
     const pane = focused && textPane(focused);
     if (!pane || !activeSide || !activeTab) return setError("Focus a text pane to send its text.");
     const text = pane.selectionOrAll();
     if (!text.trim()) return;
-    const pickIn = (t: Tab) => {
-      const terms = terminalsOf(t.layout);
-      const last = lastTerminal.current[t.id];
-      return (last && terms.includes(last) ? last : undefined) ?? terms.find((p) => agents[p]) ?? terms[0];
-    };
     const target = [activeTab, ...activeSide.tabs.filter((t) => t.id !== activeTab.id)].map(pickIn).find(Boolean);
     if (!target) return setError("No terminal pane in this side tab to send to.");
     paneEvent(target, new CustomEvent(INSERT_EVENT, { detail: { text, stay: true } }));
@@ -458,6 +484,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         return void returnEdit();
       case "send_to_pane":
         return sendToPane();
+      case "send_to_tab":
+        return sendToTab();
       case "open_transcript": {
         const session = focused && agents[focused]?.session;
         if (!activeTab || !focused) return;
@@ -1226,6 +1254,15 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           onBrowse={() => browse(finder.list?.root)}
           onClose={() => {
             setFinder(undefined);
+            refocus();
+          }}
+        />
+      )}
+      {sending !== undefined && (
+        <Palette
+          items={sendItems}
+          onClose={() => {
+            setSending(undefined);
             refocus();
           }}
         />

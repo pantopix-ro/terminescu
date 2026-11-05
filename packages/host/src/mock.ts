@@ -1007,6 +1007,13 @@ export function createMockHost(initial?: Workspace): MockHost {
       docs.get(id)!.view.sessionOnly = v.mode === "session";
       return showDoc(sideTabId, id, beside);
     },
+    async sendText(pane, text) {
+      if (!text.trim()) return;
+      if (!ws.windows.some((w) => w.sideTabs.some((s) => s.tabs.some((t) => terminalsOf(t.layout).includes(pane))))) {
+        throw new Error("that pane has no shell right now");
+      }
+      typeInto(pane, typeBytes(text, false));
+    },
     async pasteImage(docId, bytes, ext) {
       const d = docOrFail(docId);
       const kind = { png: "png", jpg: "jpg", jpeg: "jpg", gif: "gif", webp: "webp" }[ext.toLowerCase()];

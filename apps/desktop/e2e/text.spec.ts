@@ -333,3 +333,20 @@ test("{{variables}} show as chips, an unknown name is underlined, a secret compl
   });
   await expect(editor).toContainText("![](pasted-1.png)");
 });
+
+test("Send to Tab pastes the selection into another tab's terminal with no Enter", async ({ page }) => {
+  await start(page);
+  const first = (await page.locator(".ao-tp").first().getAttribute("data-pane"))!;
+  await page.keyboard.press("Meta+Alt+KeyT");
+  const editor = page.locator(".text-pane .cm-content");
+  await expect(editor).toBeFocused();
+  await page.keyboard.insertText("git log --oneline\ngit status");
+  await page.keyboard.press("Meta+Alt+Enter");
+  const picker = page.locator(".palette");
+  await expect(picker.locator(".palette-item")).toHaveCount(1);
+  await picker.locator(".palette-item").first().click();
+  await expect
+    .poll(() => page.evaluate((p) => (window as any).__terminescu.host.typed.get(p) ?? "", first))
+    .toBe("\x1b[200~git log --oneline\ngit status\x1b[201~");
+  await expect(picker).toHaveCount(0);
+});

@@ -189,6 +189,8 @@ export interface Host {
   openVariable(sideTabId: Id, name: string, beside?: Id | null): Promise<DocView>;
   /** `⌘↵`: the `terminescu edit --wait` call on this document returns. Save and close around it. */
   returnEdit(docId: Id): Promise<void>;
+  /** Pastes `text` into a terminal pane, bracketed when it has line breaks, with no Enter (D13). */
+  sendText(paneId: Id, text: string): Promise<void>;
   /**
    * Saves a pasted image next to the document's file, or with an Untitled buffer's first save,
    * and resolves to the file name to link (D29). `ext` is png, jpg, gif or webp.

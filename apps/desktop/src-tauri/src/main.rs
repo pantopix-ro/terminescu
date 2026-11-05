@@ -414,6 +414,21 @@ enum RunOutcome {
     Done { pane: Option<Id> },
 }
 
+/// "Send to Tab…" (D13): text into another tab's terminal as a paste, never with Enter.
+#[tauri::command(async)]
+fn pane_send_text(state: State<'_, AppState>, pane: Id, text: String) -> Result<(), String> {
+    if text.trim().is_empty() {
+        return Ok(());
+    }
+    if !state
+        .runtime
+        .type_into(&pane, commands::type_bytes(&text, false))
+    {
+        return Err("that pane has no shell right now".into());
+    }
+    Ok(())
+}
+
 /// Runs (`run`) or inserts a saved command from a side tab, filled from that side tab's
 /// variables and `extra`. `target` overrides the saved one; `pane` is the focused pane.
 #[allow(clippy::too_many_arguments)]
@@ -1437,6 +1452,7 @@ fn main() {
             var_remove,
             items_list,
             files_touched,
+            pane_send_text,
             files_forget,
             item_add,
             item_remove,
