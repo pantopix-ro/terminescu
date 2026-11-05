@@ -1,15 +1,15 @@
 html, body, #root { height: 100%; }
 body { overflow: hidden; user-select: none; -webkit-user-select: none; }
-.app { position: relative; display: grid; grid-template-columns: 272px minmax(0, 1fr) 12px; grid-template-rows: minmax(0, 1fr) auto; height: 100%; }
+.app { --side-icons: calc(80px * var(--chrome, 1)); position: relative; display: grid; grid-template-columns: var(--side-w, 272px) minmax(0, 1fr) 12px; grid-template-rows: minmax(0, 1fr) auto; height: 100%; }
 /* The status line runs under all three columns (workbench-ui "Attention signals"). */
 .app-status { grid-column: 1 / -1; }
 .app-status .need { border: 0; font: inherit; cursor: pointer; }
-.app[data-context="pinned"] { grid-template-columns: 272px minmax(0, 1fr) 304px; }
+.app[data-context="pinned"] { grid-template-columns: var(--side-w, 272px) minmax(0, 1fr) 304px; }
 .app button { font: inherit; border: 0; background: none; color: inherit; cursor: default; }
 .app .grow { flex: 1; min-width: 0; }
 
 /* Sidebar: its own scroll (D26). */
-.app-side { display: flex; flex-direction: column; min-height: 0; background: var(--bg); border-right: 2px solid var(--line-strong); }
+.app-side { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg); border-right: 2px solid var(--line-strong); }
 /* The traffic lights and the wordmark; the title bar is an overlay (D20). The strip has the
    tab bar's height, so the two bottom lines meet, and main.rs centres the lights in it.
    --chrome undoes the zoom, so the row stays 34 pt on screen like the native lights. */
@@ -348,3 +348,25 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 .ctx-sep { height: 1px; margin: var(--space-1) 0; background: var(--line); }
 .side-rename { flex: 1; min-width: 0; height: 20px; padding: 0 var(--space-1); font-size: 12px; }
 .ao-tab .side-rename { width: 120px; flex: none; }
+
+/* Task 8.23: the sidebar's width, its collapse button and the icons-only sidebar. */
+.side-resize { position: absolute; top: 0; bottom: 0; right: -5px; width: 8px; cursor: col-resize; z-index: 6; }
+.side-resize:hover, .app[data-resizing] .side-resize { background: linear-gradient(to right, transparent 3px, var(--focus) 3px, var(--focus) 5px, transparent 5px); }
+.app[data-resizing], .app[data-resizing] * { cursor: col-resize !important; user-select: none; }
+.side-toggle { position: absolute; top: calc(17px * var(--chrome, 1) - 11px); right: 8px; z-index: 7; width: 22px; height: 22px; display: grid; place-items: center; padding: 0; background: var(--panel-2) !important; color: var(--fg) !important; box-shadow: 0 -2px 0 0 var(--line-strong), 0 2px 0 0 var(--line-strong), -2px 0 0 0 var(--line-strong), 2px 0 0 0 var(--line-strong), var(--shadow-hard-sm); opacity: 0; pointer-events: none; }
+/* Collapsed, the traffic lights fill the strip: the button sits at the sidebar's foot. */
+.app[data-side="collapsed"] .side-toggle { top: auto; bottom: 10px; right: auto; left: calc(50% - 11px); }
+.app-side:hover .side-toggle, .side-toggle:focus-visible { opacity: 1; pointer-events: auto; }
+.side-toggle:hover { box-shadow: 0 -2px 0 0 var(--focus), 0 2px 0 0 var(--focus), -2px 0 0 0 var(--focus), 2px 0 0 0 var(--focus), var(--shadow-hard-sm); }
+.side-toggle:focus-visible { outline: none; }
+.ao-i.flip { transform: scaleX(-1); }
+.app[data-side="collapsed"] .app-wordmark,
+.app[data-side="collapsed"] .cmd-section,
+.app[data-side="collapsed"] .side-foot { display: none; }
+.app[data-side="collapsed"] .app-traffic { padding-left: 0; }
+.ao-side.collapsed .ao-st { grid-template-columns: 1fr; justify-items: center; padding: 8px 0; }
+.ao-side.collapsed .ao-st > :not(.ao-i:first-child) { display: none; }
+/* The pixel tooltip: a name and status beside an icon, or a whole name over one cut short. */
+.px-tip { position: fixed; z-index: 60; pointer-events: none; display: flex; flex-direction: column; gap: 4px; max-width: min(360px, calc(100vw - 8px)); padding: 4px 6px; background: var(--panel-2); color: var(--fg); font-size: 12px; line-height: 16px; box-shadow: 0 -2px 0 0 var(--line-strong), 0 2px 0 0 var(--line-strong), -2px 0 0 0 var(--line-strong), 2px 0 0 0 var(--line-strong), var(--shadow-hard-sm); overflow-wrap: anywhere; }
+.px-tip-name { font-weight: 600; }
+.px-tip-status { font-family: var(--font-pixel); font-size: 8px; line-height: 1; text-transform: uppercase; letter-spacing: .04em; color: var(--dim); }

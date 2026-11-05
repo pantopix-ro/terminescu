@@ -441,9 +441,25 @@ export interface AppSettings {
   editor: boolean;
   /** The zoom of every window, fonts and elements, in percent (task 8.8). */
   zoomPercent: number;
+  /** The sidebar's width in CSS pixels, dragged on its right edge (task 8.23). */
+  sidebarWidth: number;
+  /** The sidebar shows only the rows' icons. */
+  sidebarCollapsed: boolean;
 }
 
-export const DEFAULT_SETTINGS: AppSettings = { varMode: "saved", varTtlSecs: null, editor: false, zoomPercent: 100 };
+/** The sidebar's default width and the range a drag may set. Same as settings.rs. */
+export const SIDEBAR_WIDTH = 272;
+export const SIDEBAR_MIN = 180;
+export const SIDEBAR_MAX = 480;
+
+export const DEFAULT_SETTINGS: AppSettings = {
+  varMode: "saved",
+  varTtlSecs: null,
+  editor: false,
+  zoomPercent: 100,
+  sidebarWidth: SIDEBAR_WIDTH,
+  sidebarCollapsed: false,
+};
 
 /** The steps `⌘+` and `⌘-` walk, in percent. Same as `ZOOM_STEPS` in settings.rs. */
 export const ZOOM_STEPS: readonly number[] = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200];

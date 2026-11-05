@@ -28,7 +28,7 @@ test("every section opens; extraction is read-only and the editor setting saves"
   await expect(dialog.locator("[data-rule-name] input")).toHaveCount(0);
   await dialog.getByRole("button", { name: "Shell" }).click();
   await dialog.getByRole("checkbox").check();
-  await expect.poll(() => mock(page, "settings")).toEqual({ varMode: "saved", varTtlSecs: null, editor: true, zoomPercent: 100 });
+  await expect.poll(() => mock(page, "settings")).toEqual({ varMode: "saved", varTtlSecs: null, editor: true, zoomPercent: 100, sidebarWidth: 272, sidebarCollapsed: false });
   await dialog.getByRole("button", { name: "Keys" }).click();
   await expect(dialog.locator('[data-action="new_tab"] kbd')).toHaveText("⌘T");
   await page.keyboard.press("Escape");
@@ -57,7 +57,7 @@ test("the default storage mode and TTL carry into Extract", async ({ page }) => 
   await dialog.getByRole("radio", { name: "Session only" }).check();
   await dialog.getByLabel("Default TTL").fill("1h");
   await dialog.getByLabel("Default TTL").press("Enter");
-  await expect.poll(() => mock(page, "settings")).toEqual({ varMode: "session", varTtlSecs: 3600, editor: false, zoomPercent: 100 });
+  await expect.poll(() => mock(page, "settings")).toEqual({ varMode: "session", varTtlSecs: 3600, editor: false, zoomPercent: 100, sidebarWidth: 272, sidebarCollapsed: false });
   // An out-of-range TTL is refused and the field shows the saved one again.
   await dialog.getByLabel("Default TTL").fill("90d");
   await dialog.getByLabel("Default TTL").press("Enter");

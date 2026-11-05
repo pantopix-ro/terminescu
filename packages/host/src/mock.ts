@@ -13,6 +13,8 @@ import {
   DEFAULT_SETTINGS,
   MAX_TTL_SECS,
   ZOOM_STEPS,
+  SIDEBAR_MAX,
+  SIDEBAR_MIN,
   type AppSettings,
   TINTS,
   ICONS,
@@ -1039,7 +1041,8 @@ export function createMockHost(initial?: Workspace): MockHost {
       if (ttl !== null && (!Number.isInteger(ttl) || ttl <= 0 || ttl > MAX_TTL_SECS)) throw new Error("a TTL runs from 1 second to 30 days");
       const zoom = next.zoomPercent;
       if (!Number.isInteger(zoom) || zoom < ZOOM_STEPS[0]! || zoom > ZOOM_STEPS.at(-1)!) throw new Error("the zoom runs from 50% to 200%");
-      settings = { ...next };
+      const sidebarWidth = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(next.sidebarWidth)));
+      settings = { ...next, sidebarWidth };
       // The app zooms its webview natively; a browser has CSS zoom on the root.
       if (typeof document !== "undefined") document.documentElement.style.zoom = zoom === 100 ? "" : String(zoom / 100);
       settingsListeners.forEach((l) => l());

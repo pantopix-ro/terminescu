@@ -156,7 +156,7 @@ belongs in a script or before `&&`. Closing a side tab deletes its local statuse
 ### D16. Terminal-first visual system with pixel trim
 Chosen on 2026-11-03, kept on 2026-11-04 after a flatter all-terminal variant (1px lines, no
 pixel font, text glyphs for icons) read as too plain. Dark only in v1, every color a token, the
-xterm theme generated from the same tokens. Geist Mono for everything read, Silkscreen only for
+xterm theme generated from the same tokens. Geist Mono for everything read (SF Mono Regular in terminals since task 8.24), Silkscreen only for
 short uppercase labels. Notched frames, hard shadows with no blur, an own 8x8 icon set, block
 strips with one cell per tab. Amber means "needs you", focus and drop targets, and is never
 offered as an accent so it keeps that meaning. People sort their work with accents and `tint-*`

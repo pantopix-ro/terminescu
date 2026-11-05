@@ -1,9 +1,12 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { leaf, panesOf, type AgentView, type Icon, type Shown, type SideTab, type Tab } from "@terminescu/host";
-import { useState, type KeyboardEvent, type MouseEvent } from "react";
+import { useEffect, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { DOT, tabAgent, type Agents } from "./agents";
 import { StatusChip } from "./StatusChip";
 import { chipOf, rowStyle, type Builtins, type Chip, type SortMode } from "./status";
+import { Tip, useTip } from "./Tip";
+
+type Tips = ReturnType<typeof useTip>;
 
 export interface SideTabListProps {
   sideTabs: SideTab[];
@@ -38,6 +41,8 @@ export interface SideTabListProps {
   onStatus?(sideTabId: string, tabId: string | undefined, at: { x: number; y: number }): void;
   /** A double click on a side tab's or a tab's icon, at a window point: pick another (task 8.16). */
   onIconPick?(id: string, at: { x: number; y: number }): void;
+  /** Only the rows' icons show; hovering one shows its name and status (task 8.23). */
+  collapsed?: boolean;
 }
 
 /** Where an icon picker opens: under the double-clicked icon. */
@@ -188,8 +193,11 @@ function Row(props: {
   onRenameStart?(id: string): void;
   onStatus?(sideTabId: string, tabId: string | undefined, at: { x: number; y: number }): void;
   onIconPick?(id: string, at: { x: number; y: number }): void;
+  collapsed: boolean;
+  tips: Tips;
 }) {
-  const { side, active, expanded, dragging, agents, statuses, builtins, docs } = props;
+  const { side, active, expanded, dragging, agents, statuses, builtins, docs, collapsed, tips } = props;
+  const name = sideTabName(side, docs);
   const shown = statuses[side.id];
   const need = shown?.waiting || side.tabs.some((t) => tabAgent(t, agents)?.state === "waiting" || tabRequest(t, docs));
   const chip = chipOf(shown, builtins);
@@ -201,7 +209,7 @@ function Row(props: {
   });
   const drag = useDraggable({ id: dragSide(side.id) });
   const group = side.tabs.length > 1;
-  const open = group && (active || expanded);
+  const open = group && (active || expanded) && !collapsed;
   // A status background tints the row; otherwise the active row takes the raised panel.
   const style = { ...(active ? { "--st-bg": "var(--panel-2)" } : {}), ...rowStyle(shown?.look, "st") } as React.CSSProperties;
   return (
@@ -219,6 +227,9 @@ function Row(props: {
         style={style}
         data-side={side.id}
         aria-current={active ? "true" : undefined}
+        aria-label={collapsed ? `${name}, ${chip.label}` : undefined}
+        onMouseEnter={collapsed ? (e) => tips.show(e.currentTarget, name, chip.label) : undefined}
+        onMouseLeave={tips.hide}
         onClick={props.onSelect}
         onContextMenu={(e) => {
           if (!props.onMenu) return;
@@ -235,15 +246,16 @@ function Row(props: {
       >
         <i
           className={`ao-i ao-i-${side.icon ?? (group ? "group" : (side.tabs[0]?.icon ?? (side.tabs[0] && tabAgent(side.tabs[0], agents) ? "agent" : "term")))}`}
-          title="Double-click to change the icon"
+          title={collapsed ? undefined : "Double-click to change the icon"}
           onDoubleClick={(e) => {
             e.stopPropagation();
+            tips.hide();
             props.onIconPick?.(side.id, pickAt(e));
           }}
         />
         {props.renaming === side.id ? (
           <RenameInput
-            value={side.title ?? sideTabName(side, docs)}
+            value={side.title ?? name}
             label="Side tab name"
             onDone={(v) => props.onRename?.(side.id, v.trim() || null)}
             onCancel={() => props.onRenameEnd?.()}
@@ -252,18 +264,22 @@ function Row(props: {
           <span
             className="t"
             title="Double-click to rename"
+            // A name cut short shows whole in the custom tooltip, without the native one.
+            onMouseEnter={(e) => (e.currentTarget.title = tips.expand(e.currentTarget, name) ? "" : "Double-click to rename")}
+            onMouseLeave={tips.hide}
             onDoubleClick={(e) => {
               e.stopPropagation();
+              tips.hide();
               props.onRenameStart?.(side.id);
             }}
           >
-            {sideTabName(side, docs)}
+            {name}
           </span>
         )}
         <span className="side-trail">
         <ChipButton
           chip={chip}
-          label={`Status ${chip.label}: edit the status of ${sideTabName(side, docs)}`}
+          label={`Status ${chip.label}: edit the status of ${name}`}
           onClick={props.onStatus && ((at) => props.onStatus!(side.id, undefined, at))}
         />
         {group && !active && (
@@ -333,8 +349,11 @@ function Row(props: {
                 <span
                   className="grow"
                   title="Double-click to rename"
+                  onMouseEnter={(e) => (e.currentTarget.title = tips.expand(e.currentTarget, tabName(t, docs)) ? "" : "Double-click to rename")}
+                  onMouseLeave={tips.hide}
                   onDoubleClick={(e) => {
                     e.stopPropagation();
+                    tips.hide();
                     props.onRenameStart?.(t.id);
                   }}
                 >
@@ -397,11 +416,16 @@ export function SideTabList({
   onRenameStart,
   onStatus,
   onIconPick,
+  collapsed = false,
 }: SideTabListProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const tips = useTip();
+  const { hide } = tips;
+  // A drag, a rename, a scroll or a width change moves the rows from under the tooltip.
+  useEffect(hide, [dragging, renaming, collapsed, sideTabs.length]);
   return (
-    <nav className="ao-side" aria-label="Side tabs">
-      <div className="side-list">
+    <nav className={`ao-side${collapsed ? " collapsed" : ""}`} aria-label="Side tabs">
+      <div className="side-list" onScroll={hide}>
         {sideTabs.map((s, i) => (
           <div key={s.id} className="side-item">
             <Gap index={i} dragging={dragging && !draggingSide && sort === "manual"} />
@@ -427,6 +451,8 @@ export function SideTabList({
               onRenameStart={onRenameStart}
               onStatus={onStatus}
               onIconPick={onIconPick}
+              collapsed={collapsed}
+              tips={tips}
             />
           </div>
         ))}
@@ -453,6 +479,7 @@ export function SideTabList({
         <span className="ao-key">⌃⌘</span>
         <span className="ao-key">1</span>–<span className="ao-key">9</span> switch side tab
       </div>
+      <Tip tip={tips.tip} />
     </nav>
   );
 }

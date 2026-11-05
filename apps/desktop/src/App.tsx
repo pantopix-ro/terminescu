@@ -14,6 +14,9 @@ import {
   chordEvent,
   chordLabel,
   DEFAULT_SETTINGS,
+  SIDEBAR_MAX,
+  SIDEBAR_MIN,
+  SIDEBAR_WIDTH,
   stepZoom,
   withBindings,
   docOf,
@@ -745,6 +748,40 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   useEffect(() => {
     document.documentElement.style.setProperty("--chrome", String(100 / appSettings.zoomPercent));
   }, [appSettings.zoomPercent]);
+  // Task 8.23: a drag on the sidebar's edge sets its width live; the drop saves it.
+  const [sideDrag, setSideDrag] = useState<number>();
+  const sideWidth = sideDrag ?? appSettings.sidebarWidth;
+  const sideCollapsed = appSettings.sidebarCollapsed;
+  const saveSidebar = async (patch: Pick<Partial<AppSettings>, "sidebarWidth" | "sidebarCollapsed">) => {
+    try {
+      const now = await host.settings();
+      setAppSettings(await host.setSettings({ ...now, ...patch }));
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+  const sideResize = (e: React.PointerEvent<HTMLElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const el = e.currentTarget;
+    const x0 = e.clientX;
+    const w0 = sideWidth;
+    const widthAt = (x: number) => Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(w0 + x - x0)));
+    el.setPointerCapture(e.pointerId);
+    const move = (m: PointerEvent) => setSideDrag(widthAt(m.clientX));
+    const up = (u: PointerEvent) => {
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+      el.removeEventListener("pointercancel", up);
+      const w = widthAt(u.clientX);
+      void saveSidebar({ sidebarWidth: w }).finally(() => setSideDrag(undefined));
+      refocus();
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+    el.addEventListener("pointercancel", up);
+  };
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("statuses");
   // Settings › Keys: the palette shows the chords the person set.
   const [keyBindings, setKeyBindings] = useState<KeyBindings>({});
@@ -1159,8 +1196,43 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           refocus();
         }}
       >
-        <div className="app" data-context={mode}>
+        <div
+          className="app"
+          data-context={mode}
+          data-side={sideCollapsed ? "collapsed" : undefined}
+          data-resizing={sideDrag === undefined ? undefined : ""}
+          style={{ "--side-w": sideCollapsed ? "var(--side-icons)" : `${sideWidth}px` } as React.CSSProperties}
+        >
           <aside className="app-side">
+            {/* Task 8.23: hovering the sidebar shows this; collapsed, only the rows' icons stay. */}
+            <button
+              type="button"
+              className="side-toggle"
+              aria-label={sideCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              aria-expanded={!sideCollapsed}
+              title={sideCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => {
+                void saveSidebar({ sidebarCollapsed: !sideCollapsed });
+                refocus();
+              }}
+            >
+              <i className={`ao-i ${sideCollapsed ? "ao-i-chevr" : "ao-i-chevr flip"}`} />
+            </button>
+            {!sideCollapsed && (
+              <div
+                className="side-resize"
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Sidebar width"
+                aria-valuenow={sideWidth}
+                aria-valuemin={SIDEBAR_MIN}
+                aria-valuemax={SIDEBAR_MAX}
+                title="Drag to resize, double-click for the default width"
+                onPointerDown={sideResize}
+                onDoubleClick={() => void saveSidebar({ sidebarWidth: SIDEBAR_WIDTH })}
+              />
+            )}
             {/* The title bar is an overlay (D20): this strip holds the traffic lights and moves the window. */}
             <div className="app-traffic" data-tauri-drag-region>
               <span className="app-wordmark" data-tauri-drag-region aria-label="Terminescu">
@@ -1193,6 +1265,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               onRename={rename}
               onStatus={(sideTabId, tabId, at) => setQuickStatus({ sideTabId, tabId, ...at })}
               onIconPick={(id, at) => setPicking({ id, ...at })}
+              collapsed={sideCollapsed}
               onRenameEnd={() => {
                 setRenaming(undefined);
                 refocus();
