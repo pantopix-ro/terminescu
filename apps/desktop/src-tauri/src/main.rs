@@ -286,6 +286,13 @@ fn prompt_archive(
 }
 
 #[tauri::command(async)]
+fn prompt_used(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<(), String> {
+    prompts::mark_used(&lock(&state.db), &id).map_err(|e| e.to_string())?;
+    let _ = app.emit(PROMPTS_EVENT, &id);
+    Ok(())
+}
+
+#[tauri::command(async)]
 fn items_list(state: State<'_, AppState>, side_tab: String) -> Result<Vec<context::Item>, String> {
     context::items(&lock(&state.db), &side_tab).map_err(|e| e.to_string())
 }
@@ -835,6 +842,7 @@ fn main() {
             prompt_restore,
             prompt_duplicate,
             prompt_archive,
+            prompt_used,
             host_statuses,
             status_config,
             status_save,

@@ -236,8 +236,14 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       the person has wins, a deleted seed stays deleted. `crates/core/tests/prompts.rs` covers
       it. The library opens with `⌘⇧I` or from the panel's Prompts section. Limits: the body is
       a plain textarea until text tabs land (group 7, D29), and images in prompts wait too.
-- [ ] 6.4 `⌘I` insert: prompts and variables, resolution from context, missing variables asked
+- [x] 6.4 `⌘I` insert: prompts and variables, resolution from context, missing variables asked
       inline, bracketed paste, insert and send. Verify: test that plain insert writes no `\r`.
+      Done: `InsertDialog` lists prompts and variables; a prompt renders `{{name}}` from the
+      side tab (a secret as `$NAME`, `{{pins}}` as quotes), asks for missing names inline with
+      an opt-in save to context, and stays editable. `⌘↵` inserts, `⌘⇧↵` inserts and sends.
+      Inserts skip xterm's paste, which turns line breaks into `\r` outside bracketed mode:
+      `pasteBytes` never writes `\r`, brackets any multi-line text, and drops paste markers in
+      it. `insert.test.ts` and `prompts.spec.ts` check the exact bytes on the pane.
 - [ ] 6.5 Save as prompt from the insert dialog with variable detection. Verify: saving text
       containing the `branch` value offers `{{branch}}`.
 - [ ] 6.6 Attention: status line count, dock badge, macOS notification on by default without

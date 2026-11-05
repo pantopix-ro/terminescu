@@ -83,3 +83,78 @@ test("a new prompt shows in the context panel and opens the library at it", asyn
   await row.getByRole("button", { name: "Audit export" }).click();
   await expect(page.locator('.pl-item.sel[data-prompt="audit-export"]')).toBeVisible();
 });
+
+// Task 6.4: `⌘I` inserts prompts and variables into the focused terminal (D13).
+async function insertSetup(page: Page) {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+  await expect(page.locator(".term-pane")).toHaveCount(1);
+  const pane = await page.evaluate(() => document.querySelector<HTMLElement>(".term-pane")!.dataset.pane!);
+  await page.keyboard.press("Meta+Backslash");
+  const panel = page.locator("aside.ctx-pinned");
+  const add = async (name: string, value: string, mode: string) => {
+    await panel.getByRole("button", { name: "+ variable" }).click();
+    const form = panel.getByRole("form", { name: "Add a variable" });
+    await form.getByLabel("Name").fill(name);
+    await form.getByLabel("Storage").selectOption(mode);
+    await form.getByLabel("Value").fill(value);
+    await form.getByRole("button", { name: "Add" }).click();
+    await expect(form).toHaveCount(0);
+  };
+  await add("ticket", "PROJ-482", "saved");
+  await add("API_TOKEN", "tok-example", "secret");
+  await page.locator(".term-pane").first().click();
+  const inputs = () => page.evaluate((id) => (window as any).__terminescu.host.inputs.get(id) ?? "", pane);
+  return { pane, panel, inputs };
+}
+
+test("⌘I inserts a prompt with a missing variable asked inline, and plain insert writes no \\r", async ({ page }) => {
+  const { panel, inputs } = await insertSetup(page);
+  await page.evaluate(() =>
+    (window as any).__terminescu.host.createPrompt({
+      name: "Deploy check",
+      tags: [],
+      body: "Check {{ticket}} on {{branch}}\nwith $X={{API_TOKEN}}",
+    }),
+  );
+  const before = await inputs();
+  await page.keyboard.press("Meta+I");
+  const dialog = page.getByRole("dialog", { name: "Insert" });
+  await dialog.getByLabel("Search prompts and variables").fill("deploy");
+  await dialog.getByLabel("Search prompts and variables").press("Enter");
+  await dialog.getByLabel("Value for branch").fill("feature/audit-export");
+  await dialog.getByLabel("Save branch to the context").check();
+  await expect(dialog.getByLabel("Text to insert")).toHaveValue("Check PROJ-482 on feature/audit-export\nwith $X=$API_TOKEN");
+  await dialog.getByLabel("Text to insert").press("Meta+Enter");
+  await expect(dialog).toHaveCount(0);
+
+  await expect.poll(async () => (await inputs()).slice(before.length)).toBe(
+    "\x1b[200~Check PROJ-482 on feature/audit-export\nwith $X=$API_TOKEN\x1b[201~",
+  );
+  expect((await inputs()).slice(before.length)).not.toContain("\r");
+  expect(await inputs()).not.toContain("tok-example");
+  await expect(panel.locator('.ctx-var[data-var="branch"] .ctx-value')).toHaveText("feature/audit-export");
+
+  // The library counts the use.
+  const used = await page.evaluate(async () => (await (window as any).__terminescu.host.searchPrompts("deploy"))[0].useCount);
+  expect(used).toBe(1);
+});
+
+test("insert and send adds one Enter; a variable goes in from the list", async ({ page }) => {
+  const { inputs } = await insertSetup(page);
+  const before = await inputs();
+  await page.keyboard.press("Meta+I");
+  const dialog = page.getByRole("dialog", { name: "Insert" });
+  await dialog.getByLabel("Search prompts and variables").fill("ticket");
+  await expect(dialog.getByRole("option")).toHaveCount(2);
+  await dialog.getByRole("option").filter({ hasText: "{{ticket}}" }).filter({ hasText: "saved" }).click();
+  await expect.poll(async () => (await inputs()).slice(before.length)).toBe("PROJ-482");
+
+  const mid = await inputs();
+  await page.keyboard.press("Meta+I");
+  await dialog.getByLabel("Search prompts and variables").fill("review plan");
+  await dialog.getByLabel("Search prompts and variables").press("Enter");
+  await expect(dialog.getByLabel("Text to insert")).toHaveValue(/^Review the plan for PROJ-482\. Rate/);
+  await dialog.getByRole("button", { name: "Insert and send ⌘⇧↵" }).click();
+  await expect.poll(async () => (await inputs()).slice(mid.length)).toMatch(/^\x1b\[200~Review the plan for PROJ-482\..*\n\x1b\[201~\r$/s);
+});

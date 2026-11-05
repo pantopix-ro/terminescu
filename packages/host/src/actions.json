@@ -50,6 +50,12 @@
    "accel": "Cmd+Shift+P"
   },
   {
+   "id": "insert",
+   "label": "Insert Prompt or Variable…",
+   "menu": "Shell",
+   "accel": "Cmd+I"
+  },
+  {
    "id": "status_editor",
    "label": "Edit Status…",
    "menu": "Shell",

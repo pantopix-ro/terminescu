@@ -71,6 +71,7 @@ export function createIpcHost(): Host {
     restorePrompt: (id, version) => invoke<Prompt>("prompt_restore", { id, version }),
     duplicatePrompt: (id) => invoke<Prompt>("prompt_duplicate", { id }),
     archivePrompt: (id, archived) => invoke<Prompt>("prompt_archive", { id, archived }),
+    markPromptUsed: (id) => invoke("prompt_used", { id }),
     onPrompts: (listener) => listen(PROMPTS_EVENT, () => listener()),
     statuses: () => invoke<Record<Id, Shown>>("host_statuses"),
     onStatuses: (listener) => listen<Record<Id, Shown>>(STATUS_EVENT, (e) => listener(e.payload)),

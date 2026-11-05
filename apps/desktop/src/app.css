@@ -181,3 +181,15 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 .pl-ver-body { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 720px) { .pl-body-wrap { grid-template-columns: 1fr; } }
 .pl-row .ao-btn:disabled { opacity: .4; cursor: default; }
+.insert-dialog { width: min(720px, calc(100% - 32px)); max-height: 80vh; display: flex; flex-direction: column; }
+.insert-dialog .ao-frame-body { display: flex; flex-direction: column; gap: var(--space-2); min-height: 0; }
+.ins-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; max-height: 50vh; }
+.ins-item { display: flex; align-items: center; gap: var(--space-3); cursor: pointer; }
+.ins-item .grow { flex: 1; min-width: 0; }
+.ins-value { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ins-step { display: flex; flex-direction: column; gap: var(--space-2); min-height: 0; }
+.ins-head { display: flex; align-items: center; gap: var(--space-3); }
+.ins-title { color: var(--fg); }
+.ins-missing { display: flex; flex-direction: column; gap: var(--space-1); }
+.ins-var { display: grid; grid-template-columns: minmax(80px, auto) minmax(0, 1fr) auto; gap: var(--space-2); align-items: center; }
+.ins-text { min-height: 180px; resize: vertical; font-size: 12px; line-height: 1.5; white-space: pre-wrap; }

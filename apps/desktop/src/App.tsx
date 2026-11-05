@@ -36,6 +36,7 @@ import {
   ExtractDialog,
   PIN_EVENT,
   PromptLibrary,
+  InsertDialog,
   paneEvent,
   REVEAL_ROWS_EVENT,
   quoteOf,
@@ -165,7 +166,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const [palette, setPalette] = useState(false);
   const [mode, setMode] = useState<ContextMode>(loadMode);
   const [dragging, setDragging] = useState<string>();
-  const [sheet, setSheet] = useState<"status" | "settings" | "prompts">();
+  const [sheet, setSheet] = useState<"status" | "settings" | "prompts" | "insert">();
   const [libraryKey, setLibraryKey] = useState<string>();
 
   const send = (c: Command): Promise<boolean> =>
@@ -294,6 +295,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         return;
       case "settings":
         return setSheet((s) => (s === "settings" ? undefined : "settings"));
+      case "insert":
+        if (!focused || !activeTab || transcriptOf(activeTab.layout, focused)) return setError("Focus a terminal pane to insert.");
+        return setSheet((s) => (s === "insert" ? undefined : "insert"));
       case "prompt_library":
         setLibraryKey(undefined);
         return setSheet((s) => (s === "prompts" ? undefined : "prompts"));
@@ -452,13 +456,28 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       })
       .catch((e: unknown) => setError(String(e)));
   };
+  // Inserts go to the focused terminal only, never with Enter unless `send` (D13).
+  const insertInto = (text: string, send = false) => {
+    if (!focused || !activeTab || transcriptOf(activeTab.layout, focused)) return false;
+    paneEvent(focused, new CustomEvent(INSERT_EVENT, { detail: { text, send } }));
+    return true;
+  };
   // A secret goes in as `$NAME` (D21, D35). In a Claude pane the person learns where the value
   // goes and where it must not: a raw value typed into a prompt stays in Claude's transcript.
+  const secretNote = (names: string[]) => {
+    if (focused && agents[focused] && names.length)
+      setNotice(
+        `Claude sees ${names.map((n) => `$${n}`).join(", ")}; its commands read the value from the environment. Typed raw, a value stays in Claude's transcript.`,
+      );
+  };
   const insertVariable = (v: Variable) => {
-    if (!focused || !activeTab || transcriptOf(activeTab.layout, focused)) return;
-    paneEvent(focused, new CustomEvent(INSERT_EVENT, { detail: insertText(v) }));
-    if (agents[focused] && v.mode === "secret")
-      setNotice(`Claude sees $${v.name}; its commands read the value from the environment. Typed raw, a value stays in Claude's transcript.`);
+    if (insertInto(insertText(v)) && v.mode === "secret") secretNote([v.name]);
+  };
+  const insertChosen = (text: string, send: boolean, prompt?: Prompt) => {
+    closeSheet();
+    if (!insertInto(text, send)) return setError("Focus a terminal pane to insert.");
+    if (prompt) void host.markPromptUsed(prompt.id).catch((e: unknown) => setError(String(e)));
+    secretNote(shownCtx.variables.filter((v) => v.mode === "secret" && text.includes(`$${v.name}`)).map((v) => v.name));
   };
   const [notice, setNotice] = useState<string>();
   const sideOfTab = (tabId: string) => sideTabs.find((s) => s.tabs.some((t) => t.id === tabId))?.id;
@@ -750,6 +769,21 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           onSave={(side, look) => host.saveStatus(side, look).catch(report)}
           onMakeGlobal={(id) => host.makeGlobal(id).catch(report)}
           onSettings={() => setSheet("settings")}
+          onClose={closeSheet}
+        />
+      )}
+      {sheet === "insert" && (
+        <InsertDialog
+          prompts={prompts}
+          variables={shownCtx.variables}
+          pins={shownCtx.pins}
+          onInsert={insertChosen}
+          onSaveVariable={(name, value) =>
+            sideId
+              ? host.addVariable(sideId, { name, value, mode: "saved", ttlSecs: null, source: "typed", originTabId: activeTab?.id ?? null })
+              : Promise.resolve()
+          }
+          onError={setError}
           onClose={closeSheet}
         />
       )}

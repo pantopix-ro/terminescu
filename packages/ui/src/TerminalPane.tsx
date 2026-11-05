@@ -6,7 +6,8 @@ import "@xterm/xterm/css/xterm.css";
 import type { PaneView } from "@terminescu/host";
 import { useEffect, useRef, useState } from "react";
 import { claimPane, paneElement, releasePane } from "./pane-registry";
-import { EXTRACT_EVENT, INSERT_EVENT, PIN_EVENT } from "./events";
+import { EXTRACT_EVENT, INSERT_EVENT, PIN_EVENT, type InsertDetail } from "./events";
+import { pasteBytes } from "./insert";
 import { webglBudget } from "./webgl-budget";
 import { terminalFont, xtermTheme } from "./xterm-theme";
 
@@ -113,12 +114,13 @@ export function TerminalPane({ paneId, visible, focused, onFocus, open, openUrl,
       term.scrollToLine(Math.max(0, rows[0] - 2));
       term.selectLines(rows[0], Math.min(rows[1], last));
     };
-    // xterm's paste wraps the text in bracketed paste when the program asked for it.
+    // Not xterm's paste: without bracketed paste mode it turns line breaks into `\r`.
     const onInsert = (e: Event) => {
       const term = live.current?.term;
-      const text = (e as CustomEvent<string>).detail;
-      if (!term || !live.current?.view || !text) return;
-      term.paste(text);
+      const view = live.current?.view;
+      const d = (e as CustomEvent<InsertDetail>).detail;
+      if (!term || !view || !d?.text) return;
+      view.input(pasteBytes(d.text, term.modes.bracketedPasteMode, d.send));
       term.focus();
     };
     el.addEventListener(PIN_EVENT, onPin);

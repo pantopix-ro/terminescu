@@ -52,6 +52,8 @@ export interface MockHost extends Host {
   readonly resizes: string[];
   /** Text a ResumePane typed, per pane. */
   readonly typed: Map<string, string>;
+  /** Every byte a pane view sent as input, per pane, keys and inserts alike. */
+  readonly inputs: Map<string, string>;
   /** Plays the core's part for hook events: sets or clears a pane's agent. */
   setAgent(pane: string, agent: AgentView | null): void;
   /** Appends entries to a session's fake transcript. */
@@ -134,6 +136,7 @@ export function createMockHost(initial?: Workspace): MockHost {
   const openedUrls: string[] = [];
   const resizes: string[] = [];
   const typed = new Map<string, string>();
+  const inputs = new Map<string, string>();
   const agents = new Map<string, AgentView>();
   const agentListeners = new Set<(u: AgentUpdate) => void>();
   const transcripts = new Map<string, Entry[]>();
@@ -364,6 +367,7 @@ export function createMockHost(initial?: Workspace): MockHost {
     openedUrls,
     resizes,
     typed,
+    inputs,
     workspace: () => structuredClone(ws),
     async snapshot(): Promise<Snapshot> {
       return { rev, workspace: structuredClone(ws) };
@@ -392,7 +396,10 @@ export function createMockHost(initial?: Workspace): MockHost {
       };
       emit(shell.redraw());
       return {
-        input: (data) => emit(shell.input(data)),
+        input: (data) => {
+          inputs.set(paneId, (inputs.get(paneId) ?? "") + data);
+          emit(shell.input(data));
+        },
         resize: (c, r) => {
           resizes.push(`${paneId} ${c}x${r}`);
           shell.resize(c, r);
@@ -616,6 +623,9 @@ export function createMockHost(initial?: Workspace): MockHost {
     },
     async archivePrompt(promptId, archived) {
       return library.archive(promptId, archived);
+    },
+    async markPromptUsed(promptId) {
+      library.markUsed(promptId);
     },
     async onPrompts(listener) {
       promptListeners.add(listener);

@@ -90,6 +90,8 @@ export interface Host {
   restorePrompt(id: Id, version: number): Promise<Prompt>;
   duplicatePrompt(id: Id): Promise<Prompt>;
   archivePrompt(id: Id, archived: boolean): Promise<Prompt>;
+  /** Counts an insert: last used and use count. */
+  markPromptUsed(id: Id): Promise<void>;
   /** A prompt changed in any window. Resolves with a function that removes the listener. */
   onPrompts(listener: () => void): Promise<() => void>;
   /** A side tab's context changed. Resolves with a function that removes the listener. */
