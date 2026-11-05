@@ -5,7 +5,7 @@
 mod docs;
 
 use serde::Deserialize;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
@@ -22,11 +22,12 @@ use terminescu_core::db::{Db, DbAccess};
 use terminescu_core::hook_install;
 use terminescu_core::keys;
 use terminescu_core::launcher;
+use terminescu_core::merge;
 use terminescu_core::persist;
 use terminescu_core::prompts::{self, NewPrompt, Prompt};
 use terminescu_core::runtime::Runtime;
 use terminescu_core::settings;
-use terminescu_core::state::{Command, CommandError, Core, Id, Snapshot, Workspace};
+use terminescu_core::state::{Command, CommandError, Core, Id, SideTab, Snapshot, Workspace};
 use terminescu_core::status::{Auto, Look, ManualStatus, RuleKind, Shown};
 use terminescu_core::status_store::{self, SavedStatus, StatusConfig};
 use terminescu_core::vars;
@@ -80,6 +81,172 @@ struct AppState {
     docs: Arc<terminescu_core::documents::Documents>,
     /// `terminescu edit --wait` calls waiting on their documents.
     waits: Arc<docs::Waits>,
+    /// Side tab merges still inside their undo window, by undo id (D5).
+    merges: Arc<Mutex<HashMap<Id, PendingMerge>>>,
+}
+
+/// How long a merge offers undo; the core keeps it a little longer for a late click.
+const MERGE_UNDO: std::time::Duration = std::time::Duration::from_secs(12);
+
+/// What undoing a merge needs: the context moves and where the source side tab stood.
+struct PendingMerge {
+    undo: merge::Undo,
+    window_id: Id,
+    index: usize,
+    side_tab: SideTab,
+    tab_ids: Vec<Id>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MergeDone {
+    undo_id: Id,
+    /// Source variables kept under a new name: old, new.
+    renames: Vec<(String, String)>,
+}
+
+/// The variables that would clash if `from` merged into `into` (D5).
+#[tauri::command(async)]
+fn side_tab_merge_preview(
+    state: State<'_, AppState>,
+    from: Id,
+    into: Id,
+    label: Option<String>,
+) -> Result<Vec<merge::Clash>, String> {
+    let daemon = state.runtime.daemon();
+    merge::preview(
+        &*state.db,
+        daemon.as_deref(),
+        &from,
+        &into,
+        label.as_deref(),
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// Merges side tab `from` into `into`: the context first, then the tabs. Undo stays open for
+/// [`MERGE_UNDO`].
+#[tauri::command(async)]
+fn side_tab_merge(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    from: Id,
+    into: Id,
+    label: Option<String>,
+    resolution: merge::Resolution,
+) -> Result<MergeDone, String> {
+    let ws = state.runtime.snapshot().workspace;
+    let (window_id, index, side_tab) = ws
+        .windows
+        .iter()
+        .find_map(|w| {
+            w.side_tabs
+                .iter()
+                .position(|s| s.id == from)
+                .map(|i| (w.id.clone(), i, w.side_tabs[i].clone()))
+        })
+        .ok_or_else(|| format!("unknown side tab {from}"))?;
+    if from == into || ws.side_tab(&into).is_none() {
+        return Err(format!("unknown side tab {into}"));
+    }
+    let daemon = state.runtime.daemon();
+    let undo = merge::merge(
+        &*state.db,
+        daemon.as_deref(),
+        &from,
+        &into,
+        label.as_deref(),
+        &resolution,
+    )
+    .map_err(|e| e.to_string())?;
+    if let Err(e) = state.runtime.command(Command::MergeSideTab {
+        from: from.clone(),
+        into: into.clone(),
+    }) {
+        let _ = merge::undo(&*state.db, daemon.as_deref(), &undo);
+        return Err(e.to_string());
+    }
+    let done = MergeDone {
+        undo_id: undo.id.clone(),
+        renames: undo.renames.clone(),
+    };
+    let tab_ids = side_tab.tabs.iter().map(|t| t.id.clone()).collect();
+    lock(&state.merges).insert(
+        undo.id.clone(),
+        PendingMerge {
+            undo,
+            window_id,
+            index,
+            side_tab: SideTab {
+                tabs: Vec::new(),
+                ..side_tab
+            },
+            tab_ids,
+        },
+    );
+    let (merges, rt, id) = (
+        state.merges.clone(),
+        state.runtime.clone(),
+        done.undo_id.clone(),
+    );
+    let _ = std::thread::Builder::new()
+        .name("merge-undo".into())
+        .spawn(move || {
+            std::thread::sleep(MERGE_UNDO);
+            if let Some(p) = lock(&merges).remove(&id) {
+                merge::finish(rt.daemon().as_deref(), &p.undo);
+            }
+        });
+    merged(&app, &state, &into);
+    Ok(done)
+}
+
+/// Undoes a merge inside its window: the source side tab comes back with the tabs that are
+/// still in the target, and its context moves back.
+#[tauri::command(async)]
+fn side_tab_merge_undo(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    undo_id: Id,
+) -> Result<(), String> {
+    let p = lock(&state.merges)
+        .remove(&undo_id)
+        .ok_or("too late to undo this merge")?;
+    let ws = state.runtime.snapshot().workspace;
+    let tab_ids: Vec<Id> = p
+        .tab_ids
+        .iter()
+        .filter(|t| ws.locate_tab(t).is_some_and(|(s, _)| s.id == p.undo.into))
+        .cloned()
+        .collect();
+    let daemon = state.runtime.daemon();
+    let restored = state.runtime.command(Command::RestoreSideTab {
+        window_id: p.window_id.clone(),
+        index: p.index,
+        side_tab: p.side_tab.clone(),
+        tab_ids,
+    });
+    if let Err(e) = restored {
+        merge::finish(daemon.as_deref(), &p.undo);
+        return Err(format!("the merge cannot be undone: {e}"));
+    }
+    let undone = merge::undo(&*state.db, daemon.as_deref(), &p.undo);
+    merged(&app, &state, &p.undo.from);
+    undone.map_err(|e| e.to_string())
+}
+
+/// After a merge or its undo: contexts, local commands and statuses changed side tab.
+fn merged(app: &AppHandle, state: &State<'_, AppState>, side: &str) {
+    let db = lock(&state.db);
+    match status_store::rules(&db) {
+        Ok(rules) => state.runtime.set_status_rules(rules),
+        Err(e) => eprintln!("terminescu: status rules not reloaded: {e}"),
+    }
+    refresh_launchers(&db, &state.runtime);
+    drop(db);
+    let _ = app.emit(CONTEXT_EVENT, side);
+    let _ = app.emit(STATUS_CONFIG_EVENT, ());
+    let _ = app.emit(COMMANDS_EVENT, ());
 }
 
 /// Focuses the pane that has waited longest, raising its window. `None` when nothing waits.
@@ -962,6 +1129,15 @@ fn builtin_set(
 
 #[tauri::command]
 fn host_command(state: State<'_, AppState>, command: Command) -> Result<u64, CommandError> {
+    // These move contexts too; they go through `side_tab_merge` and its undo.
+    if let Command::MergeSideTab { from, .. }
+    | Command::RestoreSideTab {
+        side_tab: SideTab { id: from, .. },
+        ..
+    } = &command
+    {
+        return Err(CommandError::UnknownSideTab(from.clone()));
+    }
     // The runtime emits each batch under its core lock, so windows see them in rev order.
     state.runtime.command(command)
 }
@@ -1433,6 +1609,7 @@ fn main() {
                 recording: Mutex::new(None),
                 docs,
                 waits,
+                merges: Arc::default(),
             });
             for id in &windows {
                 open_window(app.handle(), id)?;
@@ -1453,6 +1630,9 @@ fn main() {
             items_list,
             files_touched,
             pane_send_text,
+            side_tab_merge_preview,
+            side_tab_merge,
+            side_tab_merge_undo,
             files_forget,
             item_add,
             item_remove,

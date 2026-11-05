@@ -21,8 +21,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 use terminescu_protocol::paths::{CORE_SOCKET_ENV, PANE_ID_ENV, PTYD_SOCKET_ENV, peer_uid};
 use terminescu_protocol::{
-    Control, FEATURE_SHELL, FEATURE_VARS, Frame, PROTOCOL_VERSION, PaneId, PaneInfo, ShellState,
-    SpawnSpec, decode, encode, is_var_name, negotiate,
+    Control, FEATURE_SHELL, FEATURE_VAR_MOVE, FEATURE_VARS, Frame, PROTOCOL_VERSION, PaneId,
+    PaneInfo, ShellState, SpawnSpec, decode, encode, is_var_name, negotiate,
 };
 
 /// Frames a client may have queued before it counts as stuck.
@@ -451,7 +451,10 @@ fn serve_client(shared: Arc<Shared>, mut stream: UnixStream) {
                         instance: shared.instance.clone(),
                         features: features
                             .iter()
-                            .filter(|f| f.as_str() == FEATURE_SHELL || f.as_str() == FEATURE_VARS)
+                            .filter(|f| {
+                                [FEATURE_SHELL, FEATURE_VARS, FEATURE_VAR_MOVE]
+                                    .contains(&f.as_str())
+                            })
                             .cloned()
                             .collect(),
                     },
@@ -666,6 +669,31 @@ fn handle(shared: &Arc<Shared>, client: u64, tx: &SyncSender<Vec<u8>>, frame: Fr
                 reply(tx, Control::Done { req });
                 if had {
                     shared.broadcast_vars(&side_tab);
+                }
+            }
+            Control::SideVarsMove {
+                req,
+                from,
+                to,
+                moves,
+            } => {
+                if let Some(bad) = moves.iter().find(|m| !is_var_name(&m.to)) {
+                    return reply(
+                        tx,
+                        error(
+                            "bad_name",
+                            format!("`{}` cannot be exported", bad.to),
+                            Some(req),
+                        ),
+                    );
+                }
+                let moves: Vec<(String, String)> =
+                    moves.into_iter().map(|m| (m.from, m.to)).collect();
+                let moved = lock(&shared.vars).move_vars(&from, &to, &moves);
+                reply(tx, Control::Done { req });
+                if moved {
+                    shared.broadcast_vars(&from);
+                    shared.broadcast_vars(&to);
                 }
             }
             other => reply(tx, error("unexpected", format!("{other:?}"), None)),

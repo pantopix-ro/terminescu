@@ -15,6 +15,7 @@ pub mod hook_install;
 pub mod keys;
 pub mod launcher;
 pub mod layout;
+pub mod merge;
 pub mod persist;
 pub mod prompts;
 pub mod runtime;

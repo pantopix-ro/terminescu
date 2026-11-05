@@ -1,4 +1,4 @@
-import { useDroppable } from "@dnd-kit/core";
+import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { leaf, panesOf, type AgentView, type Shown, type SideTab, type Tab } from "@terminescu/host";
 import { useState } from "react";
 import { DOT, tabAgent, type Agents } from "./agents";
@@ -14,6 +14,8 @@ export interface SideTabListProps {
   onNew(): void;
   /** A tab is being dragged: show the drop targets (task 3.2). */
   dragging: boolean;
+  /** The side tab being dragged onto another to merge (D5); rows become the only targets. */
+  draggingSide?: string;
   /** Claude sessions by pane: a side tab with one waiting gets the amber marker (D34). */
   agents?: Agents;
   /** Shown statuses by tab and side tab id (D15). */
@@ -57,6 +59,8 @@ export function tabChord(i: number, count: number): string | undefined {
 /** Drop ids: into a side tab, into the gap before side tab `i`, or after the last one. */
 export const dropInto = (sideTabId: string) => `into:${sideTabId}`;
 export const dropGap = (index: number) => `gap:${index}`;
+/** Drag id of a side tab row, dropped onto another row to merge (D5). */
+export const dragSide = (sideTabId: string) => `side:${sideTabId}`;
 export const DROP_END = "gap:end";
 
 function Gap({ index, dragging, end }: { index: number; dragging: boolean; end?: boolean }) {
@@ -82,6 +86,7 @@ function Row(props: {
   expanded: boolean;
   activeTabId: string | undefined;
   dragging: boolean;
+  draggingSide: string | undefined;
   agents: Agents;
   statuses: Readonly<Record<string, Shown>>;
   builtins: Builtins;
@@ -94,7 +99,13 @@ function Row(props: {
   const shown = statuses[side.id];
   const need = shown?.waiting || side.tabs.some((t) => tabAgent(t, agents)?.state === "waiting" || tabRequest(t, docs));
   const chip = chipOf(shown, builtins);
-  const { setNodeRef, isOver } = useDroppable({ id: dropInto(side.id), disabled: !dragging || active });
+  const { draggingSide } = props;
+  // A tab drops into any other row; a side tab merges into any row but itself.
+  const { setNodeRef, isOver } = useDroppable({
+    id: dropInto(side.id),
+    disabled: !dragging || (draggingSide ? draggingSide === side.id : active),
+  });
+  const drag = useDraggable({ id: dragSide(side.id) });
   const group = side.tabs.length > 1;
   const open = group && (active || expanded);
   // A status background tints the row; otherwise the active row takes the raised panel.
@@ -102,10 +113,15 @@ function Row(props: {
   return (
     <>
       <div
-        ref={setNodeRef}
+        ref={(n) => {
+          setNodeRef(n);
+          drag.setNodeRef(n);
+        }}
+        {...drag.listeners}
         role="button"
         tabIndex={0}
-        className={`ao-st${active ? " active" : ""}${isOver ? " drop-into" : ""}${need ? " need" : ""}`}
+        aria-roledescription="side tab"
+        className={`ao-st${active ? " active" : ""}${isOver ? " drop-into" : ""}${need ? " need" : ""}${drag.isDragging ? " lifted" : ""}`}
         style={style}
         data-side={side.id}
         aria-current={active ? "true" : undefined}
@@ -187,6 +203,7 @@ export function SideTabList({
   onSelectTab,
   onNew,
   dragging,
+  draggingSide,
   agents = {},
   statuses = {},
   builtins = {},
@@ -219,7 +236,7 @@ export function SideTabList({
       <div className="side-list">
         {sideTabs.map((s, i) => (
           <div key={s.id} className="side-item">
-            <Gap index={i} dragging={dragging && sort === "manual"} />
+            <Gap index={i} dragging={dragging && !draggingSide && sort === "manual"} />
             <Row
               side={s}
               index={i}
@@ -227,6 +244,7 @@ export function SideTabList({
               expanded={!!expanded[s.id]}
               activeTabId={activeTabId}
               dragging={dragging}
+              draggingSide={draggingSide}
               agents={agents}
               statuses={statuses}
               builtins={builtins}
@@ -237,8 +255,8 @@ export function SideTabList({
             />
           </div>
         ))}
-        <Gap index={sideTabs.length} dragging={dragging && sort === "manual"} />
-        <Gap index={sideTabs.length} dragging={dragging} end />
+        <Gap index={sideTabs.length} dragging={dragging && !draggingSide && sort === "manual"} />
+        <Gap index={sideTabs.length} dragging={dragging && !draggingSide} end />
       </div>
       <div className="side-foot small ao-dim">
         <span className="ao-key">⌃⌘</span>

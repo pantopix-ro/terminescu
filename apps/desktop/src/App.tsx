@@ -39,6 +39,10 @@ import {
   type Host,
   type Workspace,
   type WorkspaceStore,
+  type MergeClash,
+  type SideTab,
+  type MergeResolution,
+  MERGE_UNDO_MS,
 } from "@terminescu/host";
 import {
   ContextPanel,
@@ -46,6 +50,7 @@ import {
   INSERT_EVENT,
   insertText,
   ExtractDialog,
+  MergeDialog,
   PIN_EVENT,
   PromptLibrary,
   InsertDialog,
@@ -154,6 +159,8 @@ function neighbor(from: string, ids: string[], dir: Dir): string | undefined {
 /** Sidebar targets under the pointer win; otherwise the nearest tab in the bar. */
 const collide: CollisionDetection = (args) => {
   const under = pointerWithin(args);
+  // A side tab merges only into a row under the pointer.
+  if (String(args.active.id).startsWith("side:")) return under.filter((c) => String(c.id).startsWith("into:"));
   if (under.length) return under;
   const tabs = args.droppableContainers.filter((c) => !String(c.id).includes(":"));
   return closestCenter({ ...args, droppableContainers: tabs });
@@ -189,6 +196,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const [palette, setPalette] = useState(false);
   const [mode, setMode] = useState<ContextMode>(loadMode);
   const [dragging, setDragging] = useState<string>();
+  // A side tab merge waiting on the clash dialog, and the last merge's undo toast (D5).
+  const [merging, setMerging] = useState<{ from: SideTab; into: SideTab; clashes: MergeClash[] }>();
+  const [mergeToast, setMergeToast] = useState<{ undoId: string; text: string }>();
   const [sheet, setSheet] = useState<"status" | "settings" | "prompts" | "insert" | "save-prompt">();
   const [toSave, setToSave] = useState("");
   const [libraryKey, setLibraryKey] = useState<string>();
@@ -814,12 +824,55 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     void send({ type: "MoveTabToNewSideTab", tabId, windowId, index: target.newAt });
   };
 
+  // Drop a side tab onto another (D5): straight in without a clash, else the dialog asks.
+  const startMerge = (fromId: string, intoId: string) => {
+    const from = sideTabs.find((s) => s.id === fromId);
+    const into = sideTabs.find((s) => s.id === intoId);
+    if (!from || !into || from.id === into.id) return;
+    host.mergePreview(from.id, into.id, sideTabName(from, docs)).then(
+      (clashes) => {
+        if (clashes.length) setMerging({ from, into, clashes });
+        else finishMerge(from, into, { keepBoth: false });
+      },
+      (e: unknown) => {
+        report(e);
+        refocus();
+      },
+    );
+  };
+  const finishMerge = (from: SideTab, into: SideTab, resolution: MergeResolution) => {
+    setMerging(undefined);
+    const fromName = sideTabName(from, docs);
+    const intoName = sideTabName(into, docs);
+    host
+      .mergeSideTabs(from.id, into.id, fromName, resolution)
+      .then((done) => {
+        const renamed = done.renames.map(([a, b]) => `${a} → ${b}`).join(", ");
+        setMergeToast({ undoId: done.undoId, text: `Merged ${fromName} into ${intoName}${renamed ? `; kept ${renamed}` : ""}.` });
+        if (activeSide?.id === from.id) setSideTabId(into.id);
+      }, report)
+      .finally(refocus);
+  };
+  useEffect(() => {
+    if (!mergeToast) return;
+    const t = setTimeout(() => setMergeToast((m) => (m === mergeToast ? undefined : m)), MERGE_UNDO_MS);
+    return () => clearTimeout(t);
+  }, [mergeToast]);
+  const undoMerge = () => {
+    if (!mergeToast) return;
+    setMergeToast(undefined);
+    host.undoMerge(mergeToast.undoId).then(refocus, report);
+  };
+
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const onDragEnd = ({ active, over }: DragEndEvent) => {
     setDragging(undefined);
-    refocus();
     const tabId = String(active.id);
     const at = over && String(over.id);
+    // A merge may open its dialog, which takes the focus; it gives it back when it closes.
+    if (tabId.startsWith("side:") && at?.startsWith("into:")) return startMerge(tabId.slice(5), at.slice(5));
+    refocus();
+    if (tabId.startsWith("side:")) return;
     if (!at || !activeSide) return;
     // The only tab of a side tab dropped next to it would make the same sidebar again.
     const idx = sideTabs.findIndex((s) => s.id === activeSide.id);
@@ -850,9 +903,15 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         ]
       : []),
     ...sideTabs.map((s) => ({ id: `go:${s.id}`, label: sideTabName(s), group: "Go to side tab", run: () => setSideTabId(s.id) })),
+    ...(activeSide
+      ? sideTabs
+          .filter((s) => s.id !== activeSide.id)
+          .map((s) => ({ id: `merge:${s.id}`, label: sideTabName(s), group: "Merge side tab into…", run: () => startMerge(activeSide.id, s.id) }))
+      : []),
   ];
 
   const dragTab = dragging ? tabs.find((t) => t.id === dragging) : undefined;
+  const dragSideTab = dragging?.startsWith("side:") ? sideTabs.find((s) => s.id === dragging.slice(5)) : undefined;
   const multi = panes.length > 1;
 
   return (
@@ -860,6 +919,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       <DndContext
         sensors={sensors}
         collisionDetection={collide}
+        // The app places the focus after a drop: the terminal, or a merge dialog's field.
+        accessibility={{ restoreFocus: false }}
         onDragStart={({ active }) => {
           setDragging(String(active.id));
           // Esc cancels the drag; the keyboard must not be in a terminal for that.
@@ -887,6 +948,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               activeId={activeSide?.id}
               activeTabId={activeTab?.id}
               dragging={!!dragging}
+              draggingSide={dragSideTab?.id}
               agents={agents}
               onSelect={(id) => {
                 setSideTabId(id);
@@ -1061,6 +1123,11 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           {dragTab && (
             <div className="ao-tab ghost">
               <span className="n">{tabName(dragTab)}</span>
+            </div>
+          )}
+          {dragSideTab && (
+            <div className="ao-tab ghost">
+              <span className="n">{sideTabName(dragSideTab, docs)}</span>
             </div>
           )}
         </DragOverlay>
@@ -1245,6 +1312,26 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               </div>
             </div>
           </div>
+        </div>
+      )}
+      {merging && (
+        <MergeDialog
+          fromName={sideTabName(merging.from, docs)}
+          intoName={sideTabName(merging.into, docs)}
+          clashes={merging.clashes}
+          onMerge={(r) => finishMerge(merging.from, merging.into, r)}
+          onCancel={() => {
+            setMerging(undefined);
+            refocus();
+          }}
+        />
+      )}
+      {mergeToast && (
+        <div className="ao-frame toast" role="status">
+          <span className="small">{mergeToast.text}</span>
+          <button type="button" className="ao-btn ghost" onClick={undoMerge}>
+            Undo
+          </button>
         </div>
       )}
       {finder && (

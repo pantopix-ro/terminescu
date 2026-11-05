@@ -127,6 +127,16 @@ pub enum Control {
         req: u64,
         side_tab: String,
     },
+    /// Moves variables from one side tab to another with their mode and TTL, for a side tab
+    /// merge and its undo (D5, D21); values never leave the daemon. Each move replaces a
+    /// variable of the target name; a name `from` lacks is skipped. Needs `FEATURE_VAR_MOVE`.
+    /// Answered by `Done`.
+    SideVarsMove {
+        req: u64,
+        from: String,
+        to: String,
+        moves: Vec<VarMove>,
+    },
 
     // Daemon to client.
     Welcome {
@@ -205,6 +215,15 @@ pub struct SpawnSpec {
 pub const FEATURE_SHELL: &str = "shell";
 /// The `Hello` feature for the `SideVar*` requests and [`Control::VarsChanged`] pushes.
 pub const FEATURE_VARS: &str = "vars";
+/// The `Hello` feature for [`Control::SideVarsMove`].
+pub const FEATURE_VAR_MOVE: &str = "var_move";
+
+/// One variable of a [`Control::SideVarsMove`]: `from` on the source becomes `to` on the target.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VarMove {
+    pub from: String,
+    pub to: String,
+}
 
 /// Where a variable lives (D21). Saved variables live in the core's SQLite, never here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -440,6 +459,15 @@ mod tests {
                 value: "2026-11-01".into(),
                 mode: VarMode::Session,
                 expires_in_ms: Some(1000),
+            }],
+        }));
+        roundtrip(Frame::Control(Control::SideVarsMove {
+            req: 5,
+            from: "s1".into(),
+            to: "s2".into(),
+            moves: vec![VarMove {
+                from: "branch".into(),
+                to: "branch_477".into(),
             }],
         }));
     }

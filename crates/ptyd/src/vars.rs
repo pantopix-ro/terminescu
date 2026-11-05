@@ -85,6 +85,31 @@ impl Vars {
             .is_some_and(|s| !s.vars.is_empty())
     }
 
+    /// Moves variables to another side tab with their value, mode and expiry. A move onto a
+    /// name the target has replaces it; a name the source lacks is skipped. Returns whether
+    /// anything moved.
+    pub fn move_vars(&mut self, from: &str, to: &str, moves: &[(String, String)]) -> bool {
+        if from == to {
+            return false;
+        }
+        let taken: Vec<(String, Entry)> = match self.by_side.get_mut(from) {
+            Some(s) => moves
+                .iter()
+                .filter_map(|(a, b)| s.vars.remove(a).map(|e| (b.clone(), e)))
+                .collect(),
+            None => return false,
+        };
+        if taken.is_empty() {
+            return false;
+        }
+        self.bump(from);
+        let target = self.bump(to);
+        for (name, e) in taken {
+            target.vars.insert(name, e);
+        }
+        true
+    }
+
     /// Drops every expired variable. Returns the side tabs that lost one since the last sweep,
     /// including those a read expired.
     pub fn sweep(&mut self) -> Vec<String> {
@@ -170,6 +195,46 @@ mod tests {
         assert!(g2 > g1 && vars.is_empty());
         v.unset("s1", "A");
         assert_eq!(v.get("s1", None).0, g2, "unsetting nothing changes nothing");
+    }
+
+    #[test]
+    fn move_keeps_mode_and_expiry_and_renames() {
+        let mut v = Vars::default();
+        v.set(
+            "s1",
+            "branch",
+            "feature/PROJ-477".into(),
+            VarMode::Session,
+            None,
+        );
+        v.set(
+            "s1",
+            "API_TOKEN",
+            "tok-example".into(),
+            VarMode::Secret,
+            Some(Duration::from_secs(60)),
+        );
+        v.set(
+            "s2",
+            "branch",
+            "feature/PROJ-482".into(),
+            VarMode::Session,
+            None,
+        );
+        let moves = [
+            ("branch".to_string(), "branch_477".to_string()),
+            ("API_TOKEN".to_string(), "API_TOKEN".to_string()),
+            ("gone".to_string(), "gone".to_string()),
+        ];
+        assert!(v.move_vars("s1", "s2", &moves));
+        assert!(v.get("s1", None).1.is_empty());
+        let (_, vars) = v.get("s2", None);
+        let names: Vec<_> = vars.iter().map(|v| v.name.as_str()).collect();
+        assert_eq!(names, ["API_TOKEN", "branch", "branch_477"]);
+        let token = vars.iter().find(|v| v.name == "API_TOKEN").unwrap();
+        assert_eq!(token.mode, VarMode::Secret);
+        assert!(token.expires_in_ms.is_some());
+        assert!(!v.move_vars("s1", "s2", &moves), "nothing left to move");
     }
 
     #[test]

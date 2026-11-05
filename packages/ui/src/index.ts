@@ -8,6 +8,7 @@ export { MAX_SHOWN, rankFiles } from "./files";
 export { findPaths, type FoundPath } from "./paths";
 export {
   DROP_END,
+  dragSide,
   dropGap,
   dropInto,
   SideTabList,
@@ -26,6 +27,7 @@ export { eolOf, exactState, separatorOf, textOf, type Eol } from "./text";
 export { varOptions, varRefs, type VarInfo } from "./varchips";
 export { REVEAL_ROWS_EVENT, TerminalPane, terminalSelection, type TerminalPaneProps } from "./TerminalPane";
 export { ExtractDialog, type ExtractDialogProps } from "./ExtractDialog";
+export { MergeDialog, type MergeDialogProps } from "./MergeDialog";
 export { WEBGL_LIMIT, webglBudget } from "./webgl-budget";
 export { DOT, tabAgent, type Agents } from "./agents";
 export { anchor, quoteOf, QUOTE_CONTEXT, type Quote } from "./anchor";

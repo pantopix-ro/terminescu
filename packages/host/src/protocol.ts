@@ -271,6 +271,43 @@ export interface TouchedFile {
   updatedAt: number;
 }
 
+/** A variable both side tabs of a merge hold with different values (D5). */
+export interface MergeClash {
+  name: string;
+  /** Null for a secret. */
+  fromValue: string | null;
+  fromMode: VarMode;
+  intoValue: string | null;
+  intoMode: VarMode;
+  /** The name the source's variable takes when both stay, `branch_477` by default. */
+  rename: string;
+}
+
+/** How the clashes of a merge were settled. */
+export interface MergeResolution {
+  /** Keep both, the source's renamed; otherwise the target's value wins. */
+  keepBoth: boolean;
+  /** Names typed over the suggested renames, by clashing name. */
+  renames?: Record<string, string>;
+}
+
+export interface MergeDone {
+  undoId: Id;
+  /** Source variables kept under a new name: old, new. */
+  renames: [string, string][];
+}
+
+/** How long a merge offers undo, in ms (D5). */
+export const MERGE_UNDO_MS = 10_000;
+
+/** `branch_477` from `branch` and `PROJ-477`, else `branch_2`; never a name in `taken`. */
+export function suggestRename(name: string, label: string | null | undefined, taken: ReadonlySet<string>): string {
+  const digits = /(\d+)\s*$/.exec(label ?? "")?.[1];
+  const base = digits ? `${name}_${digits}` : `${name}_2`;
+  if (!taken.has(base)) return base;
+  for (let n = 2; ; n++) if (!taken.has(`${base}_${n}`)) return `${base}_${n}`;
+}
+
 /** A library prompt at its current version (D14). */
 export interface Prompt {
   id: Id;

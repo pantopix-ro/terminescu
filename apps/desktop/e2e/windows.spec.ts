@@ -244,3 +244,67 @@ test("the context panel slides over the panes without resizing them; ⌘\\ pins 
   await page.reload();
   await expect(page.locator(".ctx-pinned"), "the mode survives a reload").toBeVisible();
 });
+
+const sideIds = (page: Page) => page.locator(".ao-st").evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.side!));
+
+const setVar = (page: Page, side: string, name: string, value: string) =>
+  page.evaluate(
+    ({ side, name, value }) =>
+      (window as any).__terminescu.host.addVariable(side, { name, value, mode: "saved", ttlSecs: null, source: "typed", originTabId: null }),
+    { side, name, value },
+  );
+
+const varsOf = (page: Page, side: string) =>
+  page.evaluate(
+    async (side) => ((await (window as any).__terminescu.host.variables(side)) as { name: string; value: string }[]).map((v) => `${v.name}=${v.value}`),
+    side,
+  );
+
+test("dropping a side tab onto another merges them; without a clash, a toast offers undo", async ({ page }) => {
+  await start(page);
+  await page.locator(".side-new").click();
+  await expect.poll(() => sideIds(page)).toHaveLength(2);
+  const [first, second] = await sideIds(page);
+  await setVar(page, first!, "repo", "acme/api");
+  await setVar(page, second!, "pr_api", "https://example.com/acme/api/pull/12");
+
+  await drag(page, `[data-side="${second}"]`, await center(page, `[data-side="${first}"]`));
+  await expect(page.locator(".toast")).toContainText("Merged");
+  await expect.poll(() => sideIds(page)).toEqual([first]);
+  await expect.poll(() => varsOf(page, first!)).toEqual(["repo=acme/api", "pr_api=https://example.com/acme/api/pull/12"]);
+
+  await page.locator(".toast").getByRole("button", { name: "Undo" }).click();
+  await expect.poll(() => sideIds(page)).toEqual([first, second]);
+  await expect.poll(() => varsOf(page, second!)).toEqual(["pr_api=https://example.com/acme/api/pull/12"]);
+  await expect.poll(() => varsOf(page, first!)).toEqual(["repo=acme/api"]);
+});
+
+test("a clash asks: keep both renames the source's variable", async ({ page }) => {
+  await start(page);
+  await page.locator(".side-new").click();
+  await expect.poll(() => sideIds(page)).toHaveLength(2);
+  const [first, second] = await sideIds(page);
+  await setVar(page, first!, "branch", "feature/PROJ-482");
+  await setVar(page, second!, "branch", "feature/PROJ-477");
+
+  await drag(page, `[data-side="${second}"]`, await center(page, `[data-side="${first}"]`));
+  const dialog = page.getByRole("dialog", { name: "Merge side tabs" });
+  await expect(dialog.getByRole("row", { name: "Clash branch" })).toBeVisible();
+  await expect(dialog.getByRole("textbox")).toHaveValue("branch_2");
+  // The field has the focus: type over the suggestion as a person would.
+  const retype = async (text: string) => {
+    await page.keyboard.press("Meta+a");
+    await page.keyboard.type(text);
+  };
+  await expect(dialog.getByRole("textbox")).toBeFocused();
+  // dnd-kit keeps its document listeners for 50 ms after a drop; keys in that time are lost.
+  await page.waitForTimeout(100);
+  await retype("2bad");
+  await expect(dialog.getByRole("alert")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Keep both" })).toBeDisabled();
+  await retype("branch_477");
+  await dialog.getByRole("button", { name: "Keep both" }).click();
+  await expect(page.locator(".toast")).toContainText("branch → branch_477");
+  await expect.poll(() => varsOf(page, first!)).toEqual(["branch=feature/PROJ-482", "branch_477=feature/PROJ-477"]);
+  await expect.poll(() => sideIds(page)).toEqual([first]);
+});

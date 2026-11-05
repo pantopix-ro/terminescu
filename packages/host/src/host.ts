@@ -14,6 +14,9 @@ import type {
   Id,
   Item,
   TouchedFile,
+  MergeClash,
+  MergeDone,
+  MergeResolution,
   ItemKind,
   Look,
   NewVariable,
@@ -189,6 +192,15 @@ export interface Host {
   openVariable(sideTabId: Id, name: string, beside?: Id | null): Promise<DocView>;
   /** `⌘↵`: the `terminescu edit --wait` call on this document returns. Save and close around it. */
   returnEdit(docId: Id): Promise<void>;
+  /**
+   * The variables that clash if side tab `fromId` merges into `intoId` (D5). `label` is the
+   * source's name as the sidebar shows it, for the suggested renames.
+   */
+  mergePreview(fromId: Id, intoId: Id, label: string | null): Promise<MergeClash[]>;
+  /** Drops side tab `fromId` onto `intoId`: tabs move, lists concatenate, variables union. */
+  mergeSideTabs(fromId: Id, intoId: Id, label: string | null, resolution: MergeResolution): Promise<MergeDone>;
+  /** Undoes a merge within `MERGE_UNDO_MS`. */
+  undoMerge(undoId: Id): Promise<void>;
   /** Pastes `text` into a terminal pane, bracketed when it has line breaks, with no Enter (D13). */
   sendText(paneId: Id, text: string): Promise<void>;
   /**

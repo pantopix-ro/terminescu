@@ -27,6 +27,9 @@ import {
   type TouchedFile,
   type NewVariable,
   isVariableName,
+  MERGE_UNDO_MS,
+  suggestRename,
+  type MergeClash,
   type CommandError,
   type DocView,
   type Patch,
@@ -420,6 +423,42 @@ export function createMockHost(initial?: Workspace): MockHost {
     return s.tabs.length === 1 && s.id !== target ? [{ type: "SideTabClosed", sideTabId: s.id }] : [];
   };
 
+  // One batch through the reducer to every window, as the core's `handle` and emit.
+  const commit = async (patches: Patch[]): Promise<number> => {
+    const batch: PatchBatch = { rev: rev + 1, patches };
+    ws = applyBatch(ws, batch);
+    rev = batch.rev;
+    batches.push(batch);
+    for (const l of listeners) l(structuredClone(batch));
+    recompute();
+    // A document goes with its last pane, as `on_docs_closed` in the runtime.
+    const shown = new Set(
+      ws.windows.flatMap((w) => w.sideTabs.flatMap((s) => s.tabs.flatMap((t) => panesOf(t.layout).map((p) => leaf(t.layout, p)!.doc)))),
+    );
+    for (const d of [...docs.keys()]) {
+      if (shown.has(d)) continue;
+      docs.delete(d);
+      endWaits(d);
+    }
+    return rev;
+  };
+  // Merges inside their undo window (D5): a snapshot of the context lists to put back.
+  const merges = new Map<string, { restore(): void; windowId: Id; index: number; side: SideTab; tabIds: Id[]; into: Id; at: number }>();
+  const clashesOf = (from: Id, into: Id, label: string | null): MergeClash[] => {
+    const a = live(from);
+    const b = live(into);
+    const taken = new Set([...a, ...b].map((v) => v.name));
+    const out: MergeClash[] = [];
+    for (const v of a) {
+      const t = b.find((x) => x.name === v.name);
+      if (!t || (v.mode !== "secret" && t.mode !== "secret" && v.value === t.value)) continue;
+      const rename = suggestRename(v.name, label, taken);
+      taken.add(rename);
+      out.push({ name: v.name, fromValue: v.value, fromMode: v.mode, intoValue: t.value, intoMode: t.mode, rename });
+    }
+    return out;
+  };
+
   function plan(c: Command): Patch[] {
     switch (c.type) {
       case "CreateSideTab": {
@@ -532,22 +571,110 @@ export function createMockHost(initial?: Workspace): MockHost {
       return { rev, workspace: structuredClone(ws) };
     },
     async send(command) {
-      const batch: PatchBatch = { rev: rev + 1, patches: plan(command) };
-      ws = applyBatch(ws, batch);
-      rev = batch.rev;
-      batches.push(batch);
-      for (const l of listeners) l(structuredClone(batch));
-      recompute();
-      // A document goes with its last pane, as `on_docs_closed` in the runtime.
-      const shown = new Set(
-        ws.windows.flatMap((w) => w.sideTabs.flatMap((s) => s.tabs.flatMap((t) => panesOf(t.layout).map((p) => leaf(t.layout, p)!.doc)))),
-      );
-      for (const d of [...docs.keys()]) {
-        if (shown.has(d)) continue;
-        docs.delete(d);
-        endWaits(d);
+      return commit(plan(command));
+    },
+    async mergePreview(from, into, label) {
+      sideTab(from);
+      sideTab(into);
+      return clashesOf(from, into, label);
+    },
+    async mergeSideTabs(from, into, label, resolution) {
+      if (from === into) fail("UnknownSideTab", from);
+      const w = ws.windows.find((x) => x.sideTabs.some((s) => s.id === from)) ?? fail("UnknownSideTab", from);
+      const target = sideTab(into);
+      const index = w.sideTabs.findIndex((s) => s.id === from);
+      const source = w.sideTabs[index]!;
+      const clashes = clashesOf(from, into, label);
+      const taken = new Set([...live(from), ...live(into)].map((v) => v.name));
+      const rename = new Map<string, string>();
+      if (resolution.keepBoth) {
+        for (const c of clashes) {
+          const to = resolution.renames?.[c.name] ?? c.rename;
+          if (!isVariableName(to)) throw new Error(`${to} is not a variable name`);
+          if (taken.has(to)) throw new Error(`this side tab already has a variable ${to}`);
+          taken.add(to);
+          rename.set(c.name, to);
+        }
       }
-      return rev;
+      const before = {
+        vars: structuredClone(vars),
+        secrets: new Map(secrets),
+        items: structuredClone(itemList),
+        pins: structuredClone(pinList),
+        touched: structuredClone(touched),
+        commands: structuredClone(savedCommands),
+      };
+      // Moved entries go to the end, so the target's come first.
+      const toEnd = <T>(list: T[], x: T, keep: boolean) => {
+        list.splice(list.indexOf(x), 1);
+        if (keep) list.push(x);
+      };
+      const has = new Set(live(into).map((v) => v.name));
+      for (const v of live(from)) {
+        const to = has.has(v.name) ? rename.get(v.name) : v.name;
+        const secret = secrets.get(secretKey(from, v.name));
+        secrets.delete(secretKey(from, v.name));
+        toEnd(vars, v, !!to);
+        if (!to) continue;
+        if (secret !== undefined) secrets.set(secretKey(into, to), secret);
+        v.name = to;
+        v.sideTabId = into;
+        v.id = v.mode === "saved" ? v.id : `${v.mode}:${to}`;
+      }
+      const links = new Set(itemList.filter((i) => i.sideTabId === into && i.kind === "link").map((i) => i.value));
+      for (const i of itemList.filter((x) => x.sideTabId === from)) {
+        toEnd(itemList, i, !(i.kind === "link" && links.has(i.value)));
+        i.sideTabId = into;
+      }
+      for (const p of pinList) if (p.sideTabId === from) p.sideTabId = into;
+      const paths = new Set(touched.filter((f) => f.sideTabId === into).map((f) => f.path));
+      for (const f of touched.filter((x) => x.sideTabId === from)) {
+        if (paths.has(f.path)) touched.splice(touched.indexOf(f), 1);
+        else f.sideTabId = into;
+      }
+      for (const c of savedCommands) if (c.sideTabId === from) c.sideTabId = into;
+      const undoId = id();
+      merges.set(undoId, {
+        restore: () => {
+          vars.splice(0, vars.length, ...before.vars);
+          secrets.clear();
+          for (const [k, v] of before.secrets) secrets.set(k, v);
+          itemList.splice(0, itemList.length, ...before.items);
+          pinList.splice(0, pinList.length, ...before.pins);
+          touched.splice(0, touched.length, ...before.touched);
+          savedCommands = before.commands;
+        },
+        windowId: w.id,
+        index,
+        side: { ...structuredClone(source), tabs: [] },
+        tabIds: source.tabs.map((t) => t.id),
+        into,
+        at: Date.now(),
+      });
+      const len = target.tabs.length;
+      await commit([
+        ...source.tabs.map((t, i): Patch => ({ type: "TabMoved", tabId: t.id, toSideTabId: into, index: len + i })),
+        { type: "SideTabClosed", sideTabId: from },
+      ]);
+      contextChanged(into);
+      commandsChanged();
+      return { undoId, renames: [...rename] };
+    },
+    async undoMerge(undoId) {
+      const m = merges.get(undoId);
+      merges.delete(undoId);
+      if (!m || Date.now() - m.at > MERGE_UNDO_MS + 2000) throw new Error("too late to undo this merge");
+      const tabIds = m.tabIds.filter((t) => sideTab(m.into).tabs.some((x) => x.id === t));
+      if (!tabIds.length || tabIds.length === sideTab(m.into).tabs.length) throw new Error("the merge cannot be undone");
+      m.restore();
+      const w = window(m.windowId);
+      await commit([
+        { type: "SideTabCreated", windowId: m.windowId, index: Math.min(m.index, w.sideTabs.length), sideTab: m.side },
+        ...tabIds.map((t, i): Patch => ({ type: "TabMoved", tabId: t, toSideTabId: m.side.id, index: i })),
+      ]);
+      contextChanged(m.into);
+      contextChanged(m.side.id);
+      commandsChanged();
     },
     async onPatches(listener) {
       listeners.add(listener);

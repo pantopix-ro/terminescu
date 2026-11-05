@@ -13,8 +13,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use terminescu_protocol::client::{Client, ClientError};
 use terminescu_protocol::{
-    Control, FEATURE_SHELL, FEATURE_VARS, Frame, PaneId, PaneInfo, ShellState, SpawnSpec, Var,
-    VarMode, decode, encode,
+    Control, FEATURE_SHELL, FEATURE_VAR_MOVE, FEATURE_VARS, Frame, PaneId, PaneInfo, ShellState,
+    SpawnSpec, Var, VarMode, decode, encode,
 };
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
@@ -73,6 +73,8 @@ pub struct DaemonClient {
     pub pushes_shell: bool,
     /// The daemon serves `SideVar*` requests and `VarsChanged` pushes (`FEATURE_VARS`).
     pub side_vars: bool,
+    /// The daemon moves variables between side tabs (`FEATURE_VAR_MOVE`).
+    pub var_move: bool,
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -86,12 +88,13 @@ impl DaemonClient {
         let client = Client::connect_with(
             socket,
             concat!("terminescu-core ", env!("CARGO_PKG_VERSION")),
-            &[FEATURE_SHELL, FEATURE_VARS],
+            &[FEATURE_SHELL, FEATURE_VARS, FEATURE_VAR_MOVE],
         )?;
         let version = client.version;
         let instance = client.instance.clone();
         let pushes_shell = client.features.iter().any(|f| f == FEATURE_SHELL);
         let side_vars = client.features.iter().any(|f| f == FEATURE_VARS);
+        let var_move = client.features.iter().any(|f| f == FEATURE_VAR_MOVE);
         let (stream, leftover) = client.into_parts();
         stream.set_read_timeout(None)?;
         let reader = stream.try_clone()?;
@@ -108,6 +111,7 @@ impl DaemonClient {
             instance,
             pushes_shell,
             side_vars,
+            var_move,
         })
     }
 
@@ -239,6 +243,35 @@ impl DaemonClient {
         self.done(|req| Control::SideVarsDrop {
             req,
             side_tab: side_tab.into(),
+        })
+    }
+
+    /// Moves variables between side tabs, renamed by `moves` (`from` name, `to` name).
+    pub fn side_vars_move(
+        &self,
+        from: &str,
+        to: &str,
+        moves: &[(String, String)],
+    ) -> Result<(), DaemonError> {
+        if !self.var_move {
+            return Err(DaemonError::Daemon {
+                code: "unsupported".into(),
+                message: "the terminal daemon is too old to move variables; it updates once \
+                          every shell has closed"
+                    .into(),
+            });
+        }
+        self.done(|req| Control::SideVarsMove {
+            req,
+            from: from.into(),
+            to: to.into(),
+            moves: moves
+                .iter()
+                .map(|(a, b)| terminescu_protocol::VarMove {
+                    from: a.clone(),
+                    to: b.clone(),
+                })
+                .collect(),
         })
     }
 

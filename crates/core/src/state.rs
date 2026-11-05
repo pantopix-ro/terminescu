@@ -79,6 +79,20 @@ pub enum Command {
         tab_id: Id,
         title: Option<String>,
     },
+    /// Drop a side tab onto another (D5): its tabs move to the end of `into` and it closes.
+    /// The contexts merge outside the workspace, in [`crate::merge`].
+    MergeSideTab {
+        from: Id,
+        into: Id,
+    },
+    /// Undo of a merge: `side_tab` (its tabs left empty) comes back at `index` in the window
+    /// and `tab_ids` move back into it, in order.
+    RestoreSideTab {
+        window_id: Id,
+        index: usize,
+        side_tab: SideTab,
+        tab_ids: Vec<Id>,
+    },
     /// A new pane beside `pane_id`: right for `row`, below for `column`.
     SplitPane {
         pane_id: Id,
@@ -658,6 +672,81 @@ impl Core {
                 }
                 patches
             }
+            Command::MergeSideTab { from, into } => {
+                if from == into {
+                    return Err(CommandError::UnknownSideTab(from));
+                }
+                let source = ws
+                    .side_tab(&from)
+                    .ok_or(CommandError::UnknownSideTab(from.clone()))?;
+                let len = ws
+                    .side_tab(&into)
+                    .ok_or(CommandError::UnknownSideTab(into.clone()))?
+                    .tabs
+                    .len();
+                let mut patches: Vec<Patch> = source
+                    .tabs
+                    .iter()
+                    .enumerate()
+                    .map(|(i, t)| Patch::TabMoved {
+                        tab_id: t.id.clone(),
+                        to_side_tab_id: into.clone(),
+                        index: len + i,
+                    })
+                    .collect();
+                patches.push(Patch::SideTabClosed { side_tab_id: from });
+                patches
+            }
+            Command::RestoreSideTab {
+                window_id,
+                index,
+                side_tab,
+                tab_ids,
+            } => {
+                let w = ws
+                    .windows
+                    .iter()
+                    .find(|w| w.id == window_id)
+                    .ok_or(CommandError::UnknownWindow(window_id.clone()))?;
+                let unique: std::collections::HashSet<&Id> = tab_ids.iter().collect();
+                if ws.side_tab(&side_tab.id).is_some()
+                    || tab_ids.is_empty()
+                    || unique.len() != tab_ids.len()
+                {
+                    return Err(CommandError::UnknownSideTab(side_tab.id));
+                }
+                // A tab must not leave a side tab empty behind it.
+                let mut left: std::collections::HashMap<&str, usize> = Default::default();
+                for t in &tab_ids {
+                    let (s, _) = ws
+                        .locate_tab(t)
+                        .ok_or(CommandError::UnknownTab(t.clone()))?;
+                    let n = left.entry(s.id.as_str()).or_insert(s.tabs.len());
+                    *n = n
+                        .checked_sub(1)
+                        .ok_or(CommandError::UnknownTab(t.clone()))?;
+                }
+                if let Some((s, _)) = left.iter().find(|(_, n)| **n == 0) {
+                    return Err(CommandError::UnknownSideTab((*s).to_string()));
+                }
+                let side_tab_id = side_tab.id.clone();
+                let mut patches = vec![Patch::SideTabCreated {
+                    window_id,
+                    index: index.min(w.side_tabs.len()),
+                    side_tab: SideTab {
+                        tabs: Vec::new(),
+                        ..side_tab
+                    },
+                }];
+                for (i, t) in tab_ids.into_iter().enumerate() {
+                    patches.push(Patch::TabMoved {
+                        tab_id: t,
+                        to_side_tab_id: side_tab_id.clone(),
+                        index: i,
+                    });
+                }
+                patches
+            }
             Command::RenameTab { tab_id, title } => {
                 ws.locate_tab(&tab_id)
                     .ok_or(CommandError::UnknownTab(tab_id.clone()))?;
@@ -869,6 +958,77 @@ mod tests {
             .unwrap();
         assert_eq!(b.rev, 2);
         assert_eq!(shape(&c), vec![vec![vec!["id2", "id5"]]]);
+    }
+
+    #[test]
+    fn merge_moves_every_tab_and_restore_puts_them_back() {
+        let mut c = core();
+        // A second side tab id6 (tab id5, pane …) after id4, with two tabs.
+        c.handle(Command::CreateSideTab {
+            window_id: "id1".into(),
+            index: None,
+        })
+        .unwrap();
+        let second = c.workspace().windows[0].side_tabs[1].clone();
+        create_tab(&mut c, &second.id);
+        let moved: Vec<Id> = c.workspace().windows[0].side_tabs[1]
+            .tabs
+            .iter()
+            .map(|t| t.id.clone())
+            .collect();
+        c.handle(Command::MergeSideTab {
+            from: second.id.clone(),
+            into: "id4".into(),
+        })
+        .unwrap();
+        let w = &c.workspace().windows[0];
+        assert_eq!(w.side_tabs.len(), 1);
+        let ids: Vec<&str> = w.side_tabs[0].tabs.iter().map(|t| t.id.as_str()).collect();
+        assert_eq!(ids, ["id2", moved[0].as_str(), moved[1].as_str()]);
+        assert!(
+            c.handle(Command::MergeSideTab {
+                from: "id4".into(),
+                into: "id4".into(),
+            })
+            .is_err()
+        );
+
+        c.handle(Command::RestoreSideTab {
+            window_id: "id1".into(),
+            index: 1,
+            side_tab: second.clone(),
+            tab_ids: moved.clone(),
+        })
+        .unwrap();
+        let w = &c.workspace().windows[0];
+        assert_eq!(w.side_tabs[1].id, second.id);
+        let back: Vec<Id> = w.side_tabs[1].tabs.iter().map(|t| t.id.clone()).collect();
+        assert_eq!(back, moved);
+        // Restoring would empty id4 now: refused.
+        let err = c.handle(Command::RestoreSideTab {
+            window_id: "id1".into(),
+            index: 0,
+            side_tab: SideTab {
+                id: "fresh".into(),
+                title: None,
+                tabs: Vec::new(),
+                status: None,
+            },
+            tab_ids: vec!["id2".into()],
+        });
+        assert!(err.is_err());
+        let dup = c.handle(Command::RestoreSideTab {
+            window_id: "id1".into(),
+            index: 0,
+            side_tab: SideTab {
+                id: "fresh".into(),
+                title: None,
+                tabs: Vec::new(),
+                status: None,
+            },
+            tab_ids: vec![moved[0].clone(), moved[0].clone()],
+        });
+        assert!(dup.is_err());
     }
 
     #[test]

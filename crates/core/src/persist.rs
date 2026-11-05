@@ -2,7 +2,8 @@
 //! pane the daemon pane, the last cwd and the Claude session that ran there (D18, D23).
 //!
 //! `save` writes the whole layout in one transaction. It updates rows in place and deletes only
-//! rows that left the layout, so a side tab's context items survive every save.
+//! rows that left the layout, so a side tab's context items survive every save. A tab that
+//! changed side tab takes the items it made along (D5), before its old side tab may go.
 
 use crate::db::{Db, Result};
 use crate::layout::Layout;
@@ -49,6 +50,12 @@ pub fn save(db: &Db, saved: &Saved) -> Result<()> {
     let now = crate::now_ms();
     let conn = db.conn();
     let tx = conn.unchecked_transaction()?;
+    let was: HashMap<String, String> = {
+        let mut st = tx.prepare("SELECT id, side_tab_id FROM tabs WHERE owner_id = ?1")?;
+        st.query_map(params![owner], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<rusqlite::Result<_>>()?
+    };
+    let mut moved: Vec<(&str, &str, &str)> = Vec::new();
     let mut ids: [Vec<&str>; 4] = Default::default();
     for (wi, w) in saved.workspace.windows.iter().enumerate() {
         tx.execute(
@@ -78,6 +85,9 @@ pub fn save(db: &Db, saved: &Saved) -> Result<()> {
                     params![t.id, owner, s.id, ti as i64, t.title, layout, now, status_json(&t.status)],
                 )?;
                 ids[2].push(&t.id);
+                if let Some(old) = was.get(&t.id).filter(|old| **old != s.id) {
+                    moved.push((&t.id, old, &s.id));
+                }
                 let terminals = t.layout.terminals();
                 let docs = t.layout.docs();
                 for p in t.layout.panes() {
@@ -102,6 +112,9 @@ pub fn save(db: &Db, saved: &Saved) -> Result<()> {
                 }
             }
         }
+    }
+    for (tab, from, to) in moved {
+        follow(&tx, &owner, tab, from, to)?;
     }
     // Children first; cascades would cover it, but explicit deletes keep the order obvious.
     for (table, keep) in [
@@ -130,6 +143,37 @@ pub fn save(db: &Db, saved: &Saved) -> Result<()> {
         )?,
     };
     tx.commit()?;
+    Ok(())
+}
+
+/// Moves what a tab made (extracted and auto items, pins, touched files) to the side tab it
+/// moved to (D5). Typed and pasted items stay. A variable or file the target already has by
+/// that name or path stays behind too.
+fn follow(
+    tx: &rusqlite::Transaction<'_>,
+    owner: &str,
+    tab: &str,
+    from: &str,
+    to: &str,
+) -> Result<()> {
+    tx.execute(
+        "UPDATE OR IGNORE context_items SET side_tab_id = ?4,
+           position = position + (SELECT COALESCE(MAX(position) + 1, 0) FROM context_items
+                                   WHERE side_tab_id = ?4)
+         WHERE owner_id = ?1 AND origin_tab_id = ?2 AND side_tab_id = ?3
+           AND source IN ('extracted', 'auto')",
+        params![owner, tab, from, to],
+    )?;
+    tx.execute(
+        "UPDATE pins SET side_tab_id = ?4
+         WHERE owner_id = ?1 AND origin_tab_id = ?2 AND side_tab_id = ?3",
+        params![owner, tab, from, to],
+    )?;
+    tx.execute(
+        "UPDATE OR IGNORE context_files SET side_tab_id = ?4
+         WHERE owner_id = ?1 AND origin_tab_id = ?2 AND side_tab_id = ?3",
+        params![owner, tab, from, to],
+    )?;
     Ok(())
 }
 

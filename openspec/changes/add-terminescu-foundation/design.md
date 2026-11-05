@@ -40,6 +40,17 @@ values is a clash: keep the target's value, or keep both and rename the source's
 a tab moves alone, items it created (extracted, pinned, auto) move with it; items typed or
 pasted by hand stay. Every drag has a palette equivalent.
 
+Built in task 8.2, on 2026-11-05. A side tab row drags onto another; the palette's "Merge
+side tab into…" does the same. The context moves before the tabs, since closing the source
+cascades its rows. A secret in both side tabs always clashes, because its value never comes
+back from the daemon. Equal links and files both sides hold show once. The daemon moves
+variables with `SideVarsMove` (feature `var_move`); an older running daemon refuses a merge that
+has session or secret variables to move. Undo lives in memory for 12 s (the toast shows 10).
+The source's daemon variables that lose to the target wait under `merge-undo:<id>` until then.
+They also wait there when the app quits inside the window, and end when the daemon exits.
+A tab moved alone takes its extracted and auto items, pins and touched files, in the same
+transaction as the layout save.
+
 ### D6. Tauri 2 with a Rust core; the UI talks to a `Host`
 `Terminescu.app` is a Tauri 2 app: a native macOS binary, real `⌘` shortcuts and multi-window
 support. The Rust core runs in the app process and is the single source of truth for windows,
@@ -226,8 +237,8 @@ snapshot holds their names only. A secret inserts as `$NAME`, and D35 gets the v
 environment without crossing the screen. Inserting a raw value into a Claude prompt still lands
 in Claude's own JSONL; the insert dialog says so for secrets.
 
-Built in group 6, on 2026-11-05. Limits: daemon values do not follow a moved tab yet (group
-8); they end when the daemon exits idle with no panes; a side tab closed while the app was down
+Built in group 6, on 2026-11-05. Limits: daemon values belong to the side tab, so a tab moved
+alone leaves them behind, and only a merge moves them (task 8.2); they end when the daemon exits idle with no panes; a side tab closed while the app was down
 keeps its daemon values until the daemon exits. Settings › Variables sets the mode and TTL that
 Extract starts with. A pin copies terminal text as it stands, so a secret the shell echoed (an
 `echo $TOKEN`) lands in the pin; D35 covers what Terminescu types, not what the shell prints.

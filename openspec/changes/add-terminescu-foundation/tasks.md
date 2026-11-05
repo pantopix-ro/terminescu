@@ -363,8 +363,11 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
 - [ ] 8.1 Pointer-based drag tracked in the core across windows with a ghost window; drop
       outside every window opens a new window with a default side tab (D20). Verify: manual, drag out, drag back into the
       first window's tab bar.
-- [ ] 8.2 Side tab merge with clash dialog and undo toast; items follow their tab on move.
+- [x] 8.2 Side tab merge with clash dialog and undo toast; items follow their tab on move.
       Verify: `merge.test.rs` for clash, rename and concatenation.
+      Done: `merge.rs` previews clashes, merges and undoes; `MergeSideTab`/`RestoreSideTab`
+      move the tabs; `persist::save` moves a lone tab's items; daemon `SideVarsMove` moves
+      session and secret variables. `tests/merge.rs` (5), state and ptyd tests, two Playwright tests.
 - [x] 8.3 Extraction rules on entries and terminal output (PR URL, artifact URL, branch).
       Verify: fixture with an artifact URL twice yields one auto link.
       Done: `extract.rs` finds PR links (cut to `/pull/N`), artifact links and branch names in
