@@ -9,8 +9,15 @@ const seed: Workspace = {
     {
       id: "w1",
       sideTabs: [
-        { id: "s1", title: "acme-api", tabs: [{ id: "t1", title: null }, { id: "t2", title: null }] },
-        { id: "s2", title: null, tabs: [{ id: "t3", title: null }] },
+        {
+          id: "s1",
+          title: "acme-api",
+          tabs: [
+            { id: "t1", title: null, layout: { type: "pane", id: "p1" } },
+            { id: "t2", title: null, layout: { type: "pane", id: "p2" } },
+          ],
+        },
+        { id: "s2", title: null, tabs: [{ id: "t3", title: null, layout: { type: "pane", id: "p3" } }] },
       ],
     },
   ],
@@ -98,16 +105,43 @@ describe("workspace store", () => {
     const host = createMockHost(seed);
     const out: string[] = [];
     const flush = () => new Promise((r) => setTimeout(r, 0));
-    const view = await host.openPane("t1", 100, 30, (b) => out.push(new TextDecoder().decode(b)));
+    const view = await host.openPane("p1", 100, 30, (b) => out.push(new TextDecoder().decode(b)));
     await flush();
-    expect(out.join("")).toBe("\x1bcmock t1 $ ");
+    expect(out.join("")).toBe("\x1bcmock p1 $ ");
     view.input("size\r");
     await flush();
-    expect(out.join("")).toContain("size\r\n100x30\r\nmock t1 $ ");
+    expect(out.join("")).toContain("size\r\n100x30\r\nmock p1 $ ");
     view.close();
     view.input("x");
     await flush();
     expect(out.join("")).not.toMatch(/x$/);
-    await expect(host.openPane("nope", 80, 24, () => {})).rejects.toThrow("UnknownTab nope");
+    await expect(host.openPane("nope", 80, 24, () => {})).rejects.toThrow("UnknownPane nope");
+  });
+
+  it("splits, resizes and closes panes like the core", async () => {
+    const host = createMockHost(seed);
+    const s = createWorkspaceStore(host);
+    await s.start();
+    await host.send({ type: "SplitPane", paneId: "p1", dir: "row" });
+    const layout = () => s.store.getState().workspace.windows[0]!.sideTabs[0]!.tabs[0]!.layout;
+    // The mock's ids start at m1: the new pane is m1, its split m2.
+    expect(layout()).toEqual({
+      type: "split",
+      id: "m2",
+      dir: "row",
+      children: [
+        { type: "pane", id: "p1" },
+        { type: "pane", id: "m1" },
+      ],
+      sizes: [500, 500],
+    });
+    await host.send({ type: "ResizeSplit", splitId: "m2", sizes: [1, 3] });
+    expect(layout()).toMatchObject({ sizes: [250, 750] });
+    await expect(host.send({ type: "ResizeSplit", splitId: "m2", sizes: [1, 999] })).rejects.toThrow("BadSizes");
+    await host.send({ type: "ClosePane", paneId: "p1" });
+    expect(layout()).toEqual({ type: "pane", id: "m1" });
+    await host.send({ type: "ClosePane", paneId: "p3" });
+    expect(tabIds(s.store.getState().workspace)).toEqual([["t1", "t2"]]);
+    expect(s.store.getState().workspace).toEqual(host.workspace());
   });
 });

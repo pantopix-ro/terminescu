@@ -1,0 +1,179 @@
+{
+ "comment": "App actions and their default chords (D17). The app menu (apps/desktop/src-tauri) and the browser fallback (packages/host/src/keys.ts) both read this file.",
+ "actions": [
+  {
+   "id": "new_tab",
+   "label": "New Tab",
+   "menu": "Shell",
+   "accel": "Cmd+T"
+  },
+  {
+   "id": "new_side_tab",
+   "label": "New Side Tab",
+   "menu": "Shell",
+   "accel": "Cmd+N"
+  },
+  {
+   "id": "split_right",
+   "label": "Split Right",
+   "menu": "Shell",
+   "accel": "Cmd+D"
+  },
+  {
+   "id": "split_down",
+   "label": "Split Down",
+   "menu": "Shell",
+   "accel": "Cmd+Shift+D"
+  },
+  {
+   "id": "close",
+   "label": "Close Pane",
+   "menu": "Shell",
+   "accel": "Cmd+W"
+  },
+  {
+   "id": "palette",
+   "label": "Command Palette…",
+   "menu": "View",
+   "accel": "Cmd+K"
+  },
+  {
+   "id": "context_panel",
+   "label": "Pin or Auto-hide Context",
+   "menu": "View",
+   "accel": "Cmd+Backslash"
+  },
+  {
+   "id": "focus_left",
+   "label": "Focus Pane Left",
+   "menu": "View",
+   "accel": "Cmd+Alt+Left"
+  },
+  {
+   "id": "focus_right",
+   "label": "Focus Pane Right",
+   "menu": "View",
+   "accel": "Cmd+Alt+Right"
+  },
+  {
+   "id": "focus_up",
+   "label": "Focus Pane Up",
+   "menu": "View",
+   "accel": "Cmd+Alt+Up"
+  },
+  {
+   "id": "focus_down",
+   "label": "Focus Pane Down",
+   "menu": "View",
+   "accel": "Cmd+Alt+Down"
+  },
+  {
+   "id": "tab_1",
+   "label": "Tab 1",
+   "menu": "Window",
+   "accel": "Cmd+1"
+  },
+  {
+   "id": "tab_2",
+   "label": "Tab 2",
+   "menu": "Window",
+   "accel": "Cmd+2"
+  },
+  {
+   "id": "tab_3",
+   "label": "Tab 3",
+   "menu": "Window",
+   "accel": "Cmd+3"
+  },
+  {
+   "id": "tab_4",
+   "label": "Tab 4",
+   "menu": "Window",
+   "accel": "Cmd+4"
+  },
+  {
+   "id": "tab_5",
+   "label": "Tab 5",
+   "menu": "Window",
+   "accel": "Cmd+5"
+  },
+  {
+   "id": "tab_6",
+   "label": "Tab 6",
+   "menu": "Window",
+   "accel": "Cmd+6"
+  },
+  {
+   "id": "tab_7",
+   "label": "Tab 7",
+   "menu": "Window",
+   "accel": "Cmd+7"
+  },
+  {
+   "id": "tab_8",
+   "label": "Tab 8",
+   "menu": "Window",
+   "accel": "Cmd+8"
+  },
+  {
+   "id": "tab_9",
+   "label": "Last Tab",
+   "menu": "Window",
+   "accel": "Cmd+9"
+  },
+  {
+   "id": "side_1",
+   "label": "Side Tab 1",
+   "menu": "Window",
+   "accel": "Ctrl+Cmd+1"
+  },
+  {
+   "id": "side_2",
+   "label": "Side Tab 2",
+   "menu": "Window",
+   "accel": "Ctrl+Cmd+2"
+  },
+  {
+   "id": "side_3",
+   "label": "Side Tab 3",
+   "menu": "Window",
+   "accel": "Ctrl+Cmd+3"
+  },
+  {
+   "id": "side_4",
+   "label": "Side Tab 4",
+   "menu": "Window",
+   "accel": "Ctrl+Cmd+4"
+  },
+  {
+   "id": "side_5",
+   "label": "Side Tab 5",
+   "menu": "Window",
+   "accel": "Ctrl+Cmd+5"
+  },
+  {
+   "id": "side_6",
+   "label": "Side Tab 6",
+   "menu": "Window",
+   "accel": "Ctrl+Cmd+6"
+  },
+  {
+   "id": "side_7",
+   "label": "Side Tab 7",
+   "menu": "Window",
+   "accel": "Ctrl+Cmd+7"
+  },
+  {
+   "id": "side_8",
+   "label": "Side Tab 8",
+   "menu": "Window",
+   "accel": "Ctrl+Cmd+8"
+  },
+  {
+   "id": "side_9",
+   "label": "Last Side Tab",
+   "menu": "Window",
+   "accel": "Ctrl+Cmd+9"
+  }
+ ]
+}

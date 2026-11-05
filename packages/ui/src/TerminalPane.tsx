@@ -5,13 +5,18 @@ import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import type { PaneView } from "@terminescu/host";
 import { useEffect, useRef, useState } from "react";
+import { claimPane, paneElement, releasePane } from "./pane-registry";
 import { webglBudget } from "./webgl-budget";
 import { terminalFont, xtermTheme } from "./xterm-theme";
 
 export interface TerminalPaneProps {
-  tabId: string;
+  paneId: string;
   /** Hidden panes keep their terminal and keep receiving output, but render nothing. */
   visible: boolean;
+  /** The pane that takes the keys in its tab. */
+  focused: boolean;
+  /** The person clicked into this pane or its terminal took focus. */
+  onFocus?(): void;
   open(cols: number, rows: number, onOutput: (bytes: Uint8Array) => void): Promise<PaneView>;
   openUrl(url: string): void;
   /** Hands out the terminal, for tests. */
@@ -65,18 +70,21 @@ function dropWebgl(live: Live, el: HTMLElement) {
 }
 
 /**
- * One xterm.js terminal on one tab's pane (task 2.5, D33). `⌘` chords pass through to the app
- * menu; every other key goes to the shell, with Option as Meta. Links open on `⌘`-click.
+ * One xterm.js terminal on one pane (task 2.5, D33). It renders no React tree of its own: the
+ * terminal lives in the pane's element from the registry, which the split view places. `⌘`
+ * chords pass through to the app menu; every other key goes to the shell, with Option as Meta.
+ * Links open on `⌘`-click.
  */
-export function TerminalPane({ tabId, visible, open, openUrl, onTerminal }: TerminalPaneProps) {
-  const ref = useRef<HTMLDivElement>(null);
+export function TerminalPane({ paneId, visible, focused, onFocus, open, openUrl, onTerminal }: TerminalPaneProps) {
   const live = useRef<Live | null>(null);
   const [ready, setReady] = useState(false);
-  const callbacks = useRef({ open, openUrl, onTerminal });
-  callbacks.current = { open, openUrl, onTerminal };
+  const callbacks = useRef({ open, openUrl, onTerminal, onFocus });
+  callbacks.current = { open, openUrl, onTerminal, onFocus };
 
   useEffect(() => {
-    const el = ref.current!;
+    const el = claimPane(paneId);
+    const focusIn = () => callbacks.current.onFocus?.();
+    el.addEventListener("focusin", focusIn);
     let disposed = false;
     let observer: ResizeObserver | undefined;
     let frame = 0;
@@ -116,9 +124,9 @@ export function TerminalPane({ tabId, visible, open, openUrl, onTerminal }: Term
       const ack = (n: number) => (l.view ? l.view.ack(n) : (l.early += n));
       let view: PaneView;
       try {
-        view = await callbacks.current.open(term.cols, term.rows, (bytes) =>
-          term.write(bytes, () => ack(bytes.length)),
-        );
+        view = await callbacks.current.open(term.cols, term.rows, (bytes) => {
+          if (!disposed) term.write(bytes, () => ack(bytes.length));
+        });
       } catch (e) {
         if (!disposed) term.write(`\r\n[could not open this pane: ${JSON.stringify(e)}]\r\n`);
         return;
@@ -136,25 +144,32 @@ export function TerminalPane({ tabId, visible, open, openUrl, onTerminal }: Term
       disposed = true;
       cancelAnimationFrame(frame);
       observer?.disconnect();
+      el.removeEventListener("focusin", focusIn);
       const l = live.current;
       live.current = null;
-      if (!l) return;
-      l.view?.close();
-      dropWebgl(l, el);
-      l.term.dispose();
-      callbacks.current.onTerminal?.(null);
+      if (l) {
+        l.view?.close();
+        dropWebgl(l, el);
+        l.term.dispose();
+        callbacks.current.onTerminal?.(null);
+      }
+      releasePane(paneId);
     };
-  }, [tabId]);
+  }, [paneId]);
 
   useEffect(() => {
+    const el = paneElement(paneId);
+    el.hidden = !visible;
     const l = live.current;
-    const el = ref.current;
-    if (!l || !el) return;
+    if (!l) return;
     if (!visible) return dropWebgl(l, el);
     takeWebgl(l, el);
     if (el.clientWidth > 0) l.fit.fit();
-    l.term.focus();
-  }, [visible, ready]);
+  }, [paneId, visible, ready]);
 
-  return <div ref={ref} className="term-pane" data-tab={tabId} hidden={!visible} />;
+  useEffect(() => {
+    if (visible && focused) live.current?.term.focus();
+  }, [visible, focused, ready]);
+
+  return null;
 }

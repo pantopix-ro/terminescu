@@ -13,6 +13,12 @@ function findSideTab(ws: Workspace, id: string): SideTab {
   return s;
 }
 
+function findTab(ws: Workspace, id: string): Tab {
+  const tab = sideTabs(ws).flatMap((s) => s.tabs).find((t) => t.id === id);
+  if (!tab) throw new PatchError(`unknown tab ${id}`);
+  return tab;
+}
+
 function takeTab(ws: Workspace, tabId: string): Tab {
   for (const s of sideTabs(ws)) {
     const i = s.tabs.findIndex((t) => t.id === tabId);
@@ -46,7 +52,7 @@ export function applyPatch(ws: Workspace, p: Patch): void {
     case "TabCreated": {
       const s = findSideTab(ws, p.sideTabId);
       checkIndex(p.index, s.tabs.length);
-      s.tabs.splice(p.index, 0, { ...p.tab });
+      s.tabs.splice(p.index, 0, structuredClone(p.tab));
       return;
     }
     case "TabClosed":
@@ -59,12 +65,12 @@ export function applyPatch(ws: Workspace, p: Patch): void {
       target.tabs.splice(p.index, 0, tab);
       return;
     }
-    case "TabRenamed": {
-      const tab = sideTabs(ws).flatMap((s) => s.tabs).find((t) => t.id === p.tabId);
-      if (!tab) throw new PatchError(`unknown tab ${p.tabId}`);
-      tab.title = p.title;
+    case "TabRenamed":
+      findTab(ws, p.tabId).title = p.title;
       return;
-    }
+    case "LayoutChanged":
+      findTab(ws, p.tabId).layout = structuredClone(p.layout);
+      return;
   }
 }
 

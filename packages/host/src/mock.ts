@@ -2,7 +2,9 @@
 // plans commands like crates/core/src/state.rs, with readable ids (m1, m2, ...).
 
 import type { Host, PaneView } from "./host";
-import type { Command, CommandError, Patch, PatchBatch, SideTab, Snapshot, Workspace } from "./protocol";
+import { actionFor } from "./keys";
+import { hasSplit, isSessionId, leaf, panesOf, removePane, resizeSplit, splitPane } from "./layout";
+import type { Command, CommandError, Patch, PatchBatch, SideTab, Snapshot, Tab, Workspace } from "./protocol";
 import { applyBatch } from "./reducer";
 
 export class MockCommandError extends Error {
@@ -17,6 +19,10 @@ export interface MockHost extends Host {
   workspace(): Workspace;
   /** Links the UI asked to open. */
   readonly openedUrls: string[];
+  /** Every size a pane view reported, in order, as `pane cols x rows`. */
+  readonly resizes: string[];
+  /** Text a ResumePane typed, per pane. */
+  readonly typed: Map<string, string>;
 }
 
 const encoder = new TextEncoder();
@@ -28,8 +34,8 @@ const encoder = new TextEncoder();
 class MockShell {
   private line = "";
   private size = "80x24";
-  constructor(private readonly tabId: string) {}
-  prompt = () => `mock ${this.tabId} $ `;
+  constructor(private readonly paneId: string) {}
+  prompt = () => `mock ${this.paneId} $ `;
   redraw = () => `\x1bc${this.prompt()}${this.line}`;
   resize(cols: number, rows: number) {
     this.size = `${cols}x${rows}`;
@@ -65,13 +71,19 @@ export function createMockHost(initial?: Workspace): MockHost {
   const batches: PatchBatch[] = [];
   const shells = new Map<string, MockShell>();
   const openedUrls: string[] = [];
+  const resizes: string[] = [];
+  const typed = new Map<string, string>();
 
   function firstStart(): Workspace {
     const windowId = id();
     return { windows: [{ id: windowId, sideTabs: [newSideTab()] }] };
   }
+  function newTab(): Tab {
+    const tabId = id();
+    return { id: tabId, title: null, layout: { type: "pane", id: id() } };
+  }
   function newSideTab(): SideTab {
-    const tab = { id: id(), title: null };
+    const tab = newTab();
     return { id: id(), title: null, tabs: [tab] };
   }
 
@@ -83,6 +95,10 @@ export function createMockHost(initial?: Workspace): MockHost {
   const window = (wid: string) => ws.windows.find((w) => w.id === wid) ?? fail("UnknownWindow", wid);
   const holder = (tid: string) =>
     allSideTabs().find((s) => s.tabs.some((t) => t.id === tid)) ?? fail("UnknownTab", tid);
+  const tabOfPane = (pid: string) =>
+    allSideTabs()
+      .flatMap((s) => s.tabs)
+      .find((t) => panesOf(t.layout).includes(pid)) ?? fail("UnknownPane", pid);
   const inRange = (i: number, len: number) => (i >= 0 && i <= len ? i : fail("IndexOutOfRange", i));
   const closesSource = (tid: string, target?: string): Patch[] => {
     const s = holder(tid);
@@ -98,7 +114,7 @@ export function createMockHost(initial?: Workspace): MockHost {
       }
       case "CreateTab": {
         const index = sideTab(c.sideTabId).tabs.length;
-        return [{ type: "TabCreated", sideTabId: c.sideTabId, index, tab: { id: id(), title: null } }];
+        return [{ type: "TabCreated", sideTabId: c.sideTabId, index, tab: newTab() }];
       }
       case "CloseTab": {
         const closed = closesSource(c.tabId);
@@ -127,12 +143,45 @@ export function createMockHost(initial?: Workspace): MockHost {
         const title = c.title?.trim() || null;
         return [{ type: "TabRenamed", tabId: c.tabId, title }];
       }
+      case "SplitPane": {
+        const tab = tabOfPane(c.paneId);
+        const layout = splitPane(tab.layout, c.paneId, c.dir, id(), id());
+        if (layout === "small") return fail("PaneTooSmall", c.paneId);
+        return [{ type: "LayoutChanged", tabId: tab.id, layout: layout! }];
+      }
+      case "ClosePane": {
+        const tab = tabOfPane(c.paneId);
+        const layout = removePane(tab.layout, c.paneId);
+        if (layout) return [{ type: "LayoutChanged", tabId: tab.id, layout }];
+        return [{ type: "TabClosed", tabId: tab.id }, ...closesSource(tab.id)];
+      }
+      case "ResizeSplit": {
+        const tab =
+          allSideTabs()
+            .flatMap((s) => s.tabs)
+            .find((t) => hasSplit(t.layout, c.splitId)) ?? fail("UnknownSplit", c.splitId);
+        const layout = resizeSplit(tab.layout, c.splitId, c.sizes);
+        if (typeof layout === "string") return fail("BadSizes", c.splitId);
+        return [{ type: "LayoutChanged", tabId: tab.id, layout }];
+      }
+      case "ResumePane":
+      case "DismissResume": {
+        const tab = tabOfPane(c.paneId);
+        const layout = structuredClone(tab.layout);
+        const pane = leaf(layout, c.paneId)!;
+        if (!pane.resume || !isSessionId(pane.resume)) return fail("NothingToResume", c.paneId);
+        if (c.type === "ResumePane") typed.set(c.paneId, `claude --resume ${pane.resume}\r`);
+        delete pane.resume;
+        return [{ type: "LayoutChanged", tabId: tab.id, layout }];
+      }
     }
   }
 
   return {
     batches,
     openedUrls,
+    resizes,
+    typed,
     workspace: () => structuredClone(ws),
     async snapshot(): Promise<Snapshot> {
       return { rev, workspace: structuredClone(ws) };
@@ -149,10 +198,10 @@ export function createMockHost(initial?: Workspace): MockHost {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    async openPane(tabId, cols, rows, onOutput): Promise<PaneView> {
-      holder(tabId);
-      const shell = shells.get(tabId) ?? new MockShell(tabId);
-      shells.set(tabId, shell);
+    async openPane(paneId, cols, rows, onOutput): Promise<PaneView> {
+      tabOfPane(paneId);
+      const shell = shells.get(paneId) ?? new MockShell(paneId);
+      shells.set(paneId, shell);
       shell.resize(cols, rows);
       let open = true;
       const emit = (s: string) => {
@@ -161,7 +210,10 @@ export function createMockHost(initial?: Workspace): MockHost {
       emit(shell.redraw());
       return {
         input: (data) => emit(shell.input(data)),
-        resize: (c, r) => shell.resize(c, r),
+        resize: (c, r) => {
+          resizes.push(`${paneId} ${c}x${r}`);
+          shell.resize(c, r);
+        },
         ack: () => {},
         close: () => {
           open = false;
@@ -170,6 +222,20 @@ export function createMockHost(initial?: Workspace): MockHost {
     },
     async openUrl(url) {
       openedUrls.push(url);
+    },
+    // Outside Tauri there is no app menu: chords come from key events, caught before xterm.js.
+    async onAction(listener) {
+      const target = globalThis as Partial<typeof globalThis>;
+      if (!target.addEventListener || !target.removeEventListener) return () => {};
+      const onKey = (e: KeyboardEvent) => {
+        const action = actionFor(e);
+        if (!action) return;
+        e.preventDefault();
+        e.stopPropagation();
+        listener(action);
+      };
+      target.addEventListener("keydown", onKey, true);
+      return () => target.removeEventListener?.("keydown", onKey, true);
     },
   };
 }

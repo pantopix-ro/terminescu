@@ -3,7 +3,10 @@
 use rusqlite::{Connection, OptionalExtension, params};
 use std::path::Path;
 
-const MIGRATIONS: &[(u32, &str)] = &[(1, include_str!("../migrations/0001_init.sql"))];
+const MIGRATIONS: &[(u32, &str)] = &[
+    (1, include_str!("../migrations/0001_init.sql")),
+    (2, include_str!("../migrations/0002_app_state.sql")),
+];
 
 pub const SCHEMA_VERSION: u32 = MIGRATIONS[MIGRATIONS.len() - 1].0;
 
@@ -128,6 +131,7 @@ mod tests {
     fn migrations_create_every_table_of_d18() {
         let db = Db::open_in_memory().unwrap();
         let expected = [
+            "app_state",
             "commands",
             "context_files",
             "context_items",

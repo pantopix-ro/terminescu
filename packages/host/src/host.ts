@@ -1,6 +1,6 @@
 import type { Command, Id, PatchBatch, Snapshot } from "./protocol";
 
-/** One window's view of a tab's pane (D33). */
+/** One window's view of a pane (D33). */
 export interface PaneView {
   /** Keys and pastes. `binary` marks xterm.js `onBinary` data: one byte per character. */
   input(data: string, binary?: boolean): void;
@@ -21,10 +21,15 @@ export interface Host {
   /** Resolves once the listener is registered, with a function that removes it. */
   onPatches(listener: (batch: PatchBatch) => void): Promise<() => void>;
   /**
-   * Shows a tab's pane at the given size. Output arrives as raw bytes, starting with a full
-   * redraw; the same happens again whenever the core resyncs the view.
+   * Shows a pane at the given size. Output arrives as raw bytes, starting with a full redraw;
+   * the same happens again whenever the core resyncs the view.
    */
-  openPane(tabId: Id, cols: number, rows: number, onOutput: (bytes: Uint8Array) => void): Promise<PaneView>;
+  openPane(paneId: Id, cols: number, rows: number, onOutput: (bytes: Uint8Array) => void): Promise<PaneView>;
+  /**
+   * App actions from `⌘` chords (D17): the app menu in Tauri, key events on the mock. Resolves
+   * once the listener is registered, with a function that removes it.
+   */
+  onAction(listener: (action: string) => void): Promise<() => void>;
   /** Opens an http(s) link in the default browser. */
   openUrl(url: string): Promise<void>;
 }

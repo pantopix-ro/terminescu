@@ -18,7 +18,11 @@ shell, and Terminescu never starts a turn on its own.
 > the daemon, so `var env` answers while the app is closed (task 2.3). Those variables stay in
 > memory only, are wiped on unset and expire on their TTL (task 2.2). Shell integration for zsh,
 > bash and fish reports each command's line, exit code and cwd, and loads the side tab's
-> variables before every prompt and command (task 2.4).
+> variables before every prompt and command (task 2.4). Tabs split into panes with `⌘D` and
+> `⌘⇧D`, side tabs with several tabs list them in the sidebar, tabs drag to reorder or into
+> another side tab, and `⌘K` opens a palette (tasks 3.1, 3.2). The layout survives a restart;
+> after a reboot each pane gets a fresh shell in its last folder and a Resume button for its
+> Claude session (tasks 3.3, 3.4). The context panel pins or hides behind a hover edge (3.5).
 
 ## See it
 

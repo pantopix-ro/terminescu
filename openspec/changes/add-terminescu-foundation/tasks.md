@@ -134,19 +134,26 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
 
 ## 3. Windows and tabs (P1)
 
-- [ ] 3.1 Side tabs, tabs and splits in the core and UI; single row and group rendering;
+- [x] 3.1 Side tabs, tabs and splits in the core and UI; single row and group rendering;
       `⌘T`, `⌘N`, `⌘D`, `⌘⇧D`, `⌘W`, `⌘1`-`⌘9`, `⌃⌘1`-`⌃⌘9`. Verify: `layout.test.rs` for the
-      split tree; manual for the keys.
-- [ ] 3.2 Tab reorder and tab to sidebar (new side tab, move into side tab) inside one window.
+      split tree; manual for the keys. Done 2026-11-05; tests in `crates/core/tests/layout.rs`
+      (11, with the 2x minimum split floor and rounding parity with the host), keys also in
+      `e2e/windows.spec.ts`; native menu built from `actions.json`.
+- [x] 3.2 Tab reorder and tab to sidebar (new side tab, move into side tab) inside one window.
       Verify: manual, each drop target and Esc cancel; palette "Move tab to…" does the same.
-- [ ] 3.3 Layout persistence and reattach on start. Verify: quit with 3 side tabs and splits,
-      start, every pane shows its live shell.
-- [ ] 3.4 Reboot recovery: fresh login shells in the last cwd, resume button for Claude tabs
+      Done 2026-11-05; dnd-kit, covered by `e2e/windows.spec.ts` (reorder, Esc, end zone,
+      into a side tab, palette).
+- [x] 3.3 Layout persistence and reattach on start. Verify: quit with 3 side tabs and splits,
+      start, every pane shows its live shell. Done 2026-11-05; `persist.rs` tests and the
+      `daemon_client` tests; manual check in the test steps.
+- [x] 3.4 Reboot recovery: fresh login shells in the last cwd, resume button for Claude tabs
       (D23). Verify: kill the daemon to simulate a reboot; layout returns and nothing runs
-      `claude` until the button is pressed.
-- [ ] 3.5 Context panel pinned and auto-hide with the hover edge as an overlay; sidebar, panes
+      `claude` until the button is pressed. Done 2026-11-05; resume ids pass `is_session_id`
+      on load and on Resume; daemon restarts drop the dead session; manual check in the test steps.
+- [x] 3.5 Context panel pinned and auto-hide with the hover edge as an overlay; sidebar, panes
       and panel scroll on their own; tab bar scrolls sideways (D26). Verify: Playwright checks
-      no pane resize event fires while the panel slides in.
+      no pane resize event fires while the panel slides in. Done 2026-11-05; mode kept in
+      localStorage, `⌘\` toggles.
 
 ## 4. Claude awareness (P1)
 

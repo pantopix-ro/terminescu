@@ -2,15 +2,18 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use serde::Deserialize;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 use tauri::ipc::{Channel, InvokeResponseBody};
-use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WebviewUrl, WebviewWindowBuilder, Wry};
 use terminescu_core::core_socket;
 use terminescu_core::daemon::DaemonClient;
 use terminescu_core::db::Db;
 use terminescu_core::launcher;
+use terminescu_core::persist;
 use terminescu_core::runtime::Runtime;
 use terminescu_core::state::{Command, CommandError, Core, Snapshot, Workspace};
 use terminescu_core::views::ViewId;
@@ -19,10 +22,27 @@ use terminescu_protocol::paths;
 
 /// Event that carries every patch batch to every window.
 const PATCHES_EVENT: &str = "host://patches";
+/// Event that carries an app action from the menu to the focused window (D17).
+const ACTION_EVENT: &str = "menu://action";
+
+/// The actions and their chords; the browser fallback reads the same file (D17).
+const ACTIONS_JSON: &str = include_str!("../../../../packages/host/src/actions.json");
+
+#[derive(Deserialize)]
+struct ActionsFile {
+    actions: Vec<ActionDef>,
+}
+
+#[derive(Deserialize)]
+struct ActionDef {
+    id: String,
+    label: String,
+    menu: String,
+    accel: String,
+}
 
 struct AppState {
     runtime: Runtime,
-    _db: Mutex<Db>,
 }
 
 #[tauri::command]
@@ -36,18 +56,18 @@ fn host_command(state: State<'_, AppState>, command: Command) -> Result<u64, Com
     state.runtime.command(command)
 }
 
-/// Opens a view of a tab's pane. Output goes to `on_output` as raw bytes (D33).
+/// Opens a view of a pane. Output goes to `on_output` as raw bytes (D33).
 #[tauri::command]
 fn pane_open(
     state: State<'_, AppState>,
-    tab: String,
+    pane: String,
     cols: u16,
     rows: u16,
     on_output: Channel<InvokeResponseBody>,
 ) -> Result<ViewId, CommandError> {
     let sink =
         Arc::new(move |bytes: Vec<u8>| on_output.send(InvokeResponseBody::Raw(bytes)).is_ok());
-    state.runtime.open_view(&tab, cols, rows, sink)
+    state.runtime.open_view(&pane, cols, rows, sink)
 }
 
 #[tauri::command]
@@ -98,8 +118,12 @@ fn sidecar(name: &str) -> std::io::Result<PathBuf> {
     Ok(exe.parent().unwrap_or(Path::new(".")).join(name))
 }
 
-/// Installs the daemon and CLI copies (D32, D36) and starts the runtime on the daemon.
-fn start_runtime(app: &AppHandle) -> Result<(Runtime, String), Box<dyn std::error::Error>> {
+/// Installs the daemon and CLI copies (D32, D36) and starts the runtime on the daemon, from the
+/// saved layout when there is one (task 3.3). Returns the runtime and its window ids.
+fn start_runtime(
+    app: &AppHandle,
+    db: Arc<Mutex<Db>>,
+) -> Result<(Runtime, Vec<String>), Box<dyn std::error::Error>> {
     let bin = paths::bin_dir();
     let daemon = launcher::install(&sidecar("terminescu-ptyd")?, &bin)?;
     if let Err(e) = launcher::install_cli(&sidecar("terminescu")?, &bin) {
@@ -107,7 +131,8 @@ fn start_runtime(app: &AppHandle) -> Result<(Runtime, String), Box<dyn std::erro
     }
     let run = paths::run_paths();
     paths::ensure_private_dir(&run.dir)?;
-    if let Err(e) = serve_core_socket(&run.core_socket) {
+    let hooks: Arc<OnceLock<Runtime>> = Arc::default();
+    if let Err(e) = serve_core_socket(&run.core_socket, hooks.clone()) {
         eprintln!("terminescu: core socket not served, hooks and statuses stay off: {e}");
     }
     let log = paths::support_dir().join("logs/ptyd.log");
@@ -127,23 +152,42 @@ fn start_runtime(app: &AppHandle) -> Result<(Runtime, String), Box<dyn std::erro
         )?;
         DaemonClient::connect(&run.ptyd_socket, events)
     });
-    // Layout persistence arrives with task 3.3; until then a start adopts the daemon's panes.
-    Ok(Runtime::start(
+    let saved = persist::load(&lock(&db))?;
+    let persist = Box::new(move |saved: &persist::Saved| {
+        if let Err(e) = persist::save(&lock(&db), saved) {
+            eprintln!("terminescu: layout not saved: {e}");
+        }
+    });
+    let (runtime, windows) = Runtime::start(
         Core::new(Workspace::default()),
+        saved,
         emit,
         connect,
-    )?)
+        persist,
+    )?;
+    let _ = hooks.set(runtime.clone());
+    Ok((runtime, windows))
+}
+
+fn lock(db: &Mutex<Db>) -> std::sync::MutexGuard<'_, Db> {
+    db.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 /// Answers `terminescu hook`, `status` and saved `var set` (D34, D36). Statuses arrive with
 /// group 5 and saved variables with task 6.1; until then those calls get `not_built`, which the
 /// CLI turns into a warning.
-fn serve_core_socket(path: &Path) -> std::io::Result<()> {
+fn serve_core_socket(path: &Path, runtime: Arc<OnceLock<Runtime>>) -> std::io::Result<()> {
     core_socket::serve(
         path,
-        Arc::new(|message: CoreMessage| match message.request {
-            // Hook events drive statuses from task 4.2 on.
-            CoreRequest::Hook { .. } => CoreReply::Ok,
+        Arc::new(move |message: CoreMessage| match message.request {
+            // The session a hook names is kept for the resume offer (task 3.4); statuses
+            // follow from task 4.2 on.
+            CoreRequest::Hook { event } => {
+                if let Some(rt) = runtime.get() {
+                    rt.hook(message.pane, &event);
+                }
+                CoreReply::Ok
+            }
             CoreRequest::Status { .. } => {
                 CoreReply::error("not_built", "statuses arrive in a later version")
             }
@@ -167,19 +211,100 @@ fn open_window(app: &AppHandle, window_id: &str) -> tauri::Result<()> {
     Ok(())
 }
 
+/// The app menu (D17): the standard macOS menus plus every action from actions.json under
+/// its menu, with its chord.
+fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
+    let file: ActionsFile =
+        serde_json::from_str(ACTIONS_JSON).expect("actions.json is checked by the host tests");
+    let mut sections: Vec<(String, Vec<MenuItem<Wry>>)> = Vec::new();
+    for a in &file.actions {
+        let item = MenuItem::with_id(app, &a.id, &a.label, true, Some(&a.accel))?;
+        match sections.iter_mut().find(|(name, _)| *name == a.menu) {
+            Some((_, items)) => items.push(item),
+            None => sections.push((a.menu.clone(), vec![item])),
+        }
+    }
+    let menu = Menu::with_items(
+        app,
+        &[
+            &Submenu::with_items(
+                app,
+                "Terminescu",
+                true,
+                &[
+                    &PredefinedMenuItem::about(app, None, None)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &PredefinedMenuItem::services(app, None)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &PredefinedMenuItem::hide(app, None)?,
+                    &PredefinedMenuItem::hide_others(app, None)?,
+                    &PredefinedMenuItem::show_all(app, None)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &PredefinedMenuItem::quit(app, None)?,
+                ],
+            )?,
+            &Submenu::with_items(
+                app,
+                "Edit",
+                true,
+                &[
+                    &PredefinedMenuItem::undo(app, None)?,
+                    &PredefinedMenuItem::redo(app, None)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &PredefinedMenuItem::cut(app, None)?,
+                    &PredefinedMenuItem::copy(app, None)?,
+                    &PredefinedMenuItem::paste(app, None)?,
+                    &PredefinedMenuItem::select_all(app, None)?,
+                ],
+            )?,
+        ],
+    )?;
+    for (name, items) in &sections {
+        let refs: Vec<&dyn tauri::menu::IsMenuItem<Wry>> = items
+            .iter()
+            .map(|i| i as &dyn tauri::menu::IsMenuItem<Wry>)
+            .collect();
+        let sub = Submenu::with_items(app, name, true, &refs)?;
+        if name == "Window" {
+            sub.prepend_items(&[
+                &PredefinedMenuItem::minimize(app, None)?,
+                &PredefinedMenuItem::fullscreen(app, None)?,
+                &PredefinedMenuItem::separator(app)?,
+            ])?;
+            sub.set_as_windows_menu_for_nsapp()?;
+        }
+        menu.append(&sub)?;
+    }
+    Ok(menu)
+}
+
+/// Sends a menu action to the focused window only; other windows keep their state.
+fn send_action(app: &AppHandle, id: &str) {
+    let focused = app
+        .webview_windows()
+        .into_iter()
+        .find(|(_, w)| w.is_focused().unwrap_or(false));
+    if let Some((label, _)) = focused
+        && let Err(e) = app.emit_to(label.as_str(), ACTION_EVENT, id)
+    {
+        eprintln!("terminescu: menu action not sent: {e}");
+    }
+}
+
 fn main() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
+        .menu(build_menu)
+        .on_menu_event(|app, event| send_action(app, event.id().as_ref()))
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
             let db = Db::open(dir.join("terminescu.sqlite"))?;
             db.local_owner()?;
-            let (runtime, window_id) = start_runtime(app.handle())?;
-            app.manage(AppState {
-                runtime,
-                _db: Mutex::new(db),
-            });
-            open_window(app.handle(), &window_id)?;
+            let (runtime, windows) = start_runtime(app.handle(), Arc::new(Mutex::new(db)))?;
+            app.manage(AppState { runtime });
+            for id in &windows {
+                open_window(app.handle(), id)?;
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -192,6 +317,35 @@ fn main() {
             pane_input,
             open_url
         ])
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())
         .expect("Terminescu failed to start");
+    app.run(|app, event| {
+        // A last save with fresh cwds, so a reboot after quitting restarts shells where they were.
+        if let RunEvent::Exit = event
+            && let Some(state) = app.try_state::<AppState>()
+        {
+            state.runtime.stop();
+        }
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_action_has_a_unique_id_a_known_menu_and_a_chord() {
+        let file: ActionsFile = serde_json::from_str(ACTIONS_JSON).unwrap();
+        let mut ids = std::collections::HashSet::new();
+        for a in &file.actions {
+            assert!(ids.insert(a.id.as_str()), "{} is listed twice", a.id);
+            assert!(
+                ["Shell", "View", "Window"].contains(&a.menu.as_str()),
+                "{}",
+                a.menu
+            );
+            assert!(a.accel.contains("Cmd+"), "{} needs a ⌘ chord (D17)", a.id);
+            assert!(!a.label.is_empty());
+        }
+    }
 }

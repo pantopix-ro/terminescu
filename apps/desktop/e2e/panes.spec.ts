@@ -4,7 +4,7 @@ import { expect, test, type Page } from "@playwright/test";
 // its own mock Host.
 
 interface PaneState {
-  tabId: string;
+  paneId: string;
   renderer: string | undefined;
   hidden: boolean;
   firstLine: string;
@@ -16,9 +16,9 @@ async function panes(page: Page): Promise<PaneState[]> {
   return page.evaluate(() => {
     const { terminals } = (window as any).__terminescu as { terminals: Map<string, any> };
     return [...document.querySelectorAll<HTMLElement>(".term-pane")].map((el) => {
-      const term = terminals.get(el.dataset.tab!);
+      const term = terminals.get(el.dataset.pane!);
       return {
-        tabId: el.dataset.tab!,
+        paneId: el.dataset.pane!,
         renderer: el.dataset.renderer,
         hidden: el.hidden,
         firstLine: term?.buffer.active.getLine(0)?.translateToString(true) ?? "",
@@ -42,14 +42,14 @@ async function checkVisible(page: Page) {
   await expect
     .poll(async () => {
       const visible = (await panes(page)).filter((p) => !p.hidden);
-      return visible.length === 1 && visible[0]!.firstLine.startsWith(`mock ${visible[0]!.tabId} $`);
+      return visible.length === 1 && visible[0]!.firstLine.startsWith(`mock ${visible[0]!.paneId} $`);
     })
     .toBe(true);
   const all = await panes(page);
   const shown = all.find((p) => !p.hidden)!;
   expect(shown.renderer, "the visible pane takes WebGL").toBe("webgl");
   expect(all.filter((p) => p.hidden && p.renderer === "webgl"), "hidden panes give WebGL back").toEqual([]);
-  const box = await page.locator(`.term-pane[data-tab="${shown.tabId}"] canvas`).first().boundingBox();
+  const box = await page.locator(`.term-pane[data-pane="${shown.paneId}"] canvas`).first().boundingBox();
   expect(box?.width ?? 0).toBeGreaterThan(100);
 }
 
@@ -62,7 +62,7 @@ test("20 panes over 2 windows: every visible pane renders", async ({ browser }) 
   for (const page of windows) {
     for (const side of await page.locator(".ao-st").all()) {
       await side.click();
-      for (const tab of await page.getByRole("tab").all()) {
+      for (const tab of await page.locator(".ao-tabs [role=tab]").all()) {
         await tab.click();
         await checkVisible(page);
       }

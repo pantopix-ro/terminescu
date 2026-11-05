@@ -169,8 +169,10 @@ core and live in the daemon (D21). Rejected: Postgres in Docker, too heavy for a
  └──────────────────────────────────┘
 ```
 The `terminescu` CLI and the daemon ship inside the app as Tauri `externalBin` sidecars.
-Libraries: `react-resizable-panels` for splits, `cmdk` for the palette, `dnd-kit` for drags
-inside a window, Zustand; `rusqlite`, `notify` for JSONL tailing, `vte` to strip ANSI before
+Libraries: `cmdk` for the palette, `dnd-kit` for drags inside a window, Zustand. Splits use a
+small flex view of their own instead of `react-resizable-panels` (changed 2026-11-05 in task
+3.1): the core's layout tree already holds the sizes, and each pane's terminal element has to
+move between slots without remounting; `rusqlite`, `notify` for JSONL tailing, `vte` to strip ANSI before
 extraction, `zeroize` for secrets, `axum` later for the remote view. Layout: a Cargo workspace
 (`crates/core`, `crates/ptyd`, `crates/cli`, `crates/protocol` and the app crate
 `apps/desktop/src-tauri`) and a pnpm workspace (`apps/desktop`, `packages/ui`, `packages/host`).

@@ -1,6 +1,6 @@
 //! Terminal views: pty output on its way to the windows (D33).
 //!
-//! A view is one window showing one tab's pane. Output queues per view and leaves in batches of
+//! A view is one window showing one pane. Output queues per view and leaves in batches of
 //! at most [`MAX_BATCH`], one per frame. The window acknowledges each batch once xterm.js has
 //! written it. Past [`ACK_WINDOW`] bytes received but not acknowledged, the view goes stale: its
 //! queue is dropped and nothing more is forwarded. Once the window has acknowledged everything
@@ -50,25 +50,25 @@ impl View {
 /// What the runtime must tell the daemon after a hub call.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
-    /// Resize the tab's pane, then attach to it.
-    Attach { tab: String, cols: u16, rows: u16 },
+    /// Resize the daemon pane, then attach to it.
+    Attach { pane: String, cols: u16, rows: u16 },
 }
 
-/// The views of every tab, keyed by tab id. A tab has at most one view; opening another
-/// replaces it, so a window that reloads takes over its tab.
+/// The views of every pane, keyed by pane id. A pane has at most one view; opening another
+/// replaces it, so a window that reloads takes over its pane.
 #[derive(Default)]
 pub struct Views {
-    by_tab: HashMap<String, View>,
+    by_pane: HashMap<String, View>,
     next: ViewId,
 }
 
 impl Views {
     /// Registers a view and returns its id with the attach the runtime should send.
-    pub fn open(&mut self, tab: &str, cols: u16, rows: u16, sink: Sink) -> (ViewId, Action) {
+    pub fn open(&mut self, pane: &str, cols: u16, rows: u16, sink: Sink) -> (ViewId, Action) {
         self.next += 1;
         let id = self.next;
-        self.by_tab.insert(
-            tab.into(),
+        self.by_pane.insert(
+            pane.into(),
             View {
                 id,
                 sink,
@@ -83,57 +83,57 @@ impl Views {
         (
             id,
             Action::Attach {
-                tab: tab.into(),
+                pane: pane.into(),
                 cols,
                 rows,
             },
         )
     }
 
-    /// Removes a view. Returns its tab when the view was still current, so the runtime can
+    /// Removes a view. Returns its pane when the view was still current, so the runtime can
     /// detach the pane.
     pub fn close(&mut self, view: ViewId) -> Option<String> {
-        let tab = self.tab_of(view)?;
-        self.by_tab.remove(&tab);
-        Some(tab)
+        let pane = self.pane_of(view)?;
+        self.by_pane.remove(&pane);
+        Some(pane)
     }
 
-    pub fn tab_of(&self, view: ViewId) -> Option<String> {
-        self.by_tab
+    pub fn pane_of(&self, view: ViewId) -> Option<String> {
+        self.by_pane
             .iter()
             .find(|(_, v)| v.id == view)
             .map(|(t, _)| t.clone())
     }
 
-    pub fn state(&self, tab: &str) -> Option<ViewState> {
-        self.by_tab.get(tab).map(|v| v.state)
+    pub fn state(&self, pane: &str) -> Option<ViewState> {
+        self.by_pane.get(pane).map(|v| v.state)
     }
 
-    pub fn has(&self, tab: &str) -> bool {
-        self.by_tab.contains_key(tab)
+    pub fn has(&self, pane: &str) -> bool {
+        self.by_pane.contains_key(pane)
     }
 
-    /// Drops a closed tab's view; its window unmounts it on the same patch.
-    pub fn remove_tab(&mut self, tab: &str) {
-        self.by_tab.remove(tab);
+    /// Drops a closed pane's view; its window unmounts it on the same patch.
+    pub fn remove_pane(&mut self, pane: &str) {
+        self.by_pane.remove(pane);
     }
 
-    /// Records a new size. Returns the view's tab, or None when the view is not current.
+    /// Records a new size. Returns the view's pane, or None when the view is not current.
     pub fn resize(&mut self, view: ViewId, cols: u16, rows: u16) -> Option<String> {
-        let tab = self.tab_of(view)?;
-        let v = self.by_tab.get_mut(&tab)?;
+        let pane = self.pane_of(view)?;
+        let v = self.by_pane.get_mut(&pane)?;
         v.cols = cols;
         v.rows = rows;
-        Some(tab)
+        Some(pane)
     }
 
-    /// The attach for a tab whose pane just changed (spawned, or a new daemon connection).
-    pub fn reattach(&mut self, tab: &str) -> Option<Action> {
-        let v = self.by_tab.get_mut(tab)?;
+    /// The attach for a pane whose daemon pane just changed (spawned, or a new daemon connection).
+    pub fn reattach(&mut self, pane: &str) -> Option<Action> {
+        let v = self.by_pane.get_mut(pane)?;
         v.state = ViewState::Attaching;
         v.queue.clear();
         Some(Action::Attach {
-            tab: tab.into(),
+            pane: pane.into(),
             cols: v.cols,
             rows: v.rows,
         })
@@ -141,13 +141,13 @@ impl Views {
 
     /// Every view's attach, after a reconnect.
     pub fn reattach_all(&mut self) -> Vec<Action> {
-        let tabs: Vec<String> = self.by_tab.keys().cloned().collect();
-        tabs.iter().filter_map(|t| self.reattach(t)).collect()
+        let panes: Vec<String> = self.by_pane.keys().cloned().collect();
+        panes.iter().filter_map(|t| self.reattach(t)).collect()
     }
 
     /// The daemon confirmed an attach: what follows is a fresh snapshot.
-    pub fn attached(&mut self, tab: &str) {
-        if let Some(v) = self.by_tab.get_mut(tab)
+    pub fn attached(&mut self, pane: &str) {
+        if let Some(v) = self.by_pane.get_mut(pane)
             && v.state == ViewState::Attaching
         {
             v.state = ViewState::Live;
@@ -156,8 +156,8 @@ impl Views {
     }
 
     /// Queues output. Returns true when the view has bytes ready to send.
-    pub fn output(&mut self, tab: &str, data: &[u8]) -> bool {
-        let Some(v) = self.by_tab.get_mut(tab) else {
+    pub fn output(&mut self, pane: &str, data: &[u8]) -> bool {
+        let Some(v) = self.by_pane.get_mut(pane) else {
             return false;
         };
         if v.state != ViewState::Live {
@@ -175,7 +175,7 @@ impl Views {
     /// Takes one batch from every view with queued output.
     pub fn take_batches(&mut self) -> Vec<(ViewId, Sink, Vec<u8>)> {
         let mut out = Vec::new();
-        for v in self.by_tab.values_mut() {
+        for v in self.by_pane.values_mut() {
             if v.state != ViewState::Live || v.queue.is_empty() {
                 continue;
             }
@@ -189,18 +189,18 @@ impl Views {
     }
 
     pub fn has_queued(&self) -> bool {
-        self.by_tab
+        self.by_pane
             .values()
             .any(|v| v.state == ViewState::Live && !v.queue.is_empty())
     }
 
     /// The window wrote `bytes`. A stale view whose flight has landed attaches again.
     pub fn ack(&mut self, view: ViewId, bytes: u64) -> Option<Action> {
-        let tab = self.tab_of(view)?;
-        let v = self.by_tab.get_mut(&tab)?;
+        let pane = self.pane_of(view)?;
+        let v = self.by_pane.get_mut(&pane)?;
         v.acked = (v.acked + bytes).min(v.sent);
         if v.state == ViewState::Stale && v.in_flight() == 0 {
-            return self.reattach(&tab);
+            return self.reattach(&pane);
         }
         None
     }
@@ -243,7 +243,7 @@ mod tests {
         assert_eq!(
             action,
             Action::Attach {
-                tab: "t1".into(),
+                pane: "t1".into(),
                 cols: 100,
                 rows: 30
             }
@@ -289,7 +289,7 @@ mod tests {
         assert_eq!(
             views.ack(id, 400 * 1024),
             Some(Action::Attach {
-                tab: "t1".into(),
+                pane: "t1".into(),
                 cols: 80,
                 rows: 24
             })
@@ -317,7 +317,7 @@ mod tests {
         assert_eq!(
             views.reattach_all(),
             vec![Action::Attach {
-                tab: "t1".into(),
+                pane: "t1".into(),
                 cols: 120,
                 rows: 40
             }]

@@ -5,6 +5,8 @@ pub mod core_socket;
 pub mod daemon;
 pub mod db;
 pub mod launcher;
+pub mod layout;
+pub mod persist;
 pub mod runtime;
 pub mod state;
 pub mod views;

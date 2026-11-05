@@ -1,59 +1,111 @@
-//! The core with its shells: workspace state plus the daemon panes behind each tab (task 2.6).
+//! The core with its shells: workspace state plus the daemon pane behind each pane (task 2.6).
 //!
 //! Every command runs under the core lock and emits its patch batch there, so windows see batches
 //! in rev order. The daemon work a batch implies (spawn, close, side tab changes) runs after the
 //! core lock is released but under the effects lock, which the command takes before letting go
-//! of the core lock, so effects also run in rev order.
+//! of the core lock, so effects also run in rev order. Lock order: core, then effects, then the
+//! small locks (panes, views, daemon).
 //!
-//! Views (task 2.5, D33) carry each tab's pty output to the window showing it. The daemon event
+//! The daemon work comes from comparing the panes before and after a batch: a pane that appeared
+//! gets a shell, a pane that left loses it, a pane that changed side tab tells the daemon.
+//!
+//! Views (task 2.5, D33) carry each pane's pty output to the window showing it. The daemon event
 //! thread queues output into [`Views`]; a flush thread sends one batch per view per frame.
+//!
+//! The layout reaches SQLite through [`Persist`] after every batch and whenever a pane's cwd or
+//! Claude session changes (task 3.3). A start restores it: panes whose daemon pane still runs
+//! reattach, the others get a fresh login shell in their last cwd, and a pane that ran a Claude
+//! session offers to resume it (D23).
 
 use crate::daemon::{DaemonClient, DaemonError, DaemonEvent};
-use crate::state::{Command, CommandError, Core, Id, Patch, PatchBatch, Snapshot, Workspace};
+use crate::layout::Layout;
+use crate::persist::{PaneRecord, Saved};
+use crate::state::{Command, CommandError, Core, Id, PatchBatch, Snapshot, Workspace};
 use crate::views::{Action, Sink, ViewId, Views};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
-use terminescu_protocol::{PaneId, SpawnSpec};
+use terminescu_protocol::{PaneId, PaneInfo, SpawnSpec};
 
 /// Size of a new pane until its view reports its own (task 2.5).
 const DEFAULT_SIZE: (u16, u16) = (80, 24);
 const RECONNECT_DELAY: Duration = Duration::from_millis(500);
 /// One batch per view per frame.
 const FRAME: Duration = Duration::from_millis(16);
+/// How often the cwds of the panes are read for the next start (D23).
+const CWD_POLL: Duration = Duration::from_secs(5);
+/// How many unlinked exits `pane_exited` remembers for `spawn_for`.
+const EARLY_EXITS: usize = 64;
 
 pub type Emit = Box<dyn Fn(&PatchBatch) + Send + Sync>;
 /// Makes sure a daemon runs, then connects to it. Called at start and after a drop.
 pub type Connect =
     Box<dyn Fn(mpsc::Sender<DaemonEvent>) -> Result<DaemonClient, DaemonError> + Send + Sync>;
+/// Writes the layout for the next start. Called under the effects lock, so saves arrive in order.
+pub type Persist = Box<dyn Fn(&Saved) + Send + Sync>;
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// A Claude session id as hooks report it. Anything else never reaches a pane as typed text.
+/// It starts with a letter or digit, so it can never read as a `claude` option.
+pub fn is_session_id(s: &str) -> bool {
+    s.len() <= 128
+        && s.as_bytes().first().is_some_and(u8::is_ascii_alphanumeric)
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
 enum Effect {
-    Spawn { tab: Id, side_tab: Id },
-    Close { tab: Id },
-    SideTab { tab: Id, side_tab: Id },
+    Spawn {
+        pane: Id,
+        side_tab: Id,
+        cwd: Option<String>,
+    },
+    Close {
+        pane: Id,
+    },
+    SideTab {
+        pane: Id,
+        side_tab: Id,
+    },
+    Type {
+        pane: Id,
+        text: String,
+    },
 }
 
 #[derive(Default)]
 struct Panes {
-    by_tab: HashMap<Id, PaneId>,
-    by_pane: HashMap<PaneId, Id>,
+    by_id: HashMap<Id, PaneId>,
+    by_daemon: HashMap<PaneId, Id>,
+    /// Last cwd and Claude session per pane, kept across daemon restarts.
+    meta: HashMap<Id, PaneRecord>,
+    /// Daemon panes closed while offline; the next connection to the same daemon closes them.
+    orphans: Vec<PaneId>,
+    /// Recent exits of daemon panes with no pane linked yet: a shell can exit before
+    /// `spawn_for` links it.
+    early_exits: std::collections::VecDeque<PaneId>,
 }
 
 impl Panes {
-    fn link(&mut self, tab: Id, pane: PaneId) {
-        self.by_pane.insert(pane, tab.clone());
-        self.by_tab.insert(tab, pane);
+    fn link(&mut self, pane: Id, daemon: PaneId) {
+        self.by_daemon.insert(daemon, pane.clone());
+        self.by_id.insert(pane, daemon);
     }
-    fn unlink_tab(&mut self, tab: &str) -> Option<PaneId> {
-        let pane = self.by_tab.remove(tab)?;
-        self.by_pane.remove(&pane);
-        Some(pane)
+    fn unlink(&mut self, pane: &str) -> Option<PaneId> {
+        let daemon = self.by_id.remove(pane)?;
+        self.by_daemon.remove(&daemon);
+        Some(daemon)
+    }
+    fn clear_links(&mut self) {
+        self.by_id.clear();
+        self.by_daemon.clear();
+        self.orphans.clear();
+        self.early_exits.clear();
     }
 }
 
@@ -67,6 +119,7 @@ struct Inner {
     queued: Condvar,
     emit: Emit,
     connect: Connect,
+    persist: Persist,
     stopped: AtomicBool,
 }
 
@@ -76,15 +129,101 @@ pub struct Runtime {
 }
 
 impl Runtime {
-    /// Connects to the daemon and builds the first window. The daemon's live panes become the
-    /// tabs of that window; with none, the window gets one new login shell. Returns the window id.
-    pub fn start(core: Core, emit: Emit, connect: Connect) -> Result<(Self, Id), DaemonError> {
+    /// Connects to the daemon and builds the workspace. With a saved layout, its panes reattach
+    /// or restart; live daemon panes the layout doesn't know join a new side tab in the first
+    /// window, so no shell gets lost. Without one, the daemon's live panes become the tabs of a
+    /// first window, or it gets one new login shell. Returns the window ids.
+    pub fn start(
+        mut core: Core,
+        saved: Option<Saved>,
+        emit: Emit,
+        connect: Connect,
+        persist: Persist,
+    ) -> Result<(Self, Vec<Id>), DaemonError> {
         let (tx, rx) = mpsc::channel();
         let client = Arc::new(connect(tx)?);
-        let live: Vec<_> = client
+        let live: Vec<PaneInfo> = client
             .list()?
             .into_iter()
             .filter(|p| p.exited.is_none())
+            .collect();
+        let mut panes = Panes::default();
+        let mut spawn: Vec<(Id, Id, Option<String>)> = Vec::new();
+        let saved = saved.filter(|s| !s.workspace.windows.is_empty());
+        match saved {
+            Some(saved) => {
+                let same = saved.instance.as_deref() == Some(client.instance.as_str());
+                let mut ws = saved.workspace;
+                for (pane, side) in ws.pane_sides() {
+                    let rec = saved.panes.get(&pane).cloned().unwrap_or_default();
+                    let running = rec
+                        .daemon
+                        .filter(|d| same && live.iter().any(|i| i.pane == *d));
+                    if let Some(d) = running {
+                        panes.link(pane.clone(), d);
+                        panes.meta.insert(pane, rec);
+                        continue;
+                    }
+                    // The shell is gone, most likely a reboot: a fresh one in the last cwd.
+                    let session = rec.session.clone().filter(|s| is_session_id(s));
+                    if let Some(session) = session {
+                        set_resume(&mut ws, &pane, Some(session));
+                    }
+                    spawn.push((pane.clone(), side, rec.cwd.clone()));
+                    panes.meta.insert(
+                        pane,
+                        PaneRecord {
+                            daemon: None,
+                            cwd: rec.cwd,
+                            session: None,
+                        },
+                    );
+                }
+                core.restore(ws);
+                let orphans: Vec<&PaneInfo> = live
+                    .iter()
+                    .filter(|i| !panes.by_daemon.contains_key(&i.pane))
+                    .collect();
+                let first = core.workspace().windows[0].id.clone();
+                if !orphans.is_empty()
+                    && let Some(ids) = core.append_side_tab(&first, orphans.len())
+                {
+                    for (pane, info) in ids.into_iter().zip(orphans) {
+                        panes.link(pane, info.pane);
+                    }
+                }
+            }
+            None => {
+                let (_, ids) = core.first_start_with(live.len().max(1));
+                if live.is_empty() {
+                    let side = core
+                        .workspace()
+                        .pane_sides()
+                        .into_iter()
+                        .next()
+                        .map(|(_, s)| s)
+                        .unwrap_or_default();
+                    spawn.push((ids[0].clone(), side, None));
+                } else {
+                    for (pane, info) in ids.into_iter().zip(&live) {
+                        panes.link(pane, info.pane);
+                    }
+                }
+            }
+        }
+        for info in &live {
+            if let Some(pane) = panes.by_daemon.get(&info.pane).cloned() {
+                let rec = panes.meta.entry(pane).or_default();
+                if info.shell.cwd.is_some() {
+                    rec.cwd.clone_from(&info.shell.cwd);
+                }
+            }
+        }
+        let windows: Vec<Id> = core
+            .workspace()
+            .windows
+            .iter()
+            .map(|w| w.id.clone())
             .collect();
         let rt = Self {
             inner: Arc::new(Inner {
@@ -92,44 +231,43 @@ impl Runtime {
                 effects: Mutex::new(()),
                 daemon: Mutex::new(Some(client.clone())),
                 instance: Mutex::new(client.instance.clone()),
-                panes: Mutex::new(Panes::default()),
+                panes: Mutex::new(panes),
                 views: Mutex::new(Views::default()),
                 queued: Condvar::new(),
                 emit,
                 connect,
+                persist,
                 stopped: AtomicBool::new(false),
             }),
         };
-        let (window, side_tab, tabs) = {
-            let mut core = lock(&rt.inner.core);
-            let (window, tabs) = core.first_start_with(live.len());
-            let side_tab = core
-                .workspace()
-                .locate_tab(&tabs[0])
-                .map(|(s, _)| s.id.clone())
-                .unwrap_or_default();
-            (window, side_tab, tabs)
-        };
-        if live.is_empty() {
-            rt.spawn_for(&client, &tabs[0], &side_tab);
-        } else {
-            let mut panes = lock(&rt.inner.panes);
-            for (tab, info) in tabs.iter().zip(&live) {
-                panes.link(tab.clone(), info.pane);
-                let _ = client.set_side_tab(info.pane, &side_tab);
+        {
+            let core = lock(&rt.inner.core);
+            let ws = core.workspace().clone();
+            let _guard = lock(&rt.inner.effects);
+            drop(core);
+            for (pane, side) in ws.pane_sides() {
+                if let Some(d) = rt.daemon_of(&pane) {
+                    let _ = client.set_side_tab(d, &side);
+                }
             }
+            for (pane, side, cwd) in spawn {
+                rt.spawn_for(&client, &pane, &side, cwd.as_deref());
+            }
+            rt.save(&ws);
         }
-        let me = rt.clone();
+        rt.thread("daemon-events", move |me| me.events(rx))?;
+        rt.thread("view-flush", |me| me.flush())?;
+        rt.thread("cwd-poll", |me| me.poll_cwds())?;
+        Ok((rt, windows))
+    }
+
+    fn thread(&self, name: &str, f: impl FnOnce(Self) + Send + 'static) -> Result<(), DaemonError> {
+        let me = self.clone();
         std::thread::Builder::new()
-            .name("daemon-events".into())
-            .spawn(move || me.events(rx))
-            .map_err(DaemonError::Io)?;
-        let me = rt.clone();
-        std::thread::Builder::new()
-            .name("view-flush".into())
-            .spawn(move || me.flush())
-            .map_err(DaemonError::Io)?;
-        Ok((rt, window))
+            .name(name.into())
+            .spawn(move || f(me))
+            .map(drop)
+            .map_err(DaemonError::Io)
     }
 
     pub fn snapshot(&self) -> Snapshot {
@@ -140,17 +278,19 @@ impl Runtime {
         lock(&self.inner.core).workspace().clone()
     }
 
-    /// The daemon pane behind a tab.
-    pub fn pane_of(&self, tab: &str) -> Option<PaneId> {
-        lock(&self.inner.panes).by_tab.get(tab).copied()
+    /// The daemon pane behind a pane.
+    pub fn daemon_of(&self, pane: &str) -> Option<PaneId> {
+        lock(&self.inner.panes).by_id.get(pane).copied()
     }
 
     pub fn daemon(&self) -> Option<Arc<DaemonClient>> {
         lock(&self.inner.daemon).clone()
     }
 
-    /// Disconnects for good, as the app quits. The shells keep running in the daemon.
+    /// Saves the cwds and disconnects for good, as the app quits. The shells keep running in
+    /// the daemon.
     pub fn stop(&self) {
+        self.refresh_cwds();
         self.inner.stopped.store(true, Ordering::SeqCst);
         self.inner.queued.notify_all();
         if let Some(client) = lock(&self.inner.daemon).take() {
@@ -158,39 +298,39 @@ impl Runtime {
         }
     }
 
-    /// Opens a view of a tab's pane at the window's size. Output then reaches `sink`, starting
-    /// with a snapshot of the screen. A tab whose shell is still starting attaches once it runs.
+    /// Opens a view of a pane at the window's size. Output then reaches `sink`, starting with a
+    /// snapshot of the screen. A pane whose shell is still starting attaches once it runs.
     pub fn open_view(
         &self,
-        tab: &str,
+        pane: &str,
         cols: u16,
         rows: u16,
         sink: Sink,
     ) -> Result<ViewId, CommandError> {
-        // Core, then effects: a tab created by a command in flight has its pane once the effects
-        // lock is ours.
+        // Core, then effects: a pane created by a command in flight has its shell once the
+        // effects lock is ours.
         let core = lock(&self.inner.core);
-        if core.workspace().locate_tab(tab).is_none() {
-            return Err(CommandError::UnknownTab(tab.into()));
+        if core.workspace().locate_pane(pane).is_none() {
+            return Err(CommandError::UnknownPane(pane.into()));
         }
         let _guard = lock(&self.inner.effects);
         drop(core);
-        let (view, action) = lock(&self.inner.views).open(tab, cols, rows, sink);
+        let (view, action) = lock(&self.inner.views).open(pane, cols, rows, sink);
         if let Some(client) = self.daemon() {
             self.act(&client, action);
         }
         Ok(view)
     }
 
-    pub fn view_state(&self, tab: &str) -> Option<crate::views::ViewState> {
-        lock(&self.inner.views).state(tab)
+    pub fn view_state(&self, pane: &str) -> Option<crate::views::ViewState> {
+        lock(&self.inner.views).state(pane)
     }
 
     /// Closes a view. A view that another window replaced closes as a no-op.
     pub fn close_view(&self, view: ViewId) {
-        let tab = lock(&self.inner.views).close(view);
-        if let (Some(pane), Some(client)) = (tab.and_then(|t| self.pane_of(&t)), self.daemon()) {
-            let _ = client.detach(pane);
+        let pane = lock(&self.inner.views).close(view);
+        if let (Some(d), Some(client)) = (pane.and_then(|p| self.daemon_of(&p)), self.daemon()) {
+            let _ = client.detach(d);
         }
     }
 
@@ -203,34 +343,34 @@ impl Runtime {
     }
 
     pub fn view_resize(&self, view: ViewId, cols: u16, rows: u16) {
-        let tab = lock(&self.inner.views).resize(view, cols, rows);
-        if let (Some(pane), Some(client)) = (tab.and_then(|t| self.pane_of(&t)), self.daemon()) {
-            let _ = client.resize(pane, cols, rows);
+        let pane = lock(&self.inner.views).resize(view, cols, rows);
+        if let (Some(d), Some(client)) = (pane.and_then(|p| self.daemon_of(&p)), self.daemon()) {
+            let _ = client.resize(d, cols, rows);
         }
     }
 
     /// Keys and pastes from the window, as bytes for the pty.
     pub fn view_input(&self, view: ViewId, data: Vec<u8>) {
-        let tab = lock(&self.inner.views).tab_of(view);
-        if let (Some(pane), Some(client)) = (tab.and_then(|t| self.pane_of(&t)), self.daemon()) {
-            let _ = client.input(pane, data);
+        let pane = lock(&self.inner.views).pane_of(view);
+        if let (Some(d), Some(client)) = (pane.and_then(|p| self.daemon_of(&p)), self.daemon()) {
+            let _ = client.input(d, data);
         }
     }
 
     /// Sends what a view needs from the daemon. Resize goes first so the snapshot fits.
     fn act(&self, client: &DaemonClient, action: Action) {
         match action {
-            Action::Attach { tab, cols, rows } => {
-                if let Some(pane) = self.pane_of(&tab) {
-                    let _ = client.resize(pane, cols, rows);
-                    let _ = client.attach(pane);
+            Action::Attach { pane, cols, rows } => {
+                if let Some(d) = self.daemon_of(&pane) {
+                    let _ = client.resize(d, cols, rows);
+                    let _ = client.attach(d);
                 }
             }
         }
     }
 
-    fn tab_of_pane(&self, pane: PaneId) -> Option<Id> {
-        lock(&self.inner.panes).by_pane.get(&pane).cloned()
+    fn pane_of_daemon(&self, daemon: PaneId) -> Option<Id> {
+        lock(&self.inner.panes).by_daemon.get(&daemon).cloned()
     }
 
     /// Sends one batch per view per frame, sleeping while nothing is queued.
@@ -265,62 +405,241 @@ impl Runtime {
 
     pub fn command(&self, cmd: Command) -> Result<u64, CommandError> {
         let mut core = lock(&self.inner.core);
+        let before = core.workspace().pane_sides();
+        // Typed text and the cwd a split inherits, read before the batch changes the layout.
+        let (typed, inherit) = match &cmd {
+            Command::ResumePane { pane_id } => {
+                let session = core
+                    .workspace()
+                    .locate_pane(pane_id)
+                    .and_then(|(_, t)| t.layout.resume_of(pane_id))
+                    .filter(|s| is_session_id(s))
+                    .map(|s| (pane_id.clone(), format!("claude --resume {s}\r")));
+                // An offer with a bad id is never typed; the core refuses it as nothing to resume.
+                if session.is_none() {
+                    return Err(CommandError::NothingToResume(pane_id.clone()));
+                }
+                (session, None)
+            }
+            Command::SplitPane { pane_id, .. } => (None, Some(pane_id.clone())),
+            _ => (None, None),
+        };
         let batch = core.handle(cmd)?;
         (self.inner.emit)(&batch);
-        let effects = plan_effects(core.workspace(), &batch);
+        let ws = core.workspace().clone();
         let guard = lock(&self.inner.effects);
         drop(core);
+        let cwd = inherit.and_then(|p| self.live_cwd(&p));
+        let mut effects = diff_effects(&before, &ws.pane_sides(), cwd);
+        if let Some((pane, text)) = typed {
+            effects.push(Effect::Type { pane, text });
+        }
         self.run(effects);
+        self.save(&ws);
         drop(guard);
         Ok(batch.rev)
     }
 
+    /// The cwd the shell integration reports now, else the last one seen.
+    fn live_cwd(&self, pane: &str) -> Option<String> {
+        let client = self.daemon();
+        let d = self.daemon_of(pane);
+        if let (Some(client), Some(d)) = (client, d)
+            && let Ok(list) = client.list()
+            && let Some(cwd) = list
+                .into_iter()
+                .find(|i| i.pane == d)
+                .and_then(|i| i.shell.cwd)
+        {
+            return Some(cwd);
+        }
+        lock(&self.inner.panes)
+            .meta
+            .get(pane)
+            .and_then(|r| r.cwd.clone())
+    }
+
     fn run(&self, effects: Vec<Effect>) {
         let Some(client) = self.daemon() else {
-            // Offline: closed tabs just lose their link; the reconnect pass spawns for new tabs.
+            // Offline: closed panes lose their link and their shell waits for the reconnect to
+            // close it; the reconnect pass also spawns for new panes.
             let mut panes = lock(&self.inner.panes);
             for e in effects {
-                if let Effect::Close { tab } = e {
-                    panes.unlink_tab(&tab);
+                if let Effect::Close { pane } = e {
+                    lock(&self.inner.views).remove_pane(&pane);
+                    if let Some(d) = panes.unlink(&pane) {
+                        panes.orphans.push(d);
+                    }
+                    panes.meta.remove(&pane);
                 }
             }
             return;
         };
         for e in effects {
             match e {
-                Effect::Spawn { tab, side_tab } => self.spawn_for(&client, &tab, &side_tab),
-                Effect::Close { tab } => {
-                    lock(&self.inner.views).remove_tab(&tab);
-                    if let Some(pane) = lock(&self.inner.panes).unlink_tab(&tab) {
-                        let _ = client.close(pane);
+                Effect::Spawn {
+                    pane,
+                    side_tab,
+                    cwd,
+                } => self.spawn_for(&client, &pane, &side_tab, cwd.as_deref()),
+                Effect::Close { pane } => {
+                    lock(&self.inner.views).remove_pane(&pane);
+                    let daemon = {
+                        let mut panes = lock(&self.inner.panes);
+                        panes.meta.remove(&pane);
+                        panes.unlink(&pane)
+                    };
+                    if let Some(d) = daemon {
+                        let _ = client.close(d);
                     }
                 }
-                Effect::SideTab { tab, side_tab } => {
-                    if let Some(pane) = self.pane_of(&tab) {
-                        let _ = client.set_side_tab(pane, &side_tab);
+                Effect::SideTab { pane, side_tab } => {
+                    if let Some(d) = self.daemon_of(&pane) {
+                        let _ = client.set_side_tab(d, &side_tab);
+                    }
+                }
+                Effect::Type { pane, text } => {
+                    if let Some(d) = self.daemon_of(&pane) {
+                        let _ = client.input(d, text.into_bytes());
                     }
                 }
             }
         }
     }
 
-    fn spawn_for(&self, client: &DaemonClient, tab: &str, side_tab: &str) {
-        let spec = SpawnSpec {
+    /// Starts a login shell for a pane, in `cwd` when given. A cwd that no longer exists falls
+    /// back to the home folder.
+    fn spawn_for(&self, client: &DaemonClient, pane: &str, side_tab: &str, cwd: Option<&str>) {
+        let spec = |cwd: Option<&str>| SpawnSpec {
             cols: DEFAULT_SIZE.0,
             rows: DEFAULT_SIZE.1,
             side_tab: Some(side_tab.into()),
+            cwd: cwd.map(Into::into),
             ..Default::default()
         };
-        match client.spawn(spec) {
-            Ok(pane) => {
-                lock(&self.inner.panes).link(tab.into(), pane);
-                let action = lock(&self.inner.views).reattach(tab);
+        let cwd = cwd.filter(|c| std::path::Path::new(c).is_dir());
+        let spawned = client.spawn(spec(cwd)).or_else(|e| {
+            if cwd.is_some() {
+                client.spawn(spec(None))
+            } else {
+                Err(e)
+            }
+        });
+        match spawned {
+            Ok(d) => {
+                let exited = {
+                    let mut panes = lock(&self.inner.panes);
+                    panes.link(pane.into(), d);
+                    let at = panes.early_exits.iter().position(|e| *e == d);
+                    at.and_then(|i| panes.early_exits.remove(i)).is_some()
+                };
+                if exited {
+                    // The caller holds the effects lock, so the close runs on its own thread.
+                    let _ = self.thread("early-exit", move |me| me.pane_exited(d));
+                    return;
+                }
+                let action = lock(&self.inner.views).reattach(pane);
                 if let Some(action) = action {
                     self.act(client, action);
                 }
             }
-            Err(e) => eprintln!("terminescu: could not start a shell for tab {tab}: {e}"),
+            Err(e) => eprintln!("terminescu: could not start a shell for pane {pane}: {e}"),
         }
+    }
+
+    /// Hands the layout to [`Persist`]. The caller holds the effects lock.
+    fn save(&self, ws: &Workspace) {
+        let panes = {
+            let p = lock(&self.inner.panes);
+            ws.pane_sides()
+                .into_iter()
+                .map(|(id, _)| {
+                    let mut rec = p.meta.get(&id).cloned().unwrap_or_default();
+                    rec.daemon = p.by_id.get(&id).copied();
+                    (id, rec)
+                })
+                .collect()
+        };
+        let instance = Some(lock(&self.inner.instance).clone());
+        (self.inner.persist)(&Saved {
+            workspace: ws.clone(),
+            panes,
+            instance,
+        });
+    }
+
+    /// Runs `f` on the pane records with the save ordering of a command; saves when `f` changed
+    /// anything.
+    fn update_meta(&self, f: impl FnOnce(&mut Panes) -> bool) {
+        let core = lock(&self.inner.core);
+        let ws = core.workspace().clone();
+        let _guard = lock(&self.inner.effects);
+        drop(core);
+        let changed = f(&mut lock(&self.inner.panes));
+        if changed {
+            self.save(&ws);
+        }
+    }
+
+    /// A Claude Code hook event from a pane (D34). The session it names becomes the pane's
+    /// session until `SessionEnd`, so a reboot can offer to resume it.
+    pub fn hook(&self, daemon: PaneId, event: &serde_json::Value) {
+        let name = event.get("hook_event_name").and_then(|v| v.as_str());
+        let session = event
+            .get("session_id")
+            .and_then(|v| v.as_str())
+            .filter(|s| is_session_id(s))
+            .map(String::from);
+        let next = match name {
+            Some("SessionEnd") => None,
+            _ if session.is_some() => session,
+            _ => return,
+        };
+        self.update_meta(|panes| {
+            let Some(pane) = panes.by_daemon.get(&daemon).cloned() else {
+                return false;
+            };
+            let rec = panes.meta.entry(pane).or_default();
+            if rec.session == next {
+                return false;
+            }
+            rec.session = next;
+            true
+        });
+    }
+
+    /// Reads each pane's cwd every few seconds, so a reboot restarts shells where they were.
+    fn poll_cwds(self) {
+        while !self.inner.stopped.load(Ordering::SeqCst) {
+            std::thread::sleep(CWD_POLL);
+            self.refresh_cwds();
+        }
+    }
+
+    /// Reads every pane's cwd from the daemon now and saves the layout when one changed.
+    pub fn refresh_cwds(&self) {
+        let Some(client) = self.daemon() else {
+            return;
+        };
+        let Ok(list) = client.list() else {
+            return;
+        };
+        self.update_meta(|panes| {
+            let mut changed = false;
+            for info in list {
+                let (Some(pane), Some(cwd)) =
+                    (panes.by_daemon.get(&info.pane).cloned(), info.shell.cwd)
+                else {
+                    continue;
+                };
+                let rec = panes.meta.entry(pane).or_default();
+                if rec.cwd.as_deref() != Some(cwd.as_str()) {
+                    rec.cwd = Some(cwd);
+                    changed = true;
+                }
+            }
+            changed
+        });
     }
 
     fn events(self, mut rx: Receiver<DaemonEvent>) {
@@ -328,15 +647,15 @@ impl Runtime {
             while let Ok(event) = rx.recv() {
                 match event {
                     DaemonEvent::Output { pane, data } => {
-                        if let Some(tab) = self.tab_of_pane(pane)
-                            && lock(&self.inner.views).output(&tab, &data)
+                        if let Some(p) = self.pane_of_daemon(pane)
+                            && lock(&self.inner.views).output(&p, &data)
                         {
                             self.inner.queued.notify_one();
                         }
                     }
                     DaemonEvent::Attached { pane, .. } => {
-                        if let Some(tab) = self.tab_of_pane(pane) {
-                            lock(&self.inner.views).attached(&tab);
+                        if let Some(p) = self.pane_of_daemon(pane) {
+                            lock(&self.inner.views).attached(&p);
                         }
                     }
                     DaemonEvent::Exited { pane, .. } => self.pane_exited(pane),
@@ -351,24 +670,31 @@ impl Runtime {
         }
     }
 
-    /// A shell that exits closes its tab.
-    fn pane_exited(&self, pane: PaneId) {
-        let tab = lock(&self.inner.panes).by_pane.get(&pane).cloned();
-        match tab {
-            Some(tab) => {
-                if let Err(e) = self.command(Command::CloseTab { tab_id: tab }) {
-                    eprintln!("terminescu: closing the tab of pane {pane}: {e:?}");
+    /// A shell that exits closes its pane, and the last pane its tab.
+    fn pane_exited(&self, daemon: PaneId) {
+        match self.pane_of_daemon(daemon) {
+            Some(pane) => {
+                if let Err(e) = self.command(Command::ClosePane { pane_id: pane }) {
+                    eprintln!("terminescu: closing the pane of daemon pane {daemon}: {e:?}");
                 }
             }
             None => {
+                {
+                    let mut panes = lock(&self.inner.panes);
+                    panes.early_exits.push_back(daemon);
+                    if panes.early_exits.len() > EARLY_EXITS {
+                        panes.early_exits.pop_front();
+                    }
+                }
                 if let Some(c) = self.daemon() {
-                    let _ = c.close(pane);
+                    let _ = c.close(daemon);
                 }
             }
         }
     }
 
-    /// Reconnects until it works. Tabs whose pane the daemon no longer has get a fresh shell.
+    /// Reconnects until it works. Panes whose daemon pane is gone get a fresh shell in their
+    /// last cwd.
     fn reconnect(&self) -> Receiver<DaemonEvent> {
         loop {
             let (tx, rx) = mpsc::channel();
@@ -380,9 +706,11 @@ impl Runtime {
                     let client = Arc::new(client);
                     // A new daemon reuses pane ids: none of ours mean anything there.
                     if lock(&self.inner.instance).as_str() != client.instance {
-                        let mut panes = lock(&self.inner.panes);
-                        panes.by_tab.clear();
-                        panes.by_pane.clear();
+                        lock(&self.inner.panes).clear_links();
+                    }
+                    let orphans = std::mem::take(&mut lock(&self.inner.panes).orphans);
+                    for d in orphans {
+                        let _ = client.close(d);
                     }
                     let live: Vec<PaneId> = match client.list() {
                         Ok(l) => l
@@ -397,23 +725,29 @@ impl Runtime {
                     let ws = core.workspace().clone();
                     let _guard = lock(&self.inner.effects);
                     drop(core);
-                    for side in ws.windows.iter().flat_map(|w| &w.side_tabs) {
-                        for tab in &side.tabs {
-                            let pane = self.pane_of(&tab.id);
-                            if pane.is_some_and(|p| live.contains(&p)) {
-                                // A new connection has no subscriptions: attach views again.
-                                let action = lock(&self.inner.views).reattach(&tab.id);
-                                if let Some(action) = action {
-                                    self.act(&client, action);
-                                }
-                                continue;
+                    for (pane, side) in ws.pane_sides() {
+                        let d = self.daemon_of(&pane);
+                        if d.is_some_and(|d| live.contains(&d)) {
+                            // A new connection has no subscriptions: attach views again.
+                            let action = lock(&self.inner.views).reattach(&pane);
+                            if let Some(action) = action {
+                                self.act(&client, action);
                             }
-                            lock(&self.inner.panes).unlink_tab(&tab.id);
-                            self.spawn_for(&client, &tab.id, &side.id);
+                            continue;
                         }
+                        let cwd = {
+                            let mut panes = lock(&self.inner.panes);
+                            panes.unlink(&pane);
+                            // The Claude session died with its shell.
+                            let rec = panes.meta.entry(pane.clone()).or_default();
+                            rec.session = None;
+                            rec.cwd.clone()
+                        };
+                        self.spawn_for(&client, &pane, &side, cwd.as_deref());
                     }
                     lock(&self.inner.instance).clone_from(&client.instance);
                     *lock(&self.inner.daemon) = Some(client);
+                    self.save(&ws);
                     return rx;
                 }
                 Err(e) => {
@@ -425,41 +759,61 @@ impl Runtime {
     }
 }
 
-/// The daemon work a batch implies, read against the workspace after the batch.
-fn plan_effects(ws: &Workspace, batch: &PatchBatch) -> Vec<Effect> {
-    let side_of = |tab: &str| ws.locate_tab(tab).map(|(s, _)| s.id.clone());
+fn set_resume(ws: &mut Workspace, pane: &str, session: Option<String>) {
+    for t in ws
+        .windows
+        .iter_mut()
+        .flat_map(|w| w.side_tabs.iter_mut())
+        .flat_map(|s| s.tabs.iter_mut())
+    {
+        if let Some(Layout::Pane { resume, .. }) = t.layout.leaf_mut(pane) {
+            *resume = session;
+            return;
+        }
+    }
+}
+
+/// The daemon work between two pane lists of (pane, side tab). New panes start in `cwd`.
+fn diff_effects(before: &[(Id, Id)], after: &[(Id, Id)], cwd: Option<String>) -> Vec<Effect> {
+    let old: HashMap<&Id, &Id> = before.iter().map(|(p, s)| (p, s)).collect();
+    let new: HashMap<&Id, &Id> = after.iter().map(|(p, s)| (p, s)).collect();
     let mut out = Vec::new();
-    for p in &batch.patches {
-        match p {
-            Patch::SideTabCreated { side_tab, .. } => {
-                for t in &side_tab.tabs {
-                    out.push(Effect::Spawn {
-                        tab: t.id.clone(),
-                        side_tab: side_tab.id.clone(),
-                    });
-                }
-            }
-            Patch::TabCreated {
-                side_tab_id, tab, ..
-            } => {
-                out.push(Effect::Spawn {
-                    tab: tab.id.clone(),
-                    side_tab: side_tab_id.clone(),
-                });
-            }
-            Patch::TabClosed { tab_id } => out.push(Effect::Close {
-                tab: tab_id.clone(),
+    for (pane, side) in after {
+        match old.get(pane) {
+            None => out.push(Effect::Spawn {
+                pane: pane.clone(),
+                side_tab: side.clone(),
+                cwd: cwd.clone(),
             }),
-            Patch::TabMoved { tab_id, .. } => {
-                if let Some(side_tab) = side_of(tab_id) {
-                    out.push(Effect::SideTab {
-                        tab: tab_id.clone(),
-                        side_tab,
-                    });
-                }
-            }
-            Patch::SideTabClosed { .. } | Patch::TabRenamed { .. } => {}
+            Some(was) if *was != side => out.push(Effect::SideTab {
+                pane: pane.clone(),
+                side_tab: side.clone(),
+            }),
+            Some(_) => {}
+        }
+    }
+    for (pane, _) in before {
+        if !new.contains_key(pane) {
+            out.push(Effect::Close { pane: pane.clone() });
         }
     }
     out
+}
+
+#[cfg(test)]
+mod session_id_tests {
+    use super::is_session_id;
+
+    #[test]
+    fn a_session_id_never_reads_as_an_option() {
+        assert!(is_session_id("00000000-0000-4000-8000-000000000001"));
+        assert!(is_session_id("sess-0b5c"));
+        assert!(!is_session_id("--dangerously-skip-permissions"));
+        assert!(!is_session_id("-x"));
+        assert!(!is_session_id("a b"));
+        assert!(!is_session_id("a;rm"));
+        assert!(!is_session_id(""));
+        assert!(!is_session_id(&"a".repeat(129)));
+        assert!(is_session_id(&"a".repeat(128)));
+    }
 }

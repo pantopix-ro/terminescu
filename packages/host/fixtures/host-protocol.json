@@ -7,15 +7,22 @@
         {
           "id": "w1",
           "sideTabs": [
-            { "id": "s1", "title": "acme-api", "tabs": [{ "id": "t1", "title": null }, { "id": "t2", "title": "dev server" }] },
-            { "id": "s2", "title": null, "tabs": [{ "id": "t3", "title": null }] }
+            {
+              "id": "s1",
+              "title": "acme-api",
+              "tabs": [
+                { "id": "t1", "title": null, "layout": { "type": "pane", "id": "p1" } },
+                { "id": "t2", "title": "dev server", "layout": { "type": "pane", "id": "p2" } }
+              ]
+            },
+            { "id": "s2", "title": null, "tabs": [{ "id": "t3", "title": null, "layout": { "type": "pane", "id": "p3", "resume": "sess-0b5c" } }] }
           ]
         }
       ]
     }
   },
   "batches": [
-    { "rev": 2, "patches": [{ "type": "TabCreated", "sideTabId": "s2", "index": 1, "tab": { "id": "t4", "title": null } }] },
+    { "rev": 2, "patches": [{ "type": "TabCreated", "sideTabId": "s2", "index": 1, "tab": { "id": "t4", "title": null, "layout": { "type": "pane", "id": "p4" } } }] },
     { "rev": 3, "patches": [{ "type": "TabMoved", "tabId": "t1", "toSideTabId": "s2", "index": 0 }] },
     {
       "rev": 4,
@@ -26,15 +33,49 @@
       ]
     },
     { "rev": 5, "patches": [{ "type": "TabRenamed", "tabId": "t3", "title": "claude" }] },
-    { "rev": 6, "patches": [{ "type": "TabClosed", "tabId": "t4" }] }
+    { "rev": 6, "patches": [{ "type": "TabClosed", "tabId": "t4" }] },
+    {
+      "rev": 7,
+      "patches": [
+        {
+          "type": "LayoutChanged",
+          "tabId": "t1",
+          "layout": {
+            "type": "split",
+            "id": "x1",
+            "dir": "row",
+            "children": [{ "type": "pane", "id": "p1" }, { "type": "pane", "id": "p5" }],
+            "sizes": [500, 500]
+          }
+        }
+      ]
+    },
+    { "rev": 8, "patches": [{ "type": "LayoutChanged", "tabId": "t3", "layout": { "type": "pane", "id": "p3" } }] }
   ],
   "end": {
     "windows": [
       {
         "id": "w1",
         "sideTabs": [
-          { "id": "s3", "title": null, "tabs": [{ "id": "t2", "title": "dev server" }] },
-          { "id": "s2", "title": null, "tabs": [{ "id": "t1", "title": null }, { "id": "t3", "title": "claude" }] }
+          { "id": "s3", "title": null, "tabs": [{ "id": "t2", "title": "dev server", "layout": { "type": "pane", "id": "p2" } }] },
+          {
+            "id": "s2",
+            "title": null,
+            "tabs": [
+              {
+                "id": "t1",
+                "title": null,
+                "layout": {
+                  "type": "split",
+                  "id": "x1",
+                  "dir": "row",
+                  "children": [{ "type": "pane", "id": "p1" }, { "type": "pane", "id": "p5" }],
+                  "sizes": [500, 500]
+                }
+              },
+              { "id": "t3", "title": "claude", "layout": { "type": "pane", "id": "p3" } }
+            ]
+          }
         ]
       }
     ]
@@ -45,6 +86,11 @@
     { "type": "CloseTab", "tabId": "t1" },
     { "type": "MoveTab", "tabId": "t1", "toSideTabId": "s2", "index": 0 },
     { "type": "MoveTabToNewSideTab", "tabId": "t2", "windowId": "w1", "index": 1 },
-    { "type": "RenameTab", "tabId": "t3", "title": "claude" }
+    { "type": "RenameTab", "tabId": "t3", "title": "claude" },
+    { "type": "SplitPane", "paneId": "p1", "dir": "row" },
+    { "type": "ClosePane", "paneId": "p5" },
+    { "type": "ResizeSplit", "splitId": "x1", "sizes": [300, 700] },
+    { "type": "ResumePane", "paneId": "p3" },
+    { "type": "DismissResume", "paneId": "p3" }
   ]
 }
