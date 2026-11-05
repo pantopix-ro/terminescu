@@ -75,6 +75,10 @@ pub enum Command {
         window_id: Id,
         index: usize,
     },
+    /// Drop outside every window (D20): a new window with one new side tab holding the tab.
+    MoveTabToNewWindow {
+        tab_id: Id,
+    },
     RenameTab {
         tab_id: Id,
         title: Option<String>,
@@ -144,6 +148,14 @@ pub enum Command {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all_fields = "camelCase")]
 pub enum Patch {
+    /// An empty window; the side tab it gets comes in the same batch.
+    WindowCreated {
+        window_id: Id,
+    },
+    /// A window that lost its last side tab, while another window remains (task 8.1).
+    WindowClosed {
+        window_id: Id,
+    },
     SideTabCreated {
         window_id: Id,
         index: usize,
@@ -324,6 +336,24 @@ impl Workspace {
 /// fit means the copy is out of date, and the caller resyncs from a snapshot.
 pub fn apply(ws: &mut Workspace, patch: &Patch) -> Result<(), CommandError> {
     match patch {
+        Patch::WindowCreated { window_id } => {
+            if ws.windows.iter().any(|w| &w.id == window_id) {
+                return Err(CommandError::UnknownWindow(window_id.clone()));
+            }
+            ws.windows.push(Window {
+                id: window_id.clone(),
+                side_tabs: vec![],
+            });
+        }
+        Patch::WindowClosed { window_id } => {
+            // Only an empty window closes: its tabs must have moved first.
+            let i = ws
+                .windows
+                .iter()
+                .position(|w| &w.id == window_id && w.side_tabs.is_empty())
+                .ok_or_else(|| CommandError::UnknownWindow(window_id.clone()))?;
+            ws.windows.remove(i);
+        }
         Patch::SideTabCreated {
             window_id,
             index,
@@ -623,6 +653,38 @@ impl Core {
                 .flatten()
                 .collect()
             }
+            Command::MoveTabToNewWindow { tab_id } => {
+                ws.locate_tab(&tab_id)
+                    .ok_or(CommandError::UnknownTab(tab_id.clone()))?;
+                let closed = source_empties(&tab_id, None);
+                let window_id = (self.new_id)();
+                let side_tab = SideTab {
+                    id: (self.new_id)(),
+                    title: None,
+                    tabs: vec![],
+                    status: None,
+                };
+                let to_side_tab_id = side_tab.id.clone();
+                [
+                    Some(Patch::WindowCreated {
+                        window_id: window_id.clone(),
+                    }),
+                    Some(Patch::SideTabCreated {
+                        window_id,
+                        index: 0,
+                        side_tab,
+                    }),
+                    Some(Patch::TabMoved {
+                        tab_id,
+                        to_side_tab_id,
+                        index: 0,
+                    }),
+                    closed,
+                ]
+                .into_iter()
+                .flatten()
+                .collect()
+            }
             Command::SetStatus { target_id, status } => {
                 if ws.tab(&target_id).is_none() && ws.side_tab(&target_id).is_none() {
                     return Err(CommandError::UnknownTab(target_id));
@@ -887,9 +949,32 @@ impl Core {
     }
 
     pub fn handle(&mut self, cmd: Command) -> Result<PatchBatch, CommandError> {
-        let patches = self.plan(cmd)?;
+        let mut patches = self.plan(cmd)?;
+        let had: Vec<Id> = self
+            .ws
+            .windows
+            .iter()
+            .filter(|w| !w.side_tabs.is_empty())
+            .map(|w| w.id.clone())
+            .collect();
         for p in &patches {
             apply(&mut self.ws, p).expect("a planned patch applies");
+        }
+        // A window the batch emptied closes, unless it is the last one.
+        let emptied: Vec<Id> = self
+            .ws
+            .windows
+            .iter()
+            .filter(|w| w.side_tabs.is_empty() && had.contains(&w.id))
+            .map(|w| w.id.clone())
+            .collect();
+        for window_id in emptied {
+            if self.ws.windows.len() < 2 {
+                break;
+            }
+            let p = Patch::WindowClosed { window_id };
+            apply(&mut self.ws, &p).expect("an empty window closes");
+            patches.push(p);
         }
         self.rev += 1;
         Ok(PatchBatch {
@@ -936,6 +1021,73 @@ mod tests {
             side_tab_id: side.into(),
         })
         .unwrap();
+    }
+
+    #[test]
+    fn a_tab_dropped_outside_opens_a_window_and_the_emptied_one_closes() {
+        let mut c = core();
+        create_tab(&mut c, "id4"); // id5, pane id6
+        let b = c
+            .handle(Command::MoveTabToNewWindow {
+                tab_id: "id5".into(),
+            })
+            .unwrap();
+        // New window id7 with side tab id8.
+        assert_eq!(shape(&c), vec![vec![vec!["id2"]], vec![vec!["id5"]]]);
+        assert_eq!(c.workspace().windows[1].id, "id7");
+        assert!(matches!(&b.patches[0], Patch::WindowCreated { window_id } if window_id == "id7"));
+        assert!(
+            !b.patches
+                .iter()
+                .any(|p| matches!(p, Patch::WindowClosed { .. }))
+        );
+
+        // Its only tab back into the first window: the second window closes.
+        let b = c
+            .handle(Command::MoveTab {
+                tab_id: "id5".into(),
+                to_side_tab_id: "id4".into(),
+                index: 1,
+            })
+            .unwrap();
+        assert_eq!(shape(&c), vec![vec![vec!["id2", "id5"]]]);
+        assert_eq!(
+            b.patches.last(),
+            Some(&Patch::WindowClosed {
+                window_id: "id7".into()
+            })
+        );
+        // Every patch in the batch replays on a copy, as the windows apply them.
+        let mut copy = Workspace::default();
+        copy.windows.push(Window {
+            id: "id1".into(),
+            side_tabs: vec![],
+        });
+        assert!(
+            apply(
+                &mut copy,
+                &Patch::WindowClosed {
+                    window_id: "id9".into()
+                }
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn the_last_window_stays_open_when_it_empties() {
+        let mut c = core();
+        c.handle(Command::MoveTabToNewWindow {
+            tab_id: "id2".into(),
+        })
+        .unwrap();
+        // The first window lost its only tab and closed; one window remains.
+        assert_eq!(shape(&c), vec![vec![vec!["id2"]]]);
+        c.handle(Command::CloseTab {
+            tab_id: "id2".into(),
+        })
+        .unwrap();
+        assert_eq!(c.workspace().windows.len(), 1);
     }
 
     #[test]

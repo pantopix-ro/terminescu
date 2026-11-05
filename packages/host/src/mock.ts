@@ -7,6 +7,8 @@ import { PromptStore } from "./prompt-store";
 import { hasSplit, holdsWork, isSessionId, leaf, panesOf, removePane, resizeSplit, splitPane, terminalsOf } from "./layout";
 import {
   ACCENTS,
+  type DragEnd,
+  type DragPoint,
   MAX_LABEL,
   DEFAULT_SETTINGS,
   MAX_TTL_SECS,
@@ -70,6 +72,14 @@ export interface MockHost extends Host {
   setAgent(pane: string, agent: AgentView | null): void;
   /** Appends entries to a session's fake transcript. */
   appendTranscript(session: string, entries: Entry[]): void;
+  /** Where the next tab drag lands, as the core would say from the cursor; once. */
+  setDragOutcome(kind: DragEnd["kind"]): void;
+  /** Plays a drag from another window: over this one at a point, or gone (`null`). */
+  dragHover(point: DragPoint | null): void;
+  /** Plays a drop from another window at a point. */
+  dragDrop(point: DragPoint): void;
+  /** Tab drags begun, as `tabId title`. */
+  readonly dragsBegun: string[];
   /**
    * Plays the shell integration: `command` starts in the pane and, unless `exit` is null, ends
    * with that code. Exit-code rules fire as in the core.
@@ -424,8 +434,20 @@ export function createMockHost(initial?: Workspace): MockHost {
   };
 
   // One batch through the reducer to every window, as the core's `handle` and emit.
-  const commit = async (patches: Patch[]): Promise<number> => {
-    const batch: PatchBatch = { rev: rev + 1, patches };
+  // Task 8.1: the drag the core would track, and what tests make it say.
+  let dragging: Id | undefined;
+  let dragOutcome: DragEnd["kind"] = "local";
+  const dragsBegun: string[] = [];
+  const hoverListeners = new Set<(p: DragPoint | null) => void>();
+  const tabDropListeners = new Set<(p: DragPoint) => void>();
+  const commit = async (planned: Patch[]): Promise<number> => {
+    // A window the batch emptied closes, unless it is the last one, as in the core.
+    const had = new Set(ws.windows.filter((w) => w.sideTabs.length > 0).map((w) => w.id));
+    const after = applyBatch(ws, { rev: rev + 1, patches: planned });
+    const closes: Patch[] = [];
+    for (const w of after.windows)
+      if (w.sideTabs.length === 0 && had.has(w.id) && after.windows.length - closes.length > 1) closes.push({ type: "WindowClosed", windowId: w.id });
+    const batch: PatchBatch = { rev: rev + 1, patches: [...planned, ...closes] };
     ws = applyBatch(ws, batch);
     rev = batch.rev;
     batches.push(batch);
@@ -488,6 +510,18 @@ export function createMockHost(initial?: Workspace): MockHost {
         const created: SideTab = { id: id(), title: null, tabs: [] };
         return [
           { type: "SideTabCreated", windowId: c.windowId, index: c.index, sideTab: created },
+          { type: "TabMoved", tabId: c.tabId, toSideTabId: created.id, index: 0 },
+          ...closed,
+        ];
+      }
+      case "MoveTabToNewWindow": {
+        holder(c.tabId);
+        const closed = closesSource(c.tabId);
+        const windowId = id();
+        const created: SideTab = { id: id(), title: null, tabs: [] };
+        return [
+          { type: "WindowCreated", windowId },
+          { type: "SideTabCreated", windowId, index: 0, sideTab: created },
           { type: "TabMoved", tabId: c.tabId, toSideTabId: created.id, index: 0 },
           ...closed,
         ];
@@ -660,6 +694,37 @@ export function createMockHost(initial?: Workspace): MockHost {
       commandsChanged();
       return { undoId, renames: [...rename] };
     },
+    async dragBegin(tabId, title) {
+      dragging = tabId;
+      dragsBegun.push(`${tabId} ${title}`);
+    },
+    async dragEnd(drop) {
+      const tabId = dragging;
+      dragging = undefined;
+      const kind = dragOutcome;
+      dragOutcome = "local";
+      if (!tabId || !drop) return { kind: "cancelled" };
+      if (kind === "newWindow") await host.send({ type: "MoveTabToNewWindow", tabId });
+      return { kind };
+    },
+    async onDragHover(listener) {
+      hoverListeners.add(listener);
+      return () => hoverListeners.delete(listener);
+    },
+    async onDragDrop(listener) {
+      tabDropListeners.add(listener);
+      return () => tabDropListeners.delete(listener);
+    },
+    setDragOutcome(kind) {
+      dragOutcome = kind;
+    },
+    dragHover(point) {
+      for (const l of hoverListeners) l(point);
+    },
+    dragDrop(point) {
+      for (const l of tabDropListeners) l(point);
+    },
+    dragsBegun,
     async undoMerge(undoId) {
       const m = merges.get(undoId);
       merges.delete(undoId);

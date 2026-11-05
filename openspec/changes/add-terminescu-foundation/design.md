@@ -228,6 +228,17 @@ passes `⌘` chords up. Cross-window drags: the core tracks the global cursor du
 transparent always-on-top ghost window with the cursor; release outside every window opens a new
 `WebviewWindow` there with a default side tab.
 
+Built in task 8.1: `drag_begin` starts a 16 ms tracker thread on `cursor_position`; the window
+under the cursor gets `host://drag-hover` points and resolves the target itself with
+`elementFromPoint` (row, gap, sidebar end, tab bar tab, else the active side tab). `drag_end`
+answers `local`, `remote` (the target got `host://drag-drop`), `newWindow` (the core ran
+`MoveTabToNewWindow`) or `cancelled`. The source runs its own dnd-kit drop only on `local`,
+since its collision falls back to the closest tab even outside the window. A window the batch
+emptied closes (`WindowClosed`) unless it is the last. Limits: overlapping windows have no
+z-order, so the source wins and otherwise the first match; the ghost is opaque (a transparent
+window needs the macOS private API); a new window's position is not saved; a drag ends after
+120 s if its window never ends it.
+
 ### D21. Variables have a storage mode
 Saved (default) lives in SQLite. Session only lives in the daemon's memory, never on disk,
 survives an app restart, and ends with a reboot or when its side tab closes; the UI draws it

@@ -36,6 +36,7 @@ import {
   type Prompt,
   type SavedCommand,
   type Command,
+  type DragPoint,
   type Host,
   type Workspace,
   type WorkspaceStore,
@@ -165,6 +166,27 @@ const collide: CollisionDetection = (args) => {
   const tabs = args.droppableContainers.filter((c) => !String(c.id).includes(":"));
   return closestCenter({ ...args, droppableContainers: tabs });
 };
+
+/**
+ * The drop target at a point, for a tab dragged from another window: the sidebar's end, a gap,
+ * a side tab row, or a tab in the tab bar. Undefined means the window itself.
+ */
+function remoteTarget(
+  x: number,
+  y: number,
+):
+  | { el: HTMLElement; kind: "end" }
+  | { el: HTMLElement; kind: "gap"; index: number }
+  | { el: HTMLElement; kind: "side" | "tab"; id: string }
+  | undefined {
+  const hit = document.elementFromPoint(x, y);
+  const el = hit?.closest<HTMLElement>(".side-end, [data-gap], [data-side], .ao-tabs [data-tab]");
+  if (!el) return undefined;
+  if (el.classList.contains("side-end")) return { el, kind: "end" };
+  if (el.dataset.gap !== undefined) return { el, kind: "gap", index: Number(el.dataset.gap) };
+  if (el.dataset.side) return { el, kind: "side", id: el.dataset.side };
+  return { el, kind: "tab", id: el.dataset.tab! };
+}
 
 const selectable = new Set(["palette", "send_to_tab"]);
 /** Menu chords that a focused dialog field may use for itself. */
@@ -864,6 +886,50 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     host.undoMerge(mergeToast.undoId).then(refocus, report);
   };
 
+  // A tab dragged from another window (task 8.1): the core says where the cursor is; this
+  // window lights the target under it and, on a drop, moves the tab there.
+  const [remote, setRemote] = useState<DragPoint | null>(null);
+  const remoteRef = useRef<(p: DragPoint) => void>(() => {});
+  remoteRef.current = (p: DragPoint) => {
+    setRemote(null);
+    const target = remoteTarget(p.x, p.y);
+    const cmd: Command | undefined =
+      target?.kind === "end"
+        ? { type: "MoveTabToNewSideTab", tabId: p.tabId, windowId, index: sideTabs.length }
+        : target?.kind === "gap"
+          ? { type: "MoveTabToNewSideTab", tabId: p.tabId, windowId, index: target.index }
+          : target?.kind === "side"
+            ? { type: "MoveTab", tabId: p.tabId, toSideTabId: target.id, index: sideTabs.find((s) => s.id === target.id)?.tabs.length ?? 0 }
+            : activeSide
+              ? {
+                  type: "MoveTab",
+                  tabId: p.tabId,
+                  toSideTabId: activeSide.id,
+                  index: target?.kind === "tab" && tabs.some((t) => t.id === target.id) ? tabs.findIndex((t) => t.id === target.id) : tabs.length,
+                }
+              : { type: "MoveTabToNewSideTab", tabId: p.tabId, windowId, index: 0 };
+    followTab(p.tabId);
+    send(cmd).then(refocus, report);
+  };
+  useEffect(() => {
+    const offs: (() => void)[] = [];
+    let gone = false;
+    const keep = (o: () => void) => (gone ? o() : offs.push(o));
+    void host.onDragHover(setRemote).then(keep);
+    void host.onDragDrop((p) => remoteRef.current(p)).then(keep);
+    return () => {
+      gone = true;
+      offs.forEach((o) => o());
+    };
+  }, [host]);
+  // The lit target follows the point; a class, not state: it changes 60 times a second.
+  useEffect(() => {
+    if (!remote) return;
+    const el = remoteTarget(remote.x, remote.y)?.el;
+    el?.classList.add("remote-hot");
+    return () => el?.classList.remove("remote-hot");
+  }, [remote]);
+
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const onDragEnd = ({ active, over }: DragEndEvent) => {
     setDragging(undefined);
@@ -871,8 +937,21 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     const at = over && String(over.id);
     // A merge may open its dialog, which takes the focus; it gives it back when it closes.
     if (tabId.startsWith("side:") && at?.startsWith("into:")) return startMerge(tabId.slice(5), at.slice(5));
+    if (tabId.startsWith("side:")) return refocus();
+    // The core saw where the cursor was (task 8.1): only a release over this window drops here.
+    host.dragEnd(true).then(
+      (end) => {
+        if (end.kind === "local") dropHere(tabId, at);
+        else refocus();
+      },
+      (e: unknown) => {
+        report(e);
+        refocus();
+      },
+    );
+  };
+  const dropHere = (tabId: string, at: string | null) => {
     refocus();
-    if (tabId.startsWith("side:")) return;
     if (!at || !activeSide) return;
     // The only tab of a side tab dropped next to it would make the same sidebar again.
     const idx = sideTabs.findIndex((s) => s.id === activeSide.id);
@@ -897,6 +976,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     ...(activeTab
       ? [
           { id: "move:new", label: "New side tab", group: "Move tab to…", run: () => moveTab(activeTab.id, { newAt: sideTabs.length }) },
+          { id: "move:window", label: "New window", group: "Move tab to…", run: () => void send({ type: "MoveTabToNewWindow", tabId: activeTab.id }) },
           ...sideTabs
             .filter((s) => s.id !== activeSide?.id)
             .map((s) => ({ id: `move:${s.id}`, label: sideTabName(s), group: "Move tab to…", run: () => moveTab(activeTab.id, { side: s.id }) })),
@@ -922,13 +1002,17 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         // The app places the focus after a drop: the terminal, or a merge dialog's field.
         accessibility={{ restoreFocus: false }}
         onDragStart={({ active }) => {
-          setDragging(String(active.id));
+          const id = String(active.id);
+          setDragging(id);
+          const tab = tabs.find((t) => t.id === id);
+          if (tab) host.dragBegin(tab.id, tabName(tab, docs)).catch(report);
           // Esc cancels the drag; the keyboard must not be in a terminal for that.
           (document.activeElement as HTMLElement | null)?.blur();
         }}
         onDragEnd={onDragEnd}
-        onDragCancel={() => {
+        onDragCancel={({ active }) => {
           setDragging(undefined);
+          if (!String(active.id).startsWith("side:")) host.dragEnd(false).catch(report);
           refocus();
         }}
       >
@@ -947,7 +1031,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               }}
               activeId={activeSide?.id}
               activeTabId={activeTab?.id}
-              dragging={!!dragging}
+              dragging={!!dragging || !!remote}
               draggingSide={dragSideTab?.id}
               agents={agents}
               onSelect={(id) => {

@@ -360,9 +360,13 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
 
 ## 8. The browser moves (P2)
 
-- [ ] 8.1 Pointer-based drag tracked in the core across windows with a ghost window; drop
+- [x] 8.1 Pointer-based drag tracked in the core across windows with a ghost window; drop
       outside every window opens a new window with a default side tab (D20). Verify: manual, drag out, drag back into the
       first window's tab bar.
+      Done: `drag.rs` tracks the cursor, moves the ghost and sends hover and drop points;
+      `MoveTabToNewWindow` plus `WindowCreated`/`WindowClosed` patches open and close native
+      windows; palette "Move tab to… New window". state.rs, host.test.ts and windows.spec.ts
+      cover the core and the window side; the real drag between windows stays manual.
 - [x] 8.2 Side tab merge with clash dialog and undo toast; items follow their tab on move.
       Verify: `merge.test.rs` for clash, rename and concatenation.
       Done: `merge.rs` previews clashes, merges and undoes; `MergeSideTab`/`RestoreSideTab`

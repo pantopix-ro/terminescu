@@ -6,6 +6,8 @@ import type { Host, PaneView } from "./host";
 import type { KeyBindings } from "./keys";
 import type {
   AgentUpdate,
+  DragEnd,
+  DragPoint,
   AttentionSettings,
   AppSettings,
   RunOutcome,
@@ -32,6 +34,9 @@ import type {
 } from "./protocol";
 
 export const PATCHES_EVENT = "host://patches";
+/** Task 8.1: a drag from another window over this one, and a drop on it. */
+export const DRAG_HOVER_EVENT = "host://drag-hover";
+export const DRAG_DROP_EVENT = "host://drag-drop";
 export const AGENT_EVENT = "host://agent";
 export const CONTEXT_EVENT = "host://context";
 export const PROMPTS_EVENT = "host://prompts";
@@ -145,6 +150,10 @@ export function createIpcHost(): Host {
     mergePreview: (from, into, label) => invoke<MergeClash[]>("side_tab_merge_preview", { from, into, label }),
     mergeSideTabs: (from, into, label, resolution) => invoke<MergeDone>("side_tab_merge", { from, into, label, resolution }),
     undoMerge: (undoId) => invoke("side_tab_merge_undo", { undoId }),
+    dragBegin: (tabId, title) => invoke("drag_begin", { tabId, title }),
+    dragEnd: (drop) => invoke<DragEnd>("drag_end", { drop }),
+    onDragHover: (listener) => getCurrentWebviewWindow().listen<DragPoint | null>(DRAG_HOVER_EVENT, (e) => listener(e.payload)),
+    onDragDrop: (listener) => getCurrentWebviewWindow().listen<DragPoint>(DRAG_DROP_EVENT, (e) => listener(e.payload)),
     pasteImage: (id, bytes, ext) => invoke<string>("doc_paste_image", bytes, { headers: { "x-doc": id, "x-ext": ext } }),
     openPrompt: (sideTab, promptId, beside) => invoke<DocView>("doc_open_prompt", { sideTab, promptId, beside: beside ?? null }),
     openVariable: (sideTab, name, beside) => invoke<DocView>("doc_open_variable", { sideTab, name, beside: beside ?? null }),

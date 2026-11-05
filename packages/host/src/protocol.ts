@@ -105,6 +105,8 @@ export type Command =
   | { type: "CloseTab"; tabId: Id }
   | { type: "MoveTab"; tabId: Id; toSideTabId: Id; index: number }
   | { type: "MoveTabToNewSideTab"; tabId: Id; windowId: Id; index: number }
+  /** Drop outside every window (D20): a new window with one side tab holding the tab. */
+  | { type: "MoveTabToNewWindow"; tabId: Id }
   | { type: "RenameTab"; tabId: Id; title: string | null }
   | { type: "SplitPane"; paneId: Id; dir: Dir }
   | { type: "OpenTranscript"; paneId: Id; session: string }
@@ -118,6 +120,10 @@ export type Command =
   | { type: "RestyleStatus"; statusId: Id; status: ManualStatus | null };
 
 export type Patch =
+  /** An empty window; its side tab comes in the same batch. */
+  | { type: "WindowCreated"; windowId: Id }
+  /** A window that lost its last side tab while another remains (task 8.1). */
+  | { type: "WindowClosed"; windowId: Id }
   | { type: "SideTabCreated"; windowId: Id; index: number; sideTab: SideTab }
   | { type: "SideTabClosed"; sideTabId: Id }
   | { type: "TabCreated"; sideTabId: Id; index: number; tab: Tab }
@@ -316,6 +322,20 @@ export interface MergeDone {
   /** Source variables kept under a new name: old, new. */
   renames: [string, string][];
 }
+
+/** A point in this window's coordinates (CSS pixels), during a drag from another window. */
+export interface DragPoint {
+  tabId: Id;
+  x: number;
+  y: number;
+}
+
+/**
+ * Where a tab drag ended (task 8.1): over its own window, which drops it itself; over another
+ * window, which got the drop; outside every window, where a new window holds the tab; or not
+ * at all.
+ */
+export type DragEnd = { kind: "local" } | { kind: "remote" } | { kind: "newWindow" } | { kind: "cancelled" };
 
 /** How long a merge offers undo, in ms (D5). */
 export const MERGE_UNDO_MS = 10_000;

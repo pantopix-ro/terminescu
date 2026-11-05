@@ -36,6 +36,18 @@ function checkIndex(index: number, len: number) {
 /** Applies one patch in place. Same rules as `apply` in crates/core/src/state.rs. */
 export function applyPatch(ws: Workspace, p: Patch): void {
   switch (p.type) {
+    case "WindowCreated": {
+      if (ws.windows.some((w) => w.id === p.windowId)) throw new PatchError(`window ${p.windowId} exists`);
+      ws.windows.push({ id: p.windowId, sideTabs: [] });
+      return;
+    }
+    case "WindowClosed": {
+      // Only an empty window closes: its tabs must have moved first.
+      const i = ws.windows.findIndex((w) => w.id === p.windowId && w.sideTabs.length === 0);
+      if (i < 0) throw new PatchError(`window ${p.windowId} is unknown or not empty`);
+      ws.windows.splice(i, 1);
+      return;
+    }
     case "SideTabCreated": {
       const w = ws.windows.find((w) => w.id === p.windowId);
       if (!w) throw new PatchError(`unknown window ${p.windowId}`);

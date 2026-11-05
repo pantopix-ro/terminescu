@@ -308,3 +308,64 @@ test("a clash asks: keep both renames the source's variable", async ({ page }) =
   await expect.poll(() => varsOf(page, first!)).toEqual(["branch=feature/PROJ-482", "branch_477=feature/PROJ-477"]);
   await expect.poll(() => sideIds(page)).toEqual([first]);
 });
+
+// Task 8.1 on the mock host: the core's cursor tracking is played by `setDragOutcome`,
+// `dragHover` and `dragDrop`; the real cross-window drag stays a manual check.
+test("a tab dropped outside every window moves to a new window; the palette does the same", async ({ page }) => {
+  await start(page);
+  await page.keyboard.press("Meta+t");
+  await page.keyboard.press("Meta+t");
+  await expect.poll(() => tabIds(page)).toHaveLength(3);
+  const [a, b, c] = await tabIds(page);
+
+  await page.evaluate(() => (window as any).__terminescu.host.setDragOutcome("newWindow"));
+  // Over a tab: dnd-kit alone would reorder, but the core saw the release outside.
+  await drag(page, `[data-tab="${c}"]`, await center(page, `[data-tab="${a}"]`));
+  await expect.poll(() => tabIds(page)).toEqual([a, b]);
+  let ws = (await mock(page)).ws;
+  expect(ws.windows).toHaveLength(2);
+  expect(ws.windows[1].sideTabs[0].tabs.map((t: any) => t.id)).toEqual([c]);
+  const begun = await page.evaluate(() => (window as any).__terminescu.host.dragsBegun as string[]);
+  expect(begun.at(-1)).toMatch(new RegExp(`^${c} `));
+
+  // The next drag is local again.
+  await drag(page, `[data-tab="${b}"]`, await center(page, `[data-tab="${a}"]`));
+  await expect.poll(() => tabIds(page)).toEqual([b, a]);
+
+  await page.keyboard.press("Meta+k");
+  await page.locator(".palette-item", { hasText: "New window" }).click();
+  await expect.poll(() => tabIds(page)).toHaveLength(1);
+  ws = (await mock(page)).ws;
+  expect(ws.windows).toHaveLength(3);
+});
+
+test("a tab from another window lights the row under it and drops into it; its window closes", async ({ page }) => {
+  await start(page);
+  await page.keyboard.press("Meta+t");
+  await expect.poll(() => tabIds(page)).toHaveLength(2);
+  const [a, b] = await tabIds(page);
+  // Two side tabs here; tab b goes to a second window.
+  await page.keyboard.press("Meta+n");
+  await expect(page.locator(".ao-st")).toHaveCount(2);
+  await page.evaluate((b) => (window as any).__terminescu.host.send({ type: "MoveTabToNewWindow", tabId: b }), b);
+  await page.keyboard.press("Control+Meta+1");
+  await expect.poll(() => tabIds(page)).toEqual([a]);
+  const firstSide = (await page.locator(".ao-st").first().getAttribute("data-side"))!;
+
+  const row = await center(page, ".ao-st >> nth=-1");
+  await page.evaluate(({ b, row }) => (window as any).__terminescu.host.dragHover({ tabId: b, ...row }), { b, row });
+  await expect(page.locator(".ao-st").last()).toHaveClass(/remote-hot/);
+  await expect(page.locator(".side-end")).toBeVisible();
+  // Leaving clears the light.
+  await page.evaluate(() => (window as any).__terminescu.host.dragHover(null));
+  await expect(page.locator(".remote-hot")).toHaveCount(0);
+  await expect(page.locator(".side-end")).toBeHidden();
+
+  // Dropped on the tab bar: into the active side tab, before tab a.
+  const onTab = await center(page, `[data-tab="${a}"]`);
+  await page.evaluate(({ b, onTab }) => (window as any).__terminescu.host.dragDrop({ tabId: b, ...onTab }), { b, onTab });
+  await expect.poll(() => tabIds(page)).toEqual([b, a]);
+  const ws = (await mock(page)).ws;
+  expect(ws.windows, "the emptied second window closes").toHaveLength(1);
+  expect(ws.windows[0].sideTabs.find((s: any) => s.id === firstSide).tabs.map((t: any) => t.id)).toEqual([b, a]);
+});

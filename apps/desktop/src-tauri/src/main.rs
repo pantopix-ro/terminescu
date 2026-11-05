@@ -3,6 +3,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod docs;
+mod drag;
 
 use serde::Deserialize;
 use std::collections::{BTreeMap, HashMap};
@@ -27,7 +28,9 @@ use terminescu_core::persist;
 use terminescu_core::prompts::{self, NewPrompt, Prompt};
 use terminescu_core::runtime::Runtime;
 use terminescu_core::settings;
-use terminescu_core::state::{Command, CommandError, Core, Id, SideTab, Snapshot, Workspace};
+use terminescu_core::state::{
+    Command, CommandError, Core, Id, Patch, SideTab, Snapshot, Workspace,
+};
 use terminescu_core::status::{Auto, Look, ManualStatus, RuleKind, Shown};
 use terminescu_core::status_store::{self, SavedStatus, StatusConfig};
 use terminescu_core::vars;
@@ -83,6 +86,8 @@ struct AppState {
     waits: Arc<docs::Waits>,
     /// Side tab merges still inside their undo window, by undo id (D5).
     merges: Arc<Mutex<HashMap<Id, PendingMerge>>>,
+    /// The tab drag the core tracks across windows (task 8.1).
+    drags: drag::Drags,
 }
 
 /// How long a merge offers undo; the core keeps it a little longer for a late click.
@@ -1237,6 +1242,28 @@ fn start_runtime(
         if let Err(e) = handle.emit(PATCHES_EVENT, batch) {
             eprintln!("terminescu: patch broadcast failed: {e}");
         }
+        // Native windows follow the workspace (task 8.1). This runs under the core lock, so
+        // the window work goes to its own thread.
+        for p in &batch.patches {
+            match p {
+                Patch::WindowCreated { window_id } => {
+                    let (app, id, at) = (handle.clone(), window_id.clone(), drag::take_window_at());
+                    std::thread::spawn(move || {
+                        if let Err(e) = open_window(&app, &id, at) {
+                            eprintln!("terminescu: window {id} not opened: {e}");
+                        }
+                    });
+                }
+                Patch::WindowClosed { window_id } => {
+                    if let Some(w) = handle.get_webview_window(window_id) {
+                        std::thread::spawn(move || {
+                            let _ = w.destroy();
+                        });
+                    }
+                }
+                _ => {}
+            }
+        }
     });
     let connect = Box::new(move |events| {
         launcher::ensure_running(
@@ -1439,11 +1466,17 @@ fn serve_core_socket(
     )
 }
 
-fn open_window(app: &AppHandle, window_id: &str) -> tauri::Result<()> {
-    let builder = WebviewWindowBuilder::new(app, window_id, WebviewUrl::App("index.html".into()))
-        .title("Terminescu")
-        .inner_size(1200.0, 760.0)
-        .min_inner_size(640.0, 400.0);
+/// Opens the native window of a workspace window; `at` puts it under a drop point (logical
+/// screen pixels), so the cursor lands near its tab bar.
+fn open_window(app: &AppHandle, window_id: &str, at: Option<(f64, f64)>) -> tauri::Result<()> {
+    let mut builder =
+        WebviewWindowBuilder::new(app, window_id, WebviewUrl::App("index.html".into()))
+            .title("Terminescu")
+            .inner_size(1200.0, 760.0)
+            .min_inner_size(640.0, 400.0);
+    if let Some((x, y)) = at {
+        builder = builder.position((x - 120.0).max(0.0), (y - 16.0).max(0.0));
+    }
     #[cfg(target_os = "macos")]
     let builder = builder
         .title_bar_style(tauri::TitleBarStyle::Overlay)
@@ -1610,9 +1643,10 @@ fn main() {
                 docs,
                 waits,
                 merges: Arc::default(),
+                drags: drag::Drags::default(),
             });
             for id in &windows {
-                open_window(app.handle(), id)?;
+                open_window(app.handle(), id, None)?;
             }
             Ok(())
         })
@@ -1633,6 +1667,9 @@ fn main() {
             side_tab_merge_preview,
             side_tab_merge,
             side_tab_merge_undo,
+            drag::drag_begin,
+            drag::drag_end,
+            drag::drag_title,
             files_forget,
             item_add,
             item_remove,
@@ -1702,6 +1739,11 @@ fn main() {
         } = &event
         {
             end_recording(app, label);
+            // The hidden ghost must not keep the app alive once the last window is gone.
+            let left = app.webview_windows().into_keys().any(|l| l != drag::GHOST);
+            if !left && let Some(g) = app.get_webview_window(drag::GHOST) {
+                let _ = g.destroy();
+            }
         }
         // A last save with fresh cwds, so a reboot after quitting restarts shells where they were.
         if let RunEvent::Exit = event

@@ -145,3 +145,22 @@ describe("workspace store", () => {
     expect(s.store.getState().workspace).toEqual(host.workspace());
   });
 });
+
+describe("windows", () => {
+  it("a tab moved to a new window opens one, and the emptied window closes", async () => {
+    const host = createMockHost(seed);
+    const s = createWorkspaceStore(host);
+    await s.start();
+    await host.send({ type: "MoveTabToNewWindow", tabId: "t3" });
+    let ws = s.store.getState().workspace;
+    expect(ws.windows).toHaveLength(2);
+    expect(ws.windows[1]!.sideTabs.map((x) => x.tabs.map((t) => t.id))).toEqual([["t3"]]);
+    expect(tabIds(ws)).toEqual([["t1", "t2"]]);
+
+    // Its only tab back into the first window: the second window closes.
+    await host.send({ type: "MoveTab", tabId: "t3", toSideTabId: "s1", index: 2 });
+    ws = s.store.getState().workspace;
+    expect(ws.windows).toHaveLength(1);
+    expect(tabIds(ws)).toEqual([["t1", "t2", "t3"]]);
+  });
+});

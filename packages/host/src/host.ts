@@ -1,6 +1,8 @@
 import type { KeyBindings } from "./keys";
 import type {
   AgentUpdate,
+  DragEnd,
+  DragPoint,
   AttentionSettings,
   AppSettings,
   NewCommand,
@@ -201,6 +203,14 @@ export interface Host {
   mergeSideTabs(fromId: Id, intoId: Id, label: string | null, resolution: MergeResolution): Promise<MergeDone>;
   /** Undoes a merge within `MERGE_UNDO_MS`. */
   undoMerge(undoId: Id): Promise<void>;
+  /** A tab drag started here; the core tracks the cursor across windows until `dragEnd`. */
+  dragBegin(tabId: Id, title: string): Promise<void>;
+  /** The drag ended: `drop` false for a cancel. Says where it landed. */
+  dragEnd(drop: boolean): Promise<DragEnd>;
+  /** A drag from another window is over this one at a point, or left it (`null`). */
+  onDragHover(listener: (point: DragPoint | null) => void): Promise<() => void>;
+  /** A tab from another window was dropped here at a point. */
+  onDragDrop(listener: (point: DragPoint) => void): Promise<() => void>;
   /** Pastes `text` into a terminal pane, bracketed when it has line breaks, with no Enter (D13). */
   sendText(paneId: Id, text: string): Promise<void>;
   /**
