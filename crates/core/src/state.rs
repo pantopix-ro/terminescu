@@ -61,8 +61,27 @@ pub fn pick_tab_neon(siblings: &[Tab], tab_id: &str) -> String {
     pick_unused(NEONS, tab_id, &used)
 }
 
-/// Gives a neon to every side tab and tab saved before neons existed, as a new one would get.
+/// Gives a neon to every side tab and tab saved before neons existed, as a new one would get,
+/// and an icon to every tab saved before tabs got one (task 8.29).
 pub fn fill_accents(ws: &mut Workspace) {
+    let bare: Vec<(usize, usize, usize)> = ws
+        .windows
+        .iter()
+        .enumerate()
+        .flat_map(|(w, win)| {
+            win.side_tabs.iter().enumerate().flat_map(move |(s, side)| {
+                side.tabs
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, t)| t.icon.is_none())
+                    .map(move |(t, _)| (w, s, t))
+            })
+        })
+        .collect();
+    for (w, s, t) in bare {
+        let id = ws.windows[w].side_tabs[s].tabs[t].id.clone();
+        ws.windows[w].side_tabs[s].tabs[t].icon = Some(pick_icon(ws, &id, &[]));
+    }
     for w in 0..ws.windows.len() {
         for s in 0..ws.windows[w].side_tabs.len() {
             if ws.windows[w].side_tabs[s].accent.is_none() {
@@ -1624,8 +1643,10 @@ mod tests {
         s.accent = None;
         let kept = s.tabs[1].accent.clone();
         s.tabs[0].accent = None;
+        s.tabs[0].icon = None;
         fill_accents(&mut ws);
         let s = &ws.windows[0].side_tabs[0];
+        assert!(s.tabs[0].icon.is_some() && s.tabs[0].icon != s.tabs[1].icon);
         assert!(s.accent.is_some());
         assert_eq!(s.tabs[1].accent, kept);
         assert!(s.tabs[0].accent.is_some() && s.tabs[0].accent != kept);

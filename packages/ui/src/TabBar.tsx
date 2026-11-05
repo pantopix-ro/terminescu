@@ -59,6 +59,10 @@ function TabItem({
 }) {
   const agent = tabAgent(tab, agents);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: tab.id });
+  // The tab's neon washes 12% into its background, as its square under the row does (task 8.29).
+  const look = rowStyle(shown?.look, "tab");
+  const ground = active ? "var(--panel)" : (look["--tab-bg"] ?? "var(--panel-2)");
+  const wash = tab.accent ? { "--tab-bg": `color-mix(in srgb, var(--neon-${tab.accent}) 12%, ${ground})` } : {};
   return (
     <div
       ref={setNodeRef}
@@ -69,22 +73,21 @@ function TabItem({
       aria-selected={active}
       data-tab={tab.id}
       data-agent={agent?.state}
-      className={`ao-tab${active ? " active" : ""}${isDragging ? " placeholder" : ""}${shown?.waiting || agent?.state === "waiting" || tabRequest(tab, docs) ? " wait" : ""}`}
-      style={{ transform: CSS.Translate.toString(transform), transition, ...rowStyle(shown?.look, "tab") }}
+      className={`ao-tab${active ? " active" : ""}${tab.accent ? " neon" : ""}${isDragging ? " placeholder" : ""}${shown?.waiting || agent?.state === "waiting" || tabRequest(tab, docs) ? " wait" : ""}`}
+      style={{ transform: CSS.Translate.toString(transform), transition, ...look, ...wash } as React.CSSProperties}
       onClick={onSelect}
       onKeyDown={(e) => e.key === "Enter" && onSelect()}
     >
-      {(agent || tab.icon) && (
-        <KidIcon
-          agent={agent}
-          icon={tab.icon}
-          accent={tab.accent}
-          onDoubleClick={(e) => {
-            e.stopPropagation();
-            onIconPick?.(tab.id, pickAt(e));
-          }}
-        />
-      )}
+      {/* Every tab shows its icon in its neon (task 8.29); one saved without an icon shows the default. */}
+      <KidIcon
+        agent={agent}
+        icon={tab.icon}
+        accent={tab.accent}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          onIconPick?.(tab.id, pickAt(e));
+        }}
+      />
       {renaming ? (
         <RenameInput
           value={tab.title ?? tabName(tab, docs)}

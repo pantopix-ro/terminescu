@@ -382,3 +382,5 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 .px-pick-item .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .px-pick-item:hover, .px-pick-item:focus-visible { color: var(--fg); background: var(--panel); outline: none; box-shadow: inset 2px 0 0 0 var(--amber); }
 .px-pick-item.active { color: var(--fg); box-shadow: inset 2px 0 0 0 var(--fg); }
+/* Task 8.29: a tab's neon washes into its background, the active one too. */
+.ao-tab.neon.active:not(.placeholder) { background: var(--tab-bg); }
