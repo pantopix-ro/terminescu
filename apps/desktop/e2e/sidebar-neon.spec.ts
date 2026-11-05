@@ -71,3 +71,23 @@ test("a side tab's tabs show their neons on their icons and squares", async ({ p
   await page.getByRole("button", { name: "Add a side tab" }).click();
   await expect(page.locator(".ao-st").nth(1).locator(".ao-cell")).toHaveCount(1);
 });
+
+// Task 8.29: each tab in the tab bar washes its neon into its background and shows its own icon.
+test("tabs in the tab bar take a 12% wash of their neon and each has an icon", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+  await page.locator(".term-pane").first().click();
+  for (let i = 0; i < 2; i++) await page.getByRole("button", { name: "New tab", exact: true }).click();
+  const tabs: { id: string; accent: string; icon: string }[] = (await workspace(page)).windows[0].sideTabs[0].tabs;
+  expect(new Set(tabs.map((t) => t.icon)).size).toBe(3);
+  const bgs = new Set<string>();
+  for (const t of tabs) {
+    const tab = page.locator(`.ao-tab[data-tab="${t.id}"]`);
+    await expect(tab).toHaveClass(/neon/);
+    await expect(tab).toHaveAttribute("style", new RegExp(`--tab-bg: color-mix\\(in srgb, var\\(--neon-${t.accent}\\) 12%, var\\(--panel(-2)?\\)\\)`));
+    await expect(tab.locator(`.ao-i-${t.icon}`)).toBeVisible();
+    bgs.add(await tab.evaluate((el) => getComputedStyle(el).backgroundColor));
+  }
+  // The active tab is tinted too, so every tab reads differently.
+  expect(bgs.size).toBe(3);
+});
