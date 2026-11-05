@@ -126,6 +126,20 @@
       "w": 2880,
       "h": 1100,
       "title": "App icon · Neon rows"
+    },
+    "RowAccents.dc.html": {
+      "x": 0,
+      "y": 4080,
+      "w": 2960,
+      "h": 1200,
+      "title": "Sidebar · a neon per row"
+    },
+    "IconsHiRes.dc.html": {
+      "x": 0,
+      "y": 5400,
+      "w": 2960,
+      "h": 820,
+      "title": "Tab icons · 12 px set"
     }
   },
   "order": [
@@ -143,7 +157,9 @@
     "Prompts.dc.html",
     "AppIcon.dc.html",
     "AppIconSidebar.dc.html",
-    "AppIconNeon.dc.html"
+    "AppIconNeon.dc.html",
+    "RowAccents.dc.html",
+    "IconsHiRes.dc.html"
   ],
   "notes": {},
   "designSystems": [

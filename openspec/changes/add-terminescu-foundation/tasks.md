@@ -455,6 +455,20 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       sidebar status chip opens a small menu with Auto, this side tab's and the global
       statuses, the current one checked, and "Edit status…" for the full editor. Done: menu
       items can show a status chip; `sidebar-status.spec.ts` rewritten (3).
+- [x] 8.19 Double-click from another app (owner report, 2026-11-05: a double click on an icon
+      did nothing). Not reproduced in a focused window; from another app macOS spent the first
+      click on bringing the window forward. Done: `accept_first_mouse` on every window.
+- [x] 8.20 Each new tab opens with a different random icon (owner request, 2026-11-05).
+      Done: `pick_icon` takes the first unused icon from a hash of the tab id (agent left
+      out), mirrored in the mock; a one-tab row shows its tab's icon; Claude keeps its state
+      dot. Core test, `icon-picker.spec.ts` and `agents.spec.ts` updated.
+- [x] 8.21 Default statuses and the quick pick (owner request, 2026-11-05): In progress,
+      Review, Testing, Blocked and Done seeded once (`statuses.seeded`); a sidebar chip opens
+      `QuickStatus`: the box for a new status takes the cursor, the current, Auto, side tab
+      and global statuses follow. Verify: store test, `sidebar-status.spec.ts` (3).
+- [ ] 8.22 Neon accent per sidebar row and a 12 px icon set: proposals on the Screens canvas
+      v45 (boards RowAccents, IconsHiRes; recommended Edge + icon, 12×12). Waits on the
+      owner's pick.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

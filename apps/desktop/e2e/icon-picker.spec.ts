@@ -17,7 +17,10 @@ async function start(page: Page) {
 test("a double click on a side tab's icon picks another and resets it", async ({ page }) => {
   await start(page);
   const icon = page.locator(".ao-st > .ao-i").first();
-  await expect(icon).toHaveClass(/ao-i-term/);
+  // A one-tab row shows its tab's icon, picked when the tab opened (task 8.20).
+  const tabIcon = (await workspace(page)).windows[0].sideTabs[0].tabs[0].icon;
+  expect(tabIcon).toBeTruthy();
+  await expect(icon).toHaveClass(new RegExp(`ao-i-${tabIcon}\\b`));
   await icon.dblclick();
   const picker = page.getByRole("dialog", { name: /^Icon for / });
   await expect(picker.locator(".icon-cell")).toHaveCount(20);
@@ -30,7 +33,7 @@ test("a double click on a side tab's icon picks another and resets it", async ({
   await icon.dblclick();
   await expect(picker.getByRole("button", { name: "Pin" })).toHaveAttribute("aria-pressed", "true");
   await picker.getByRole("button", { name: "Default icon" }).click();
-  await expect(icon).toHaveClass(/ao-i-term/);
+  await expect(icon).toHaveClass(new RegExp(`ao-i-${tabIcon}\\b`));
   expect((await workspace(page)).windows[0].sideTabs[0].icon).toBeUndefined();
 });
 
@@ -38,6 +41,7 @@ test("a tab's icon shows in the group and the tab bar; arrows and Enter pick, Es
   await start(page);
   const side = (await workspace(page)).windows[0].sideTabs[0];
   await mock(page, "send", { type: "CreateTab", sideTabId: side.id });
+  await mock(page, "send", { type: "SetIcon", targetId: side.tabs[0].id, icon: "term" });
   const kid = page.locator(".ao-st-kid").first().locator(".ao-i").first();
   await kid.dblclick();
   const picker = page.getByRole("dialog", { name: /^Icon for / });
@@ -45,9 +49,7 @@ test("a tab's icon shows in the group and the tab bar; arrows and Enter pick, Es
   await expect(picker).toHaveCount(0);
 
   await kid.dblclick();
-  // Terminal is first and focused; two rows down (five icons a row) is Link.
-  await page.keyboard.press("ArrowRight");
-  await page.keyboard.press("ArrowLeft");
+  // Terminal is first and, being the current one, focused; two rows down (five a row) is Link.
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");

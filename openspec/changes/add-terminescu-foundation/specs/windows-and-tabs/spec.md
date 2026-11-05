@@ -25,6 +25,10 @@ resizable dividers. A side tab SHALL hold any mix of pane kinds.
 - **WHEN** the person double-clicks the name of a side tab or of a tab, in the sidebar or the tab bar, types `PROJ-482` and presses Enter
 - **THEN** the name changes in place; Esc keeps the old name, and only the field double-clicked opens
 
+#### Scenario: New tabs get their own icon
+- **WHEN** the person opens three tabs
+- **THEN** each opens with a random icon from the list that no other tab uses yet, and a one-tab side tab row shows its tab's icon
+
 #### Scenario: Pick an icon
 - **WHEN** the person double-clicks the icon of a side tab or of a tab, or picks "Change icon…" in its menu
 - **THEN** a list of 20 predefined icons opens; a pick replaces the default icon and persists, and "Default icon" brings the old one back, Claude's state dot staying either way

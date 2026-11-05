@@ -87,6 +87,7 @@ import {
   sortSideTabs,
   StatusEditor,
   IconPicker,
+  QuickStatus,
   StatusLine,
   SettingsSheet,
   type SettingsSection,
@@ -892,37 +893,6 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const [picking, setPicking] = useState<{ id: string; x: number; y: number }>();
   // A click on a sidebar status chip: the saved statuses for a quick pick, the editor behind them.
   const [quickStatus, setQuickStatus] = useState<{ sideTabId: string; tabId?: string; x: number; y: number }>();
-  const quickStatusItems = (q: NonNullable<typeof quickStatus>): MenuEntry[] => {
-    const side = sideTabs.find((sd) => sd.id === q.sideTabId);
-    const owner = q.tabId ? side?.tabs.find((t) => t.id === q.tabId) : side;
-    if (!side || !owner) return [];
-    const auto = statuses[owner.id]?.auto ?? "idle";
-    const saved = (sideTabId: string | null) =>
-      statusConfig.statuses
-        .filter((st) => st.sideTabId === sideTabId)
-        .map((st): MenuEntry => ({
-          id: `status:${st.id}`,
-          label: st.label,
-          chip: { ...st, set: true, need: false },
-          checked: owner.status?.statusId === st.id,
-          run: () => void setStatus(owner.id, { statusId: st.id, label: st.label, accent: st.accent, background: st.background }),
-        }));
-    const local = saved(side.id);
-    const global = saved(null);
-    return [
-      {
-        id: "auto",
-        label: "Auto",
-        chip: chipOf({ auto, waiting: false, source: "auto" }, statusConfig.builtins),
-        checked: !owner.status,
-        run: () => void setStatus(owner.id, null),
-      },
-      ...(local.length ? ["-" as const, ...local] : []),
-      ...(global.length ? ["-" as const, ...global] : []),
-      "-",
-      { id: "edit", label: "Edit status…", hint: "⌘⇧S", run: () => editStatus(side.id, q.tabId) },
-    ];
-  };
   const rename = (id: string, title: string | null) => {
     setRenaming(undefined);
     const side = sideTabs.some((sd) => sd.id === id);
@@ -1589,15 +1559,30 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
             />
           );
         })()}
-      {quickStatus && (
-        <ContextMenu
-          x={quickStatus.x}
-          y={quickStatus.y}
-          label="Status"
-          items={quickStatusItems(quickStatus)}
-          onClose={() => setQuickStatus(undefined)}
-        />
-      )}
+      {quickStatus &&
+        (() => {
+          const side = sideTabs.find((sd) => sd.id === quickStatus.sideTabId);
+          const owner = quickStatus.tabId ? side?.tabs.find((t) => t.id === quickStatus.tabId) : side;
+          if (!side || !owner) return null;
+          const auto = statuses[owner.id]?.auto ?? "idle";
+          return (
+            <QuickStatus
+              x={quickStatus.x}
+              y={quickStatus.y}
+              name={owner === side ? sideTabName(side, docs) : tabName(owner as Tab, docs)}
+              current={owner.status}
+              auto={chipOf({ auto, waiting: false, source: "auto" }, statusConfig.builtins)}
+              local={statusConfig.statuses.filter((st) => st.sideTabId === side.id)}
+              global={statusConfig.statuses.filter((st) => st.sideTabId === null)}
+              onSet={(st) => void setStatus(owner.id, st)}
+              onEdit={() => editStatus(side.id, quickStatus.tabId)}
+              onClose={() => {
+                setQuickStatus(undefined);
+                refocus();
+              }}
+            />
+          );
+        })()}
       {menu && (
         <ContextMenu
           x={menu.x}

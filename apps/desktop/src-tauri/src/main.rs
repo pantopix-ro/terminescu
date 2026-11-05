@@ -1523,7 +1523,10 @@ fn open_window(app: &AppHandle, window_id: &str, at: Option<(f64, f64, f64)>) ->
         .title_bar_style(tauri::TitleBarStyle::Overlay)
         .hidden_title(true)
         // Centres the lights in the 34 px sidebar strip that holds the wordmark (app.css).
-        .traffic_light_position(tauri::LogicalPosition::new(14.0, 20.0));
+        .traffic_light_position(tauri::LogicalPosition::new(14.0, 20.0))
+        // The click that brings the window forward also reaches the page, so a double click
+        // on an icon or a name works from another app (task 8.19).
+        .accept_first_mouse(true);
     let w = builder.build()?;
     // The caller holds no db lock: the window opens from the patch emitter and from setup.
     let saved = settings::get(&lock(&app.state::<AppState>().db)).unwrap_or_default();
@@ -1654,6 +1657,9 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     db.local_owner()?;
     if let Err(e) = prompts::import_seeds(&db, prompts::SEEDS) {
         eprintln!("terminescu: seed prompts not imported: {e}");
+    }
+    if let Err(e) = status_store::seed_defaults(&db) {
+        eprintln!("terminescu: default statuses not added: {e}");
     }
     let db = Arc::new(Mutex::new(db));
     let (runtime, windows, updates) = start_runtime(app.handle(), db.clone())?;

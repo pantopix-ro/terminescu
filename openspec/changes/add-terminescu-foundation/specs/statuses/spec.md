@@ -22,7 +22,11 @@ tints. Amber SHALL NOT be offered as an accent or background.
 
 #### Scenario: Quick pick from the sidebar chip
 - **WHEN** the person clicks the status chip of a side tab or of a tab in the sidebar
-- **THEN** a small list opens on that side tab or tab with Auto, this side tab's and the global statuses, the current one checked, and "Edit status…" opening the full editor
+- **THEN** a small popover opens on it with the text cursor in a box for a new status, and below it the current status, Auto, this side tab's and the global statuses, the current one checked, and "Edit status…" opening the full editor
+
+#### Scenario: Default statuses
+- **WHEN** the app starts on a new database
+- **THEN** the global statuses In progress, Review, Testing, Blocked and Done exist once; one the person deletes does not come back
 
 #### Scenario: Background tints the terminal
 - **WHEN** a status with the blue background is set on a tab, or on its side tab while the tab has none
