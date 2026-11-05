@@ -51,8 +51,10 @@ fn every_recorded_sequence_ends_in_the_expected_states() {
                 let text = std::fs::read(fixtures().join(file)).unwrap();
                 let mut offset = 0;
                 for line in text.split_inclusive(|b| *b == b'\n') {
-                    if let (Some(a), Some(entry)) = (agent.as_mut(), parse_line(line, offset)) {
-                        on_entry(a, &entry);
+                    if let Some(a) = agent.as_mut() {
+                        for entry in parse_line(line, offset) {
+                            on_entry(a, &entry);
+                        }
                     }
                     offset += line.len() as u64;
                 }

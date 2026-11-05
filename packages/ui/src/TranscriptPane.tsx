@@ -1,6 +1,7 @@
 import type { Entry, TranscriptChunk } from "@terminescu/host";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { anchor } from "./anchor";
+import { editDiff, hunkDiff, type DiffLine } from "./diff";
 import { EXTRACT_EVENT, PIN_EVENT } from "./events";
 
 /** How often an open transcript reads what Claude added. */
@@ -34,8 +35,85 @@ export interface TranscriptPaneProps {
 
 export { EXTRACT_EVENT, PIN_EVENT };
 
-const shown = (e: Entry): e is TextEntry | Extract<Entry, { kind: "compaction" }> =>
-  e.kind === "user" || e.kind === "assistant" || e.kind === "compaction";
+type ToolCall = Extract<Entry, { kind: "toolCall" }>;
+type ToolResult = Extract<Entry, { kind: "toolResult" }>;
+type Shown = TextEntry | ToolCall | ToolResult | Extract<Entry, { kind: "compaction" | "thinking" }>;
+
+/** What the list draws. A result shows inside its call; only one whose call is missing stands alone. */
+const shown = (e: Entry, calls: Set<string>): e is Shown =>
+  e.kind === "user" ||
+  e.kind === "assistant" ||
+  e.kind === "compaction" ||
+  e.kind === "thinking" ||
+  e.kind === "toolCall" ||
+  (e.kind === "toolResult" && !calls.has(e.toolUseId));
+
+function Diff({ lines }: { lines: DiffLine[] }) {
+  return (
+    <pre className="tr-diff">
+      {lines.map((l, i) => (
+        <div key={i} className={l.sign === "-" ? "tr-del" : l.sign === "+" ? "tr-add" : undefined}>
+          {l.sign}
+          {l.text}
+        </div>
+      ))}
+    </pre>
+  );
+}
+
+/** Claude's reasoning, collapsed; open, its text. */
+function Thinking({ id, text }: { id: string; text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <details className="tr-block tr-thinking" data-entry={id} onToggle={(e) => setOpen(e.currentTarget.open)}>
+      <summary>thinking</summary>
+      {open && <div className="tr-body tr-thinking-text">{text}</div>}
+    </details>
+  );
+}
+
+/**
+ * A tool call, collapsed to its name and what it touched; open, it shows the change and the
+ * output (task 8.4). The stored patch wins over a diff computed from the edit text.
+ */
+function ToolBlock({ call, result }: { call?: ToolCall; result?: ToolResult }) {
+  // A closed block draws no body: a long session holds thousands of outputs.
+  const [open, setOpen] = useState(false);
+  const status = !result ? "running" : result.isError ? "error" : "done";
+  const hunks = result?.hunks ?? [];
+  const edits = call?.edits ?? [];
+  return (
+    <details
+      className={`tr-block tr-tool tr-st-${status}`}
+      data-entry={call?.id ?? result?.id}
+      onToggle={(e) => setOpen(e.currentTarget.open)}
+    >
+      <summary>
+        <span className="tr-tool-name">{call?.name ?? "tool result"}</span>
+        <span className="tr-tool-detail">{call?.detail}</span>
+        <span className="tr-tool-status small">{status}</span>
+      </summary>
+      {open && <div className="tr-body">
+        {hunks.length > 0
+          ? hunks.map((h, i) => (
+              <div key={i} className="tr-hunk">
+                <div className="tr-hunk-head small ao-dim">
+                  {edits[0]?.path ? `${edits[0].path} ` : ""}@@ -{h.oldStart} +{h.newStart} @@
+                </div>
+                <Diff lines={hunkDiff(h)} />
+              </div>
+            ))
+          : edits.map((e, i) => (
+              <div key={i} className="tr-hunk">
+                <div className="tr-hunk-head small ao-dim">{e.path}</div>
+                <Diff lines={editDiff(e)} />
+              </div>
+            ))}
+        {result?.text && <pre className="tr-output">{result.text}</pre>}
+      </div>}
+    </details>
+  );
+}
 
 /**
  * `[start, end)` of the selection inside `el`'s text, in UTF-16 units, or undefined when nothing
@@ -70,7 +148,8 @@ function selected(root: HTMLElement): { entryId: string; range: [number, number]
 
 /**
  * A read-only mirror of a Claude session: user and assistant messages with Pin and Extract per
- * message and per selection (task 4.4, D25). Tool calls, diffs and thinking come in P2.
+ * message and per selection (task 4.4, D25). Thinking and tool calls with their diffs and output
+ * show collapsed between the messages (task 8.4).
  */
 export function TranscriptPane({ paneId, session, read, pin, extract, savePrompt, reveal, onFocus }: TranscriptPaneProps) {
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -120,6 +199,14 @@ export function TranscriptPane({ paneId, session, read, pin, extract, savePrompt
     const el = list.current;
     if (el && atBottom.current && !mark) el.scrollTop = el.scrollHeight;
   }, [entries, mark]);
+
+  const calls = useMemo(() => new Set(entries.flatMap((e) => (e.kind === "toolCall" ? [e.toolUseId] : []))), [entries]);
+  const results = useMemo(() => {
+    const m = new Map<string, ToolResult>();
+    for (const e of entries) if (e.kind === "toolResult" && !m.has(e.toolUseId)) m.set(e.toolUseId, e);
+    return m;
+  }, [entries]);
+  const visible = entries.filter((e) => shown(e, calls));
 
   const textOf = (id: string) => {
     const e = entries.find((x) => x.id === id);
@@ -183,8 +270,14 @@ export function TranscriptPane({ paneId, session, read, pin, extract, savePrompt
           atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
         }}
       >
-        {entries.filter(shown).map((e) =>
-          e.kind === "compaction" ? (
+        {visible.map((e) =>
+          e.kind === "toolCall" ? (
+            <ToolBlock key={e.id} call={e} result={results.get(e.toolUseId)} />
+          ) : e.kind === "toolResult" ? (
+            <ToolBlock key={e.id} result={e} />
+          ) : e.kind === "thinking" ? (
+            <Thinking key={e.id} id={e.id} text={e.text} />
+          ) : e.kind === "compaction" ? (
             <div key={e.id} className="tr-compact small ao-dim">
               conversation compacted
             </div>
@@ -229,7 +322,7 @@ export function TranscriptPane({ paneId, session, read, pin, extract, savePrompt
             </div>
           ),
         )}
-        {!entries.some(shown) && !error && <p className="small ao-dim tr-empty">No messages yet.</p>}
+        {visible.length === 0 && !error && <p className="small ao-dim tr-empty">No messages yet.</p>}
       </div>
       {error && (
         <p className="small app-error tr-error" role="alert">

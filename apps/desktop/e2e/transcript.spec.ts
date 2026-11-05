@@ -149,3 +149,61 @@ test("⌘⇧L in a pane without Claude says so and opens nothing", async ({ page
   await expect(page.locator(".app-error")).toContainText("No Claude session");
   await expect(page.locator(".tr-pane")).toHaveCount(0);
 });
+
+test("thinking and tool calls show collapsed; open, an edit shows its diff and a failure its output", async ({ page }) => {
+  await start(page);
+  await page.evaluate((s) => {
+    const base = { offset: 0, timestamp: null };
+    (window as any).__terminescu.host.appendTranscript(s, [
+      { ...base, id: "u2", kind: "user", text: "Rename the greeting for PROJ-477." },
+      { ...base, id: "a2#0", kind: "thinking", text: "One word changes; an Edit is enough." },
+      {
+        ...base,
+        id: "a3#0",
+        kind: "toolCall",
+        toolUseId: "tu-e",
+        name: "Edit",
+        detail: "/Users/owner/src/acme-api/hello.txt",
+        edits: [{ path: "/Users/owner/src/acme-api/hello.txt", old: "hi", new: "hello" }],
+      },
+      {
+        ...base,
+        id: "r3#0",
+        kind: "toolResult",
+        toolUseId: "tu-e",
+        text: "The file hello.txt has been updated.",
+        isError: false,
+        hunks: [{ oldStart: 1, newStart: 1, lines: ["-hi", "+hello"] }],
+      },
+      { ...base, id: "a4#0", kind: "toolCall", toolUseId: "tu-b", name: "Bash", detail: "pnpm test", edits: [] },
+      { ...base, id: "r4#0", kind: "toolResult", toolUseId: "tu-b", text: "Exit code 1\n2 failed", isError: true, hunks: [] },
+      { ...base, id: "a5#0", kind: "toolCall", toolUseId: "tu-w", name: "Write", detail: "/Users/owner/src/acme-api/notes.md", edits: [{ path: "/Users/owner/src/acme-api/notes.md", old: "", new: "# Notes\n" }] },
+    ]);
+  }, SESSION);
+  await page.keyboard.press("Meta+Shift+L");
+  const tr = page.locator(".tr-pane");
+  // Messages stay messages; a result shows inside its call, not as its own block.
+  await expect(tr.locator(".tr-msg")).toHaveCount(3);
+  await expect(tr.locator(".tr-tool")).toHaveCount(3);
+  await expect(tr.locator(".tr-thinking")).toHaveCount(1);
+  await expect(tr.locator(".tr-thinking-text")).toHaveCount(0);
+  await tr.locator(".tr-thinking > summary").click();
+  await expect(tr.locator(".tr-thinking-text")).toHaveText("One word changes; an Edit is enough.");
+
+  const edit = tr.locator('.tr-tool[data-entry="a3#0"]');
+  await expect(edit.locator(".tr-tool-status")).toHaveText("done");
+  await edit.locator("summary").click();
+  await expect(edit.locator(".tr-del")).toHaveText("-hi");
+  await expect(edit.locator(".tr-add")).toHaveText("+hello");
+
+  const bash = tr.locator('.tr-tool[data-entry="a4#0"]');
+  await expect(bash).toHaveClass(/tr-st-error/);
+  await bash.locator("summary").click();
+  await expect(bash.locator(".tr-output")).toHaveText("Exit code 1\n2 failed");
+
+  // No result yet: the Write still runs, and its diff comes from the content.
+  const write = tr.locator('.tr-tool[data-entry="a5#0"]');
+  await expect(write.locator(".tr-tool-status")).toHaveText("running");
+  await write.locator("summary").click();
+  await expect(write.locator(".tr-add")).toHaveText("+# Notes");
+});

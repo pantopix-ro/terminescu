@@ -281,6 +281,10 @@ lives too briefly to own a command. Task 8.6.
 ### D25. Smaller v1 choices
 The transcript pane ships in P1 in a minimal form: read-only user and assistant messages with
 Pin and Extract per message and per selection; tool calls, diffs and thinking come in P2.
+Task 8.4 adds them: one JSONL line can yield several entries, the reply text keeps the line's
+uuid (pins stay valid) and blocks get `<uuid>#<n>`. Thinking and tool calls show collapsed; open,
+a call shows Claude Code's stored `structuredPatch`, else a diff from the edit text, and the
+output. Text is capped at 16 KB per block and patches at 400 lines. Redacted thinking stays out.
 Settings in v1: Statuses, Commands, Variable defaults, Extraction rules (read-only), Shell and
 Keys (editable, with conflict detection, D17). A macOS notification fires when a Claude
 session waits while the app is in the background, on by default with no sound. Only Claude

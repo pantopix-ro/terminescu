@@ -76,13 +76,18 @@ the tab Done.
 
 ### Requirement: Transcript mirror
 The app SHALL tail the session's JSONL with a byte-offset cursor, map lines to entries with
-stable ids, and render them in a read-only transcript pane on request. In v1 the pane SHALL
-show user and assistant messages with Pin and Extract on each message and on any selection;
-tool calls, diffs and thinking SHALL be left out.
+stable ids, and render them in a read-only transcript pane on request. The pane SHALL show
+user and assistant messages with Pin and Extract on each message and on any selection. In P2
+it SHALL also show thinking and tool calls, collapsed; an open file tool call SHALL show its
+diff and every open call its output.
 
 #### Scenario: Open a transcript pane
 - **WHEN** the person splits a Claude pane and picks "transcript"
 - **THEN** the new pane lists the session's entries, including ones from before the split
+
+#### Scenario: Open an edit
+- **WHEN** Claude edited a file and the person opens that call in the transcript pane
+- **THEN** the pane shows the removed and added lines and the tool's output
 
 ### Requirement: Resume after reboot
 After a reboot a tab that held a Claude session SHALL show a "resume" button. Pressing it SHALL

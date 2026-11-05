@@ -169,10 +169,30 @@ export interface AgentUpdate {
   agent: AgentView | null;
 }
 
-/** A transcript line as the core reads it (D11). v1 shows user and assistant text (D25). */
+/** One replacement a file tool asked for. A Write has an empty `old`. */
+export interface ToolEdit {
+  path: string;
+  old: string;
+  new: string;
+}
+
+/** A unified-diff hunk: `lines` start with " ", "-" or "+". */
+export interface Hunk {
+  oldStart: number;
+  newStart: number;
+  lines: string[];
+}
+
+/**
+ * A transcript line as the core reads it (D11). One line can hold several entries: thinking and
+ * tool blocks get the id `<uuid>#<block>`, the reply text keeps the plain uuid (task 8.4, D25).
+ */
 export type Entry = { id: string; offset: number; timestamp: string | null } & (
   | { kind: "user"; text: string }
   | { kind: "assistant"; text: string }
+  | { kind: "thinking"; text: string }
+  | { kind: "toolCall"; toolUseId: string; name: string; detail: string; edits: ToolEdit[] }
+  | { kind: "toolResult"; toolUseId: string; text: string; isError: boolean; hunks: Hunk[] }
   | { kind: "toolDenied" }
   | { kind: "turnEnd" }
   | { kind: "compaction" }
