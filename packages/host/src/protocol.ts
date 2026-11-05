@@ -35,7 +35,13 @@ export interface SideTab {
   tabs: Tab[];
   status?: ManualStatus;
   icon?: Icon;
+  /** A neon given when the row is made (task 8.25): its edge and icon take `--neon-*`. */
+  accent?: Neon;
 }
+
+/** Neon row accents, as `--neon-*` tokens. Mirrors `NEONS` in state.rs; no amber. */
+export const NEONS = ["cyan", "pink", "lime", "violet", "mint", "blue", "rose", "ice"] as const;
+export type Neon = (typeof NEONS)[number];
 
 /** The icons a side tab or tab can pick; each is an `ao-i-*` class. Mirrors `ICONS` in state.rs. */
 export const ICONS = [

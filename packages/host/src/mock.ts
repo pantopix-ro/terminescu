@@ -18,6 +18,8 @@ import {
   type AppSettings,
   TINTS,
   ICONS,
+  NEONS,
+  type Neon,
   DEFAULT_STATUSES,
   type AgentUpdate,
   type AgentView,
@@ -418,20 +420,30 @@ export function createMockHost(initial?: Workspace): MockHost {
     return { windows: [{ id: windowId, sideTabs: [newSideTab()] }] };
   }
   // A new tab's icon: one no other tab uses yet, from the tab id, as `pick_icon` in state.rs.
-  function pickIcon(tabId: string): Icon {
-    const pool: Icon[] = ICONS.filter((i) => i !== "agent");
+  /** The first entry of `pool` not in `used`, from a hash of `seed`, as state.rs picks. */
+  function pickUnused<T>(pool: readonly T[], seed: string, used: (s: SideTab) => (T | undefined)[]): T {
     let h = 0x811c9dc5;
-    for (const ch of tabId) h = Math.imul(h ^ ch.charCodeAt(0), 0x01000193) >>> 0;
-    const used = new Set<Icon | undefined>();
+    for (const ch of seed) h = Math.imul(h ^ ch.charCodeAt(0), 0x01000193) >>> 0;
+    const taken = new Set<T | undefined>();
     // The first side tab is made while `ws` is still being set up, with nothing to avoid.
     try {
-      for (const s of allSideTabs()) for (const t of s.tabs) used.add(t.icon);
+      for (const s of allSideTabs()) for (const u of used(s)) taken.add(u);
     } catch {}
     for (let k = 0; k < pool.length; k++) {
-      const icon = pool[(h + k) % pool.length]!;
-      if (!used.has(icon)) return icon;
+      const item = pool[(h + k) % pool.length]!;
+      if (!taken.has(item)) return item;
     }
     return pool[h % pool.length]!;
+  }
+  function pickIcon(tabId: string): Icon {
+    return pickUnused(
+      ICONS.filter((i) => i !== "agent"),
+      tabId,
+      (s) => s.tabs.map((t) => t.icon),
+    );
+  }
+  function pickNeon(sideTabId: string): Neon {
+    return pickUnused(NEONS, sideTabId, (s) => [s.accent]);
   }
   function newTab(): Tab {
     const tabId = id();
@@ -439,7 +451,8 @@ export function createMockHost(initial?: Workspace): MockHost {
   }
   function newSideTab(): SideTab {
     const tab = newTab();
-    return { id: id(), title: null, tabs: [tab] };
+    const sid = id();
+    return { id: sid, title: null, tabs: [tab], accent: pickNeon(sid) };
   }
 
   const fail = (code: CommandError["code"], ref: string | number): never => {
@@ -535,7 +548,8 @@ export function createMockHost(initial?: Workspace): MockHost {
         holder(c.tabId);
         inRange(c.index, window(c.windowId).sideTabs.length);
         const closed = closesSource(c.tabId);
-        const created: SideTab = { id: id(), title: null, tabs: [] };
+        const sid = id();
+        const created: SideTab = { id: sid, title: null, tabs: [], accent: pickNeon(sid) };
         return [
           { type: "SideTabCreated", windowId: c.windowId, index: c.index, sideTab: created },
           { type: "TabMoved", tabId: c.tabId, toSideTabId: created.id, index: 0 },
@@ -546,7 +560,8 @@ export function createMockHost(initial?: Workspace): MockHost {
         holder(c.tabId);
         const closed = closesSource(c.tabId);
         const windowId = id();
-        const created: SideTab = { id: id(), title: null, tabs: [] };
+        const sid = id();
+        const created: SideTab = { id: sid, title: null, tabs: [], accent: pickNeon(sid) };
         return [
           { type: "WindowCreated", windowId },
           { type: "SideTabCreated", windowId, index: 0, sideTab: created },

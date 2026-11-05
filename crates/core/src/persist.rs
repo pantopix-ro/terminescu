@@ -43,6 +43,11 @@ fn icon_of(icon: Option<String>) -> Option<String> {
     icon.filter(|i| crate::state::ICONS.contains(&i.as_str()))
 }
 
+/// A saved neon accent, dropped when a later build no longer lists it.
+fn accent_of(accent: Option<String>) -> Option<String> {
+    accent.filter(|a| crate::state::NEONS.contains(&a.as_str()))
+}
+
 /// A saved manual status, dropped when it no longer parses or checks.
 fn status_of(json: Option<String>) -> Option<ManualStatus> {
     serde_json::from_str::<ManualStatus>(&json?)
@@ -71,12 +76,12 @@ pub fn save(db: &Db, saved: &Saved) -> Result<()> {
         ids[0].push(&w.id);
         for (si, s) in w.side_tabs.iter().enumerate() {
             tx.execute(
-                "INSERT INTO side_tabs (id, owner_id, window_id, position, title, status_json, created_at, icon)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?7, ?6, ?8)
+                "INSERT INTO side_tabs (id, owner_id, window_id, position, title, status_json, created_at, icon, accent)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?7, ?6, ?8, ?9)
                  ON CONFLICT (id) DO UPDATE SET window_id = excluded.window_id,
                    position = excluded.position, title = excluded.title,
-                   status_json = excluded.status_json, icon = excluded.icon",
-                params![s.id, owner, w.id, si as i64, s.title, now, status_json(&s.status), s.icon],
+                   status_json = excluded.status_json, icon = excluded.icon, accent = excluded.accent",
+                params![s.id, owner, w.id, si as i64, s.title, now, status_json(&s.status), s.icon, s.accent],
             )?;
             ids[1].push(&s.id);
             for (ti, t) in s.tabs.iter().enumerate() {
@@ -202,7 +207,7 @@ pub fn load(db: &Db) -> Result<Option<Saved>> {
     }
     let mut side_tabs: Vec<(Id, SideTab)> = conn
         .prepare(
-            "SELECT window_id, id, title, status_json, icon FROM side_tabs WHERE owner_id = ?1 ORDER BY position",
+            "SELECT window_id, id, title, status_json, icon, accent FROM side_tabs WHERE owner_id = ?1 ORDER BY position",
         )?
         .query_map([&owner], |r| {
             Ok((
@@ -213,6 +218,7 @@ pub fn load(db: &Db) -> Result<Option<Saved>> {
                     tabs: vec![],
                     status: status_of(r.get(3)?),
                     icon: icon_of(r.get(4)?),
+                    accent: accent_of(r.get(5)?),
                 },
             ))
         })?
@@ -326,6 +332,7 @@ mod tests {
                 id: "w1".into(),
                 side_tabs: vec![
                     SideTab {
+                        accent: None,
                         status: None,
                         icon: None,
                         id: "s1".into(),
@@ -348,6 +355,7 @@ mod tests {
                         ],
                     },
                     SideTab {
+                        accent: None,
                         status: None,
                         icon: None,
                         id: "s2".into(),
@@ -411,6 +419,7 @@ mod tests {
         let mut saved = sample();
         let side = &mut saved.workspace.windows[0].side_tabs[0];
         side.icon = Some("pin".into());
+        side.accent = Some("lime".into());
         side.tabs[0].icon = Some("doc".into());
         save(&db, &saved).unwrap();
         assert_eq!(load(&db).unwrap(), Some(saved.clone()));
@@ -420,6 +429,16 @@ mod tests {
             .unwrap();
         let loaded = load(&db).unwrap().unwrap();
         assert_eq!(loaded.workspace.windows[0].side_tabs[0].tabs[0].icon, None);
+        assert_eq!(
+            loaded.workspace.windows[0].side_tabs[0].accent.as_deref(),
+            Some("lime")
+        );
+
+        db.conn()
+            .execute("UPDATE side_tabs SET accent = 'amber'", [])
+            .unwrap();
+        let loaded = load(&db).unwrap().unwrap();
+        assert_eq!(loaded.workspace.windows[0].side_tabs[0].accent, None);
     }
 
     #[test]

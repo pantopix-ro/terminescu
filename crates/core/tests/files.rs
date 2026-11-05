@@ -15,6 +15,7 @@ fn db() -> Db {
             id: "w1".into(),
             side_tabs: vec![SideTab {
                 status: None,
+                accent: None,
                 icon: None,
                 id: "s1".into(),
                 title: None,

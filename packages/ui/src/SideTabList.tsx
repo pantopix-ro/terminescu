@@ -210,8 +210,13 @@ function Row(props: {
   const drag = useDraggable({ id: dragSide(side.id) });
   const group = side.tabs.length > 1;
   const open = group && (active || expanded) && !collapsed;
-  // A status background tints the row; otherwise the active row takes the raised panel.
-  const style = { ...(active ? { "--st-bg": "var(--panel-2)" } : {}), ...rowStyle(shown?.look, "st") } as React.CSSProperties;
+  // A status background tints the row; otherwise the active row takes the raised panel. The
+  // row's own neon (task 8.25) paints the edge and the icon; the status keeps chip and tint.
+  const style = {
+    ...(active ? { "--st-bg": "var(--panel-2)" } : {}),
+    ...rowStyle(shown?.look, "st"),
+    ...(side.accent ? { "--st-accent": `var(--neon-${side.accent})` } : {}),
+  } as React.CSSProperties;
   return (
     <>
       <div
