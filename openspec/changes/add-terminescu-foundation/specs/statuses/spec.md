@@ -34,10 +34,16 @@ it waits, whatever manual status is set.
 
 ### Requirement: Sidebar sort
 The sidebar SHALL keep manual order by default and SHALL sort by background, status or name on request.
+The sort SHALL be offered in the menu of the empty space under the side tabs and in the command
+palette.
 
 #### Scenario: Sort by background
 - **WHEN** the person sorts by background
 - **THEN** side tabs with the same tint sit together, ordered by name inside each tint
+
+#### Scenario: Sort from the empty space
+- **WHEN** the person right-clicks under the last side tab and picks Sort side tabs › name
+- **THEN** the side tabs sort by name and the menu marks name as the current sort
 
 ### Requirement: Global and local statuses
 Settings > Statuses SHALL hold global statuses with label, accent, background and order,

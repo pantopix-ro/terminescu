@@ -209,6 +209,10 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const [sort, setSort] = useState<SortMode>(loadSort);
   // The sidebar order; ⌃⌘1 to ⌃⌘9 follow what the person sees.
   const shownSides = sortSideTabs(sideTabs, statuses, sort, sideTabName);
+  const changeSort = (mode: SortMode) => {
+    setSort(mode);
+    saveSort(mode);
+  };
 
   const [sideTabId, setSideTabId] = useState<string>();
   const activeSide = sideTabs.find((s) => s.id === pick(sideTabs.map((s) => s.id), sideTabId));
@@ -733,6 +737,11 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       off?.();
     };
   }, [host]);
+  // The title row keeps its size on screen at any zoom, like a native title bar: the traffic
+  // lights don't zoom, so the strip beside them must not either.
+  useEffect(() => {
+    document.documentElement.style.setProperty("--chrome", String(100 / appSettings.zoomPercent));
+  }, [appSettings.zoomPercent]);
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("statuses");
   // Settings › Keys: the palette shows the chords the person set.
   const [keyBindings, setKeyBindings] = useState<KeyBindings>({});
@@ -896,6 +905,17 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     setSheet("status");
   };
   const menuItems = (target: MenuTarget): MenuEntry[] => {
+    if (target.kind === "list") {
+      return [
+        { id: "new-side", label: "New side tab", hint: "⌘N", run: () => act("new_side_tab") },
+        "-",
+        {
+          id: "sort",
+          label: "Sort side tabs",
+          items: SORTS.map((m) => ({ id: `sort:${m}`, label: m === sort ? `${m} ✓` : m, run: () => changeSort(m) })),
+        },
+      ];
+    }
     const side = sideTabs.find((sd) => sd.id === target.sideTabId);
     if (!side) return [];
     const others = sideTabs.filter((sd) => sd.id !== side.id);
@@ -1085,6 +1105,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
             .map((s) => ({ id: `move:${s.id}`, label: sideTabName(s), group: "Move tab to…", run: () => moveTab(activeTab.id, { side: s.id }) })),
         ]
       : []),
+    ...SORTS.map((m) => ({ id: `sort:${m}`, label: m === sort ? `${m} (now)` : m, group: "Sort side tabs", run: () => changeSort(m) })),
     ...sideTabs.map((s) => ({ id: `go:${s.id}`, label: sideTabName(s), group: "Go to side tab", run: () => setSideTabId(s.id) })),
     ...(activeSide
       ? sideTabs
@@ -1130,17 +1151,18 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       >
         <div className="app" data-context={mode}>
           <aside className="app-side">
-            <div className="app-traffic" data-tauri-drag-region />
+            {/* The title bar is an overlay (D20): this strip holds the traffic lights and moves the window. */}
+            <div className="app-traffic" data-tauri-drag-region>
+              <span className="app-wordmark" data-tauri-drag-region aria-label="Terminescu">
+                TERMINE<b>SCU</b>
+              </span>
+            </div>
             <SideTabList
               sideTabs={shownSides}
               statuses={statuses}
               builtins={statusConfig.builtins}
               docs={docs}
               sort={sort}
-              onSort={(m) => {
-                setSort(m);
-                saveSort(m);
-              }}
               activeId={activeSide?.id}
               activeTabId={activeTab?.id}
               dragging={!!dragging || !!remote}
@@ -1501,7 +1523,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         <ContextMenu
           x={menu.x}
           y={menu.y}
-          label={menu.target.kind === "side" ? "Side tab" : "Tab"}
+          label={menu.target.kind === "side" ? "Side tab" : menu.target.kind === "list" ? "Side tabs" : "Tab"}
           items={menuItems(menu.target)}
           onClose={() => setMenu(undefined)}
         />

@@ -420,6 +420,19 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       the space under the last row shows a `+` that adds one. Verify: Playwright hovers it and
       clicks. Done: `.side-fill` fills the list's free height; the `+` also shows on keyboard
       focus and hides while a tab drags. `sidebar-status.spec.ts` (1).
+- [x] 8.11 Sidebar title strip (owner request, 2026-11-05): no header row; the TERMINESCU
+      wordmark in the reel's font and colours sits beside the traffic lights; sort moves to the
+      empty-space menu and the palette. Verify: Playwright checks the strip, the menu and the
+      palette. Done: the 34 pt strip matches the tab bar, `--chrome` undoes the zoom on both, and
+      the lights sit at (14, 20). `sidebar-chrome.spec.ts` (3), sort test moved.
+- [x] 8.12 Move the window by its header (owner report, 2026-11-05). Cause: the drag regions
+      were in the markup, but the capability had only `core:default`, which leaves out
+      `core:window:allow-start-dragging`, so each drag was refused. Done: the permission, and the
+      tab bar hint is a drag region too.
+- [x] 8.13 Startup crash report (owner report, 2026-11-05): two crashes at launch, both a setup
+      error that Tauri turns into an abort with no message. Not reproduced since. Done: stderr
+      goes to `logs/app.log` when no terminal is attached (every `terminescu:` line and the
+      panic text, stamped), and a setup error shows an alert and quits.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

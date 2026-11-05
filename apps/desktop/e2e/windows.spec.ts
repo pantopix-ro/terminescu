@@ -262,7 +262,7 @@ const varsOf = (page: Page, side: string) =>
 
 test("dropping a side tab onto another merges them; without a clash, a toast offers undo", async ({ page }) => {
   await start(page);
-  await page.locator(".side-new").click();
+  await page.getByRole("button", { name: "Add a side tab" }).click();
   await expect.poll(() => sideIds(page)).toHaveLength(2);
   const [first, second] = await sideIds(page);
   await setVar(page, first!, "repo", "acme/api");
@@ -281,7 +281,7 @@ test("dropping a side tab onto another merges them; without a clash, a toast off
 
 test("a clash asks: keep both renames the source's variable", async ({ page }) => {
   await start(page);
-  await page.locator(".side-new").click();
+  await page.getByRole("button", { name: "Add a side tab" }).click();
   await expect.poll(() => sideIds(page)).toHaveLength(2);
   const [first, second] = await sideIds(page);
   await setVar(page, first!, "branch", "feature/PROJ-482");

@@ -53,6 +53,13 @@ test("a waiting session shows amber over a manual status", async ({ page }) => {
   await expect(side).not.toHaveClass(/\bneed\b/);
 });
 
+// The sort lives in the menu of the empty space under the rows.
+async function sortBy(page: Page, mode: string) {
+  await page.locator(".side-fill").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Sort side tabs" }).click();
+  await page.getByRole("menuitem", { name: new RegExp(`^${mode}`) }).click();
+}
+
 test("sorting by background groups tints, by name inside each", async ({ page }) => {
   await open(page);
   const windowId = await page.evaluate(() => (window as any).__terminescu.host.workspace().windows[0].id);
@@ -71,13 +78,15 @@ test("sorting by background groups tints, by name inside each", async ({ page })
   }
   const names = page.locator(".ao-st .t");
   await expect(names).toHaveText(["shell", "zeta", "alpha", "mid", "beta"]);
-  await page.getByLabel("Sort side tabs").selectOption("background");
+  await sortBy(page, "background");
   await expect(names).toHaveText(["alpha", "beta", "zeta", "mid", "shell"]);
-  await page.getByLabel("Sort side tabs").selectOption("name");
+  await sortBy(page, "name");
   await expect(names).toHaveText(["alpha", "beta", "mid", "shell", "zeta"]);
   // The choice survives a reload.
   await page.reload();
-  await expect(page.getByLabel("Sort side tabs")).toHaveValue("name");
+  await page.locator(".side-fill").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Sort side tabs" }).click();
+  await expect(page.getByRole("menuitem", { name: "name ✓" })).toBeVisible();
 });
 
 test("an exit-code rule and terminescu status set dynamic statuses", async ({ page }) => {

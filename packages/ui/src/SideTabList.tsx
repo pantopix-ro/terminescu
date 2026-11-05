@@ -3,7 +3,7 @@ import { leaf, panesOf, type AgentView, type Shown, type SideTab, type Tab } fro
 import { useState, type KeyboardEvent, type MouseEvent } from "react";
 import { DOT, tabAgent, type Agents } from "./agents";
 import { StatusChip } from "./StatusChip";
-import { chipOf, rowStyle, SORTS, type Builtins, type Chip, type SortMode } from "./status";
+import { chipOf, rowStyle, type Builtins, type Chip, type SortMode } from "./status";
 
 export interface SideTabListProps {
   sideTabs: SideTab[];
@@ -23,10 +23,9 @@ export interface SideTabListProps {
   builtins?: Builtins;
   /** The order `sideTabs` comes in; drops between rows only make sense in manual order. */
   sort?: SortMode;
-  onSort?(mode: SortMode): void;
   /** Text panes' documents, for tab names. */
   docs?: DocMarks;
-  /** A right click, Shift F10 or the menu key on a row (task 8.7), at a window point. */
+  /** A right click, Shift F10 or the menu key on a row (task 8.7), or a right click under the rows, at a window point. */
   onMenu?(at: { x: number; y: number }, target: MenuTarget): void;
   /** The side tab or tab id whose name is being edited in place. */
   renaming?: string;
@@ -62,7 +61,7 @@ function ChipButton({ chip, label, onClick }: { chip: Chip; label: string; onCli
 }
 
 /** What a sidebar right click was on. */
-export type MenuTarget = { kind: "side"; sideTabId: string } | { kind: "tab"; sideTabId: string; tabId: string };
+export type MenuTarget = { kind: "side"; sideTabId: string } | { kind: "tab"; sideTabId: string; tabId: string } | { kind: "list" };
 
 /** The point a menu opens at: the click, or under the row for the keyboard. */
 function menuAt(e: MouseEvent | KeyboardEvent): { x: number; y: number } {
@@ -341,7 +340,6 @@ export function SideTabList({
   statuses = {},
   builtins = {},
   sort = "manual",
-  onSort,
   docs = {},
   onMenu,
   renaming,
@@ -352,25 +350,6 @@ export function SideTabList({
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   return (
     <nav className="ao-side" aria-label="Side tabs">
-      <div className="side-head">
-        <span className="ao-pixel ao-dim">Side tabs</span>
-        <span className="grow" />
-        {onSort && (
-          <label className="small ao-dim side-sort">
-            sort
-            <select className="ao-input" value={sort} aria-label="Sort side tabs" onChange={(e) => onSort(e.target.value as SortMode)}>
-              {SORTS.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        <button type="button" className="ao-btn ghost side-new" aria-label="New side tab" onClick={onNew}>
-          <i className="ao-i ao-i-plus" />
-        </button>
-      </div>
       <div className="side-list">
         {sideTabs.map((s, i) => (
           <div key={s.id} className="side-item">
@@ -402,7 +381,15 @@ export function SideTabList({
         <Gap index={sideTabs.length} dragging={dragging && !draggingSide} end />
         {/* The empty space under the last row: hovering it shows a + that adds a side tab. */}
         {!dragging && (
-          <div className="side-fill" onDoubleClick={onNew}>
+          <div
+            className="side-fill"
+            onDoubleClick={onNew}
+            onContextMenu={(e) => {
+              if (!onMenu) return;
+              e.preventDefault();
+              onMenu(menuAt(e), { kind: "list" });
+            }}
+          >
             <button type="button" className="side-add" aria-label="Add a side tab" title="New side tab (⌘N)" onClick={onNew}>
               <i className="ao-i ao-i-plus" />
             </button>
