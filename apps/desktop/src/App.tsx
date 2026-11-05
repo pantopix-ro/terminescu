@@ -667,11 +667,13 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                   name: d.name,
                   body: d.body,
                   target: d.target,
-                  launcher: false,
+                  launcher: d.launcher && !d.global,
                 })
               }
               onDelete={(id) => host.deleteCommand(id)}
               onRun={runCommand}
+              statuses={statuses}
+              onRestart={(id) => (activeSide ? host.restartLauncher(activeSide.id, id) : Promise.resolve())}
             />
           </aside>
           <main className="app-main">

@@ -102,6 +102,139 @@ fn attention_set(state: State<'_, AppState>, settings: attention::Settings) -> R
     attention::set_settings(&lock(&state.db), settings).map_err(|e| e.to_string())
 }
 
+/// The line a launcher command types, filled from its side tab's variables. A launcher runs
+/// with no one to ask, so a missing name refuses it.
+fn launcher_bytes(db: &Db, rt: &Runtime, command: &SavedCommand) -> Result<Vec<u8>, String> {
+    let side = command
+        .side_tab_id
+        .as_deref()
+        .ok_or("a launcher command belongs to one side tab")?;
+    let daemon = rt.daemon();
+    let vars = vars::list(db, daemon.as_deref(), side).map_err(|e| e.to_string())?;
+    let resolved = commands::resolve(&command.body, &vars, &BTreeMap::new());
+    if !resolved.missing.is_empty() {
+        return Err(format!(
+            "{} needs a value for {} in its side tab first",
+            command.name,
+            resolved.missing.join(", ")
+        ));
+    }
+    if !resolved.unsafe_for_run.is_empty() {
+        return Err(format!(
+            "{} holds a line break, so {} cannot run on its own",
+            resolved.unsafe_for_run.join(", "),
+            command.name
+        ));
+    }
+    Ok(commands::type_bytes(&resolved.text, true))
+}
+
+/// Starts a launcher command: in its tab when that tab still exists, else in a new tab of its
+/// side tab, which it then remembers. Takes the database lock only briefly: opening a tab saves
+/// the layout, which locks the database too.
+fn launch(db: &Mutex<Db>, rt: &Runtime, command: &SavedCommand) -> Result<(), String> {
+    let bytes = launcher_bytes(&lock(db), rt, command)?;
+    let ws = rt.workspace();
+    let pane = command.tab_id.as_deref().and_then(|tab| {
+        ws.windows
+            .iter()
+            .flat_map(|w| &w.side_tabs)
+            .flat_map(|s| &s.tabs)
+            .find(|t| t.id == tab)
+            .and_then(|t| t.layout.terminals().into_iter().next().cloned())
+    });
+    if let Some(pane) = pane {
+        rt.type_into(&pane, bytes);
+        return Ok(());
+    }
+    let side = command.side_tab_id.clone().unwrap_or_default();
+    let pane = rt
+        .command_then_type(Command::CreateTab { side_tab_id: side }, bytes)
+        .map_err(|e| e.to_string())?;
+    let tab = pane.and_then(|p| rt.workspace().locate_pane(&p).map(|(_, t)| t.id.clone()));
+    commands::set_tab(&lock(db), &command.id, tab.as_deref()).map_err(|e| e.to_string())
+}
+
+/// Hands the runtime every launcher side tab and its commands' tabs, for `n/m up`.
+fn refresh_launchers(db: &Db, rt: &Runtime) {
+    let list = match commands::launchers(db) {
+        Ok(list) => list,
+        Err(e) => return eprintln!("terminescu: launchers not loaded: {e}"),
+    };
+    let mut map: std::collections::HashMap<Id, Vec<Option<Id>>> = Default::default();
+    for c in list {
+        if let Some(side) = c.side_tab_id {
+            map.entry(side).or_default().push(c.tab_id);
+        }
+    }
+    rt.set_launchers(map);
+}
+
+/// After a reboot each launcher tab has a fresh shell: run its command there again (D23).
+fn rerun_launchers(db: &Db, rt: &Runtime) {
+    let fresh = rt.take_respawned();
+    if fresh.is_empty() {
+        return;
+    }
+    let ws = rt.workspace();
+    for c in commands::launchers(db).unwrap_or_default() {
+        let Some(tab) = c.tab_id.as_deref() else {
+            continue;
+        };
+        let first = ws
+            .windows
+            .iter()
+            .flat_map(|w| &w.side_tabs)
+            .flat_map(|s| &s.tabs)
+            .find(|t| t.id == tab)
+            .and_then(|t| t.layout.terminals().into_iter().next().cloned());
+        if let Some(pane) = first.filter(|p| fresh.contains(p)) {
+            match launcher_bytes(db, rt, &c) {
+                Ok(bytes) => {
+                    rt.type_into(&pane, bytes);
+                }
+                Err(e) => eprintln!("terminescu: launcher not rerun: {e}"),
+            }
+        }
+    }
+}
+
+/// Runs the launcher commands that are down again: one, or every one of a side tab.
+#[tauri::command]
+fn launcher_restart(
+    state: State<'_, AppState>,
+    side_tab: Id,
+    id: Option<Id>,
+) -> Result<(), String> {
+    let rt = &state.runtime;
+    let statuses = rt.statuses();
+    let down = |c: &SavedCommand| {
+        c.tab_id
+            .as_ref()
+            .and_then(|t| statuses.get(t))
+            .is_none_or(|s| s.auto != Auto::Running)
+    };
+    let list: Vec<SavedCommand> = commands::launchers(&lock(&state.db))
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .filter(|c| c.side_tab_id.as_deref() == Some(side_tab.as_str()))
+        .filter(|c| id.as_ref().is_none_or(|id| *id == c.id))
+        .filter(down)
+        .collect();
+    let mut errors = Vec::new();
+    for c in &list {
+        if let Err(e) = launch(&state.db, rt, c) {
+            errors.push(e);
+        }
+    }
+    refresh_launchers(&lock(&state.db), rt);
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
+    }
+}
+
 #[tauri::command]
 fn commands_list(
     state: State<'_, AppState>,
@@ -117,8 +250,15 @@ fn command_create(
     command: NewCommand,
 ) -> Result<SavedCommand, String> {
     let saved = commands::create(&lock(&state.db), &command).map_err(|e| e.to_string())?;
+    let started = saved
+        .launcher
+        .then(|| launch(&state.db, &state.runtime, &saved));
+    refresh_launchers(&lock(&state.db), &state.runtime);
     let _ = app.emit(COMMANDS_EVENT, ());
-    Ok(saved)
+    match started {
+        Some(Err(e)) => Err(format!("saved, but not started: {e}")),
+        _ => commands::get(&lock(&state.db), &saved.id).map_err(|e| e.to_string()),
+    }
 }
 
 #[tauri::command]
@@ -128,14 +268,27 @@ fn command_update(
     id: Id,
     command: NewCommand,
 ) -> Result<SavedCommand, String> {
-    let saved = commands::update(&lock(&state.db), &id, &command).map_err(|e| e.to_string())?;
+    let (before, saved) = {
+        let db = lock(&state.db);
+        let before = commands::get(&db, &id).map_err(|e| e.to_string())?;
+        let saved = commands::update(&db, &id, &command).map_err(|e| e.to_string())?;
+        (before, saved)
+    };
+    let started =
+        (saved.launcher && !before.launcher).then(|| launch(&state.db, &state.runtime, &saved));
+    refresh_launchers(&lock(&state.db), &state.runtime);
     let _ = app.emit(COMMANDS_EVENT, ());
-    Ok(saved)
+    match started {
+        Some(Err(e)) => Err(format!("saved, but not started: {e}")),
+        _ => commands::get(&lock(&state.db), &id).map_err(|e| e.to_string()),
+    }
 }
 
 #[tauri::command]
 fn command_delete(app: AppHandle, state: State<'_, AppState>, id: Id) -> Result<(), String> {
-    commands::delete(&lock(&state.db), &id).map_err(|e| e.to_string())?;
+    let db = lock(&state.db);
+    commands::delete(&db, &id).map_err(|e| e.to_string())?;
+    refresh_launchers(&db, &state.runtime);
     let _ = app.emit(COMMANDS_EVENT, ());
     Ok(())
 }
@@ -828,7 +981,10 @@ fn start_runtime(
                 Ok(rules) => rt.set_status_rules(rules),
                 Err(e) => eprintln!("terminescu: status rules not reloaded: {e}"),
             }
+            // Their commands went with them too.
+            refresh_launchers(&db, rt);
             let _ = handle.emit(STATUS_CONFIG_EVENT, ());
+            let _ = handle.emit(COMMANDS_EVENT, ());
         }
     });
     let (runtime, windows) = Runtime::start(
@@ -1050,6 +1206,11 @@ fn main() {
                 attention.clone(),
                 updates,
             );
+            {
+                let db = lock(&db);
+                refresh_launchers(&db, &runtime);
+                rerun_launchers(&db, &runtime);
+            }
             app.manage(AppState {
                 runtime,
                 db,
@@ -1089,6 +1250,7 @@ fn main() {
             command_update,
             command_delete,
             command_run,
+            launcher_restart,
             attention_settings,
             attention_set,
             host_statuses,

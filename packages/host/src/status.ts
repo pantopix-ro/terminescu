@@ -68,3 +68,23 @@ export function computeStatuses(
   }
   return out;
 }
+
+/** A launcher side tab's look, as `launcher_look` in the core. */
+export const launcherLook = (up: number, total: number): Look => ({
+  label: `${up}/${total} up`,
+  accent: up === total ? "green" : "red",
+  background: null,
+});
+
+/**
+ * Gives each launcher side tab its `n/m up` status under a manual one, as `apply_launchers` in
+ * the core: a command is up while its tab's auto status is Running.
+ */
+export function applyLaunchers(map: Record<Id, Shown>, launchers: ReadonlyMap<Id, (Id | null)[]>): void {
+  for (const [side, tabs] of launchers) {
+    const shown = map[side];
+    if (!tabs.length || !shown || shown.source === "manual") continue;
+    const up = tabs.filter((t) => t !== null && map[t]?.auto === "running").length;
+    map[side] = { ...shown, source: "launcher", look: launcherLook(up, tabs.length) };
+  }
+}

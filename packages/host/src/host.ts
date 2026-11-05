@@ -83,6 +83,8 @@ export interface Host {
   deleteCommand(id: Id): Promise<void>;
   /** Fills and types a command: Run with Enter, Insert without (D24). */
   runSavedCommand(request: RunRequest): Promise<RunOutcome>;
+  /** Runs a side tab's launcher commands that are down again: `id`, or all of them. */
+  restartLauncher(sideTabId: Id, id?: Id): Promise<void>;
   /** Commands changed in any window. Resolves with a function that removes the listener. */
   onCommands(listener: () => void): Promise<() => void>;
   /** Entries a session's transcript gained since `offset`; start at 0 (task 4.4). */

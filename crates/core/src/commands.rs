@@ -54,8 +54,11 @@ pub struct SavedCommand {
     pub name: String,
     pub body: String,
     pub target: Target,
-    /// A launcher side tab runs it in its own tab when it opens (6.8).
+    /// A launcher command runs in its own tab when saved and after a reboot, and the side tab
+    /// shows how many of them are up.
     pub launcher: bool,
+    /// The tab a launcher command runs in, while it exists.
+    pub tab_id: Option<Id>,
     pub position: i64,
     pub created_at: i64,
 }
@@ -84,6 +87,8 @@ pub enum CommandStoreError {
     TooLong,
     #[error("no command {0}")]
     NoCommand(String),
+    #[error("a launcher command belongs to one side tab")]
+    GlobalLauncher,
     #[error(transparent)]
     Db(#[from] DbError),
 }
@@ -97,6 +102,9 @@ impl From<rusqlite::Error> for CommandStoreError {
 pub type Result<T> = std::result::Result<T, CommandStoreError>;
 
 fn check(new: &NewCommand) -> Result<(String, String)> {
+    if new.launcher && new.side_tab_id.is_none() {
+        return Err(CommandStoreError::GlobalLauncher);
+    }
     let name = new.name.trim();
     if name.is_empty() || name.chars().count() > MAX_NAME {
         return Err(CommandStoreError::BadName);
@@ -112,7 +120,8 @@ fn check(new: &NewCommand) -> Result<(String, String)> {
     Ok((name.to_string(), body))
 }
 
-const SELECT: &str = "SELECT id, side_tab_id, name, body, target, launcher, position, created_at
+const SELECT: &str =
+    "SELECT id, side_tab_id, name, body, target, launcher, position, created_at, tab_id
    FROM commands";
 
 fn row(r: &rusqlite::Row<'_>) -> rusqlite::Result<SavedCommand> {
@@ -126,6 +135,7 @@ fn row(r: &rusqlite::Row<'_>) -> rusqlite::Result<SavedCommand> {
         launcher: r.get::<_, i64>(5)? == 1,
         position: r.get(6)?,
         created_at: r.get(7)?,
+        tab_id: r.get(8)?,
     })
 }
 
@@ -201,6 +211,26 @@ pub fn update(db: &Db, id: &str, new: &NewCommand) -> Result<SavedCommand> {
         return Err(CommandStoreError::NoCommand(id.into()));
     }
     get(db, id)
+}
+
+/// Every launcher command, in each side tab's saved order.
+pub fn launchers(db: &Db) -> Result<Vec<SavedCommand>> {
+    let owner = db.local_owner()?;
+    let mut stmt = db.conn().prepare(&format!(
+        "{SELECT} WHERE owner_id = ?1 AND launcher = 1 ORDER BY side_tab_id, position, created_at"
+    ))?;
+    let rows = stmt.query_map(params![owner], row)?;
+    Ok(rows.collect::<rusqlite::Result<_>>()?)
+}
+
+/// Remembers the tab a launcher command runs in.
+pub fn set_tab(db: &Db, id: &str, tab: Option<&str>) -> Result<()> {
+    let owner = db.local_owner()?;
+    db.conn().execute(
+        "UPDATE commands SET tab_id = ?3 WHERE owner_id = ?1 AND id = ?2",
+        params![owner, id, tab],
+    )?;
+    Ok(())
 }
 
 pub fn delete(db: &Db, id: &str) -> Result<()> {

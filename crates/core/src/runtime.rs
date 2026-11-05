@@ -155,6 +155,10 @@ struct Inner {
     status_dirty: Mutex<bool>,
     status_wake: Condvar,
     status_sink: Mutex<Option<StatusSink>>,
+    /// Launcher side tabs and the tab of each of their commands (D24).
+    launchers: Mutex<HashMap<Id, Vec<Option<Id>>>>,
+    /// Panes that got a fresh shell at start, most likely after a reboot; launchers rerun there.
+    respawned: Mutex<Vec<Id>>,
     context_sink: Mutex<Option<ContextSink>>,
     queued: Condvar,
     emit: Emit,
@@ -281,6 +285,8 @@ impl Runtime {
                 status_dirty: Mutex::new(true),
                 status_wake: Condvar::new(),
                 status_sink: Mutex::default(),
+                launchers: Mutex::default(),
+                respawned: Mutex::new(spawn.iter().map(|(p, _, _)| p.clone()).collect()),
                 context_sink: Mutex::default(),
                 queued: Condvar::new(),
                 emit,
@@ -866,6 +872,17 @@ impl Runtime {
     }
 
     /// Asks the status thread to compute the statuses again.
+    /// The launcher side tabs and their commands' tabs; the statuses follow.
+    pub fn set_launchers(&self, launchers: HashMap<Id, Vec<Option<Id>>>) {
+        *lock(&self.inner.launchers) = launchers;
+        self.mark_status();
+    }
+
+    /// The panes that started with a fresh shell, once: the app reruns launchers there.
+    pub fn take_respawned(&self) -> Vec<Id> {
+        std::mem::take(&mut *lock(&self.inner.respawned))
+    }
+
     fn mark_status(&self) {
         *lock(&self.inner.status_dirty) = true;
         self.inner.status_wake.notify_one();
@@ -1002,7 +1019,8 @@ impl Runtime {
                 )
             })
             .collect();
-        let map = status::compute(&ws, &facts, &st.engine);
+        let mut map = status::compute(&ws, &facts, &st.engine);
+        status::apply_launchers(&mut map, &lock(&self.inner.launchers));
         if map != st.last {
             st.last = map.clone();
             if let Some(sink) = lock(&self.inner.status_sink).as_ref() {

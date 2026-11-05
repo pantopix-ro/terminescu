@@ -182,6 +182,8 @@ pub struct Dynamic {
 #[serde(rename_all = "camelCase")]
 pub enum Source {
     Manual,
+    /// A launcher side tab's `n/m up` (D24).
+    Launcher,
     Rule,
     Cli,
     Auto,
@@ -431,6 +433,35 @@ impl Engine {
     }
 }
 
+/// A launcher side tab's look: how many of its commands run, green when all do, red otherwise.
+pub fn launcher_look(up: usize, total: usize) -> Look {
+    Look {
+        label: format!("{up}/{total} up"),
+        accent: Some(if up == total { "green" } else { "red" }.into()),
+        background: None,
+    }
+}
+
+/// Gives each launcher side tab its `n/m up` status, under a manual one (D24). `launchers`
+/// maps a side tab to the tab of each launcher command, `None` when that tab is gone; a
+/// command is up while its tab's auto status is Running.
+pub fn apply_launchers(map: &mut BTreeMap<Id, Shown>, launchers: &HashMap<Id, Vec<Option<Id>>>) {
+    for (side, tabs) in launchers {
+        if tabs.is_empty() || map.get(side).is_none_or(|s| s.source == Source::Manual) {
+            continue;
+        }
+        let up = tabs
+            .iter()
+            .flatten()
+            .filter(|t| map.get(*t).is_some_and(|s| s.auto == Auto::Running))
+            .count();
+        if let Some(shown) = map.get_mut(side) {
+            shown.source = Source::Launcher;
+            shown.look = Some(launcher_look(up, tabs.len()));
+        }
+    }
+}
+
 /// What the runtime knows about one terminal pane.
 #[derive(Debug, Clone, Default)]
 pub struct PaneFacts {
@@ -480,6 +511,35 @@ pub fn compute(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_launcher_counts_running_tabs_under_a_manual_status() {
+        let shown = |auto, source| Shown {
+            auto,
+            waiting: false,
+            source,
+            look: None,
+        };
+        let mut map = BTreeMap::from([
+            ("s1".to_string(), shown(Auto::Running, Source::Auto)),
+            ("t1".to_string(), shown(Auto::Running, Source::Auto)),
+            ("t2".to_string(), shown(Auto::Failed, Source::Auto)),
+            ("s2".to_string(), shown(Auto::Idle, Source::Manual)),
+        ]);
+        let launchers = HashMap::from([
+            (
+                "s1".to_string(),
+                vec![Some("t1".to_string()), Some("t2".to_string()), None],
+            ),
+            ("s2".to_string(), vec![Some("t1".to_string())]),
+        ]);
+        apply_launchers(&mut map, &launchers);
+        assert_eq!(map["s1"].source, Source::Launcher);
+        assert_eq!(map["s1"].look, Some(launcher_look(1, 3)));
+        assert_eq!(launcher_look(1, 3).accent.as_deref(), Some("red"));
+        assert_eq!(launcher_look(2, 2).accent.as_deref(), Some("green"));
+        assert_eq!(map["s2"].source, Source::Manual, "a manual status stays");
+    }
+
     use super::*;
 
     #[test]

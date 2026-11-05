@@ -58,7 +58,8 @@ export const AUTOS = ["idle", "failed", "done", "running", "waiting"] as const;
 export type Auto = (typeof AUTOS)[number];
 
 /** Where a shown status comes from: manual, then rule or CLI, then auto. */
-export type StatusSource = "manual" | "rule" | "cli" | "auto";
+/** `launcher` is a launcher side tab's `n/m up` (D24). */
+export type StatusSource = "manual" | "launcher" | "rule" | "cli" | "auto";
 
 /** What a tab or side tab shows. `look` is absent when the auto status shows. */
 export interface Shown {
@@ -316,6 +317,8 @@ export interface SavedCommand {
   body: string;
   target: CommandTarget;
   launcher: boolean;
+  /** The tab a launcher command runs in, while it exists. */
+  tabId: Id | null;
   position: number;
   createdAt: number;
 }

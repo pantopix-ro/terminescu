@@ -1,4 +1,4 @@
-import type { CommandTarget, RunOutcome, SavedCommand } from "@terminescu/host";
+import type { CommandTarget, Id, RunOutcome, SavedCommand, Shown } from "@terminescu/host";
 import { useState } from "react";
 
 export const TARGET_LABEL: Record<CommandTarget, string> = {
@@ -12,6 +12,8 @@ export interface CommandDraft {
   body: string;
   target: CommandTarget;
   global: boolean;
+  /** Runs in its own tab when the side tab opens and after a reboot (D24). */
+  launcher: boolean;
 }
 
 export interface CommandsSectionProps {
@@ -23,7 +25,15 @@ export interface CommandsSectionProps {
   onDelete(id: string): Promise<unknown>;
   /** Run sends Enter, insert does not; `extra` holds values typed for missing names. */
   onRun(command: SavedCommand, run: boolean, extra: Record<string, string>): Promise<RunOutcome>;
+  /** Shown statuses: a launcher command is up while its tab runs something. */
+  statuses: Record<Id, Shown>;
+  /** Runs launcher commands that are down again: one, or all of the side tab's. */
+  onRestart(id?: Id): Promise<unknown>;
 }
+
+/** Whether a launcher command runs: its tab's auto status is Running. */
+export const launcherUp = (c: SavedCommand, statuses: Record<Id, Shown>) =>
+  c.tabId !== null && statuses[c.tabId]?.auto === "running";
 
 interface Asking {
   command: SavedCommand;
@@ -37,9 +47,9 @@ interface Asking {
  * the line and Enter into the command's target, Insert types it without Enter. A missing name
  * is asked for here and never saved.
  */
-export function CommandsSection({ commands, enabled, onAdd, onDelete, onRun }: CommandsSectionProps) {
+export function CommandsSection({ commands, enabled, onAdd, onDelete, onRun, statuses, onRestart }: CommandsSectionProps) {
   const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState<CommandDraft>({ name: "", body: "", target: "newTab", global: false });
+  const [draft, setDraft] = useState<CommandDraft>({ name: "", body: "", target: "newTab", global: false, launcher: false });
   const [asking, setAsking] = useState<Asking>();
   const [error, setError] = useState<string>();
 
@@ -60,17 +70,28 @@ export function CommandsSection({ commands, enabled, onAdd, onDelete, onRun }: C
     setError(undefined);
     try {
       await onAdd(draft);
-      setDraft({ name: "", body: "", target: draft.target, global: false });
+      setDraft({ name: "", body: "", target: draft.target, global: false, launcher: false });
       setAdding(false);
     } catch (e) {
       setError(String(e));
     }
   };
 
+  const restart = (id?: Id) => {
+    setError(undefined);
+    void onRestart(id).catch((e: unknown) => setError(String(e)));
+  };
+  const down = commands.filter((c) => c.launcher && !launcherUp(c, statuses));
+
   return (
     <section className="cmd-section" aria-label="Commands">
       <header className="cmd-head">
         <span className="ao-pixel small grow">Commands</span>
+        {down.length > 0 && (
+          <button type="button" className="ao-btn ghost" disabled={!enabled} onClick={() => restart()}>
+            Restart down
+          </button>
+        )}
         <button type="button" className="ao-btn ghost cmd-new" aria-label="New command" disabled={!enabled} onClick={() => setAdding((a) => !a)}>
           +
         </button>
@@ -101,7 +122,15 @@ export function CommandsSection({ commands, enabled, onAdd, onDelete, onRun }: C
               ))}
             </select>
             <label className="small">
-              <input type="checkbox" checked={draft.global} onChange={(e) => setDraft({ ...draft, global: e.target.checked })} /> global
+              <input
+                type="checkbox"
+                checked={draft.global}
+                onChange={(e) => setDraft({ ...draft, global: e.target.checked, launcher: e.target.checked ? false : draft.launcher })}
+              />{" "}
+              global
+            </label>
+            <label className="small" title="Runs in its own tab when the side tab opens and after a reboot">
+              <input type="checkbox" disabled={draft.global} checked={draft.launcher} onChange={(e) => setDraft({ ...draft, launcher: e.target.checked })} /> launcher
             </label>
             <span className="grow" />
             <button type="submit" className="ao-btn">
@@ -121,8 +150,16 @@ export function CommandsSection({ commands, enabled, onAdd, onDelete, onRun }: C
             <span className="cmd-meta small ao-dim">
               {TARGET_LABEL[c.target]}
               {c.sideTabId === null ? " · global" : ""}
+              {c.launcher && (
+                <span className={launcherUp(c, statuses) ? "cmd-up" : "cmd-down"}>{launcherUp(c, statuses) ? " · launcher · up" : " · launcher · down"}</span>
+              )}
             </span>
             <span className="cmd-acts">
+              {c.launcher && !launcherUp(c, statuses) && (
+                <button type="button" className="ao-btn" aria-label={`Restart ${c.name}`} disabled={!enabled} onClick={() => restart(c.id)}>
+                  Restart
+                </button>
+              )}
               <button type="button" className="ao-btn" aria-label={`Run ${c.name}`} disabled={!enabled} onClick={() => void go(c, true)}>
                 Run
               </button>

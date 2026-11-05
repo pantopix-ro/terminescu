@@ -36,7 +36,7 @@ import {
   type Workspace,
 } from "./protocol";
 import { applyBatch } from "./reducer";
-import { computeStatuses, type PaneDynamic, type PaneFacts } from "./status";
+import { applyLaunchers, computeStatuses, type PaneDynamic, type PaneFacts } from "./status";
 
 export class MockCommandError extends Error {
   constructor(readonly error: CommandError) {
@@ -180,6 +180,25 @@ export function createMockHost(initial?: Workspace): MockHost {
     return (clean.includes("\n") ? `\x1b[200~${clean}\x1b[201~` : clean) + (run ? "\r" : "");
   };
   const typeInto = (pane: string, bytes: string) => typed.set(pane, (typed.get(pane) ?? "") + bytes);
+  // As `launch` in the app: its own tab when that tab still exists, else a new one. Returns an
+  // error text, or undefined once typed.
+  const launch = async (c: SavedCommand): Promise<string | undefined> => {
+    const { text, missing, unsafe } = resolveCommand(c.body, c.sideTabId!, {});
+    if (missing.length) return `${c.name} needs a value for ${missing.join(", ")} in its side tab first`;
+    if (unsafe.length) return `${unsafe.join(", ")} holds a line break, so ${c.name} cannot run on its own`;
+    const tab = ws.windows.flatMap((w) => w.sideTabs.flatMap((s) => s.tabs)).find((t) => t.id === c.tabId);
+    const pane = tab && terminalsOf(tab.layout)[0];
+    if (pane) {
+      typeInto(pane, typeBytes(text, true));
+      return undefined;
+    }
+    const before = new Set(terminalPanes());
+    await host.send({ type: "CreateTab", sideTabId: c.sideTabId! });
+    const fresh = terminalPanes().find((p) => !before.has(p));
+    if (fresh) typeInto(fresh, typeBytes(text, true));
+    c.tabId = fresh ? tabOfPane(fresh).id : null;
+    return undefined;
+  };
   const terminalPanes = () => ws.windows.flatMap((w) => w.sideTabs.flatMap((s) => s.tabs.flatMap((t) => terminalsOf(t.layout))));
   const chimeListeners = new Set<() => void>();
   const transcripts = new Map<string, Entry[]>();
@@ -257,6 +276,11 @@ export function createMockHost(initial?: Workspace): MockHost {
     for (const [p, a] of agents) facts.set(p, { agent: a.state });
     for (const [p, sh] of shellFacts) facts.set(p, { ...facts.get(p), shell: sh });
     const next = computeStatuses(ws, facts, newestByPane());
+    const launchers = new Map<string, (string | null)[]>();
+    for (const c of savedCommands.filter((c) => c.launcher && c.sideTabId)) {
+      launchers.set(c.sideTabId!, [...(launchers.get(c.sideTabId!) ?? []), c.tabId]);
+    }
+    applyLaunchers(next, launchers);
     if (JSON.stringify(next) === JSON.stringify(shown)) return;
     shown = next;
     for (const l of statusListeners) l(structuredClone(next));
@@ -577,22 +601,32 @@ export function createMockHost(initial?: Workspace): MockHost {
     async createCommand(c) {
       const { name, body } = checkCommand(c.name, c.body);
       const position = savedCommands.filter((x) => x.sideTabId === c.sideTabId).length;
-      const saved: SavedCommand = { ...c, name, body, id: id(), position, createdAt: Date.now() };
+      if (c.launcher && c.sideTabId === null) throw new Error("a launcher command belongs to one side tab");
+      const saved: SavedCommand = { ...c, name, body, id: id(), tabId: null, position, createdAt: Date.now() };
       savedCommands.push(saved);
+      const started = saved.launcher ? await launch(saved) : undefined;
       commandsChanged();
+      recompute();
+      if (started) throw new Error(`saved, but not started: ${started}`);
       return structuredClone(saved);
     },
     async updateCommand(cid, c) {
       const old = savedCommands.find((x) => x.id === cid);
       if (!old) throw new Error(`no command ${cid}`);
       const { name, body } = checkCommand(c.name, c.body);
+      if (c.launcher && old.sideTabId === null) throw new Error("a launcher command belongs to one side tab");
+      const wasLauncher = old.launcher;
       Object.assign(old, { name, body, target: c.target, launcher: c.launcher });
+      const started = old.launcher && !wasLauncher ? await launch(old) : undefined;
       commandsChanged();
+      recompute();
+      if (started) throw new Error(`saved, but not started: ${started}`);
       return structuredClone(old);
     },
     async deleteCommand(cid) {
       savedCommands = savedCommands.filter((x) => x.id !== cid);
       commandsChanged();
+      recompute();
     },
     async runSavedCommand(r) {
       const c = savedCommands.find((x) => x.id === r.id);
@@ -614,6 +648,18 @@ export function createMockHost(initial?: Workspace): MockHost {
       const pane = terminalPanes().find((p) => !before.has(p)) ?? null;
       if (pane) typeInto(pane, bytes);
       return { kind: "done", pane };
+    },
+    async restartLauncher(side, cid) {
+      const errors: string[] = [];
+      for (const c of savedCommands.filter((c) => c.launcher && c.sideTabId === side && (!cid || c.id === cid))) {
+        const up = c.tabId !== null && shown[c.tabId]?.auto === "running";
+        if (up) continue;
+        const e = await launch(c);
+        if (e) errors.push(e);
+      }
+      commandsChanged();
+      recompute();
+      if (errors.length) throw new Error(errors.join("; "));
     },
     async onCommands(listener) {
       commandListeners.add(listener);

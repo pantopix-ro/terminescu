@@ -267,8 +267,14 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       goes in as `$NAME`; a missing name is asked for once and never saved; Run refuses a value
       with a line break, Insert pastes it bracketed. `crates/core/tests/commands.rs`,
       `e2e/commands.spec.ts`.
-- [ ] 6.8 Launcher side tabs: run on open and after a reboot, restart, `n/m up` status (D24).
+- [x] 6.8 Launcher side tabs: run on open and after a reboot, restart, `n/m up` status (D24).
       Verify: manual, kill one process and see `1/2 up` with restart.
+      Done: migration 0006 adds `commands.tab_id`; a launcher command types into its own tab
+      (created on save, reused while it exists) and reruns at startup for panes the daemon
+      spawned fresh. A command is up while its tab's auto status is Running, so it needs shell
+      integration; a manual status wins over `n/m up`. Restart reruns only the down ones and
+      types no Ctrl-C. A daemon reconnect without a reboot reruns nothing. Global launchers are
+      refused. `status.rs` unit test, `test/status.test.ts`, `e2e/launchers.spec.ts`.
 - [ ] 6.9 Settings screen: Statuses, Commands, Variable defaults, Extraction rules (read-only),
       Shell with the opt-in `EDITOR` setting, and Keys (D25). Verify: manual against the canvas.
 - [ ] 6.10 Editable shortcuts in Settings › Keys with conflict detection; app chords win in

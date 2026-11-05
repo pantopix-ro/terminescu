@@ -9,6 +9,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (3, include_str!("../migrations/0003_statuses.sql")),
     (4, include_str!("../migrations/0004_context.sql")),
     (5, include_str!("../migrations/0005_prompt_use.sql")),
+    (6, include_str!("../migrations/0006_launcher_tab.sql")),
 ];
 
 pub const SCHEMA_VERSION: u32 = MIGRATIONS[MIGRATIONS.len() - 1].0;

@@ -212,10 +212,13 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 .cmd-name { grid-area: name; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
 .cmd-body { grid-area: body; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dim); font-size: 12px; }
 .cmd-meta { grid-area: meta; }
+.cmd-up { color: var(--green); }
+.cmd-down { color: var(--red); }
 .cmd-acts { grid-area: acts; display: inline-flex; gap: var(--space-1); }
 .cmd-acts .ao-btn { height: 22px; padding: 0 6px; font-size: 12px; }
 .cmd-form, .cmd-ask { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2) var(--space-3); border-top: 1px solid var(--line); }
 .cmd-ask p { margin: 0; }
-.cmd-form-row { display: flex; align-items: center; gap: var(--space-2); }
+.cmd-form-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.cmd-form-row select { min-width: 0; }
 .cmd-body-input { resize: vertical; font-family: var(--font-mono, inherit); }
 .cmd-section .app-error-inline { padding: 0 var(--space-3) var(--space-2); }
