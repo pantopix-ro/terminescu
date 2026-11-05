@@ -55,6 +55,8 @@ pub type AgentSink = Box<dyn Fn(&AgentUpdate) + Send + Sync>;
 pub type StatusSink = Box<dyn Fn(&BTreeMap<Id, Shown>) + Send + Sync>;
 /// Hears which side tab's daemon variables changed (D21).
 pub type ContextSink = Box<dyn Fn(&str) + Send + Sync>;
+/// Where extraction matches go: side tab, the tab they came from, the matches (D13).
+pub type FoundSink = Box<dyn Fn(&str, &str, Vec<crate::extract::Found>) + Send + Sync>;
 /// Hears the documents whose text panes left the layout (D28).
 pub type DocSink = Box<dyn Fn(&[Id]) + Send + Sync>;
 /// How often expiries and Claude idle rules are checked when nothing else happens.
@@ -162,6 +164,9 @@ struct Inner {
     /// Panes that got a fresh shell at start, most likely after a reboot; launchers rerun there.
     respawned: Mutex<Vec<Id>>,
     context_sink: Mutex<Option<ContextSink>>,
+    found_sink: Mutex<Option<FoundSink>>,
+    /// Extraction over each daemon pane's output.
+    scanners: Mutex<HashMap<PaneId, crate::extract::Scanner>>,
     doc_sink: Mutex<Option<DocSink>>,
     /// Settings › Shell: new shells point `VISUAL` and `EDITOR` at `terminescu edit --wait`.
     editor: AtomicBool,
@@ -294,6 +299,8 @@ impl Runtime {
                 launchers: Mutex::default(),
                 respawned: Mutex::new(spawn.iter().map(|(p, _, _)| p.clone()).collect()),
                 context_sink: Mutex::default(),
+                found_sink: Mutex::default(),
+                scanners: Mutex::default(),
                 doc_sink: Mutex::default(),
                 editor: AtomicBool::new(editor),
                 queued: Condvar::new(),
@@ -726,6 +733,12 @@ impl Runtime {
             }
         }
         let name = event.get("hook_event_name").and_then(|v| v.as_str());
+        // Claude's reply at the end of a turn goes through the extraction rules (D13).
+        if name == Some("Stop")
+            && let Some(reply) = event.get("last_assistant_message").and_then(|v| v.as_str())
+        {
+            self.found(daemon, crate::extract::find(reply));
+        }
         let session = event
             .get("session_id")
             .and_then(|v| v.as_str())
@@ -999,6 +1012,22 @@ impl Runtime {
         *lock(&self.inner.doc_sink) = Some(sink);
     }
 
+    /// Where PR links, artifact links and branch names found in output and replies go.
+    pub fn on_found(&self, sink: FoundSink) {
+        *lock(&self.inner.found_sink) = Some(sink);
+    }
+
+    fn found(&self, daemon: PaneId, found: Vec<crate::extract::Found>) {
+        if found.is_empty() {
+            return;
+        }
+        if let Some((side, tab)) = self.place_of_daemon(daemon)
+            && let Some(sink) = lock(&self.inner.found_sink).as_ref()
+        {
+            sink(&side, &tab, found);
+        }
+    }
+
     pub fn on_context(&self, sink: ContextSink) {
         *lock(&self.inner.context_sink) = Some(sink);
     }
@@ -1138,6 +1167,11 @@ impl Runtime {
                         {
                             self.inner.queued.notify_one();
                         }
+                        let found = lock(&self.inner.scanners)
+                            .entry(pane)
+                            .or_default()
+                            .feed(&data);
+                        self.found(pane, found);
                     }
                     DaemonEvent::Attached { pane, .. } => {
                         if let Some(p) = self.pane_of_daemon(pane) {
@@ -1168,6 +1202,7 @@ impl Runtime {
 
     /// A shell that exits closes its pane, and the last pane its tab.
     fn pane_exited(&self, daemon: PaneId) {
+        lock(&self.inner.scanners).remove(&daemon);
         match self.pane_of_daemon(daemon) {
             Some(pane) => {
                 if let Err(e) = self.command(Command::ClosePane { pane_id: pane }) {

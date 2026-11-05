@@ -365,8 +365,12 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       first window's tab bar.
 - [ ] 8.2 Side tab merge with clash dialog and undo toast; items follow their tab on move.
       Verify: `merge.test.rs` for clash, rename and concatenation.
-- [ ] 8.3 Extraction rules on entries and terminal output (PR URL, artifact URL, branch).
+- [x] 8.3 Extraction rules on entries and terminal output (PR URL, artifact URL, branch).
       Verify: fixture with an artifact URL twice yields one auto link.
+      Done: `extract.rs` finds PR links (cut to `/pull/N`), artifact links and branch names in
+      git wording; a per-pane `Scanner` reads output by whole lines through escape codes, and
+      the `Stop` hook's last reply is read too. Each match is saved once as an `auto` item.
+      Hook events now run on one ordered thread so `terminescu hook` never waits on the db.
 - [ ] 8.4 Full transcript pane: tool calls, diffs, thinking; save as prompt from a sent
       message. Verify: manual against a recorded session.
 - [ ] 8.5 Send selection to another tab. Verify: manual, text lands in the target without Enter.

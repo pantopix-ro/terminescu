@@ -1075,6 +1075,7 @@ fn start_runtime(
     );
     let rt = hooks.clone();
     let handle = app.clone();
+    let found_db = db.clone();
     let persist = Box::new(move |saved: &persist::Saved| {
         let db = lock(&db);
         if let Err(e) = persist::save(&db, saved) {
@@ -1132,6 +1133,16 @@ fn start_runtime(
     runtime.on_context(Box::new(move |side: &str| {
         let _ = handle.emit(CONTEXT_EVENT, side);
     }));
+    let found_app = app.clone();
+    runtime.on_found(Box::new(move |side: &str, tab: &str, found| {
+        match terminescu_core::extract::record(&lock(&found_db), side, Some(tab), &found) {
+            Ok(0) => {}
+            Ok(_) => {
+                let _ = found_app.emit(CONTEXT_EVENT, side);
+            }
+            Err(e) => eprintln!("terminescu: saving extracted items: {e}"),
+        }
+    }));
     runtime.set_status_rules(rules);
     let _ = hooks.set(runtime.clone());
     Ok((runtime, windows, updates))
@@ -1155,24 +1166,38 @@ fn serve_core_socket(
     db: Arc<Mutex<Db>>,
     app: AppHandle,
 ) -> std::io::Result<()> {
-    core_socket::serve(
-        path,
-        Arc::new(move |message: CoreMessage| match message.request {
-            // The session a hook names drives the tab's agent state (task 4.2) and the resume
-            // offer (task 3.4).
-            CoreRequest::Hook { event } => {
-                if let Some(rt) = runtime.get() {
-                    rt.hook(message.pane, &event);
+    // Hook events change agent state and write to the database, which can wait on a lock;
+    // `terminescu hook` must not wait for that.
+    let (hooks_tx, hooks_rx) =
+        std::sync::mpsc::channel::<(terminescu_protocol::PaneId, serde_json::Value)>();
+    {
+        let (runtime, db) = (runtime.clone(), db.clone());
+        std::thread::Builder::new()
+            .name("hook-events".into())
+            .spawn(move || {
+                for (pane, event) in hooks_rx {
+                    let Some(rt) = runtime.get() else { continue };
+                    rt.hook(pane, &event);
                     // A file Claude wrote or edited lands in the side tab's Files (D30).
                     if let (Some(t), Some((side, tab))) = (
                         terminescu_core::files::touched(&event),
-                        rt.place_of_daemon(message.pane),
+                        rt.place_of_daemon(pane),
                     ) && terminescu_core::files::record(&lock(&db), &side, Some(&tab), &t)
                         .is_ok()
                     {
                         rt.context_changed(&side);
                     }
                 }
+            })?;
+    }
+    core_socket::serve(
+        path,
+        Arc::new(move |message: CoreMessage| match message.request {
+            // The session a hook names drives the tab's agent state (task 4.2) and the resume
+            // offer (task 3.4).
+            CoreRequest::Hook { event } => {
+                // Replies at once; the hook thread does the work in arrival order (D34).
+                let _ = hooks_tx.send((message.pane, event));
                 CoreReply::Ok
             }
             // A status from `terminescu status`; it lives until it expires or the app quits.
