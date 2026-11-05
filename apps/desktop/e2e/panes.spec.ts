@@ -33,7 +33,7 @@ async function panes(page: Page): Promise<PaneState[]> {
 async function openWindow(page: Page) {
   await page.goto("/");
   for (let i = 0; i < 4; i++) await page.getByLabel("New tab").click();
-  await page.getByLabel("New side tab").click();
+  await page.getByRole("button", { name: "Add a side tab" }).click();
   for (let i = 0; i < 4; i++) await page.getByLabel("New tab").click();
   await expect(page.locator(".term-pane")).toHaveCount(10);
 }

@@ -64,7 +64,7 @@ test("the keyboard opens the menu, walks it and runs an item; Esc closes it", as
 
 test("merge into opens a submenu of the other side tabs", async ({ page }) => {
   await start(page);
-  await page.getByRole("button", { name: "New side tab" }).click();
+  await page.getByRole("button", { name: "Add a side tab" }).click();
   await expect(page.locator(".ao-side .ao-st")).toHaveCount(2);
   const ws = await workspace(page);
   const [a, b] = ws.windows[0].sideTabs;
@@ -82,7 +82,7 @@ test("merge into opens a submenu of the other side tabs", async ({ page }) => {
 
 test("move a side tab to a new window keeps its id; close asks first", async ({ page }) => {
   await start(page);
-  await page.getByRole("button", { name: "New side tab" }).click();
+  await page.getByRole("button", { name: "Add a side tab" }).click();
   await expect(page.locator(".ao-side .ao-st")).toHaveCount(2);
   const second = (await workspace(page)).windows[0].sideTabs[1];
 

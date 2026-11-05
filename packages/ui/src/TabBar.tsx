@@ -160,7 +160,7 @@ export function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNewText, ag
       </button>
       {onNewText && <NewMenu onNew={onNew} onNewText={onNewText} />}
       <span className="grow" data-tauri-drag-region />
-      <span className="small ao-dim tabs-hint">⌘D split · ⌘⇧D split down</span>
+      <span className="small ao-dim tabs-hint" data-tauri-drag-region>⌘D split · ⌘⇧D split down</span>
     </div>
   );
 }

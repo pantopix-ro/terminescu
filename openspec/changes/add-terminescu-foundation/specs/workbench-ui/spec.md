@@ -28,6 +28,21 @@ text editor. Every shortcut SHALL be editable in Settings › Keys, which SHALL 
 - **WHEN** the focused pane is a terminal and the person types `c`
 - **THEN** the shell receives `c` and no app action runs
 
+### Requirement: Title strip
+The sidebar SHALL start with a strip that holds the macOS traffic lights and the TERMINESCU
+wordmark, with no header row under it. The strip and the tab bar SHALL have the same height, and
+dragging the strip, the wordmark or the free space of the tab bar SHALL move the window. The strip
+and the lights SHALL keep their size on screen at any zoom. A startup error SHALL show an alert
+with its message and SHALL be written, with every panic, to `logs/app.log` in the support folder.
+
+#### Scenario: Move the window
+- **WHEN** the person drags the wordmark
+- **THEN** the window follows the pointer
+
+#### Scenario: A startup error
+- **WHEN** the support folder cannot be created at start
+- **THEN** an alert names the error and the log file, and the app quits
+
 ### Requirement: Zoom
 `⌘=` and `⌘+` SHALL zoom every window in one step, fonts and elements and terminal text alike,
 `⌘-` SHALL zoom out and `⌘0` SHALL go back to 100%. The zoom SHALL run from 50% to 200% and

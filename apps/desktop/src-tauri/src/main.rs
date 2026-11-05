@@ -2,6 +2,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod crashlog;
 mod docs;
 mod drag;
 
@@ -1520,7 +1521,9 @@ fn open_window(app: &AppHandle, window_id: &str, at: Option<(f64, f64, f64)>) ->
     #[cfg(target_os = "macos")]
     let builder = builder
         .title_bar_style(tauri::TitleBarStyle::Overlay)
-        .hidden_title(true);
+        .hidden_title(true)
+        // Centres the lights in the 34 px sidebar strip that holds the wordmark (app.css).
+        .traffic_light_position(tauri::LogicalPosition::new(14.0, 20.0));
     let w = builder.build()?;
     // The caller holds no db lock: the window opens from the patch emitter and from setup.
     let saved = settings::get(&lock(&app.state::<AppState>().db)).unwrap_or_default();
@@ -1642,7 +1645,62 @@ fn send_action(app: &AppHandle, id: &str) {
     }
 }
 
+/// Opens the database, starts the runtime and opens the saved windows. An error here ends the
+/// start: `main` logs it and shows it in an alert.
+fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = app.path().app_data_dir()?;
+    std::fs::create_dir_all(&dir)?;
+    let db = Db::open(dir.join("terminescu.sqlite"))?;
+    db.local_owner()?;
+    if let Err(e) = prompts::import_seeds(&db, prompts::SEEDS) {
+        eprintln!("terminescu: seed prompts not imported: {e}");
+    }
+    let db = Arc::new(Mutex::new(db));
+    let (runtime, windows, updates) = start_runtime(app.handle(), db.clone())?;
+    let waits = Arc::new(docs::Waits::default());
+    let docs = docs::start(app.handle(), db.clone(), &runtime, waits.clone());
+    let attention = Arc::new(Mutex::new(Attention::default()));
+    watch_attention(
+        app.handle().clone(),
+        runtime.clone(),
+        db.clone(),
+        attention.clone(),
+        updates,
+    );
+    {
+        refresh_launchers(&lock(&db), &runtime);
+        rerun_launchers(&db, &runtime);
+        let db = lock(&db);
+        // Chords from Settings › Keys; ones that no longer pass the checks (an action
+        // renamed, a new default that clashes) fall back to the defaults.
+        let saved = keys::get(&db).unwrap_or_default();
+        if !saved.is_empty() {
+            let bindings = keys::check(&default_chords(), saved).unwrap_or_else(|e| {
+                eprintln!("terminescu: saved shortcuts not applied: {e}");
+                keys::Bindings::new()
+            });
+            app.set_menu(build_menu(app.handle(), &bindings, true)?)?;
+        }
+    }
+    app.manage(AppState {
+        runtime,
+        db,
+        attention,
+        recording: Mutex::new(None),
+        docs,
+        waits,
+        merges: Arc::default(),
+        merging: Mutex::default(),
+        drags: drag::Drags::default(),
+    });
+    for id in &windows {
+        open_window(app.handle(), id, None)?;
+    }
+    Ok(())
+}
+
 fn main() {
+    crashlog::init();
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
@@ -1654,54 +1712,7 @@ fn main() {
             }
         })
         .setup(|app| {
-            let dir = app.path().app_data_dir()?;
-            std::fs::create_dir_all(&dir)?;
-            let db = Db::open(dir.join("terminescu.sqlite"))?;
-            db.local_owner()?;
-            if let Err(e) = prompts::import_seeds(&db, prompts::SEEDS) {
-                eprintln!("terminescu: seed prompts not imported: {e}");
-            }
-            let db = Arc::new(Mutex::new(db));
-            let (runtime, windows, updates) = start_runtime(app.handle(), db.clone())?;
-            let waits = Arc::new(docs::Waits::default());
-            let docs = docs::start(app.handle(), db.clone(), &runtime, waits.clone());
-            let attention = Arc::new(Mutex::new(Attention::default()));
-            watch_attention(
-                app.handle().clone(),
-                runtime.clone(),
-                db.clone(),
-                attention.clone(),
-                updates,
-            );
-            {
-                refresh_launchers(&lock(&db), &runtime);
-                rerun_launchers(&db, &runtime);
-                let db = lock(&db);
-                // Chords from Settings › Keys; ones that no longer pass the checks (an action
-                // renamed, a new default that clashes) fall back to the defaults.
-                let saved = keys::get(&db).unwrap_or_default();
-                if !saved.is_empty() {
-                    let bindings = keys::check(&default_chords(), saved).unwrap_or_else(|e| {
-                        eprintln!("terminescu: saved shortcuts not applied: {e}");
-                        keys::Bindings::new()
-                    });
-                    app.set_menu(build_menu(app.handle(), &bindings, true)?)?;
-                }
-            }
-            app.manage(AppState {
-                runtime,
-                db,
-                attention,
-                recording: Mutex::new(None),
-                docs,
-                waits,
-                merges: Arc::default(),
-                merging: Mutex::default(),
-                drags: drag::Drags::default(),
-            });
-            for id in &windows {
-                open_window(app.handle(), id, None)?;
-            }
+            setup(app).unwrap_or_else(|e| crashlog::fail(&e));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -1784,7 +1795,7 @@ fn main() {
             docs::files_list
         ])
         .build(tauri::generate_context!())
-        .expect("Terminescu failed to start");
+        .unwrap_or_else(|e| crashlog::fail(&e));
     app.run(|app, event| {
         if let RunEvent::WindowEvent {
             label,
