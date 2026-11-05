@@ -105,6 +105,27 @@
       "h": 900,
       "title": "Editor request from Claude, file changed on disk",
       "expand": "fill"
+    },
+    "AppIcon.dc.html": {
+      "x": 4560,
+      "y": 0,
+      "w": 2528,
+      "h": 1100,
+      "title": "App icon options"
+    },
+    "AppIconSidebar.dc.html": {
+      "x": 4560,
+      "y": 1220,
+      "w": 2528,
+      "h": 1100,
+      "title": "App icon · Sidebar variants"
+    },
+    "AppIconNeon.dc.html": {
+      "x": 4560,
+      "y": 2440,
+      "w": 2880,
+      "h": 1100,
+      "title": "App icon · Neon rows"
     }
   },
   "order": [
@@ -119,7 +140,10 @@
     "Status.dc.html",
     "Extract.dc.html",
     "Insert.dc.html",
-    "Prompts.dc.html"
+    "Prompts.dc.html",
+    "AppIcon.dc.html",
+    "AppIconSidebar.dc.html",
+    "AppIconNeon.dc.html"
   ],
   "notes": {},
   "designSystems": [
