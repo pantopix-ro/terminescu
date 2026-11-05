@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import type { Host, PaneView } from "./host";
-import type { KeyBindings } from "./keys";
+import { ACTIONS, plusActionFor, withBindings, type KeyBindings } from "./keys";
 import type {
   AgentUpdate,
   DragEnd,
@@ -56,6 +56,8 @@ export const ACTION_EVENT = "menu://action";
 const ignore = () => {};
 
 export function createIpcHost(): Host {
+  // Settings › Keys records: key events belong to the recorder.
+  let recording = false;
   return {
     snapshot: () => invoke<Snapshot>("host_snapshot"),
     send: (command: Command) => invoke<number>("host_command", { command }),
@@ -87,7 +89,10 @@ export function createIpcHost(): Host {
     keyBindings: () => invoke<KeyBindings>("keys_get"),
     setKeyBindings: (bindings) => invoke<KeyBindings>("keys_set", { bindings }),
     onKeyBindings: (listener) => listen(KEYS_EVENT, () => listener()),
-    recordKeys: (on) => invoke("keys_record", { on }),
+    recordKeys: (on) => {
+      recording = on;
+      return invoke("keys_record", { on });
+    },
     createCommand: (command) => invoke<SavedCommand>("command_create", { command }),
     updateCommand: (id, command) => invoke<SavedCommand>("command_update", { id, command }),
     deleteCommand: (id) => invoke("command_delete", { id }),
@@ -173,6 +178,26 @@ export function createIpcHost(): Host {
       return typeof picked === "string" ? picked : null;
     },
     chooseSavePath: (defaultPath) => saveDialog({ defaultPath }),
-    onAction: (listener) => getCurrentWebviewWindow().listen<string>(ACTION_EVENT, (e) => listener(e.payload)),
+    onAction: async (listener) => {
+      const offMenu = await getCurrentWebviewWindow().listen<string>(ACTION_EVENT, (e) => listener(e.payload));
+      // The menu has `⌘=` for zoom in; `⌘+` (`⌘⇧=`) reaches the page as a key event (task 8.8).
+      let actions = ACTIONS;
+      const load = () => invoke<KeyBindings>("keys_get").then((b) => (actions = withBindings(ACTIONS, b)), () => undefined);
+      void load();
+      const offKeys = await listen(KEYS_EVENT, () => void load());
+      const onKey = (e: KeyboardEvent) => {
+        const action = recording ? undefined : plusActionFor(e, actions);
+        if (!action) return;
+        e.preventDefault();
+        e.stopPropagation();
+        listener(action);
+      };
+      window.addEventListener("keydown", onKey, true);
+      return () => {
+        offMenu();
+        offKeys();
+        window.removeEventListener("keydown", onKey, true);
+      };
+    },
   };
 }

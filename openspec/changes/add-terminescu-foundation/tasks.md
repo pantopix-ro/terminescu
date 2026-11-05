@@ -404,6 +404,13 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       Done: `ContextMenu` (arrows, Enter, right and left for submenus, Esc, kept inside the
       window); core `RenameSideTab`, `CloseSideTab`, `MoveSideTabToNewWindow` (same id, so the
       context follows); host-protocol.json checks both reducers. `sidebar-menu.spec.ts` (6).
+- [x] 8.8 Zoom (owner request, 2026-11-05): `⌘=`/`⌘+` in, `⌘-` out, `⌘0` back to 100%, for
+      the whole UI, saved with the settings. `⌘` over `Ctrl` keeps D17. Verify: Playwright steps
+      the zoom on the mock host; manual, the terminals refit at each step in the app.
+      Done: `zoom_percent` in the settings (50-200, steps as a browser has them); the app sets
+      the native webview zoom of every window and of each new one. Three View menu actions,
+      editable in Settings › Keys; `⌘⇧=` runs zoom in unless it has its own action.
+      `zoom.spec.ts` (3), keys tests.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

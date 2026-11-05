@@ -83,10 +83,25 @@ function keyOf(e: KeyboardEvent): string {
 /** The action a key event triggers, if any. */
 export function actionFor(e: KeyboardEvent, actions: readonly ActionDef[] = ACTIONS): string | undefined {
   const key = keyOf(e);
-  return actions.find((a) => {
-    const c = parseAccel(a.accel);
-    return c.key === key && c.meta === e.metaKey && c.ctrl === e.ctrlKey && c.alt === e.altKey && c.shift === e.shiftKey;
-  })?.id;
+  const find = (shift: boolean) =>
+    actions.find((a) => {
+      const c = parseAccel(a.accel);
+      return c.key === key && c.meta === e.metaKey && c.ctrl === e.ctrlKey && c.alt === e.altKey && c.shift === shift;
+    })?.id;
+  return find(e.shiftKey) ?? plusAlias(e, find);
+}
+
+/**
+ * `⌘+` is `⌘⇧=` on the keyboard: with no action of its own it runs the `⌘=` one (zoom in,
+ * task 8.8). The app menu only knows `⌘=`, so the Tauri host catches this from key events.
+ */
+function plusAlias(e: KeyboardEvent, find: (shift: boolean) => string | undefined): string | undefined {
+  return e.shiftKey && keyOf(e) === "=" ? find(false) : undefined;
+}
+
+/** The action `⌘⇧=` runs through the `⌘+` alias, when no action owns `⌘⇧=` itself. */
+export function plusActionFor(e: KeyboardEvent, actions: readonly ActionDef[] = ACTIONS): string | undefined {
+  return e.shiftKey && keyOf(e) === "=" ? actionFor(e, actions) : undefined;
 }
 
 /**

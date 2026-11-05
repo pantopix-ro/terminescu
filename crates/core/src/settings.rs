@@ -1,6 +1,6 @@
 //! App settings that are not statuses, commands or attention signals (D25): the defaults an
-//! extracted variable starts with, and the opt-in editor setting for the shell (D27). Kept as
-//! one JSON value in `app_state`.
+//! extracted variable starts with, the opt-in editor setting for the shell (D27) and the zoom
+//! of every window (task 8.8). Kept as one JSON value in `app_state`.
 
 use crate::context::Mode;
 use crate::db::{Db, Result};
@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 const KEY: &str = "app.settings";
 /// Longest TTL a default may hold: 30 days.
 pub const MAX_TTL_SECS: u64 = 30 * 86_400;
+/// The zoom steps `⌘+` and `⌘-` walk, in percent, as a browser has them.
+pub const ZOOM_STEPS: [u16; 11] = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -20,6 +22,8 @@ pub struct Settings {
     pub var_ttl_secs: Option<u64>,
     /// `VISUAL` and `EDITOR` point at `terminescu edit --wait` (Settings › Shell, D27).
     pub editor: bool,
+    /// The zoom of every window, fonts and elements, in percent (`⌘+`, `⌘-`, `⌘0`).
+    pub zoom_percent: u16,
 }
 
 impl Default for Settings {
@@ -28,6 +32,7 @@ impl Default for Settings {
             var_mode: Mode::Saved,
             var_ttl_secs: None,
             editor: false,
+            zoom_percent: 100,
         }
     }
 }
@@ -36,6 +41,8 @@ impl Default for Settings {
 pub enum SettingsError {
     #[error("a TTL runs from 1 second to 30 days")]
     BadTtl,
+    #[error("the zoom runs from 50% to 200%")]
+    BadZoom,
     #[error(transparent)]
     Db(#[from] crate::db::DbError),
 }
@@ -47,6 +54,9 @@ pub fn get(db: &Db) -> Result<Settings> {
 pub fn set(db: &Db, s: Settings) -> std::result::Result<Settings, SettingsError> {
     if s.var_ttl_secs.is_some_and(|t| t == 0 || t > MAX_TTL_SECS) {
         return Err(SettingsError::BadTtl);
+    }
+    if !(ZOOM_STEPS[0]..=ZOOM_STEPS[ZOOM_STEPS.len() - 1]).contains(&s.zoom_percent) {
+        return Err(SettingsError::BadZoom);
     }
     write(db, KEY, &s)?;
     Ok(s)

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ACTIONS, accelOf, actionFor, bindingProblem, chordLabel, conflicts, normalAccel, withBindings } from "../src/keys";
+import { ACTIONS, accelOf, actionFor, bindingProblem, chordLabel, conflicts, normalAccel, plusActionFor, withBindings } from "../src/keys";
+import { stepZoom } from "../src/protocol";
 
 const key = (code: string, mods: Partial<KeyboardEvent> = {}, k = "") =>
   ({ code, key: k, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...mods }) as KeyboardEvent;
@@ -78,5 +79,35 @@ describe("editable shortcuts (task 6.10)", () => {
     // A recorded chord matches its own key event.
     const e = key("Period", { metaKey: true }, ".");
     expect(actionFor(e, withBindings(ACTIONS, { palette: accelOf(e)! }))).toBe("palette");
+  });
+});
+
+describe("zoom chords (task 8.8)", () => {
+  it("⌘=, ⌘- and ⌘0 run the zoom actions, and ⌘+ (⌘⇧=) runs zoom in", () => {
+    expect(actionFor(key("Equal", { metaKey: true }, "="))).toBe("zoom_in");
+    expect(actionFor(key("Equal", { metaKey: true, shiftKey: true }, "+"))).toBe("zoom_in");
+    expect(plusActionFor(key("Equal", { metaKey: true, shiftKey: true }, "+"))).toBe("zoom_in");
+    expect(plusActionFor(key("Equal", { metaKey: true }, "="))).toBeUndefined();
+    expect(actionFor(key("Minus", { metaKey: true }, "-"))).toBe("zoom_out");
+    expect(actionFor(key("Digit0", { metaKey: true }, "0"))).toBe("zoom_reset");
+  });
+
+  it("an action bound to ⌘⇧= keeps it; ⌘+ follows zoom in to a new chord", () => {
+    const own = withBindings(ACTIONS, { palette: "Cmd+Shift+Equal" });
+    expect(actionFor(key("Equal", { metaKey: true, shiftKey: true }, "+"), own)).toBe("palette");
+    const moved = withBindings(ACTIONS, { zoom_in: "Cmd+Alt+Equal" });
+    expect(actionFor(key("Equal", { metaKey: true, shiftKey: true }, "+"), moved)).toBeUndefined();
+  });
+});
+
+describe("stepZoom", () => {
+  it("walks the steps and stops at the ends", () => {
+    expect(stepZoom(100, 1)).toBe(110);
+    expect(stepZoom(100, -1)).toBe(90);
+    expect(stepZoom(200, 1)).toBe(200);
+    expect(stepZoom(50, -1)).toBe(50);
+    // A level between steps goes to the next one either way.
+    expect(stepZoom(105, 1)).toBe(110);
+    expect(stepZoom(105, -1)).toBe(100);
   });
 });

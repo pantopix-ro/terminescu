@@ -14,6 +14,7 @@ import {
   chordEvent,
   chordLabel,
   DEFAULT_SETTINGS,
+  stepZoom,
   withBindings,
   docOf,
   panesOf,
@@ -534,6 +535,10 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         // The focused pane, transcript or terminal, acts on its selection.
         if (focused) paneEvent(focused, new Event(id === "pin" ? PIN_EVENT : EXTRACT_EVENT));
         return;
+      case "zoom_in":
+      case "zoom_out":
+      case "zoom_reset":
+        return void zoom(id === "zoom_reset" ? 0 : id === "zoom_in" ? 1 : -1);
       case "palette":
         return setPalette((p) => !p);
       case "status_editor":
@@ -789,6 +794,20 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     secretNote(shownCtx.variables.filter((v) => v.mode === "secret" && text.includes(`$${v.name}`)).map((v) => v.name));
   };
   const [notice, setNotice] = useState<string>();
+  // Task 8.8: one zoom for every window, saved with the settings; the host applies it.
+  const zoom = async (dir: 1 | -1 | 0) => {
+    try {
+      const now = await host.settings();
+      const zoomPercent = dir ? stepZoom(now.zoomPercent, dir) : 100;
+      if (zoomPercent !== now.zoomPercent) await host.setSettings({ ...now, zoomPercent });
+      // The level shows briefly; a later press keeps it up longer.
+      const text = `Zoom ${zoomPercent}%`;
+      setNotice(text);
+      setTimeout(() => setNotice((n) => (n === text ? undefined : n)), 1500);
+    } catch (e) {
+      setError(String(e));
+    }
+  };
   const sideOfTab = (tabId: string) => sideTabs.find((s) => s.tabs.some((t) => t.id === tabId))?.id;
 
   // Shows a pane: selects its side tab and tab and focuses it, now or once its patch arrives.

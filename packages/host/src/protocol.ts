@@ -417,9 +417,20 @@ export interface AppSettings {
   varTtlSecs: number | null;
   /** `VISUAL` and `EDITOR` point at `terminescu edit --wait`. */
   editor: boolean;
+  /** The zoom of every window, fonts and elements, in percent (task 8.8). */
+  zoomPercent: number;
 }
 
-export const DEFAULT_SETTINGS: AppSettings = { varMode: "saved", varTtlSecs: null, editor: false };
+export const DEFAULT_SETTINGS: AppSettings = { varMode: "saved", varTtlSecs: null, editor: false, zoomPercent: 100 };
+
+/** The steps `⌘+` and `⌘-` walk, in percent. Same as `ZOOM_STEPS` in settings.rs. */
+export const ZOOM_STEPS: readonly number[] = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200];
+
+/** The next zoom step in or out from `percent`, which need not be a step; the ends stay put. */
+export function stepZoom(percent: number, dir: 1 | -1): number {
+  if (dir > 0) return ZOOM_STEPS.find((z) => z > percent) ?? ZOOM_STEPS.at(-1)!;
+  return [...ZOOM_STEPS].reverse().find((z) => z < percent) ?? ZOOM_STEPS[0]!;
+}
 
 /** Where a saved command runs (D24). */
 export type CommandTarget = "focused" | "newTab" | "newSideTab";

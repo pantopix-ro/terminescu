@@ -134,6 +134,24 @@
    "accel": "Cmd+Shift+A"
   },
   {
+   "id": "zoom_in",
+   "label": "Zoom In",
+   "menu": "View",
+   "accel": "Cmd+Equal"
+  },
+  {
+   "id": "zoom_out",
+   "label": "Zoom Out",
+   "menu": "View",
+   "accel": "Cmd+Minus"
+  },
+  {
+   "id": "zoom_reset",
+   "label": "Actual Size",
+   "menu": "View",
+   "accel": "Cmd+0"
+  },
+  {
    "id": "focus_left",
    "label": "Focus Pane Left",
    "menu": "View",

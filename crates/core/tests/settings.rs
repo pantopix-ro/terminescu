@@ -13,6 +13,7 @@ fn defaults_then_a_saved_change_reads_back() {
         var_mode: Mode::Session,
         var_ttl_secs: Some(3600),
         editor: true,
+        zoom_percent: 125,
     };
     settings::set(&db, s).unwrap();
     assert_eq!(settings::get(&db).unwrap(), s);
@@ -41,4 +42,25 @@ fn json_with_unknown_fields_or_missing_ones_still_reads() {
     let s: Settings = serde_json::from_str(r#"{"varMode":"secret","future":1}"#).unwrap();
     assert_eq!(s.var_mode, Mode::Secret);
     assert!(!s.editor);
+    // Settings saved before task 8.8 have no zoom: they read as 100%.
+    assert_eq!(s.zoom_percent, 100);
+}
+
+#[test]
+fn a_zoom_out_of_range_is_refused() {
+    let db = Db::open_in_memory().unwrap();
+    for zoom_percent in [0, 49, 201] {
+        let s = Settings {
+            zoom_percent,
+            ..Settings::default()
+        };
+        assert!(settings::set(&db, s).is_err());
+    }
+    for zoom_percent in settings::ZOOM_STEPS {
+        let s = Settings {
+            zoom_percent,
+            ..Settings::default()
+        };
+        assert_eq!(settings::set(&db, s).unwrap().zoom_percent, zoom_percent);
+    }
 }

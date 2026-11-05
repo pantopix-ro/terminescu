@@ -546,6 +546,9 @@ fn settings_set(
 ) -> Result<settings::Settings, String> {
     let saved = settings::set(&lock(&state.db), settings).map_err(|e| e.to_string())?;
     state.runtime.set_editor(saved.editor);
+    for w in app.webview_windows().values() {
+        let _ = w.set_zoom(zoom_of(&saved));
+    }
     let _ = app.emit(SETTINGS_EVENT, ());
     Ok(saved)
 }
@@ -1502,6 +1505,12 @@ fn serve_core_socket(
 /// Opens the native window of a workspace window. `at` is a drop point in screen pixels with
 /// that screen's scale: the window opens hidden, moves under it so the cursor lands near its
 /// tab bar, then shows. Physical pixels keep screens left of or above the main one right.
+/// The webview zoom for the saved percent (task 8.8): native page zoom, so xterm.js sees a new
+/// pixel ratio and refits like any resize.
+fn zoom_of(s: &settings::Settings) -> f64 {
+    f64::from(s.zoom_percent) / 100.0
+}
+
 fn open_window(app: &AppHandle, window_id: &str, at: Option<(f64, f64, f64)>) -> tauri::Result<()> {
     let builder = WebviewWindowBuilder::new(app, window_id, WebviewUrl::App("index.html".into()))
         .title("Terminescu")
@@ -1513,6 +1522,11 @@ fn open_window(app: &AppHandle, window_id: &str, at: Option<(f64, f64, f64)>) ->
         .title_bar_style(tauri::TitleBarStyle::Overlay)
         .hidden_title(true);
     let w = builder.build()?;
+    // The caller holds no db lock: the window opens from the patch emitter and from setup.
+    let saved = settings::get(&lock(&app.state::<AppState>().db)).unwrap_or_default();
+    if saved.zoom_percent != 100 {
+        w.set_zoom(zoom_of(&saved))?;
+    }
     if let Some((x, y, scale)) = at {
         w.set_position(tauri::PhysicalPosition::new(
             x - 120.0 * scale,
