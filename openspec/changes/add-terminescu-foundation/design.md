@@ -116,6 +116,10 @@ message the person sent in a transcript pane. Saving offers to replace text matc
 context variable's value with `{{name}}`. The library edits prompts in the same text editor as
 text tabs (D29).
 
+Built in group 6, on 2026-11-05. Until text tabs land (group 7), the library edits a body in
+a plain textarea and a prompt holds no images. Seeds import once per database; a seed the
+person deleted stays deleted.
+
 ### D15. Statuses: built-in, global, local, dynamic
 Three tiers. Built-in auto statuses (Running, Waiting, Done, Failed, Idle) come from hooks and
 shell integration; Settings renames and recolors them, nothing deletes them. Global statuses
@@ -155,6 +159,12 @@ file, `⌘⇧L` transcript pane beside a Claude pane. The app's chord wins in ev
 inserts, `⌘K` opens the palette, `⌘E` extracts, and CodeMirror's select-next moves to `⌃⌘G`.
 Every shortcut is editable in Settings › Keys in v1, which flags conflicts. Rejected: the first draft's
 Esc Esc plus single letters, which made the person leave the terminal before every action.
+
+Built in group 6, on 2026-11-05. Settings › Keys keeps only the changed chords (`app_state`
+`keys.bindings`) and refuses a chord without `⌘`, one macOS keeps (`⌘C`, `⌘Q`, `⌘H`…) or
+another action's. A save rebuilds the native menu. macOS hands a menu chord to the menu before
+the window sees it, so while the recorder waits the menu holds no action chords. Saved chords
+that stop passing the checks after an update fall back to the defaults at start.
 
 ### D18. SQLite in the core, an owner on every row
 `rusqlite` in the Rust core with embedded migrations, the schema version in
@@ -216,6 +226,11 @@ snapshot holds their names only. A secret inserts as `$NAME`, and D35 gets the v
 environment without crossing the screen. Inserting a raw value into a Claude prompt still lands
 in Claude's own JSONL; the insert dialog says so for secrets.
 
+Built in group 6, on 2026-11-05. Limits: daemon values do not follow a moved tab yet (group
+8); they end when the daemon exits idle with no panes; a side tab closed while the app was down
+keeps its daemon values until the daemon exits. Settings › Variables sets the mode and TTL that
+Extract starts with.
+
 ### D22. The web app is a remote view of the Mac
 Later, the core serves the same commands, patches and pty streams over WebSocket with `axum`,
 behind a pairing token, reached over Tailscale or an SSH tunnel. The browser runs the same
@@ -236,6 +251,13 @@ side tab. A launcher side tab is defined by its commands: it runs each in its ow
 opened or after a reboot, offers restart, and derives its status from those processes
 (`2/2 up`, `1/2 up`).
 
+Built in group 6, on 2026-11-05. A command is up while its tab's auto status is Running, so a
+launcher needs shell integration and reads down for a moment after it starts. A manual status
+wins over `n/m up`. Restart types the command again only into tabs that are down, and never
+sends Ctrl-C. Launchers rerun at app start for panes the daemon spawned fresh (a reboot), not
+after a daemon reconnect. A launcher command belongs to one side tab; a missing or multi-line
+value refuses it, since no one is there to answer.
+
 ### D25. Smaller v1 choices
 The transcript pane ships in P1 in a minimal form: read-only user and assistant messages with
 Pin and Extract per message and per selection; tool calls, diffs and thinking come in P2.
@@ -243,6 +265,10 @@ Settings in v1: Statuses, Commands, Variable defaults, Extraction rules (read-on
 Keys (editable, with conflict detection, D17). A macOS notification fires when a Claude
 session waits while the app is in the background, on by default with no sound. Only Claude
 Code is supported in v1; the entry model (D11) stays ready for Codex or OpenCode.
+
+Built in group 6, on 2026-11-05. The notification cannot jump to the pane on click: the
+desktop notification plugin has no click actions, so `⌘⇧A` and the amber status line do that.
+The Settings › Shell `EDITOR` box stays disabled until editor requests land (task 7.4).
 
 ### D26. Panels collapse and scroll
 `⌘\` cycles the context panel (Context, Pins, Prompts) between pinned and auto-hide. Auto-hidden,

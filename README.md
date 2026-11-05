@@ -9,7 +9,7 @@ whichever of your 20 terminals it lives in.
 It doesn't orchestrate Claude. You start every session yourself by typing `claude` in a
 shell, and Terminescu never starts a turn on its own.
 
-> Status: P1, milestone M1. The spikes are done and the skeleton (tasks 1.1 to 1.4) builds:
+> Status: P1, milestones M1 to M3 built; text tabs (M4) come next. The spikes are done and the skeleton (tasks 1.1 to 1.4) builds:
 > an app window with side tabs and tabs over the core's command and patch protocol, the
 > SQLite schema, and the design tokens. The pty daemon (task 2.1) runs shells and restores
 > their screens on reattach. The app starts it and gives each tab a shell that outlives the
@@ -32,6 +32,16 @@ shell, and Terminescu never starts a turn on its own.
 > the rules, such as `pnpm test*` failing sets `Tests red`; `terminescu status "Deploying"
 > --until-exit` sets one from any shell. The sidebar sorts by hand, background, status or name
 > (tasks 5.1 to 5.3).
+> The context panel keeps variables in three modes: saved in SQLite, session only, or secret,
+> which lives in the daemon, shows masked and inserts as `$NAME` (tasks 6.1, 6.2). `⌘E` extracts
+> a selection, `⌘⇧P` pins it, and `⌘I` inserts a prompt from the library (`⌘⇧I`) with its
+> `{{variables}}` filled from the side tab (tasks 6.3 to 6.5). A waiting session shows in the
+> status line and the dock badge, posts a silent notification while the app is in the
+> background, and `⌘⇧A` jumps to the oldest one (task 6.6). The sidebar's Commands section runs
+> or inserts saved shell lines; a launcher command runs in its own tab and the side tab shows
+> `n/m up` (tasks 6.7, 6.8). Settings (`⌘,`) covers statuses, commands, variable defaults,
+> extraction rules, shell, notifications and keys, where every shortcut can be rebound
+> (tasks 6.9, 6.10).
 
 ## See it
 
