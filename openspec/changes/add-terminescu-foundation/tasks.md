@@ -370,10 +370,13 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
 - [ ] 8.4 Full transcript pane: tool calls, diffs, thinking; save as prompt from a sent
       message. Verify: manual against a recorded session.
 - [ ] 8.5 Send selection to another tab. Verify: manual, text lands in the target without Enter.
-- [ ] 8.6 Commands global by default (D24 amendment): the Commands form starts global, "this
+- [x] 8.6 Commands global by default (D24 amendment): the Commands form starts global, "this
       side tab only" opts into the side tab, launcher still forces the side tab; existing
       commands keep their scope. Verify: Playwright saves a command in one side tab and runs it
       from another with that side tab's `{{variable}}`.
+      Done: the form starts global; "this side tab only" opts in, and ticking launcher ticks and
+      locks it. Saved commands keep their scope. `commands.spec.ts` runs a command saved in one
+      side tab from another with that side tab's `pr_api`.
 
 ## 9. Reach (P3)
 

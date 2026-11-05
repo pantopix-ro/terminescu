@@ -59,14 +59,17 @@ test("a launcher opens its tab, shows n/m up, and restarts once down", async ({ 
   await expect(page.locator(".app-main .ao-tab")).toHaveCount(2);
 });
 
-test("a global command cannot be a launcher", async ({ page }) => {
+test("a new command starts global; a launcher stays in its side tab", async ({ page }) => {
   await start(page);
   await page.getByRole("button", { name: "New command" }).click();
   const form = page.locator(".cmd-form");
+  const local = form.getByLabel("this side tab only");
+  await expect(local).not.toBeChecked();
   await form.getByLabel("launcher").check();
-  await form.getByLabel("global").check();
-  await expect(form.getByLabel("launcher")).toBeDisabled();
-  await expect(form.getByLabel("launcher")).not.toBeChecked();
+  await expect(local).toBeChecked();
+  await expect(local).toBeDisabled();
+  await form.getByLabel("launcher").uncheck();
+  await expect(local).toBeEnabled();
 });
 
 test("a manual status wins over a launcher's n/m up", async ({ page }) => {

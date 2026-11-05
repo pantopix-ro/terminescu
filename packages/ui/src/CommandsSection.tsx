@@ -49,7 +49,7 @@ interface Asking {
  */
 export function CommandsSection({ commands, enabled, onAdd, onDelete, onRun, statuses, onRestart }: CommandsSectionProps) {
   const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState<CommandDraft>({ name: "", body: "", target: "newTab", global: false, launcher: false });
+  const [draft, setDraft] = useState<CommandDraft>({ name: "", body: "", target: "newTab", global: true, launcher: false });
   const [asking, setAsking] = useState<Asking>();
   const [error, setError] = useState<string>();
 
@@ -70,7 +70,7 @@ export function CommandsSection({ commands, enabled, onAdd, onDelete, onRun, sta
     setError(undefined);
     try {
       await onAdd(draft);
-      setDraft({ name: "", body: "", target: draft.target, global: false, launcher: false });
+      setDraft({ name: "", body: "", target: draft.target, global: true, launcher: false });
       setAdding(false);
     } catch (e) {
       setError(String(e));
@@ -124,13 +124,19 @@ export function CommandsSection({ commands, enabled, onAdd, onDelete, onRun, sta
             <label className="small">
               <input
                 type="checkbox"
-                checked={draft.global}
-                onChange={(e) => setDraft({ ...draft, global: e.target.checked, launcher: e.target.checked ? false : draft.launcher })}
+                disabled={draft.launcher}
+                checked={!draft.global}
+                onChange={(e) => setDraft({ ...draft, global: !e.target.checked })}
               />{" "}
-              global
+              this side tab only
             </label>
-            <label className="small" title="Runs in its own tab when the side tab opens and after a reboot">
-              <input type="checkbox" disabled={draft.global} checked={draft.launcher} onChange={(e) => setDraft({ ...draft, launcher: e.target.checked })} /> launcher
+            <label className="small" title="Runs in its own tab when the side tab opens and after a reboot; stays in this side tab">
+              <input
+                type="checkbox"
+                checked={draft.launcher}
+                onChange={(e) => setDraft({ ...draft, launcher: e.target.checked, global: e.target.checked ? false : draft.global })}
+              />{" "}
+              launcher
             </label>
             <span className="grow" />
             <button type="submit" className="ao-btn">

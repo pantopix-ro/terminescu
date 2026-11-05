@@ -18,12 +18,13 @@ const firstSide = (page: Page) =>
 const typed = (page: Page, pane: string) =>
   page.evaluate((p) => (window as any).__terminescu.host.typed.get(p) ?? "", pane) as Promise<string>;
 
-async function addCommand(page: Page, name: string, body: string, target: string, global = false) {
+// A new command is global unless `local` ticks "this side tab only" (D24 amendment).
+async function addCommand(page: Page, name: string, body: string, target: string, local = false) {
   await page.getByRole("button", { name: "New command" }).click();
   await page.getByLabel("Command name").fill(name);
   await page.getByLabel("Command", { exact: true }).fill(body);
   await page.getByLabel("Run in").selectOption(target);
-  if (global) await page.locator(".cmd-form").getByLabel("global").check();
+  if (local) await page.locator(".cmd-form").getByLabel("this side tab only").check();
   await page.locator(".cmd-form").getByRole("button", { name: "Save" }).click();
   await expect(page.locator(`.cmd-row[data-command="${name}"]`)).toBeVisible();
 }
@@ -78,8 +79,8 @@ test("Run refuses a value with a line break; Insert pastes it bracketed", async 
 
 test("a global command shows in every side tab, a local one only in its own", async ({ page }) => {
   await start(page);
-  await addCommand(page, "local", "ls", "focused");
-  await addCommand(page, "status", "git status", "newSideTab", true);
+  await addCommand(page, "local", "ls", "focused", true);
+  await addCommand(page, "status", "git status", "newSideTab");
   await page.keyboard.press("Meta+N");
   await expect(page.locator(".ao-st[data-side]")).toHaveCount(2);
   await expect(page.locator(".cmd-row")).toHaveCount(1);
@@ -89,4 +90,18 @@ test("a global command shows in every side tab, a local one only in its own", as
   await expect(page.locator(".ao-st[data-side]").nth(2)).toHaveAttribute("aria-current", "true");
   await page.getByRole("button", { name: "Delete status" }).click();
   await expect(page.locator(".cmd-row")).toHaveCount(0);
+});
+
+test("a command saved in one side tab runs in another with that side tab's variable", async ({ page }) => {
+  await start(page);
+  await addCommand(page, "checks", "gh pr checks {{pr_api}}", "focused");
+  await expect(page.locator('.cmd-row[data-command="checks"] .cmd-meta')).toContainText("global");
+  await page.keyboard.press("Meta+N");
+  await expect(page.locator(".ao-st[data-side]")).toHaveCount(2);
+  const second = await page.evaluate(() => (window as any).__terminescu.host.workspace().windows[0].sideTabs[1].id as string);
+  await addVariable(page, second, "pr_api", "https://github.com/acme/api/pull/77", "saved");
+  await page.locator(".app-pane .term-pane").first().click();
+  const pane = (await page.locator(".app-pane .ao-tp").first().getAttribute("data-pane"))!;
+  await page.getByRole("button", { name: "Run checks" }).click();
+  await expect.poll(() => typed(page, pane)).toBe("gh pr checks https://github.com/acme/api/pull/77\r");
 });
