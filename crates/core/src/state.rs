@@ -18,6 +18,31 @@ pub const ICONS: &[&str] = &[
     "pin", "play", "check", "bp", "pr", "merge", "save", "in", "out",
 ];
 
+/// The icon a new tab opens with (task 8.20): one no other tab uses yet, picked from the tab
+/// id so it looks random but replays the same in tests. The agent icon stays for Claude.
+/// When every icon is taken it reuses one.
+pub fn pick_icon(ws: &Workspace, tab_id: &str, also: &[Option<String>]) -> String {
+    let pool: Vec<&str> = ICONS.iter().copied().filter(|i| *i != "agent").collect();
+    // FNV-1a: stable across builds, unlike the std hasher.
+    let hash = tab_id.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |h, b| {
+        (h ^ u64::from(b)).wrapping_mul(0x100_0000_01b3)
+    });
+    let start = (hash % pool.len() as u64) as usize;
+    let used: Vec<&str> = ws
+        .windows
+        .iter()
+        .flat_map(|w| &w.side_tabs)
+        .flat_map(|s| &s.tabs)
+        .filter_map(|t| t.icon.as_deref())
+        .chain(also.iter().filter_map(|i| i.as_deref()))
+        .collect();
+    (0..pool.len())
+        .map(|k| pool[(start + k) % pool.len()])
+        .find(|i| !used.contains(i))
+        .unwrap_or(pool[start])
+        .to_string()
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Workspace {
@@ -574,13 +599,20 @@ impl Core {
 
     /// A tab with one new pane.
     fn new_tab(&mut self) -> Tab {
+        self.new_tab_beside(&[])
+    }
+
+    /// A new tab whose icon also differs from `others`, tabs made in the same command.
+    fn new_tab_beside(&mut self, others: &[Tab]) -> Tab {
         let id = (self.new_id)();
+        let also: Vec<Option<String>> = others.iter().map(|t| t.icon.clone()).collect();
+        let icon = Some(pick_icon(&self.ws, &id, &also));
         Tab {
             id,
             title: None,
             layout: Layout::pane((self.new_id)()),
             status: None,
-            icon: None,
+            icon,
         }
     }
 
@@ -589,7 +621,12 @@ impl Core {
     }
 
     fn new_side_tab_with(&mut self, tabs: usize) -> SideTab {
-        let tabs = (0..tabs.max(1)).map(|_| self.new_tab()).collect();
+        let mut made: Vec<Tab> = Vec::new();
+        for _ in 0..tabs.max(1) {
+            let tab = self.new_tab_beside(&made);
+            made.push(tab);
+        }
+        let tabs = made;
         SideTab {
             id: (self.new_id)(),
             title: None,
@@ -983,12 +1020,15 @@ impl Core {
                     None => vec![Patch::TabCreated {
                         side_tab_id,
                         index: side.tabs.len(),
-                        tab: Tab {
-                            id: (self.new_id)(),
-                            title: None,
-                            layout: pane,
-                            status: None,
-                            icon: None,
+                        tab: {
+                            let id = (self.new_id)();
+                            Tab {
+                                icon: Some(pick_icon(ws, &id, &[])),
+                                id,
+                                title: None,
+                                layout: pane,
+                                status: None,
+                            }
                         },
                     }],
                 }
@@ -1421,6 +1461,31 @@ mod tests {
         assert!(
             c.handle(Command::CloseSideTab { side_tab_id: side })
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn new_tabs_open_with_different_icons() {
+        let mut c = core();
+        let side = c.workspace().windows[0].side_tabs[0].id.clone();
+        for _ in 0..4 {
+            c.handle(Command::CreateTab {
+                side_tab_id: side.clone(),
+            })
+            .unwrap();
+        }
+        let icons: Vec<String> = c.workspace().side_tab(&side).unwrap().tabs[1..]
+            .iter()
+            .map(|t| t.icon.clone().expect("a new tab has an icon"))
+            .collect();
+        let mut unique = icons.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(unique.len(), icons.len(), "{icons:?}");
+        assert!(
+            icons
+                .iter()
+                .all(|i| ICONS.contains(&i.as_str()) && i != "agent")
         );
     }
 

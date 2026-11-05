@@ -16,10 +16,11 @@ test("a waiting Claude session turns its tab and side tab amber until it runs ag
   const tab = page.locator(".ao-tabs [role=tab]").first();
   const side = page.locator(".ao-st").first();
 
-  await expect(tab.locator(".ao-i-agent")).toHaveCount(0);
+  // The tab keeps the icon it opened with (task 8.20); Claude's state dot comes and goes.
+  await expect(tab.locator(".ao-dot")).toHaveCount(0);
   await set("running");
   await expect(tab).toHaveAttribute("data-agent", "running");
-  await expect(tab.locator(".ao-i-agent")).toHaveCount(1);
+  await expect(tab.locator(".ao-dot")).toHaveCount(1);
   await expect(tab).not.toHaveClass(/\bwait\b/);
 
   await set("waiting");
@@ -32,6 +33,6 @@ test("a waiting Claude session turns its tab and side tab amber until it runs ag
 
   // SessionEnd: the tab shows its shell again.
   await set(null);
-  await expect(tab.locator(".ao-i-agent")).toHaveCount(0);
+  await expect(tab.locator(".ao-dot")).toHaveCount(0);
   await expect(tab).not.toHaveAttribute("data-agent", /.+/);
 });

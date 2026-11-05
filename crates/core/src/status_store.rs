@@ -93,6 +93,57 @@ pub fn status(db: &Db, id: &str) -> Result<SavedStatus> {
 }
 
 /// Saves a status on `side_tab`, or globally with `None`, at the end of its list.
+/// The global statuses a new database starts with (task 8.21), as (label, accent).
+pub const DEFAULT_STATUSES: &[(&str, &str)] = &[
+    ("In progress", "blue"),
+    ("Review", "magenta"),
+    ("Testing", "cyan"),
+    ("Blocked", "red"),
+    ("Done", "green"),
+];
+
+const SEEDED: &str = "statuses.seeded";
+
+/// Adds [`DEFAULT_STATUSES`] once per database: a label already saved is skipped, and one the
+/// person deleted later does not come back. Returns how many were added.
+pub fn seed_defaults(db: &Db) -> Result<usize> {
+    let owner = db.local_owner()?;
+    let done = db
+        .conn()
+        .query_row(
+            "SELECT 1 FROM app_state WHERE owner_id = ?1 AND key = ?2",
+            params![owner, SEEDED],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some();
+    if done {
+        return Ok(0);
+    }
+    let have = statuses(db)?;
+    let mut added = 0;
+    for (label, accent) in DEFAULT_STATUSES {
+        if have
+            .iter()
+            .any(|s| s.look.label.eq_ignore_ascii_case(label))
+        {
+            continue;
+        }
+        let look = Look {
+            label: (*label).into(),
+            accent: Some((*accent).into()),
+            background: None,
+        };
+        add_status(db, None, &look)?;
+        added += 1;
+    }
+    db.conn().execute(
+        "INSERT INTO app_state (owner_id, key, value) VALUES (?1, ?2, '1')",
+        params![owner, SEEDED],
+    )?;
+    Ok(added)
+}
+
 pub fn add_status(db: &Db, side_tab: Option<&str>, look: &Look) -> Result<SavedStatus> {
     let look = clean(look)?;
     let owner = db.local_owner()?;
@@ -337,6 +388,20 @@ mod tests {
             accent: accent.map(String::from),
             background: None,
         }
+    }
+
+    #[test]
+    fn defaults_come_once_and_skip_labels_already_saved() {
+        let db = Db::open_in_memory().unwrap();
+        add_status(&db, None, &look("review", Some("cyan"))).unwrap();
+        assert_eq!(seed_defaults(&db).unwrap(), DEFAULT_STATUSES.len() - 1);
+        let all = statuses(&db).unwrap();
+        assert_eq!(all.len(), DEFAULT_STATUSES.len());
+        assert!(all.iter().all(|s| s.side_tab_id.is_none()));
+        let blocked = all.iter().find(|s| s.look.label == "Blocked").unwrap();
+        delete_status(&db, &blocked.id).unwrap();
+        assert_eq!(seed_defaults(&db).unwrap(), 0);
+        assert_eq!(statuses(&db).unwrap().len(), DEFAULT_STATUSES.len() - 1);
     }
 
     #[test]

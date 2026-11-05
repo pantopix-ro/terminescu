@@ -88,6 +88,15 @@ export interface SavedStatus extends Look {
   sideTabId: Id | null;
 }
 
+/** The global statuses a new database starts with; mirrors `DEFAULT_STATUSES` in status_store.rs. */
+export const DEFAULT_STATUSES: readonly { label: string; accent: Accent }[] = [
+  { label: "In progress", accent: "blue" },
+  { label: "Review", accent: "magenta" },
+  { label: "Testing", accent: "cyan" },
+  { label: "Blocked", accent: "red" },
+  { label: "Done", accent: "green" },
+];
+
 export type RuleKind = { kind: "exitCode"; pattern: string } | { kind: "claudeIdle"; minutes: number };
 
 export type Rule = { id: Id; statusId: Id; look: Look; enabled: boolean } & RuleKind;

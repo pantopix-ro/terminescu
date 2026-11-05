@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sidebar row accents</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/agentorch/tokens.css">
+<link rel="stylesheet" href="ds/agentorch/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600&amp;family=Silkscreen&amp;display=swap">
+<style>
+body{margin:0;background:#111318}
+.ao-side .ao-st{grid-template-columns: 16px minmax(0, 1fr) auto}
+</style>
+</helmet>
+<div style="width: 2960px; height: 1200px; box-sizing: border-box; padding: 48px; display: flex; flex-direction: column; gap: 32px; background: var(--bg); color: var(--fg); font-family: var(--font-mono)">
+  <header style="display: flex; flex-direction: column; gap: 10px">
+    <h1 class="pixel-display" style="margin: 0; color: var(--fg)">Sidebar · a neon per row</h1>
+    <p class="body" style="margin: 0; max-width: 1500px; color: var(--dim)">Each new side tab takes the next unused hue below, in creation order, and the list cycles after eight. The hue stays with the row through renames, moves and restarts. A manual status still owns the chip and the background; amber still means "needs you". In every option, acme/api has the Review status with the blue background and deploy waits on the person.</p>
+  </header>
+  <div style="display: flex; align-items: flex-end; gap: 28px; padding: 16px 20px; background: var(--panel); box-shadow: var(--frame-neutral); align-self: flex-start">
+    <span class="ao-pixel" style="font-size: 8px; color: var(--dim); align-self: center">Assignment order</span>
+    <div style="display: grid; justify-items: center; gap: 6px"><span style="width: 40px; height: 40px; background: #2ee6ff; box-shadow: 0 0 12px -2px #2ee6ff"></span><span class="ao-pixel" style="font-size: 8px; color: var(--dim)">1 cyan</span><span class="small ao-dim">#2ee6ff</span></div><div style="display: grid; justify-items: center; gap: 6px"><span style="width: 40px; height: 40px; background: #ff4fd8; box-shadow: 0 0 12px -2px #ff4fd8"></span><span class="ao-pixel" style="font-size: 8px; color: var(--dim)">2 pink</span><span class="small ao-dim">#ff4fd8</span></div><div style="display: grid; justify-items: center; gap: 6px"><span style="width: 40px; height: 40px; background: #9dff3d; box-shadow: 0 0 12px -2px #9dff3d"></span><span class="ao-pixel" style="font-size: 8px; color: var(--dim)">3 lime</span><span class="small ao-dim">#9dff3d</span></div><div style="display: grid; justify-items: center; gap: 6px"><span style="width: 40px; height: 40px; background: #a78bff; box-shadow: 0 0 12px -2px #a78bff"></span><span class="ao-pixel" style="font-size: 8px; color: var(--dim)">4 violet</span><span class="small ao-dim">#a78bff</span></div><div style="display: grid; justify-items: center; gap: 6px"><span style="width: 40px; height: 40px; background: #3dffb0; box-shadow: 0 0 12px -2px #3dffb0"></span><span class="ao-pixel" style="font-size: 8px; color: var(--dim)">5 mint</span><span class="small ao-dim">#3dffb0</span></div><div style="display: grid; justify-items: center; gap: 6px"><span style="width: 40px; height: 40px; background: #4f8dff; box-shadow: 0 0 12px -2px #4f8dff"></span><span class="ao-pixel" style="font-size: 8px; color: var(--dim)">6 blue</span><span class="small ao-dim">#4f8dff</span></div><div style="display: grid; justify-items: center; gap: 6px"><span style="width: 40px; height: 40px; background: #ff5c8a; box-shadow: 0 0 12px -2px #ff5c8a"></span><span class="ao-pixel" style="font-size: 8px; color: var(--dim)">7 rose</span><span class="small ao-dim">#ff5c8a</span></div><div style="display: grid; justify-items: center; gap: 6px"><span style="width: 40px; height: 40px; background: #b8f3ff; box-shadow: 0 0 12px -2px #b8f3ff"></span><span class="ao-pixel" style="font-size: 8px; color: var(--dim)">8 ice</span><span class="small ao-dim">#b8f3ff</span></div>
+    <span class="small ao-dim" style="align-self: center; max-width: 360px">No amber, orange or yellow. Red stays for errors in chips, so the warm slot is rose.</span>
+  </div>
+  <div style="display: flex; gap: 28px; align-items: stretch">
+    
+    <section aria-labelledby="h-edge-icon" style="box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; width: 440px; padding: 20px; background: var(--panel); box-shadow: var(--frame-amber)">
+      <div style="display: flex; align-items: center; gap: 10px"><h2 id="h-edge-icon" class="pixel-heading" style="margin: 0; color: var(--fg)">Edge + icon</h2><span class="ao-pixel" style="font-size: 8px; padding: 2px 6px; color: var(--on-amber); background: var(--amber)">Recommended</span></div>
+      <p class="body" style="margin: 0; min-height: 60px; color: var(--dim)">The DS row already paints its edge and icon from --st-accent; the neon sets that var. Status keeps the chip and the background, amber keeps the corner square.</p>
+      <nav aria-label="Side tabs, Edge + icon" class="ao-side" style="display: flex; flex-direction: column; gap: 4px; padding: 8px; background: var(--bg); border: 2px solid var(--line)">
+        <div class="ao-st" style="--st-bg: var(--panel); position: relative; --st-accent: #2ee6ff"><i class="ao-i ao-i-group"></i><span class="t">PROJ-482 audit export</span><span class="ao-stat">Idle</span><span class="m ao-dim">3 tabs</span></div>
+        <div class="ao-st" style="--st-bg: var(--tint-blue); position: relative; --st-accent: #ff4fd8"><i class="ao-i ao-i-agent"></i><span class="t">acme/api</span><span class="ao-stat manual" style="--s-fg: var(--blue); --s-edge: var(--blue)">Review</span><span class="m ao-dim">claude · implement</span></div>
+        <div class="ao-st" style="--st-bg: var(--panel); position: relative; --st-accent: #9dff3d"><i class="ao-i ao-i-doc"></i><span class="t">docs</span><span class="ao-stat">Idle</span><span class="m ao-dim">zsh · ~/work/docs</span></div>
+        <div class="ao-st need" style="--st-bg: var(--panel); position: relative; --st-accent: #a78bff"><i class="ao-i ao-i-term"></i><span class="t">deploy</span><span class="ao-stat need">Waiting</span><span class="m ao-dim">claude asks a question</span></div>
+        <div class="ao-st active" style="--st-bg: var(--panel); position: relative; --st-accent: #3dffb0"><i class="ao-i ao-i-term"></i><span class="t">k9s</span><span class="ao-stat" style="--s-fg: var(--blue)">Running</span><span class="m ao-dim">k9s -n staging</span></div>
+        <div class="ao-st" style="--st-bg: var(--panel); position: relative; --st-accent: #4f8dff"><i class="ao-i ao-i-doc"></i><span class="t">notes</span><span class="ao-stat">Idle</span><span class="m ao-dim">notes.md</span></div>
+        <div class="ao-st" style="--st-bg: var(--panel); position: relative; --st-accent: #ff5c8a"><i class="ao-i ao-i-group"></i><span class="t">PROJ-477 rate limit</span><span class="ao-stat">Idle</span><span class="m ao-dim">2 tabs</span></div>
+      </nav>
+      <div style="display: grid; gap: 6px">
+        <span class="ao-pixel" style="font-size: 8px; color: var(--dim)">k9s tab bar</span>
+        <div class="ao-tabs" style="background: var(--bg)">
+          <span class="ao-tab active" style="--tab-accent: #3dffb0"><i class="ao-i x1 ao-i-term" style="color: #3dffb0"></i><span class="n">k9s -n staging</span></span>
+          <span class="ao-tab"><i class="ao-i x1 ao-i-term"></i><span class="n">zsh · ~/work/ops</span></span>
+        </div>
+      </div>
+    </section>
+    <section aria-labelledby="h-edge" style="box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; width: 440px; padding: 20px; background: var(--panel); box-shadow: var(--frame-neutral)">
+      <div style="display: flex; align-items: center; gap: 10px"><h2 id="h-edge" class="pixel-heading" style="margin: 0; color: var(--fg)">Edge only</h2></div>
+      <p class="body" style="margin: 0; min-height: 60px; color: var(--dim)">Only the 4 px left edge is neon. Calmest; the hue is easy to miss on short rows.</p>
+      <nav aria-label="Side tabs, Edge only" class="ao-side" style="display: flex; flex-direction: column; gap: 4px; padding: 8px; background: var(--bg); border: 2px solid var(--line)">
+        <div class="ao-st" style="--st-bg: var(--panel); position: relative; --st-accent: #2ee6ff"><i class="ao-i ao-i-group" style="color: var(--dim)"></i><span class="t">PROJ-482 audit export</span><span class="ao-stat">Idle</span><span class="m ao-dim">3 tabs</span></div>
+        <div class="ao-st" style="--st-bg: var(--tint-blue); position: relative; --st-accent: #ff4fd8"><i class="ao-i ao-i-agent" style="color: var(--dim)"></i><span class="t">acme/api</span><span class="ao-stat manual" style="--s-fg: var(--blue); --s-edge: var(--blue)">Review</span><span class="m ao-dim">claude · implement</span></div>
+        <div class="ao-st" style="--st-bg: var(--panel); position: relative; --st-accent: #9dff3d"><i class="ao-i ao-i-doc" style="color: var(--dim)"></i><span class="t">docs</span><span class="ao-stat">Idle</span><span class="m ao-dim">zsh · ~/work/docs</span></div>
+        <div class="ao-st need" style="--st-bg: var(--panel); position: relative; --st-accent: #a78bff"><i class="ao-i ao-i-term" style="color: var(--dim)"></i><span class="t">deploy</span><span class="ao-stat need">Waiting</span><span class="m ao-dim">claude asks a question</span></div>
+        <div class="ao-st active" style="--st-bg: var(--panel); position: relative; --st-accent: #3dffb0"><i class="ao-i ao-i-term" style="color: var(--dim)"></i><span class="t">k9s</span><span class="ao-stat" style="--s-fg: var(--blue)">Running</span><span class="m ao-dim">k9s -n staging</span></div>
+        <div class="ao-st" style="--st-bg: var(--panel); position: relative; --st-accent: #4f8dff"><i class="ao-i ao-i-doc" style="color: var(--dim)"></i><span class="t">notes</span><span class="ao-stat">Idle</span><span class="m ao-dim">notes.md</span></div>
+        <div class="ao-st" style="--st-bg: var(--panel); position: relative; --st-accent: #ff5c8a"><i class="ao-i ao-i-group" style="color: var(--dim)"></i><span class="t">PROJ-477 rate limit</span><span class="ao-stat">Idle</span><span class="m ao-dim">2 tabs</span></div>
+      </nav>
+      <div style="display: grid; gap: 6px">
+        <span class="ao-pixel" style="font-size: 8px; color: var(--dim)">k9s tab bar</span>
+        <div class="ao-tabs" style="background: var(--bg)">
+          <span class="ao-tab active" style="--tab-accent: #3dffb0"><i class="ao-i x1 ao-i-term"></i><span class="n">k9s -n staging</span></span>
+          <span class="ao-tab"><i class="ao-i x1 ao-i-term"></i><span class="n">zsh · ~/work/ops</span></span>
+        </div>
+      </div>
+    </section>
+    <section aria-labelledby="h-icon" style="box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; width: 440px; padding: 20px; background: var(--panel); box-shadow: var(--frame-neutral)">
+      <div style="display: flex; align-items: center; gap: 10px"><h2 id="h-icon" class="pixel-heading" style="margin: 0; color: var(--fg)">Icon only</h2></div>
+      <p class="body" style="margin: 0; min-height: 60px; color: var(--dim)">Neon icon, neutral edge. Reads as a sprite colour; the edge stays free for status.</p>
+      <nav aria-label="Side tabs, Icon only" class="ao-side" style="display: flex; flex-direction: column; gap: 4px; padding: 8px; background: var(--bg); border: 2px solid var(--line)">
+        <div class="ao-st" style="--st-bg: var(--panel); position: relative"><i class="ao-i ao-i-group" style="color: #2ee6ff"></i><span class="t">PROJ-482 audit export</span><span class="ao-stat">Idle</span><span class="m ao-dim">3 tabs</span></div>
+        <div class="ao-st" style="--st-bg: var(--tint-blue); position: relative"><i class="ao-i ao-i-agent" style="color: #ff4fd8"></i><span class="t">acme/api</span><span class="ao-stat manual" style="--s-fg: var(--blue); --s-edge: var(--blue)">Review</span><span class="m ao-dim">claude · implement</span></div>
+        <div class="ao-st" style="--st-bg: var(--panel); position: relative"><i class="ao-i ao-i-doc" style="color: #9dff3d"></i><span class="t">docs</span><span class="ao-stat">Idle</span><span class="m ao-dim">zsh · ~/work/docs</span></div>
+        <div class="ao-st need" style="--st-bg: var(--panel); position: relative"><i class="ao-i ao-i-term" style="color: #a78bff"></i><span class="t">deploy</span><span class="ao-stat need">Waiting</span><span class="m ao-dim">claude asks a question</span></div>
+        <div class="ao-st active" style="--st-bg: var(--panel); position: relative"><i class="ao-i ao-i-term" style="color: #3dffb0"></i><span class="t">k9s</span><span class="ao-stat" style="--s-fg: var(--blue)">Running</span><span class="m ao-dim">k9s -n staging</span></div>
+        <div class="ao-st" style="--st-bg: var(--panel); position: relative"><i class="ao-i ao-i-doc" style="color: #4f8dff"></i><span class="t">notes</span><span class="ao-stat">Idle</span><span class="m ao-dim">notes.md</span></div>
+        <div class="ao-st" style="--st-bg: var(--panel); position: relative"><i class="ao-i ao-i-group" style="color: #ff5c8a"></i><span class="t">PROJ-477 rate limit</span><span class="ao-stat">Idle</span><span class="m ao-dim">2 tabs</span></div>
+      </nav>
+      <div style="display: grid; gap: 6px">
+        <span class="ao-pixel" style="font-size: 8px; color: var(--dim)">k9s tab bar</span>
+        <div class="ao-tabs" style="background: var(--bg)">
+          <span class="ao-tab active" style="--tab-accent: transparent"><i class="ao-i x1 ao-i-term" style="color: #3dffb0"></i><span class="n">k9s -n staging</span></span>
+          <span class="ao-tab"><i class="ao-i x1 ao-i-term"></i><span class="n">zsh · ~/work/ops</span></span>
+        </div>
+      </div>
+    </section>
+    <section aria-labelledby="h-name" style="box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; width: 440px; padding: 20px; background: var(--panel); box-shadow: var(--frame-neutral)">
+      <div style="display: flex; align-items: center; gap: 10px"><h2 id="h-name" class="pixel-heading" style="margin: 0; color: var(--fg)">Name tint</h2></div>
+      <p class="body" style="margin: 0; min-height: 60px; color: var(--dim)">Neon side tab name. Loud, and lime and ice names lose contrast on a tinted background.</p>
+      <nav aria-label="Side tabs, Name tint" class="ao-side" style="display: flex; flex-direction: column; gap: 4px; padding: 8px; background: var(--bg); border: 2px solid var(--line)">
+        <div class="ao-st" style="--st-bg: var(--panel); position: relative"><i class="ao-i ao-i-group"></i><span class="t" style="color: #2ee6ff">PROJ-482 audit export</span><span class="ao-stat">Idle</span><span class="m ao-dim">3 tabs</span></div>
+        <div class="ao-st" style="--st-bg: var(--tint-blue); position: relative"><i class="ao-i ao-i-agent"></i><span class="t" style="color: #ff4fd8">acme/api</span><span class="ao-stat manual" style="--s-fg: var(--blue); --s-edge: var(--blue)">Review</span><span class="m ao-dim">claude · implement</span></div>
+        <div class="ao-st" style="--st-bg: var(--panel); position: relative"><i class="ao-i ao-i-doc"></i><span class="t" style="color: #9dff3d">docs</span><span class="ao-stat">Idle</span><span class="m ao-dim">zsh · ~/work/docs</span></div>
+        <div class="ao-st need" style="--st-bg: var(--panel); position: relative"><i class="ao-i ao-i-term"></i><span class="t" style="color: #a78bff">deploy</span><span class="ao-stat need">Waiting</span><span class="m ao-dim">claude asks a question</span></div>
+        <div class="ao-st active" style="--st-bg: var(--panel); position: relative"><i class="ao-i ao-i-term"></i><span class="t" style="color: #3dffb0">k9s</span><span class="ao-stat" style="--s-fg: var(--blue)">Running</span><span class="m ao-dim">k9s -n staging</span></div>
+        <div class="ao-st" style="--st-bg: var(--panel); position: relative"><i class="ao-i ao-i-doc"></i><span class="t" style="color: #4f8dff">notes</span><span class="ao-stat">Idle</span><span class="m ao-dim">notes.md</span></div>
+        <div class="ao-st" style="--st-bg: var(--panel); position: relative"><i class="ao-i ao-i-group"></i><span class="t" style="color: #ff5c8a">PROJ-477 rate limit</span><span class="ao-stat">Idle</span><span class="m ao-dim">2 tabs</span></div>
+      </nav>
+      <div style="display: grid; gap: 6px">
+        <span class="ao-pixel" style="font-size: 8px; color: var(--dim)">k9s tab bar</span>
+        <div class="ao-tabs" style="background: var(--bg)">
+          <span class="ao-tab active" style="--tab-accent: transparent"><i class="ao-i x1 ao-i-term"></i><span class="n">k9s -n staging</span></span>
+          <span class="ao-tab"><i class="ao-i x1 ao-i-term"></i><span class="n">zsh · ~/work/ops</span></span>
+        </div>
+      </div>
+    </section>
+    <section aria-labelledby="h-glow" style="box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; width: 440px; padding: 20px; background: var(--panel); box-shadow: var(--frame-neutral)">
+      <div style="display: flex; align-items: center; gap: 10px"><h2 id="h-glow" class="pixel-heading" style="margin: 0; color: var(--fg)">Glow frame</h2></div>
+      <p class="body" style="margin: 0; min-height: 60px; color: var(--dim)">1 px neon frame with a soft glow. Arcade feel; fights the white frame of the active row.</p>
+      <nav aria-label="Side tabs, Glow frame" class="ao-side" style="display: flex; flex-direction: column; gap: 4px; padding: 8px; background: var(--bg); border: 2px solid var(--line)">
+        <div class="ao-st" style="--st-bg: var(--panel); position: relative; box-shadow: inset 0 0 0 1px #2ee6ff, 0 0 10px -2px #2ee6ff"><i class="ao-i ao-i-group" style="color: #2ee6ff"></i><span class="t">PROJ-482 audit export</span><span class="ao-stat">Idle</span><span class="m ao-dim">3 tabs</span></div>
+        <div class="ao-st" style="--st-bg: var(--tint-blue); position: relative; box-shadow: inset 0 0 0 1px #ff4fd8, 0 0 10px -2px #ff4fd8"><i class="ao-i ao-i-agent" style="color: #ff4fd8"></i><span class="t">acme/api</span><span class="ao-stat manual" style="--s-fg: var(--blue); --s-edge: var(--blue)">Review</span><span class="m ao-dim">claude · implement</span></div>
+        <div class="ao-st" style="--st-bg: var(--panel); position: relative; box-shadow: inset 0 0 0 1px #9dff3d, 0 0 10px -2px #9dff3d"><i class="ao-i ao-i-doc" style="color: #9dff3d"></i><span class="t">docs</span><span class="ao-stat">Idle</span><span class="m ao-dim">zsh · ~/work/docs</span></div>
+        <div class="ao-st need" style="--st-bg: var(--panel); position: relative; box-shadow: inset 0 0 0 1px #a78bff, 0 0 10px -2px #a78bff"><i class="ao-i ao-i-term" style="color: #a78bff"></i><span class="t">deploy</span><span class="ao-stat need">Waiting</span><span class="m ao-dim">claude asks a question</span></div>
+        <div class="ao-st active" style="--st-bg: var(--panel); position: relative; box-shadow: inset 0 0 0 2px var(--fg), 0 0 10px -2px #3dffb0"><i class="ao-i ao-i-term" style="color: #3dffb0"></i><span class="t">k9s</span><span class="ao-stat" style="--s-fg: var(--blue)">Running</span><span class="m ao-dim">k9s -n staging</span></div>
+        <div class="ao-st" style="--st-bg: var(--panel); position: relative; box-shadow: inset 0 0 0 1px #4f8dff, 0 0 10px -2px #4f8dff"><i class="ao-i ao-i-doc" style="color: #4f8dff"></i><span class="t">notes</span><span class="ao-stat">Idle</span><span class="m ao-dim">notes.md</span></div>
+        <div class="ao-st" style="--st-bg: var(--panel); position: relative; box-shadow: inset 0 0 0 1px #ff5c8a, 0 0 10px -2px #ff5c8a"><i class="ao-i ao-i-group" style="color: #ff5c8a"></i><span class="t">PROJ-477 rate limit</span><span class="ao-stat">Idle</span><span class="m ao-dim">2 tabs</span></div>
+      </nav>
+      <div style="display: grid; gap: 6px">
+        <span class="ao-pixel" style="font-size: 8px; color: var(--dim)">k9s tab bar</span>
+        <div class="ao-tabs" style="background: var(--bg)">
+          <span class="ao-tab active" style="--tab-accent: #3dffb0"><i class="ao-i x1 ao-i-term" style="color: #3dffb0"></i><span class="n">k9s -n staging</span></span>
+          <span class="ao-tab"><i class="ao-i x1 ao-i-term"></i><span class="n">zsh · ~/work/ops</span></span>
+        </div>
+      </div>
+    </section>
+    <section aria-labelledby="h-wash" style="box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; width: 440px; padding: 20px; background: var(--panel); box-shadow: var(--frame-neutral)">
+      <div style="display: flex; align-items: center; gap: 10px"><h2 id="h-wash" class="pixel-heading" style="margin: 0; color: var(--fg)">Wash</h2></div>
+      <p class="body" style="margin: 0; min-height: 60px; color: var(--dim)">Neon wash behind the row plus the edge. Collides with a status background (acme/api).</p>
+      <nav aria-label="Side tabs, Wash" class="ao-side" style="display: flex; flex-direction: column; gap: 4px; padding: 8px; background: var(--bg); border: 2px solid var(--line)">
+        <div class="ao-st" style="--st-bg: color-mix(in srgb, #2ee6ff 12%, var(--panel)); position: relative; --st-accent: #2ee6ff"><i class="ao-i ao-i-group"></i><span class="t">PROJ-482 audit export</span><span class="ao-stat">Idle</span><span class="m ao-dim">3 tabs</span></div>
+        <div class="ao-st" style="--st-bg: color-mix(in srgb, #ff4fd8 12%, var(--tint-blue)); position: relative; --st-accent: #ff4fd8"><i class="ao-i ao-i-agent"></i><span class="t">acme/api</span><span class="ao-stat manual" style="--s-fg: var(--blue); --s-edge: var(--blue)">Review</span><span class="m ao-dim">claude · implement</span></div>
+        <div class="ao-st" style="--st-bg: color-mix(in srgb, #9dff3d 12%, var(--panel)); position: relative; --st-accent: #9dff3d"><i class="ao-i ao-i-doc"></i><span class="t">docs</span><span class="ao-stat">Idle</span><span class="m ao-dim">zsh · ~/work/docs</span></div>
+        <div class="ao-st need" style="--st-bg: color-mix(in srgb, #a78bff 12%, var(--panel)); position: relative; --st-accent: #a78bff"><i class="ao-i ao-i-term"></i><span class="t">deploy</span><span class="ao-stat need">Waiting</span><span class="m ao-dim">claude asks a question</span></div>
+        <div class="ao-st active" style="--st-bg: color-mix(in srgb, #3dffb0 12%, var(--panel)); position: relative; --st-accent: #3dffb0"><i class="ao-i ao-i-term"></i><span class="t">k9s</span><span class="ao-stat" style="--s-fg: var(--blue)">Running</span><span class="m ao-dim">k9s -n staging</span></div>
+        <div class="ao-st" style="--st-bg: color-mix(in srgb, #4f8dff 12%, var(--panel)); position: relative; --st-accent: #4f8dff"><i class="ao-i ao-i-doc"></i><span class="t">notes</span><span class="ao-stat">Idle</span><span class="m ao-dim">notes.md</span></div>
+        <div class="ao-st" style="--st-bg: color-mix(in srgb, #ff5c8a 12%, var(--panel)); position: relative; --st-accent: #ff5c8a"><i class="ao-i ao-i-group"></i><span class="t">PROJ-477 rate limit</span><span class="ao-stat">Idle</span><span class="m ao-dim">2 tabs</span></div>
+      </nav>
+      <div style="display: grid; gap: 6px">
+        <span class="ao-pixel" style="font-size: 8px; color: var(--dim)">k9s tab bar</span>
+        <div class="ao-tabs" style="background: var(--bg)">
+          <span class="ao-tab active" style="--tab-accent: #3dffb0"><i class="ao-i x1 ao-i-term"></i><span class="n">k9s -n staging</span></span>
+          <span class="ao-tab"><i class="ao-i x1 ao-i-term"></i><span class="n">zsh · ~/work/ops</span></span>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

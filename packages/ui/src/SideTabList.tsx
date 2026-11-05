@@ -234,7 +234,7 @@ function Row(props: {
         }}
       >
         <i
-          className={`ao-i ao-i-${side.icon ?? (group ? "group" : side.tabs[0] && tabAgent(side.tabs[0], agents) ? "agent" : "term")}`}
+          className={`ao-i ao-i-${side.icon ?? (group ? "group" : (side.tabs[0]?.icon ?? (side.tabs[0] && tabAgent(side.tabs[0], agents) ? "agent" : "term")))}`}
           title="Double-click to change the icon"
           onDoubleClick={(e) => {
             e.stopPropagation();

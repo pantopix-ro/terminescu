@@ -33,7 +33,7 @@ test("a manual status shows on the side tab until back to auto", async ({ page }
   await page.keyboard.press("Meta+Shift+S");
   await expect(editor.getByLabel("Status label")).toHaveValue("Review");
   await editor.getByRole("button", { name: "back to auto" }).click();
-  await editor.getByRole("button", { name: /Done/ }).click();
+  await editor.locator(".ao-frame-foot").getByRole("button", { name: /Done/ }).click();
   await expect(side.locator(".ao-stat")).toHaveText("Idle");
   await expect(side.locator(".ao-stat.manual")).toHaveCount(0);
 });
@@ -118,15 +118,15 @@ test("Settings adds a global status the editor offers, and deleting it goes back
   await settings.getByLabel("New global status").fill("Parked");
   await settings.getByRole("button", { name: "Add", exact: true }).click();
   await expect(settings.locator('[data-global="Parked"]')).toBeVisible();
-  await settings.getByRole("button", { name: "Done" }).click();
+  await settings.locator(".ao-frame-foot").getByRole("button", { name: "Done" }).click();
 
   await page.keyboard.press("Meta+Shift+S");
   await page.getByRole("dialog").locator(".preset", { hasText: "Parked" }).click();
-  await page.getByRole("button", { name: /Done/ }).click();
+  await page.locator(".status-editor .ao-frame-foot").getByRole("button", { name: /Done/ }).click();
   await expect(side.locator(".ao-stat.manual")).toHaveText("Parked");
 
   await page.keyboard.press("Meta+Comma");
   await page.getByRole("button", { name: "Delete Parked" }).click();
-  await page.getByRole("button", { name: "Done" }).click();
+  await page.locator(".ao-frame-foot").getByRole("button", { name: "Done" }).click();
   await expect(side.locator(".ao-stat")).toHaveText("Idle");
 });

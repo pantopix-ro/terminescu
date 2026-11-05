@@ -1,5 +1,6 @@
 import { ICONS, type Icon } from "@terminescu/host";
-import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import type { KeyboardEvent } from "react";
+import { usePopover } from "./popover";
 
 /** What each icon of {@link ICONS} shows, for its tooltip and for screen readers. */
 export const ICON_LABELS: Record<Icon, string> = {
@@ -26,7 +27,6 @@ export const ICON_LABELS: Record<Icon, string> = {
 };
 
 const COLUMNS = 5;
-const GAP = 4;
 
 export interface IconPickerProps {
   /** Where the double click landed, in window pixels. */
@@ -46,30 +46,7 @@ export interface IconPickerProps {
  * where it was.
  */
 export function IconPicker({ x, y, name, current, onPick, onClose }: IconPickerProps) {
-  const ref = useRef<HTMLDivElement>(null);
-  const before = useRef<Element | null>(null);
-  const [pos, setPos] = useState<{ left: number; top: number }>();
-  useLayoutEffect(() => {
-    before.current = document.activeElement;
-    const el = ref.current!;
-    const left = Math.max(GAP, Math.min(x, window.innerWidth - GAP - el.offsetWidth));
-    const top = Math.max(GAP, Math.min(y, window.innerHeight - GAP - el.offsetHeight));
-    setPos({ left, top });
-    (el.querySelector<HTMLElement>("[aria-pressed=true]") ?? el.querySelector<HTMLElement>("button"))?.focus();
-    return () => {
-      const back = before.current;
-      if (back instanceof HTMLElement && back.isConnected) back.focus({ preventScroll: true });
-    };
-  }, [x, y]);
-  // A modal list: a pane that grabs the focus as its tab shows hands it straight back.
-  useLayoutEffect(() => {
-    const keep = (e: FocusEvent) => {
-      const el = ref.current;
-      if (el && !el.contains(e.target as Node)) (el.querySelector<HTMLElement>("[aria-pressed=true]") ?? el.querySelector<HTMLElement>("button"))?.focus();
-    };
-    document.addEventListener("focusin", keep);
-    return () => document.removeEventListener("focusin", keep);
-  }, []);
+  const { ref, style } = usePopover(x, y, ["[aria-pressed=true]", ".icon-cell"]);
 
   const pick = (icon: Icon | null) => {
     onClose();
@@ -101,7 +78,7 @@ export function IconPicker({ x, y, name, current, onPick, onClose }: IconPickerP
         className="ao-frame icon-picker"
         role="dialog"
         aria-label={`Icon for ${name}`}
-        style={pos ?? { left: x, top: y, visibility: "hidden" }}
+        style={style}
         onKeyDown={onKeyDown}
       >
         <div className="icon-grid">

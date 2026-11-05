@@ -16,6 +16,7 @@ import {
   type AppSettings,
   TINTS,
   ICONS,
+  DEFAULT_STATUSES,
   type AgentUpdate,
   type AgentView,
   type AttentionSettings,
@@ -24,6 +25,7 @@ import {
   type Entry,
   type Id,
   type Look,
+  type Icon,
   type ManualStatus,
   type Pin,
   type Variable,
@@ -363,7 +365,12 @@ export function createMockHost(initial?: Workspace): MockHost {
     return out;
   };
   let order = 0;
-  let config: StatusConfig = { statuses: [], rules: [], builtins: {} };
+  let config: StatusConfig = {
+    // Own ids, so the ids of tabs and panes stay as the tests know them.
+    statuses: DEFAULT_STATUSES.map((d, i) => ({ id: `default-status-${i + 1}`, sideTabId: null, label: d.label, accent: d.accent, background: null })),
+    rules: [],
+    builtins: {},
+  };
   let shown: Record<Id, Shown> = {};
   const statusListeners = new Set<(s: Record<Id, Shown>) => void>();
   const configListeners = new Set<() => void>();
@@ -408,9 +415,25 @@ export function createMockHost(initial?: Workspace): MockHost {
     const windowId = id();
     return { windows: [{ id: windowId, sideTabs: [newSideTab()] }] };
   }
+  // A new tab's icon: one no other tab uses yet, from the tab id, as `pick_icon` in state.rs.
+  function pickIcon(tabId: string): Icon {
+    const pool: Icon[] = ICONS.filter((i) => i !== "agent");
+    let h = 0x811c9dc5;
+    for (const ch of tabId) h = Math.imul(h ^ ch.charCodeAt(0), 0x01000193) >>> 0;
+    const used = new Set<Icon | undefined>();
+    // The first side tab is made while `ws` is still being set up, with nothing to avoid.
+    try {
+      for (const s of allSideTabs()) for (const t of s.tabs) used.add(t.icon);
+    } catch {}
+    for (let k = 0; k < pool.length; k++) {
+      const icon = pool[(h + k) % pool.length]!;
+      if (!used.has(icon)) return icon;
+    }
+    return pool[h % pool.length]!;
+  }
   function newTab(): Tab {
     const tabId = id();
-    return { id: tabId, title: null, layout: { type: "pane", id: id() } };
+    return { id: tabId, title: null, layout: { type: "pane", id: id() }, icon: pickIcon(tabId) };
   }
   function newSideTab(): SideTab {
     const tab = newTab();
@@ -567,7 +590,8 @@ export function createMockHost(initial?: Workspace): MockHost {
           if (layout === "small") return fail("PaneTooSmall", c.beside);
           return [{ type: "LayoutChanged", tabId: tab.id, layout: layout! }];
         }
-        const tab: Tab = { id: id(), title: null, layout: { type: "pane", id: id(), doc: c.docId } };
+        const tabId = id();
+        const tab: Tab = { id: tabId, title: null, layout: { type: "pane", id: id(), doc: c.docId }, icon: pickIcon(tabId) };
         return [{ type: "TabCreated", sideTabId: c.sideTabId, index: side.tabs.length, tab }];
       }
       case "ClosePane": {
