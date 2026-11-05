@@ -163,6 +163,8 @@ struct Inner {
     respawned: Mutex<Vec<Id>>,
     context_sink: Mutex<Option<ContextSink>>,
     doc_sink: Mutex<Option<DocSink>>,
+    /// Settings › Shell: new shells point `VISUAL` and `EDITOR` at `terminescu edit --wait`.
+    editor: AtomicBool,
     queued: Condvar,
     emit: Emit,
     connect: Connect,
@@ -186,6 +188,7 @@ impl Runtime {
         emit: Emit,
         connect: Connect,
         persist: Persist,
+        editor: bool,
     ) -> Result<(Self, Vec<Id>), DaemonError> {
         let (tx, rx) = mpsc::channel();
         let client = Arc::new(connect(tx)?);
@@ -292,6 +295,7 @@ impl Runtime {
                 respawned: Mutex::new(spawn.iter().map(|(p, _, _)| p.clone()).collect()),
                 context_sink: Mutex::default(),
                 doc_sink: Mutex::default(),
+                editor: AtomicBool::new(editor),
                 queued: Condvar::new(),
                 emit,
                 connect,
@@ -439,7 +443,8 @@ impl Runtime {
             .map(|(side, tab)| (side.id.clone(), tab.id.clone()))
     }
 
-    fn pane_of_daemon(&self, daemon: PaneId) -> Option<Id> {
+    /// The layout pane a daemon pane shows in.
+    pub fn pane_of_daemon(&self, daemon: PaneId) -> Option<Id> {
         lock(&self.inner.panes).by_daemon.get(&daemon).cloned()
     }
 
@@ -631,11 +636,18 @@ impl Runtime {
     /// Starts a login shell for a pane, in `cwd` when given. A cwd that no longer exists falls
     /// back to the home folder.
     fn spawn_for(&self, client: &DaemonClient, pane: &str, side_tab: &str, cwd: Option<&str>) {
+        // The shell integration exports `VISUAL` and `EDITOR` after the rc files (D9).
+        let env: Vec<(String, String)> = if self.inner.editor.load(Ordering::SeqCst) {
+            vec![("TERMINESCU_EDITOR".into(), "1".into())]
+        } else {
+            Vec::new()
+        };
         let spec = |cwd: Option<&str>| SpawnSpec {
             cols: DEFAULT_SIZE.0,
             rows: DEFAULT_SIZE.1,
             side_tab: Some(side_tab.into()),
             cwd: cwd.map(Into::into),
+            env: env.clone(),
             ..Default::default()
         };
         let cwd = cwd.filter(|c| std::path::Path::new(c).is_dir());
@@ -975,6 +987,11 @@ impl Runtime {
     /// Where the UI gets status changes; the current ones come from [`Runtime::statuses`].
     pub fn on_status(&self, sink: StatusSink) {
         *lock(&self.inner.status_sink) = Some(sink);
+    }
+
+    /// The opt-in editor setting; shells started from now on follow it (D27).
+    pub fn set_editor(&self, on: bool) {
+        self.inner.editor.store(on, Ordering::SeqCst);
     }
 
     /// Where the document store hears that the last pane of a document closed.

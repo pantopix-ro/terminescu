@@ -134,6 +134,12 @@ export function createIpcHost(): Host {
     openUrl: (url) => invoke("open_url", { url }),
     newText: (sideTab, beside) => invoke<DocView>("doc_new", { sideTab, beside: beside ?? null }),
     openFile: (sideTab, path, beside) => invoke<DocView>("doc_open_file", { sideTab, path, beside: beside ?? null }),
+    openPath: (sideTab, pane, path, beside) => invoke<DocView>("doc_open_path", { sideTab, pane, path, beside: beside ?? null }),
+    returnEdit: (id) => invoke("doc_return", { id }),
+    onFileDrop: (listener) =>
+      getCurrentWebviewWindow().onDragDropEvent((e) => {
+        if (e.payload.type === "drop" && e.payload.paths.length) listener(e.payload.paths);
+      }),
     document: (id) => invoke<DocView>("doc_get", { id }),
     editDocument: (id, text) => invoke<DocView>("doc_edit", { id, text }),
     saveDocument: (id, path) => invoke<DocView>("doc_save", { id, path: path ?? null }),

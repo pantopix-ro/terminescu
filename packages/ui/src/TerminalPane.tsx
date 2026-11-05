@@ -1,13 +1,14 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
-import { Terminal } from "@xterm/xterm";
+import { Terminal, type IBufferLine } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import type { PaneView } from "@terminescu/host";
 import { useEffect, useRef, useState } from "react";
 import { claimPane, paneElement, releasePane } from "./pane-registry";
 import { EXTRACT_EVENT, INSERT_EVENT, PIN_EVENT, type InsertDetail } from "./events";
 import { pasteBytes } from "./insert";
+import { findPaths } from "./paths";
 import { webglBudget } from "./webgl-budget";
 import { terminalFont, xtermTheme } from "./xterm-theme";
 
@@ -21,6 +22,11 @@ export interface TerminalPaneProps {
   onFocus?(): void;
   open(cols: number, rows: number, onOutput: (bytes: Uint8Array) => void): Promise<PaneView>;
   openUrl(url: string): void;
+  /**
+   * `⌘`-click on a file path in the output; `⌥⌘`-click opens it beside the pane (D27). The
+   * path is as printed: relative ones resolve against the pane's cwd in the core.
+   */
+  openPath?(path: string, beside: boolean): void;
   /** Hands out the terminal, for tests. */
   onTerminal?(term: Terminal | null): void;
   /**
@@ -32,6 +38,19 @@ export interface TerminalPaneProps {
 
 /** Scrolls a terminal to a pin's rows and selects them; `detail` is `[first, last]`. */
 export const REVEAL_ROWS_EVENT = "terminescu:reveal-rows";
+
+/** The cell column of a string offset in a line from `translateToString(true)`. */
+function cellOf(line: IBufferLine, offset: number): number {
+  let chars = 0;
+  for (let x = 0; x < line.length; x++) {
+    const cell = line.getCell(x);
+    if (!cell || cell.getWidth() === 0) continue;
+    const n = cell.getChars().length || 1;
+    if (chars + n > offset) return x;
+    chars += n;
+  }
+  return Math.max(0, line.length - 1);
+}
 
 interface Live {
   term: Terminal;
@@ -85,11 +104,11 @@ function dropWebgl(live: Live, el: HTMLElement) {
  * chords pass through to the app menu; every other key goes to the shell, with Option as Meta.
  * Links open on `⌘`-click.
  */
-export function TerminalPane({ paneId, visible, focused, onFocus, open, openUrl, onTerminal, onSelection }: TerminalPaneProps) {
+export function TerminalPane({ paneId, visible, focused, onFocus, open, openUrl, openPath, onTerminal, onSelection }: TerminalPaneProps) {
   const live = useRef<Live | null>(null);
   const [ready, setReady] = useState(false);
-  const callbacks = useRef({ open, openUrl, onTerminal, onFocus, onSelection });
-  callbacks.current = { open, openUrl, onTerminal, onFocus, onSelection };
+  const callbacks = useRef({ open, openUrl, openPath, onTerminal, onFocus, onSelection });
+  callbacks.current = { open, openUrl, openPath, onTerminal, onFocus, onSelection };
 
   useEffect(() => {
     const el = claimPane(paneId);
@@ -147,6 +166,22 @@ export function TerminalPane({ paneId, visible, focused, onFocus, open, openUrl,
       const fit = new FitAddon();
       term.loadAddon(fit);
       term.loadAddon(new WebLinksAddon(activate));
+      // File paths underline on hover like links and open on `⌘`-click (D27).
+      term.registerLinkProvider({
+        provideLinks(y, done) {
+          const line = term.buffer.active.getLine(y - 1);
+          if (!line || !callbacks.current.openPath) return done(undefined);
+          const text = line.translateToString(true);
+          const links = findPaths(text).map((p) => ({
+            range: { start: { x: cellOf(line, p.start) + 1, y }, end: { x: cellOf(line, p.end - 1) + 1, y } },
+            text: p.path,
+            activate: (e: MouseEvent, path: string) => {
+              if (e.metaKey) callbacks.current.openPath?.(path, e.altKey);
+            },
+          }));
+          done(links.length ? links : undefined);
+        },
+      });
       // ⌘ chords belong to the app menu (D17), including copy and paste.
       term.attachCustomKeyEventHandler((e) => !e.metaKey);
       term.open(el);

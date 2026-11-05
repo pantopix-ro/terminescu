@@ -173,6 +173,15 @@ export interface Host {
    * pane; the window focuses the pane that shows it.
    */
   openFile(sideTabId: Id, path: string, beside?: Id | null): Promise<DocView>;
+  /**
+   * `⌘`-click on a path in terminal output: `path` may be relative to the pane's cwd or start
+   * with `~`. Only an existing file opens.
+   */
+  openPath(sideTabId: Id, paneId: Id, path: string, beside?: Id | null): Promise<DocView>;
+  /** `⌘↵`: the `terminescu edit --wait` call on this document returns. Save and close around it. */
+  returnEdit(docId: Id): Promise<void>;
+  /** Files dropped from Finder on the window, as absolute paths. */
+  onFileDrop(listener: (paths: string[]) => void): Promise<() => void>;
   /** A document with its text. */
   document(docId: Id): Promise<DocView>;
   /** The editor's whole text, after a pause in typing (D28). */

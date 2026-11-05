@@ -3,6 +3,9 @@ export { ANSI_SLOTS, terminalFont, xtermTheme } from "./xterm-theme";
 export { ContextPanel, HOVER_MS, type ContextMode, type ContextPanelProps } from "./ContextPanel";
 export { focusPane, paneEvent } from "./pane-registry";
 export { Palette, type PaletteItem, type PaletteProps } from "./Palette";
+export { FileFinder, type FileFinderProps } from "./FileFinder";
+export { MAX_SHOWN, rankFiles } from "./files";
+export { findPaths, type FoundPath } from "./paths";
 export {
   DROP_END,
   dropGap,
@@ -12,6 +15,7 @@ export {
   tabChord,
   tabDirty,
   tabName,
+  tabRequest,
   type DocMarks,
   type SideTabListProps,
 } from "./SideTabList";

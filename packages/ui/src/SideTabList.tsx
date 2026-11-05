@@ -31,8 +31,11 @@ export function sideTabName(s: SideTab, docs: DocMarks = {}): string {
   return s.title ?? (s.tabs[0] ? tabName(s.tabs[0], docs) : "shell");
 }
 
-/** Text panes' documents by id: the title a tab shows and whether edits are unsaved (D27). */
-export type DocMarks = Readonly<Record<string, { title: string; dirty: boolean }>>;
+/**
+ * Text panes' documents by id: the title a tab shows, whether edits are unsaved and whether a
+ * `terminescu edit --wait` call waits on it (D27).
+ */
+export type DocMarks = Readonly<Record<string, { title: string; dirty: boolean; request?: boolean }>>;
 
 const docsOf = (t: Tab): string[] => panesOf(t.layout).flatMap((p) => leaf(t.layout, p)?.doc ?? []);
 
@@ -41,6 +44,9 @@ export const tabName = (t: Tab, docs: DocMarks = {}) => t.title ?? docsOf(t).map
 
 /** A tab holds a document with unsaved edits. */
 export const tabDirty = (t: Tab, docs: DocMarks = {}) => docsOf(t).some((d) => docs[d]?.dirty);
+
+/** A tab holds a document a program waits on: it needs the person, as a waiting Claude does. */
+export const tabRequest = (t: Tab, docs: DocMarks = {}) => docsOf(t).some((d) => docs[d]?.request);
 
 /** `⌘1` to `⌘8` for the first tabs, `⌘9` for the last one, as the Window menu does. */
 export function tabChord(i: number, count: number): string | undefined {
@@ -86,7 +92,7 @@ function Row(props: {
 }) {
   const { side, active, expanded, dragging, agents, statuses, builtins, docs } = props;
   const shown = statuses[side.id];
-  const need = shown?.waiting || side.tabs.some((t) => tabAgent(t, agents)?.state === "waiting");
+  const need = shown?.waiting || side.tabs.some((t) => tabAgent(t, agents)?.state === "waiting" || tabRequest(t, docs));
   const chip = chipOf(shown, builtins);
   const { setNodeRef, isOver } = useDroppable({ id: dropInto(side.id), disabled: !dragging || active });
   const group = side.tabs.length > 1;

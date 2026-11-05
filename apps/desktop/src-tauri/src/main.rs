@@ -48,7 +48,7 @@ const COMMANDS_EVENT: &str = "host://commands";
 const SETTINGS_EVENT: &str = "host://settings";
 const KEYS_EVENT: &str = "host://keys";
 /// To one window: focus this pane, after `⌘⇧A` picked it (workbench-ui "Attention signals").
-const REVEAL_EVENT: &str = "host://reveal-pane";
+pub(crate) const REVEAL_EVENT: &str = "host://reveal-pane";
 /// To one window: play the chime, when Settings › Notifications turned it on.
 const CHIME_EVENT: &str = "host://chime";
 /// Event that carries an app action from the menu to the focused window (D17).
@@ -78,6 +78,8 @@ struct AppState {
     recording: Mutex<Option<String>>,
     /// What text panes edit (D28).
     docs: Arc<terminescu_core::documents::Documents>,
+    /// `terminescu edit --wait` calls waiting on their documents.
+    waits: Arc<docs::Waits>,
 }
 
 /// Focuses the pane that has waited longest, raising its window. `None` when nothing waits.
@@ -347,6 +349,7 @@ fn settings_set(
     settings: settings::Settings,
 ) -> Result<settings::Settings, String> {
     let saved = settings::set(&lock(&state.db), settings).map_err(|e| e.to_string())?;
+    state.runtime.set_editor(saved.editor);
     let _ = app.emit(SETTINGS_EVENT, ());
     Ok(saved)
 }
@@ -1017,7 +1020,7 @@ fn start_runtime(
     let run = paths::run_paths();
     paths::ensure_private_dir(&run.dir)?;
     let hooks: Arc<OnceLock<Runtime>> = Arc::default();
-    if let Err(e) = serve_core_socket(&run.core_socket, hooks.clone(), db.clone()) {
+    if let Err(e) = serve_core_socket(&run.core_socket, hooks.clone(), db.clone(), app.clone()) {
         eprintln!("terminescu: core socket not served, hooks and statuses stay off: {e}");
     }
     let log = paths::support_dir().join("logs/ptyd.log");
@@ -1040,6 +1043,10 @@ fn start_runtime(
     let (saved, rules) = {
         let db = lock(&db);
         (persist::load(&db)?, status_store::rules(&db)?)
+    };
+    let editor = {
+        let db = lock(&db);
+        settings::get(&db).map(|s| s.editor).unwrap_or(false)
     };
     // Closing a side tab deletes its local statuses and their rules (ON DELETE CASCADE), so the
     // runtime gets the rules again and windows reload the config.
@@ -1085,6 +1092,7 @@ fn start_runtime(
         emit,
         connect,
         persist,
+        editor,
     )?;
     let handle = app.clone();
     let (to_attention, updates) = std::sync::mpsc::channel();
@@ -1123,11 +1131,12 @@ fn side_ids(ws: &Workspace) -> std::collections::HashSet<Id> {
         .collect()
 }
 
-/// Answers `terminescu hook`, `status` and saved `var set` (D34, D36).
+/// Answers `terminescu hook`, `status`, saved `var set` and `edit` (D27, D34, D36).
 fn serve_core_socket(
     path: &Path,
     runtime: Arc<OnceLock<Runtime>>,
     db: Arc<Mutex<Db>>,
+    app: AppHandle,
 ) -> std::io::Result<()> {
     core_socket::serve(
         path,
@@ -1177,6 +1186,10 @@ fn serve_core_socket(
                     }
                     Err(e) => CoreReply::error("bad_var", e.to_string()),
                 }
+            }
+            // `terminescu edit`; with `--wait` this call thread blocks until the pane returns.
+            CoreRequest::Edit { path, wait } => {
+                docs::edit_from_cli(&app, message.pane, &path, wait)
             }
         }),
     )
@@ -1320,7 +1333,8 @@ fn main() {
             }
             let db = Arc::new(Mutex::new(db));
             let (runtime, windows, updates) = start_runtime(app.handle(), db.clone())?;
-            let docs = docs::start(app.handle(), db.clone(), &runtime);
+            let waits = Arc::new(docs::Waits::default());
+            let docs = docs::start(app.handle(), db.clone(), &runtime, waits.clone());
             let attention = Arc::new(Mutex::new(Attention::default()));
             watch_attention(
                 app.handle().clone(),
@@ -1350,6 +1364,7 @@ fn main() {
                 attention,
                 recording: Mutex::new(None),
                 docs,
+                waits,
             });
             for id in &windows {
                 open_window(app.handle(), id)?;
@@ -1414,11 +1429,13 @@ fn main() {
             open_url,
             docs::doc_new,
             docs::doc_open_file,
+            docs::doc_open_path,
             docs::doc_get,
             docs::doc_edit,
             docs::doc_save,
             docs::doc_reload,
             docs::doc_keep_mine,
+            docs::doc_return,
             docs::files_list
         ])
         .build(tauri::generate_context!())

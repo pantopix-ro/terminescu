@@ -2,6 +2,7 @@
 //! Arguments are parsed by hand: the hook runs in every Claude session and must start fast.
 
 mod common;
+mod edit;
 mod hook;
 mod status;
 mod var;
@@ -10,6 +11,7 @@ use std::process::ExitCode;
 
 const USAGE: &str = "\
 usage: terminescu hook
+       terminescu edit <file> [--wait]
        terminescu status <label> [--color <color>] [--for <duration> | --until-exit]
        terminescu status --clear
        terminescu var get <name> [--reveal]
@@ -27,6 +29,7 @@ fn main() -> ExitCode {
         Some("hook") => hook::run(),
         Some("status") => status::run(rest),
         Some("var") => var::run(rest),
+        Some("edit") => edit::run(rest),
         Some("--version") => {
             println!("terminescu {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS
@@ -34,10 +37,6 @@ fn main() -> ExitCode {
         Some("--help" | "-h" | "help") => {
             println!("{USAGE}");
             ExitCode::SUCCESS
-        }
-        Some("edit") => {
-            eprintln!("terminescu: `edit` arrives with text tabs");
-            ExitCode::from(2)
         }
         _ => common::usage(),
     }

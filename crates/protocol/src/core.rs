@@ -43,6 +43,14 @@ pub enum CoreRequest {
     },
     /// Sets a saved variable on the pane's side tab.
     VarSet { name: String, value: String },
+    /// Opens a file in a text pane of the caller's side tab (D27). With `wait` the pane splits
+    /// beside the caller and the reply comes when the pane returns or closes.
+    Edit {
+        /// Absolute: the CLI resolves it against its own cwd.
+        path: String,
+        #[serde(default)]
+        wait: bool,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

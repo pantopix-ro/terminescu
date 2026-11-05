@@ -110,3 +110,95 @@ test("a clean text tab closes without asking", async ({ page }) => {
   await expect(page.locator(".app-main .ao-tab")).toHaveCount(1);
   await expect(page.getByRole("alertdialog")).toHaveCount(0);
 });
+
+async function seed(page: Page, paths: string[]) {
+  await page.evaluate((paths) => {
+    const h = (window as any).__terminescu.host;
+    for (const p of paths) h.files.set(p, `# ${p.split("/").pop()}\n`);
+  }, paths);
+}
+
+test("⌘O finds a file under the pane's folder; ⌥↵ opens it beside; ⌘O again opens the dialog", async ({ page }) => {
+  await start(page);
+  await seed(page, ["/Users/owner/acme-api/README.md", "/Users/owner/acme-api/src/audit_export.rs", "/Users/owner/acme-api/src/main.rs"]);
+  await page.keyboard.press("Meta+KeyO");
+  const finder = page.locator(".palette");
+  await expect(finder.getByRole("option", { name: "src/main.rs" })).toBeVisible();
+  await page.keyboard.type("audit");
+  await expect(finder.getByRole("option")).toHaveText(["src/audit_export.rs", "Browse…⌘O"]);
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".app-main .ao-tab").nth(1)).toContainText("audit_export.rs");
+  await expect(page.locator(".text-pane .cm-content")).toBeFocused();
+
+  // Back in the terminal tab: ⌥↵ splits beside the terminal.
+  await page.locator(".app-main .ao-tab").first().click();
+  await page.locator(".term-pane").first().click();
+  await page.keyboard.press("Meta+KeyO");
+  await page.keyboard.type("readme");
+  await page.keyboard.press("Alt+Enter");
+  await expect(page.locator(".app-main .ao-tab")).toHaveCount(2);
+  await expect(page.locator(".app-main .ao-tab").first()).toContainText("README.md");
+  await expect(page.locator(".ao-tp")).toHaveCount(2);
+
+  await page.keyboard.press("Meta+KeyO");
+  await expect(page.locator(".palette")).toBeVisible();
+  await page.evaluate(() => (window as any).__terminescu.host.dialogAnswers.push("/Users/owner/acme-api/src/main.rs"));
+  await page.keyboard.press("Meta+KeyO");
+  await expect(page.locator(".palette")).toHaveCount(0);
+  await expect(page.locator(".app-main .ao-tab")).toHaveCount(3);
+  expect(await page.evaluate(() => (window as any).__terminescu.host.dialogs)).toEqual(["open"]);
+});
+
+test("+ ▾ › Text opens an Untitled tab and a Finder drop opens the file", async ({ page }) => {
+  await start(page);
+  await page.getByRole("button", { name: "Choose tab kind" }).click();
+  await page.getByRole("menuitem", { name: /Text/ }).click();
+  await expect(page.locator(".app-main .ao-tab").nth(1)).toContainText("Untitled");
+  await seed(page, ["/Users/owner/acme-api/CHANGELOG.md"]);
+  await page.evaluate(() => (window as any).__terminescu.host.dropFiles(["/Users/owner/acme-api/CHANGELOG.md"]));
+  await expect(page.locator(".app-main .ao-tab").nth(2)).toContainText("CHANGELOG.md");
+});
+
+test("an editor request splits beside the caller, marks the tab and returns on ⌘↵", async ({ page }) => {
+  await start(page);
+  const path = "/Users/owner/acme-api/.git/COMMIT_EDITMSG";
+  await page.evaluate((path) => (window as any).__terminescu.host.files.set(path, "\n# Please enter the commit message\n"), path);
+  const pane = await page.locator(".ao-tp").first().getAttribute("data-pane");
+  await page.evaluate(
+    ({ pane, path }) => {
+      const w = window as any;
+      w.__edited = "waiting";
+      void w.__terminescu.host.editWait(pane, path).then(() => (w.__edited = "returned"));
+    },
+    { pane, path },
+  );
+  await expect(page.locator(".ao-tp")).toHaveCount(2);
+  await expect(page.locator(".app-main .ao-tab").first()).toHaveClass(/wait/);
+  const editor = page.locator(".text-pane .cm-content");
+  await expect(editor).toBeFocused();
+  await page.keyboard.press("Meta+ArrowUp");
+  await page.keyboard.type("Add the audit export");
+  await page.keyboard.press("Meta+Enter");
+  await expect(page.locator(".ao-tp")).toHaveCount(1);
+  await expect.poll(() => page.evaluate(() => (window as any).__edited)).toBe("returned");
+  expect((await files(page))[path]).toMatch(/^Add the audit export\n/);
+  await expect(page.locator(".app-main .ao-tab").first()).not.toHaveClass(/wait/);
+});
+
+test("closing an editor request's pane ends the wait", async ({ page }) => {
+  await start(page);
+  const path = "/Users/owner/acme-api/.git/COMMIT_EDITMSG";
+  await page.evaluate((path) => (window as any).__terminescu.host.files.set(path, ""), path);
+  const pane = await page.locator(".ao-tp").first().getAttribute("data-pane");
+  await page.evaluate(
+    ({ pane, path }) => {
+      const w = window as any;
+      void w.__terminescu.host.editWait(pane, path).then(() => (w.__edited = "ended"));
+    },
+    { pane, path },
+  );
+  await expect(page.locator(".text-pane .cm-content")).toBeFocused();
+  await page.keyboard.press("Meta+KeyW");
+  await expect(page.locator(".ao-tp")).toHaveCount(1);
+  await expect.poll(() => page.evaluate(() => (window as any).__edited)).toBe("ended");
+});

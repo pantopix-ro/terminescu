@@ -281,7 +281,7 @@ function ExtractionSettings() {
 }
 
 function ShellSettings({ host, onError }: SettingsSheetProps) {
-  const [settings] = useAppSettings(host, onError);
+  const [settings, change] = useAppSettings(host, onError);
   if (!settings) return null;
   return (
     <section aria-label="Shell">
@@ -291,12 +291,12 @@ function ShellSettings({ host, onError }: SettingsSheetProps) {
         <span className="small ao-dim grow">start your login shell in the focused pane's folder, never claude</span>
       </div>
       <label className="srow">
-        <input type="checkbox" disabled checked={settings.editor} aria-describedby="editor-hint" />
+        <input type="checkbox" checked={settings.editor} aria-describedby="editor-hint" onChange={(e) => change({ editor: e.target.checked })} />
         <span>
           Set <code>VISUAL</code> and <code>EDITOR</code> to <code>terminescu edit --wait</code>
         </span>
         <span id="editor-hint" className="small ao-dim grow">
-          arrives with text tabs: git and Claude Code then open their editor in a pane beside yours
+          new shells only: git and Claude Code then open their editor in a pane beside yours, ⌘↵ returns
         </span>
       </label>
     </section>

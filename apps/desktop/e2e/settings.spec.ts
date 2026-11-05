@@ -21,13 +21,14 @@ async function openSettings(page: Page, section: string) {
   return dialog;
 }
 
-test("every section opens; extraction is read-only and the editor setting waits for text tabs", async ({ page }) => {
+test("every section opens; extraction is read-only and the editor setting saves", async ({ page }) => {
   await start(page);
   const dialog = await openSettings(page, "Extraction");
   await expect(dialog.locator("[data-rule-name]")).toHaveCount(4);
   await expect(dialog.locator("[data-rule-name] input")).toHaveCount(0);
   await dialog.getByRole("button", { name: "Shell" }).click();
-  await expect(dialog.getByRole("checkbox")).toBeDisabled();
+  await dialog.getByRole("checkbox").check();
+  await expect.poll(() => mock(page, "settings")).toEqual({ varMode: "saved", varTtlSecs: null, editor: true });
   await dialog.getByRole("button", { name: "Keys" }).click();
   await expect(dialog.locator('[data-action="new_tab"] kbd')).toHaveText("⌘T");
   await page.keyboard.press("Escape");

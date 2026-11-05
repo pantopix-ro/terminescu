@@ -308,13 +308,21 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       a core restart and finds no row for a session-only document.
       Done: `documents.rs` with migration 0007 (`base_sig`), 300 ms sync, hot exit rows
       (none for session-only), `on_docs_closed`; `tests/documents.rs`. Editor requests in 7.4.
-- [ ] 7.3 Openers: `⌥⌘T`, `+ ▾ › Text`, `⌘O` file search then the macOS dialog, `⌘`-click on
+- [x] 7.3 Openers: `⌥⌘T`, `+ ▾ › Text`, `⌘O` file search then the macOS dialog, `⌘`-click on
       paths in terminal output via the OSC 7 cwd, `terminescu edit`, Finder drop, `⌥` to split
       (D27). Verify: Playwright for `⌥⌘T` and `⌘O`; `cli.test.rs` for `terminescu edit` picking
       the caller's side tab; manual for path click and Finder drop.
-- [ ] 7.4 Editor requests: `terminescu edit --wait`, split beside the caller, Waiting status,
+      Done: `+ ▾ › Text` in the tab bar, `⌘O` FileFinder (own ranking, top 200, `⌥↵` beside,
+      `⌘O` again for the Open dialog), `⌘`/`⌥⌘`-click on paths via an xterm link provider and
+      `doc_open_path` (cwd from OSC 7), Finder drop through `onFileDrop`, `terminescu edit` as
+      `CoreRequest::Edit`. Path click and Finder drop stay manual checks in the app.
+- [x] 7.4 Editor requests: `terminescu edit --wait`, split beside the caller, Waiting status,
       `⌘↵` returns, close ends the wait; opt-in `EDITOR` in Settings › Shell (D27). Verify:
       `GIT_EDITOR="terminescu edit --wait" git commit` in a test repo finishes after `⌘↵`.
+      Done: `edit_from_cli` splits beside the caller (new tab when too small), `Waits` block the
+      core-call thread until `⌘↵` (`doc_return`) or the last pane closes; the tab shows the
+      waiting marker; Settings › Shell sets `TERMINESCU_EDITOR` for new shells. The `git commit`
+      check runs by hand in the built app.
 - [x] 7.5 Save and close flows: `⌘S`, Save dialog for Untitled, Save As in menu and palette,
       Save / Don't save / Cancel on close, dirty dot (D27). Verify: Playwright with a mock Host
       covers each close choice.

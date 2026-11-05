@@ -64,6 +64,7 @@ impl Fixture {
                 DaemonClient::connect(&socket, events)
             }),
             Box::new(move |saved| persist::save(&db.lock().unwrap(), saved).unwrap()),
+            false,
         )
         .unwrap();
         self.started.lock().unwrap().push(rt.clone());

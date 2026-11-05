@@ -84,6 +84,13 @@ export interface MockHost extends Host {
   readonly dialogs: string[];
   /** Plays someone changing a file on disk: a clean buffer reloads, a dirty one gets the bar. */
   writeFile(path: string, text: string): void;
+  /**
+   * Plays `terminescu edit --wait path` in `pane`: the file opens beside it and the promise
+   * settles when the document returns or its pane closes.
+   */
+  editWait(pane: Id, path: string): Promise<void>;
+  /** Plays files dropped from Finder. */
+  dropFiles(paths: string[]): void;
 }
 
 /** `*` matches any run of characters, `?` one; the whole text must match (as `glob` in the core). */
@@ -192,6 +199,14 @@ export function createMockHost(initial?: Workspace): MockHost {
     }
     return full(docs.get(docId)!);
   };
+  // `terminescu edit --wait` calls by document, as `Waits` in the app.
+  const waits = new Map<string, (() => void)[]>();
+  const endWaits = (docId: string) => {
+    for (const done of waits.get(docId) ?? []) done();
+    waits.delete(docId);
+  };
+  const dropListeners = new Set<(paths: string[]) => void>();
+  const MOCK_CWD = "/Users/owner/acme-api";
   const inputs = new Map<string, string>();
   const agents = new Map<string, AgentView>();
   const agentListeners = new Set<(u: AgentUpdate) => void>();
@@ -522,7 +537,11 @@ export function createMockHost(initial?: Workspace): MockHost {
       const shown = new Set(
         ws.windows.flatMap((w) => w.sideTabs.flatMap((s) => s.tabs.flatMap((t) => panesOf(t.layout).map((p) => leaf(t.layout, p)!.doc)))),
       );
-      for (const d of [...docs.keys()]) if (!shown.has(d)) docs.delete(d);
+      for (const d of [...docs.keys()]) {
+        if (shown.has(d)) continue;
+        docs.delete(d);
+        endWaits(d);
+      }
       return rev;
     },
     async onPatches(listener) {
@@ -952,6 +971,36 @@ export function createMockHost(initial?: Workspace): MockHost {
       const text = files.get(path);
       return showDoc(sideTabId, newDoc({ kind: "file", path }, baseName(path), text ?? "", text === undefined), beside);
     },
+    async openPath(sideTabId, _paneId, path, beside) {
+      const abs = path.startsWith("/") ? path : path.startsWith("~/") ? `/Users/owner/${path.slice(2)}` : `${MOCK_CWD}/${path.replace(/^\.\//, "")}`;
+      if (!files.has(abs)) throw new Error(`No file ${abs}`);
+      return host.openFile(sideTabId, abs, beside);
+    },
+    async returnEdit(docId) {
+      const d = docOrFail(docId);
+      d.view.request = false;
+      endWaits(docId);
+    },
+    async onFileDrop(listener) {
+      dropListeners.add(listener);
+      return () => dropListeners.delete(listener);
+    },
+    dropFiles(paths) {
+      for (const l of dropListeners) l(paths);
+    },
+    async editWait(pane, path) {
+      const side = ws.windows.flatMap((w) => w.sideTabs).find((s) => s.tabs.some((t) => panesOf(t.layout).includes(pane)));
+      if (!side) throw new Error("this pane is not in the layout");
+      const view = await host.openFile(side.id, path, pane);
+      const d = docOrFail(view.id);
+      d.view.request = true;
+      for (const l of docListeners) l(meta(d));
+      const shownIn = ws.windows
+        .flatMap((w) => w.sideTabs.flatMap((s) => s.tabs))
+        .flatMap((t) => panesOf(t.layout).filter((p) => leaf(t.layout, p)?.doc === view.id));
+      for (const p of shownIn.slice(0, 1)) for (const l of revealListeners) l(p);
+      return new Promise<void>((done) => waits.set(view.id, [...(waits.get(view.id) ?? []), done]));
+    },
     async document(docId) {
       return full(docOrFail(docId));
     },
@@ -1022,7 +1071,7 @@ export function createMockHost(initial?: Workspace): MockHost {
       }
     },
     async listFiles() {
-      const root = "/Users/owner/acme-api";
+      const root = MOCK_CWD;
       const files_ = [...files.keys()].filter((p) => p.startsWith(`${root}/`)).map((p) => p.slice(root.length + 1));
       return { root, files: files_.sort(), truncated: false };
     },

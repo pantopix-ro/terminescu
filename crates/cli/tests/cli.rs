@@ -138,6 +138,48 @@ fn status_warns_and_succeeds_when_the_app_is_closed_or_not_ready() {
 }
 
 #[test]
+fn edit_sends_the_absolute_path_from_the_calling_pane() {
+    let dir = temp_dir();
+    let core = test_core(&dir, CoreReply::Ok);
+    let work = dir.join("acme-api");
+    std::fs::create_dir_all(&work).unwrap();
+    let out = cli(&dir, &["edit", "notes.md"])
+        .env("TERMINESCU_PANE_ID", "7")
+        .current_dir(&work)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", stderr(&out));
+    let m = core.recv_timeout(Duration::from_secs(2)).unwrap();
+    assert_eq!(m.pane, 7);
+    let CoreRequest::Edit { path, wait } = m.request else {
+        panic!("not an edit: {:?}", m.request);
+    };
+    assert!(!wait);
+    let path = std::path::PathBuf::from(path);
+    assert!(path.is_absolute());
+    assert_eq!(path.file_name().unwrap(), "notes.md");
+    assert!(path.parent().unwrap().ends_with("acme-api"));
+}
+
+#[test]
+fn edit_fails_outside_a_pane_and_on_an_error_reply() {
+    let dir = temp_dir();
+    let out = cli(&dir, &["edit", "notes.md"]).output().unwrap();
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("not in a Terminescu pane"));
+    let _core = test_core(
+        &dir,
+        CoreReply::error("no_side_tab", "this pane is not in the layout"),
+    );
+    let out = cli(&dir, &["edit", "--wait", "notes.md"])
+        .env("TERMINESCU_PANE_ID", "7")
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("no_side_tab"));
+}
+
+#[test]
 fn hook_posts_the_event_silently_and_fast() {
     let dir = temp_dir();
     let core = test_core(&dir, CoreReply::Ok);

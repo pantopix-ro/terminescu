@@ -1,11 +1,13 @@
 //! Text panes (D27, D28): the commands a window uses on documents and the disk watcher.
 
 use crate::{AppState, lock};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
+use terminescu_core::attention;
 use terminescu_core::context;
 use terminescu_core::db::Db;
 use terminescu_core::documents::{DocView, Documents, Source};
@@ -13,6 +15,8 @@ use terminescu_core::prompts;
 use terminescu_core::runtime::Runtime;
 use terminescu_core::state::{Command, Id};
 use terminescu_core::vars;
+use terminescu_protocol::PaneId;
+use terminescu_protocol::core::CoreReply;
 
 /// A document changed outside the editor: reloaded, changed on disk, saved or gone missing.
 pub const DOCUMENT_EVENT: &str = "host://document";
@@ -34,9 +38,37 @@ fn source_text(db: &Db, source: &Source) -> Option<String> {
     }
 }
 
+/// Editor requests by document: each `terminescu edit --wait` blocks until its document
+/// returns (`⌘↵`) or its last pane closes (D27).
+#[derive(Default)]
+pub struct Waits(Mutex<HashMap<Id, Vec<Sender<()>>>>);
+
+impl Waits {
+    fn add(&self, doc: &str) -> Receiver<()> {
+        let (tx, rx) = channel();
+        lock(&self.0).entry(doc.into()).or_default().push(tx);
+        rx
+    }
+
+    /// Lets every request on these documents return.
+    pub fn end(&self, docs: &[Id]) {
+        let mut waits = lock(&self.0);
+        for d in docs {
+            for tx in waits.remove(d).unwrap_or_default() {
+                let _ = tx.send(());
+            }
+        }
+    }
+}
+
 /// Loads the documents saved for hot exit and keeps the ones a text pane still shows. Closing
-/// their last pane forgets them.
-pub fn start(app: &AppHandle, db: Arc<std::sync::Mutex<Db>>, runtime: &Runtime) -> Arc<Documents> {
+/// their last pane forgets them and ends their editor requests.
+pub fn start(
+    app: &AppHandle,
+    db: Arc<Mutex<Db>>,
+    runtime: &Runtime,
+    waits: Arc<Waits>,
+) -> Arc<Documents> {
     let docs = Arc::new(Documents::new(db.clone()));
     if let Err(e) = docs.restore(|s| source_text(&lock(&db), s)) {
         eprintln!("terminescu: documents not restored: {e}");
@@ -52,6 +84,7 @@ pub fn start(app: &AppHandle, db: Arc<std::sync::Mutex<Db>>, runtime: &Runtime) 
     }
     let closing = docs.clone();
     runtime.on_docs_closed(Box::new(move |ids| {
+        waits.end(ids);
         if let Err(e) = closing.close(ids) {
             eprintln!("terminescu: closed documents not dropped: {e}");
         }
@@ -97,6 +130,100 @@ fn show(
     Ok(view)
 }
 
+/// The pane that shows a document, with the window it sits in.
+fn pane_of_doc(runtime: &Runtime, doc: &str) -> Option<(Id, String)> {
+    let ws = runtime.workspace();
+    let pane = ws
+        .doc_panes()
+        .into_iter()
+        .find(|(_, d, _)| d == doc)
+        .map(|(p, _, _)| p)?;
+    let place = attention::place_of(&ws, &pane)?;
+    Some((pane, place.window))
+}
+
+/// Raises the window that shows a document and focuses its pane.
+fn reveal(app: &AppHandle, runtime: &Runtime, doc: &str) {
+    let Some((pane, window)) = pane_of_doc(runtime, doc) else {
+        return;
+    };
+    if let Some(w) = app.get_webview_window(&window) {
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+    }
+    if let Err(e) = app.emit_to(window.as_str(), crate::REVEAL_EVENT, &pane) {
+        eprintln!("terminescu: edited file not revealed: {e}");
+    }
+}
+
+/// `terminescu edit <file>` from the pane `daemon`: the file opens in a new tab of the caller's
+/// side tab, or beside the caller with `wait`, and a file already open is revealed where it
+/// is. With `wait` the call returns once the document returns or closes.
+pub fn edit_from_cli(app: &AppHandle, daemon: PaneId, path: &str, wait: bool) -> CoreReply {
+    let Some(state) = app.try_state::<AppState>() else {
+        return CoreReply::error("starting", "Terminescu is still starting");
+    };
+    let Some(caller) = state.runtime.pane_of_daemon(daemon) else {
+        return CoreReply::error("no_side_tab", "this pane is not in the layout");
+    };
+    let Some(side) = state
+        .runtime
+        .workspace()
+        .locate_pane(&caller)
+        .map(|(s, _)| s.id.clone())
+    else {
+        return CoreReply::error("no_side_tab", "this pane is not in the layout");
+    };
+    let path = PathBuf::from(path);
+    let view = match state.docs.find_file(&path) {
+        Some(id) => match state.docs.get(&id) {
+            Some(v) => v,
+            None => return CoreReply::error("bad_file", format!("no document {id}")),
+        },
+        None => {
+            let view = match state.docs.open_file(&path, Some(&side)) {
+                Ok(v) => v,
+                Err(e) => return CoreReply::error("bad_file", e.to_string()),
+            };
+            let beside = wait.then(|| caller.clone());
+            // A caller pane too small to split gets the file in a new tab instead.
+            let shown = match show(&state, &side, view, beside) {
+                Err(_) if wait => state
+                    .docs
+                    .open_file(&path, Some(&side))
+                    .map_err(err)
+                    .and_then(|v| show(&state, &side, v, None)),
+                r => r,
+            };
+            match shown {
+                Ok(v) => v,
+                Err(e) => return CoreReply::error("bad_file", e),
+            }
+        }
+    };
+    let ended = wait.then(|| {
+        let rx = state.waits.add(&view.id);
+        if let Ok(v) = state.docs.set_request(&view.id, true) {
+            let _ = app.emit(DOCUMENT_EVENT, &v);
+        }
+        rx
+    });
+    reveal(app, &state.runtime, &view.id);
+    if let Some(rx) = ended {
+        // A sender dropped by a quitting app ends the wait as well.
+        let _ = rx.recv();
+    }
+    CoreReply::Ok
+}
+
+/// `⌘↵` in a text pane: the editor request on the document returns. The window saved first
+/// and closes the pane after.
+#[tauri::command(async)]
+pub fn doc_return(state: State<'_, AppState>, id: Id) -> Result<(), String> {
+    state.waits.end(std::slice::from_ref(&id));
+    state.docs.set_request(&id, false).map(|_| ()).map_err(err)
+}
+
 /// `⌥⌘T`: an Untitled buffer.
 #[tauri::command(async)]
 pub fn doc_new(
@@ -125,6 +252,41 @@ pub fn doc_open_file(
     }
     let view = state.docs.open_file(&path, Some(&side_tab)).map_err(err)?;
     show(&state, &side_tab, view, beside)
+}
+
+/// A path as terminal output shows it: absolute, under `~`, or relative to the pane's cwd.
+fn resolve(path: &str, cwd: Option<&Path>, home: Option<&Path>) -> Option<PathBuf> {
+    let path = path.trim();
+    if path.is_empty() {
+        return None;
+    }
+    if let Some(rest) = path.strip_prefix("~/") {
+        return Some(home?.join(rest));
+    }
+    let p = Path::new(path);
+    if p.is_absolute() {
+        return Some(p.to_path_buf());
+    }
+    Some(cwd?.join(p.strip_prefix("./").unwrap_or(p)))
+}
+
+/// `⌘`-click on a path in a terminal pane: resolved against the pane's OSC 7 cwd, and only an
+/// existing file opens.
+#[tauri::command(async)]
+pub fn doc_open_path(
+    state: State<'_, AppState>,
+    side_tab: Id,
+    pane: Id,
+    path: String,
+    beside: Option<Id>,
+) -> Result<DocView, String> {
+    let cwd = state.runtime.live_cwd(&pane).map(PathBuf::from);
+    let full = resolve(&path, cwd.as_deref(), dirs_home().as_deref())
+        .ok_or_else(|| format!("{path}: the pane's folder is not known"))?;
+    if !full.is_file() {
+        return Err(format!("No file {}", full.display()));
+    }
+    doc_open_file(state, side_tab, full.display().to_string(), beside)
 }
 
 /// A document with its text, when a pane mounts or a window takes over a tab.
@@ -279,6 +441,34 @@ fn walk(root: &Path) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_editor_request_returns_when_its_document_ends() {
+        let waits = Waits::default();
+        let a = waits.add("doc-a");
+        let b = waits.add("doc-b");
+        waits.end(&["doc-a".into()]);
+        assert!(a.recv_timeout(Duration::from_secs(1)).is_ok());
+        assert!(b.try_recv().is_err());
+        // Ending twice, or a document nobody waits on, is harmless.
+        waits.end(&["doc-a".into(), "doc-c".into()]);
+        drop(waits);
+        // A store that goes away lets the call return too.
+        assert!(b.recv_timeout(Duration::from_secs(1)).is_err());
+    }
+
+    #[test]
+    fn paths_resolve_against_the_pane_folder_and_home() {
+        let cwd = Path::new("/Users/owner/acme-api");
+        let home = Path::new("/Users/owner");
+        let r = |p| resolve(p, Some(cwd), Some(home));
+        assert_eq!(r("src/main.rs"), Some(cwd.join("src/main.rs")));
+        assert_eq!(r("./README.md"), Some(cwd.join("README.md")));
+        assert_eq!(r("~/notes.md"), Some(home.join("notes.md")));
+        assert_eq!(r("/etc/hosts"), Some(PathBuf::from("/etc/hosts")));
+        assert_eq!(r(""), None);
+        assert_eq!(resolve("src/main.rs", None, Some(home)), None);
+    }
 
     #[test]
     fn the_walk_skips_hidden_and_build_folders() {

@@ -21,6 +21,7 @@ import {
   transcriptOf,
   type AgentUpdate,
   type DocView,
+  type FileList,
   type AppSettings,
   type ActionDef,
   type KeyBindings,
@@ -56,6 +57,7 @@ import {
   DROP_END,
   focusPane,
   Palette,
+  FileFinder,
   SideTabList,
   sideTabName,
   SplitView,
@@ -190,6 +192,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   // Text panes' documents as their panes last reported them: titles and unsaved edits (D27).
   const [docs, setDocs] = useState<Record<string, DocView>>({});
   const noteDoc = (d: DocView) => setDocs((m) => ({ ...m, [d.id]: d }));
+  // `⌘O`: open while `finder` is set; `list` arrives after (D27).
+  const [finder, setFinder] = useState<{ list?: FileList }>();
 
   const send = (c: Command): Promise<boolean> =>
     host.send(c).then(
@@ -294,6 +298,39 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       return false;
     }
   };
+  // Opens a file in the active side tab, or beside the focused pane, and shows it.
+  const openDoc = (path: string, beside: boolean) => {
+    if (!activeSide) return;
+    void host.openFile(activeSide.id, path, beside ? (focused ?? null) : null).then((d) => revealDoc(d.id), (e: unknown) => setError(String(e)));
+  };
+  const browse = (dir?: string) => void host.chooseFile(dir).then((p) => p && openDoc(p, false), (e: unknown) => setError(String(e)));
+  // `⌘O` lists files under the focused terminal's cwd; `⌘O` again goes to the Open dialog.
+  const openFinder = () => {
+    if (finder) {
+      setFinder(undefined);
+      return browse(finder.list?.root);
+    }
+    const terms = activeTab ? terminalsOf(activeTab.layout) : [];
+    const pane = focused && terms.includes(focused) ? focused : (terms[0] ?? null);
+    setFinder({});
+    void host.listFiles(pane).then(
+      (list) => setFinder((f) => f && { list }),
+      (e: unknown) => {
+        setFinder(undefined);
+        setError(String(e));
+      },
+    );
+  };
+  // `⌘↵` in a text pane a program waits on: save, let `terminescu edit --wait` return, close.
+  const returnEdit = async () => {
+    const pane = focused && textPane(focused);
+    if (!focused || !pane) return;
+    const doc = await host.document(pane.docId).catch(() => undefined);
+    if (!doc?.request) return setNotice("No program waits on this text pane.");
+    if (!(await saveDoc(focused, false))) return;
+    await host.returnEdit(doc.id).catch((e: unknown) => setError(String(e)));
+    void send({ type: "ClosePane", paneId: focused });
+  };
   const saveFocused = (as: boolean) => {
     if (!focused || !textPane(focused)) return setError("Focus a text pane to save.");
     void saveDoc(focused, as);
@@ -391,6 +428,10 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       case "save":
       case "save_as":
         return void saveFocused(id === "save_as");
+      case "open_file":
+        return openFinder();
+      case "return_edit":
+        return void returnEdit();
       case "open_transcript": {
         const session = focused && agents[focused]?.session;
         if (!activeTab || !focused) return;
@@ -671,12 +712,15 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   };
   const revealRef = useRef(revealPane);
   revealRef.current = revealPane;
+  const openRef = useRef(openDoc);
+  openRef.current = openDoc;
   useEffect(() => {
     const offs: (() => void)[] = [];
     let gone = false;
     const keep = (o: () => void) => (gone ? o() : offs.push(o));
     void host.onRevealPane((p) => revealRef.current(p)).then(keep);
     void host.onChime(playChime).then(keep);
+    void host.onFileDrop((paths) => paths.forEach((p) => openRef.current(p, false))).then(keep);
     return () => {
       gone = true;
       offs.forEach((o) => o());
@@ -827,6 +871,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               }}
               onClose={closeTab}
               onNew={() => act("new_tab")}
+              onNewText={(beside) =>
+                activeSide && void host.newText(activeSide.id, beside ? (focused ?? null) : null).then((d) => revealDoc(d.id), (e: unknown) => setError(String(e)))
+              }
             />
             <section className="app-pane">
               {activeTab && (
@@ -965,6 +1012,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               onFocus={() => focusIn(tab.id, paneId)}
               open={(cols, rows, onOutput) => host.openPane(paneId, cols, rows, onOutput)}
               openUrl={(url) => void host.openUrl(url).catch((e: unknown) => setError(String(e)))}
+              openPath={(path, beside) =>
+                void host.openPath(side.id, paneId, path, beside ? paneId : null).then((d) => revealDoc(d.id), (e: unknown) => setError(String(e)))
+              }
               onTerminal={terminals && ((t) => (t ? terminals.set(paneId, t) : terminals.delete(paneId)))}
               onSelection={(how, text, rows) =>
                 how === "pin" ? pinTerminal(tab.id, paneId, text, rows) : startExtract(tab.id, text, "terminal")
@@ -1118,6 +1168,17 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
             </div>
           </div>
         </div>
+      )}
+      {finder && (
+        <FileFinder
+          list={finder.list}
+          onOpen={openDoc}
+          onBrowse={() => browse(finder.list?.root)}
+          onClose={() => {
+            setFinder(undefined);
+            refocus();
+          }}
+        />
       )}
       {palette && (
         <Palette
