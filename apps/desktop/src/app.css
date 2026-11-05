@@ -222,3 +222,21 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 .cmd-form-row select { min-width: 0; }
 .cmd-body-input { resize: vertical; font-family: var(--font-mono, inherit); }
 .cmd-section .app-error-inline { padding: 0 var(--space-3) var(--space-2); }
+
+/* Settings (D25): a section list beside the section body. */
+.settings-split { display: flex; min-height: 0; flex: 1; }
+.settings-nav { display: flex; flex-direction: column; gap: 2px; padding: var(--space-2); border-right: 2px solid var(--line); min-width: 132px; }
+.settings-nav-item { text-align: left; background: none; border: 0; color: var(--fg); font: inherit; font-size: 12px; padding: 6px var(--space-2); cursor: pointer; }
+.settings-nav-item:hover { background: var(--line); }
+.settings-nav-item.active { background: var(--line); color: var(--blue); }
+.settings-sheet .status-body { flex: 1; min-width: 0; }
+.cmd-edit .ao-input { width: 120px; }
+.cmd-edit .ao-input.grow { width: auto; flex: 1; min-width: 0; }
+.cmd-scope { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.set-what { width: 160px; }
+.set-example { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.set-chord { font-family: inherit; font-size: 12px; min-width: 64px; text-align: right; }
+@media (max-width: 640px) {
+  .settings-split { flex-direction: column; }
+  .settings-nav { flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 2px solid var(--line); }
+}

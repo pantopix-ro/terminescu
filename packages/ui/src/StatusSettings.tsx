@@ -1,5 +1,5 @@
 import { MAX_LABEL, type Auto, type Host, type Look, type Rule, type RuleKind, type SavedStatus, type StatusConfig } from "@terminescu/host";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { StatusChip } from "./StatusChip";
 import { BUILTIN_LOOKS, builtinLook } from "./status";
 import { Swatches } from "./Swatches";
@@ -9,11 +9,10 @@ type Api = Pick<
   "saveStatus" | "updateStatus" | "deleteStatus" | "reorderStatuses" | "addRule" | "toggleRule" | "deleteRule" | "setBuiltin"
 >;
 
-export interface StatusSettingsProps {
+export interface StatusesSectionProps {
   config: StatusConfig;
   host: Api;
   onError(message: string): void;
-  onClose(): void;
 }
 
 const ORDER: Auto[] = ["waiting", "running", "done", "failed", "idle"];
@@ -59,15 +58,13 @@ function ruleText(r: Rule) {
 }
 
 /** Settings › Statuses: built-ins, the global list and the rules (design board "Settings"). */
-export function StatusSettings({ config, host, onError, onClose }: StatusSettingsProps) {
+export function StatusesSection({ config, host, onError }: StatusesSectionProps) {
   const run = (p: Promise<unknown>) => void p.catch((e: unknown) => onError(String(e)));
   const global = config.statuses.filter((s) => s.sideTabId === null);
   const [newLabel, setNewLabel] = useState("");
   const [ruleKind, setRuleKind] = useState<RuleKind["kind"]>("exitCode");
   const [ruleArg, setRuleArg] = useState("");
   const [ruleStatus, setRuleStatus] = useState("");
-  const first = useRef<HTMLDivElement>(null);
-  useEffect(() => first.current?.focus(), []);
 
   const move = (s: SavedStatus, by: number) => {
     const ids = global.map((g) => g.id);
@@ -87,28 +84,7 @@ export function StatusSettings({ config, host, onError, onClose }: StatusSetting
   };
 
   return (
-    <div className="sheet-back" onPointerDown={onClose}>
-      <div
-        ref={first}
-        tabIndex={-1}
-        className="ao-frame status-settings"
-        role="dialog"
-        aria-labelledby="ss-t"
-        onPointerDown={(e) => e.stopPropagation()}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") {
-            e.preventDefault();
-            onClose();
-          }
-        }}
-      >
-        <div className="ao-frame-head">
-          <i className="ao-i ao-i-dot" />
-          <span id="ss-t" className="ao-pixel">
-            Settings › Statuses
-          </span>
-        </div>
-        <div className="ao-frame-body status-body">
+    <>
           <section aria-label="Built-in">
             <h3 className="ao-pixel ao-dim">Built-in</h3>
             {ORDER.map((auto) => {
@@ -222,13 +198,6 @@ export function StatusSettings({ config, host, onError, onClose }: StatusSetting
               </button>
             </form>
           </section>
-        </div>
-        <div className="ao-frame-foot">
-          <button type="button" className="ao-btn primary" onClick={onClose}>
-            Done
-          </button>
-        </div>
-      </div>
-    </div>
+    </>
   );
 }

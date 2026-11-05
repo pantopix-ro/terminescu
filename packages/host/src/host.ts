@@ -1,6 +1,7 @@
 import type {
   AgentUpdate,
   AttentionSettings,
+  AppSettings,
   NewCommand,
   RunOutcome,
   RunRequest,
@@ -77,6 +78,12 @@ export interface Host {
   setAttentionSettings(settings: AttentionSettings): Promise<void>;
   /** A side tab's own commands, then the global ones; `null` for the global ones only (D24). */
   commands(sideTabId: Id | null): Promise<SavedCommand[]>;
+  /** Every command, global ones first (Settings › Commands). */
+  allCommands(): Promise<SavedCommand[]>;
+  settings(): Promise<AppSettings>;
+  setSettings(settings: AppSettings): Promise<AppSettings>;
+  /** Settings changed in any window. */
+  onSettings(listener: () => void): Promise<() => void>;
   createCommand(command: NewCommand): Promise<SavedCommand>;
   /** New name, body, target and launcher flag; the scope stays. */
   updateCommand(id: Id, command: NewCommand): Promise<SavedCommand>;

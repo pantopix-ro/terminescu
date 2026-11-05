@@ -8,6 +8,9 @@ import { hasSplit, isSessionId, leaf, panesOf, removePane, resizeSplit, splitPan
 import {
   ACCENTS,
   MAX_LABEL,
+  DEFAULT_SETTINGS,
+  MAX_TTL_SECS,
+  type AppSettings,
   TINTS,
   type AgentUpdate,
   type AgentView,
@@ -147,6 +150,8 @@ export function createMockHost(initial?: Workspace): MockHost {
   const waitingSince = new Map<string, number>();
   let waitClock = 0;
   let attention: AttentionSettings = { notify: true, chime: false };
+  let settings: AppSettings = { ...DEFAULT_SETTINGS };
+  const settingsListeners = new Set<() => void>();
   let chimes = 0;
   const revealListeners = new Set<(pane: Id) => void>();
   let savedCommands: SavedCommand[] = [];
@@ -680,6 +685,27 @@ export function createMockHost(initial?: Workspace): MockHost {
     async onChime(listener) {
       chimeListeners.add(listener);
       return () => chimeListeners.delete(listener);
+    },
+    async allCommands() {
+      const order = (a: SavedCommand, b: SavedCommand) =>
+        Number(a.sideTabId !== null) - Number(b.sideTabId !== null) ||
+        (a.sideTabId ?? "").localeCompare(b.sideTabId ?? "") ||
+        a.position - b.position;
+      return structuredClone([...savedCommands].sort(order));
+    },
+    async settings() {
+      return { ...settings };
+    },
+    async setSettings(next) {
+      const ttl = next.varTtlSecs;
+      if (ttl !== null && (!Number.isInteger(ttl) || ttl <= 0 || ttl > MAX_TTL_SECS)) throw new Error("a TTL runs from 1 second to 30 days");
+      settings = { ...next };
+      settingsListeners.forEach((l) => l());
+      return { ...settings };
+    },
+    async onSettings(listener) {
+      settingsListeners.add(listener);
+      return () => settingsListeners.delete(listener);
     },
     async attentionSettings() {
       return { ...attention };

@@ -14,6 +14,7 @@ pub mod layout;
 pub mod persist;
 pub mod prompts;
 pub mod runtime;
+pub mod settings;
 pub mod state;
 pub mod status;
 pub mod status_store;

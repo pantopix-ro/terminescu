@@ -1,0 +1,81 @@
+import { expect, test, type Page } from "@playwright/test";
+
+// Task 6.9 on the mock host: the Settings screen holds Statuses, Commands, Variables,
+// Extraction (read-only), Shell, Keys and Notifications (D25).
+
+async function start(page: Page) {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+  await expect(page.locator(".term-pane")).toHaveCount(1);
+}
+
+const mock = (page: Page, fn: string, ...args: unknown[]) =>
+  page.evaluate(({ fn, args }) => (window as any).__terminescu.host[fn](...args), { fn, args });
+
+async function openSettings(page: Page, section: string) {
+  await page.keyboard.press("Meta+Comma");
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("Settings › Statuses");
+  await dialog.getByRole("navigation", { name: "Settings sections" }).getByRole("button", { name: section }).click();
+  await expect(dialog).toContainText(`Settings › ${section}`);
+  return dialog;
+}
+
+test("every section opens; extraction is read-only and the editor setting waits for text tabs", async ({ page }) => {
+  await start(page);
+  const dialog = await openSettings(page, "Extraction");
+  await expect(dialog.locator("[data-rule-name]")).toHaveCount(4);
+  await expect(dialog.locator("[data-rule-name] input")).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Shell" }).click();
+  await expect(dialog.getByRole("checkbox")).toBeDisabled();
+  await dialog.getByRole("button", { name: "Keys" }).click();
+  await expect(dialog.locator('[data-action="new_tab"] kbd')).toHaveText("⌘T");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+});
+
+test("a command edited in Settings changes in the sidebar, and a global one cannot launch", async ({ page }) => {
+  await start(page);
+  const side = await page.evaluate(() => (window as any).__terminescu.host.workspace().windows[0].sideTabs[0].id as string);
+  await mock(page, "createCommand", { sideTabId: side, name: "checks", body: "gh pr checks", target: "newTab", launcher: false });
+  await mock(page, "createCommand", { sideTabId: null, name: "status", body: "git status", target: "focused", launcher: false });
+  const dialog = await openSettings(page, "Commands");
+  const row = dialog.locator('.cmd-edit[data-command="checks"]');
+  await expect(row.locator(".cmd-scope")).toHaveText("shell");
+  await expect(dialog.locator('.cmd-edit[data-command="status"]').getByLabel("launcher")).toBeDisabled();
+  await row.getByLabel("checks command").fill("gh pr checks --watch");
+  await row.getByRole("button", { name: "Save" }).click();
+  await expect(row.getByRole("button", { name: "Save" })).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(page.locator('.cmd-section .cmd-row[data-command="checks"] .cmd-body')).toHaveText("gh pr checks --watch");
+});
+
+test("the default storage mode and TTL carry into Extract", async ({ page }) => {
+  await start(page);
+  const dialog = await openSettings(page, "Variables");
+  await dialog.getByRole("radio", { name: "Session only" }).check();
+  await dialog.getByLabel("Default TTL").fill("1h");
+  await dialog.getByLabel("Default TTL").press("Enter");
+  await expect.poll(() => mock(page, "settings")).toEqual({ varMode: "session", varTtlSecs: 3600, editor: false });
+  // An out-of-range TTL is refused and the field shows the saved one again.
+  await dialog.getByLabel("Default TTL").fill("90d");
+  await dialog.getByLabel("Default TTL").press("Enter");
+  await expect(dialog.getByLabel("Default TTL")).toHaveValue("1h");
+  await page.keyboard.press("Escape");
+
+  const pane = await page.evaluate(() => document.querySelector<HTMLElement>(".term-pane")!.dataset.pane!);
+  await page.locator(".term-pane").first().click();
+  await page.evaluate((id) => (window as any).__terminescu.terminals.get(id).selectLines(0, 0), pane);
+  await page.keyboard.press("Meta+E");
+  const extract = page.getByRole("dialog", { name: "Extract to variable" });
+  await expect(extract.getByRole("radio", { name: "Session only" })).toHaveAttribute("aria-checked", "true");
+  await expect(extract.getByLabel("Time to live")).toHaveValue("1h");
+});
+
+test("notification and chime toggles save the attention settings", async ({ page }) => {
+  await start(page);
+  const dialog = await openSettings(page, "Notifications");
+  await expect(dialog.getByRole("checkbox", { name: "macOS notification" })).toBeChecked();
+  await dialog.getByRole("checkbox", { name: "Chime" }).check();
+  await expect.poll(() => mock(page, "attentionSettings")).toEqual({ notify: true, chime: true });
+});

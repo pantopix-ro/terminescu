@@ -275,8 +275,14 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       integration; a manual status wins over `n/m up`. Restart reruns only the down ones and
       types no Ctrl-C. A daemon reconnect without a reboot reruns nothing. Global launchers are
       refused. `status.rs` unit test, `test/status.test.ts`, `e2e/launchers.spec.ts`.
-- [ ] 6.9 Settings screen: Statuses, Commands, Variable defaults, Extraction rules (read-only),
+- [x] 6.9 Settings screen: Statuses, Commands, Variable defaults, Extraction rules (read-only),
       Shell with the opt-in `EDITOR` setting, and Keys (D25). Verify: manual against the canvas.
+      Done: `SettingsSheet` (`⌘,`) with a section list: Statuses, Commands (edit name, line,
+      target, launcher; delete), Variables (default mode and TTL, which Extract starts with),
+      Extraction (read-only), Shell, Keys (read-only until 6.10) and Notifications (notify and
+      chime). `core::settings` keeps them in `app_state` (`app.settings`). The `EDITOR` box stays
+      disabled until 7.4 adds `terminescu edit --wait`. `tests/settings.rs`,
+      `e2e/settings.spec.ts`. The manual canvas check is still owed.
 - [ ] 6.10 Editable shortcuts in Settings › Keys with conflict detection; app chords win in
       every pane kind, select-next on `⌃⌘G` (D17). Verify: `keys.test.ts` rebinds "Open file" to
       `⌘P`, flags a clash with `⌘T`, and `⌘D` in a text pane splits.

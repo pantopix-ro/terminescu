@@ -5,7 +5,6 @@
 use crate::agent::{AgentState, AgentUpdate};
 use crate::db::Db;
 use crate::state::{Id, Workspace};
-use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -30,32 +29,11 @@ impl Default for Settings {
 }
 
 pub fn settings(db: &Db) -> crate::db::Result<Settings> {
-    let owner = db.local_owner()?;
-    let json: Option<String> = db
-        .conn()
-        .query_row(
-            "SELECT value FROM app_state WHERE owner_id = ?1 AND key = ?2",
-            params![owner, SETTINGS_KEY],
-            |r| r.get(0),
-        )
-        .optional()?;
-    Ok(json
-        .and_then(|j| serde_json::from_str(&j).ok())
-        .unwrap_or_default())
+    Ok(crate::settings::read(db, SETTINGS_KEY)?.unwrap_or_default())
 }
 
 pub fn set_settings(db: &Db, s: Settings) -> crate::db::Result<()> {
-    let owner = db.local_owner()?;
-    db.conn().execute(
-        "INSERT INTO app_state (owner_id, key, value) VALUES (?1, ?2, ?3)
-         ON CONFLICT (owner_id, key) DO UPDATE SET value = excluded.value",
-        params![
-            owner,
-            SETTINGS_KEY,
-            serde_json::to_string(&s).expect("settings serialize")
-        ],
-    )?;
-    Ok(())
+    crate::settings::write(db, SETTINGS_KEY, &s)
 }
 
 #[derive(Debug, Default)]

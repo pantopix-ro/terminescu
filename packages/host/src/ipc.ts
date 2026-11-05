@@ -5,6 +5,7 @@ import type { Host, PaneView } from "./host";
 import type {
   AgentUpdate,
   AttentionSettings,
+  AppSettings,
   RunOutcome,
   SavedCommand,
   Command,
@@ -28,6 +29,7 @@ export const AGENT_EVENT = "host://agent";
 export const CONTEXT_EVENT = "host://context";
 export const PROMPTS_EVENT = "host://prompts";
 export const COMMANDS_EVENT = "host://commands";
+export const SETTINGS_EVENT = "host://settings";
 export const STATUS_EVENT = "host://status";
 export const STATUS_CONFIG_EVENT = "host://status-config";
 /** The core sends these to one window: the one holding the pane, for `⌘⇧A` and the chime. */
@@ -63,6 +65,10 @@ export function createIpcHost(): Host {
     attentionSettings: () => invoke<AttentionSettings>("attention_settings"),
     setAttentionSettings: (settings) => invoke("attention_set", { settings }),
     commands: (sideTab) => invoke<SavedCommand[]>("commands_list", { sideTab }),
+    allCommands: () => invoke<SavedCommand[]>("commands_all"),
+    settings: () => invoke<AppSettings>("settings_get"),
+    setSettings: (settings) => invoke<AppSettings>("settings_set", { settings }),
+    onSettings: (listener) => listen(SETTINGS_EVENT, () => listener()),
     createCommand: (command) => invoke<SavedCommand>("command_create", { command }),
     updateCommand: (id, command) => invoke<SavedCommand>("command_update", { id, command }),
     deleteCommand: (id) => invoke("command_delete", { id }),

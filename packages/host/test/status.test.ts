@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createMockHost, glob, lookError } from "../src/mock";
-import type { Workspace } from "../src/protocol";
+import type { Shown, Workspace } from "../src/protocol";
 import { applyLaunchers, computeStatuses, paneAuto } from "../src/status";
 
 const ws: Workspace = {
@@ -71,20 +71,20 @@ describe("mock statuses", () => {
 });
 
 describe("applyLaunchers", () => {
-  const shown = (auto: "idle" | "running" | "failed") => ({ auto, waiting: false, source: "auto" as const });
+  const shown = (auto: "idle" | "running" | "failed"): Shown => ({ auto, waiting: false, source: "auto" });
 
   it("counts launcher tabs that run, and a closed tab as down", () => {
-    const map = { s1: shown("running"), t1: shown("running"), t2: shown("failed") };
+    const map: Record<string, Shown> = { s1: shown("running"), t1: shown("running"), t2: shown("failed") };
     applyLaunchers(map, new Map([["s1", ["t1", "t2", null]]]));
     expect(map.s1).toMatchObject({ source: "launcher", look: { label: "1/3 up", accent: "red" } });
   });
 
   it("goes green when all are up, and leaves a manual status alone", () => {
-    const up = { s1: shown("running"), t1: shown("running") };
+    const up: Record<string, Shown> = { s1: shown("running"), t1: shown("running") };
     applyLaunchers(up, new Map([["s1", ["t1"]]]));
-    expect(up.s1.look).toEqual({ label: "1/1 up", accent: "green", background: null });
-    const manual = { s1: { ...shown("idle"), source: "manual" as const, look: { label: "Parked", accent: null, background: null } }, t1: shown("running") };
+    expect(up.s1!.look).toEqual({ label: "1/1 up", accent: "green", background: null });
+    const manual: Record<string, Shown> = { s1: { ...shown("idle"), source: "manual", look: { label: "Parked", accent: null, background: null } }, t1: shown("running") };
     applyLaunchers(manual, new Map([["s1", ["t1"]]]));
-    expect(manual.s1.look?.label).toBe("Parked");
+    expect(manual.s1!.look?.label).toBe("Parked");
   });
 });

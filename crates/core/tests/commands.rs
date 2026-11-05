@@ -122,6 +122,13 @@ fn lists_the_side_tabs_own_commands_before_the_global_ones() {
     };
     assert_eq!(names(Some("s1")), ["checks", "status"]);
     assert_eq!(names(None), ["status"]);
+    // Settings › Commands lists every one, global first.
+    let all: Vec<_> = commands::all(&db)
+        .unwrap()
+        .into_iter()
+        .map(|c| c.name)
+        .collect();
+    assert_eq!(all, ["status", "checks", "other"]);
 
     let mut edit = new(None, "git status", "git status -sb");
     edit.target = Target::Focused;

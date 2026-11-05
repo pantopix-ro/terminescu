@@ -1,6 +1,6 @@
-import { VAR_MODES, type NewVariable, type VarMode } from "@terminescu/host";
+import { VAR_MODES, type AppSettings, type NewVariable, type VarMode } from "@terminescu/host";
 import { useState } from "react";
-import { parseTtl, suggestName } from "./names";
+import { parseTtl, suggestName, ttlText } from "./names";
 
 export interface ExtractDialogProps {
   /** The selected text. */
@@ -11,10 +11,12 @@ export interface ExtractDialogProps {
   from: string;
   save(variable: Pick<NewVariable, "name" | "mode" | "ttlSecs">): Promise<unknown>;
   onClose(): void;
+  /** Settings › Variables: the mode and TTL to start with. */
+  defaults?: Pick<AppSettings, "varMode" | "varTtlSecs">;
 }
 
-const MODE_LABEL: Record<VarMode, string> = { saved: "Saved", session: "Session only", secret: "Secret" };
-const MODE_HINT: Record<VarMode, string> = {
+export const MODE_LABEL: Record<VarMode, string> = { saved: "Saved", session: "Session only", secret: "Secret" };
+export const MODE_HINT: Record<VarMode, string> = {
   saved: "kept in the database",
   session: "kept in memory until a reboot or the side tab closes",
   secret: "in memory, masked, inserted as $NAME",
@@ -24,10 +26,10 @@ const MODE_HINT: Record<VarMode, string> = {
  * `⌘E`: saves a selection as a variable of the side tab (D13, D21). The name is suggested and
  * editable; the mode decides whether the value ever touches the disk.
  */
-export function ExtractDialog({ value, taken, from, save, onClose }: ExtractDialogProps) {
+export function ExtractDialog({ value, taken, from, save, onClose, defaults }: ExtractDialogProps) {
   const [name, setName] = useState(() => suggestName(value, taken));
-  const [mode, setMode] = useState<VarMode>("saved");
-  const [ttl, setTtl] = useState("");
+  const [mode, setMode] = useState<VarMode>(defaults?.varMode ?? "saved");
+  const [ttl, setTtl] = useState(defaults?.varTtlSecs ? ttlText(defaults.varTtlSecs) : "");
   const [error, setError] = useState<string>();
   const submit = async () => {
     const ttlSecs = mode === "saved" || !ttl.trim() ? null : parseTtl(ttl);

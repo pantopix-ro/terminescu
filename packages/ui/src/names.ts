@@ -30,6 +30,23 @@ export function parseTtl(text: string): number | undefined {
   return secs > 0 ? secs : undefined;
 }
 
+/** A TTL in seconds as `parseTtl` reads it back: `2d`, `1h`, `45m` or `30s`. */
+export function ttlText(secs: number): string {
+  for (const [unit, n] of [["d", 86_400], ["h", 3600], ["m", 60]] as const) if (secs % n === 0) return `${secs / n}${unit}`;
+  return `${secs}s`;
+}
+
+/**
+ * The extraction rules of v1 (D13), read-only in Settings: what each one recognises and the
+ * name `suggestName` gives it.
+ */
+export const EXTRACTION_RULES: readonly { what: string; example: string; name: string }[] = [
+  { what: "GitHub PR URL", example: "https://github.com/acme/api/pull/918", name: "pr_api, after the repo" },
+  { what: "claude.ai artifact URL", example: "https://claude.ai/artifact/…", name: "plan, then artifact_2" },
+  { what: "Branch name", example: "feature/audit-export", name: "branch" },
+  { what: "Other link", example: "https://example.com/runbook", name: "url" },
+];
+
 /** `52m left`, `3h left`, `20s left` for an expiry at Unix ms `at`. */
 /**
  * What inserting a variable types: a secret goes in as `$NAME`, which the shell and Claude's

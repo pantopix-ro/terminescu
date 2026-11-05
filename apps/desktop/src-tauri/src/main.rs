@@ -22,6 +22,7 @@ use terminescu_core::launcher;
 use terminescu_core::persist;
 use terminescu_core::prompts::{self, NewPrompt, Prompt};
 use terminescu_core::runtime::Runtime;
+use terminescu_core::settings;
 use terminescu_core::state::{Command, CommandError, Core, Id, Snapshot, Workspace};
 use terminescu_core::status::{Auto, Look, ManualStatus, RuleKind, Shown};
 use terminescu_core::status_store::{self, SavedStatus, StatusConfig};
@@ -41,6 +42,7 @@ const STATUS_EVENT: &str = "host://status";
 const STATUS_CONFIG_EVENT: &str = "host://status-config";
 /// Saved commands changed; windows reload [`commands_list`].
 const COMMANDS_EVENT: &str = "host://commands";
+const SETTINGS_EVENT: &str = "host://settings";
 /// To one window: focus this pane, after `⌘⇧A` picked it (workbench-ui "Attention signals").
 const REVEAL_EVENT: &str = "host://reveal-pane";
 /// To one window: play the chime, when Settings › Notifications turned it on.
@@ -241,6 +243,27 @@ fn commands_list(
     side_tab: Option<Id>,
 ) -> Result<Vec<SavedCommand>, String> {
     commands::list(&lock(&state.db), side_tab.as_deref()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn commands_all(state: State<'_, AppState>) -> Result<Vec<SavedCommand>, String> {
+    commands::all(&lock(&state.db)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn settings_get(state: State<'_, AppState>) -> Result<settings::Settings, String> {
+    settings::get(&lock(&state.db)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn settings_set(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    settings: settings::Settings,
+) -> Result<settings::Settings, String> {
+    let saved = settings::set(&lock(&state.db), settings).map_err(|e| e.to_string())?;
+    let _ = app.emit(SETTINGS_EVENT, ());
+    Ok(saved)
 }
 
 #[tauri::command]
@@ -1246,6 +1269,9 @@ fn main() {
             prompt_used,
             attention_jump,
             commands_list,
+            commands_all,
+            settings_get,
+            settings_set,
             command_create,
             command_update,
             command_delete,

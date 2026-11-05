@@ -150,6 +150,17 @@ pub fn list(db: &Db, side_tab: Option<&str>) -> Result<Vec<SavedCommand>> {
     Ok(rows.collect::<rusqlite::Result<_>>()?)
 }
 
+/// Every command, global ones first, then each side tab's in order (Settings › Commands).
+pub fn all(db: &Db) -> Result<Vec<SavedCommand>> {
+    let owner = db.local_owner()?;
+    let mut stmt = db.conn().prepare(&format!(
+        "{SELECT} WHERE owner_id = ?1
+         ORDER BY side_tab_id IS NOT NULL, side_tab_id, position, created_at"
+    ))?;
+    let rows = stmt.query_map(params![owner], row)?;
+    Ok(rows.collect::<rusqlite::Result<_>>()?)
+}
+
 pub fn get(db: &Db, id: &str) -> Result<SavedCommand> {
     let owner = db.local_owner()?;
     db.conn()

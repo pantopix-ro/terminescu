@@ -12,10 +12,12 @@ import {
 import {
   ACTIONS,
   chordLabel,
+  DEFAULT_SETTINGS,
   panesOf,
   terminalsOf,
   transcriptOf,
   type AgentUpdate,
+  type AppSettings,
   type ManualStatus,
   type Item,
   type Pin,
@@ -60,7 +62,8 @@ import {
   sortSideTabs,
   StatusEditor,
   StatusLine,
-  StatusSettings,
+  SettingsSheet,
+  type SettingsSection,
   CommandsSection,
   playChime,
   type SortMode,
@@ -469,6 +472,20 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
 
   // `⌘E` opens one dialog, whichever pane the text came from (D13).
   const [extracting, setExtracting] = useState<{ side: string; tab: string; value: string; from: string }>();
+  // Settings › Variables: what Extract starts with.
+  const [appSettings, setAppSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  useEffect(() => {
+    let gone = false;
+    let off: (() => void) | undefined;
+    const load = () => void host.settings().then((s) => !gone && setAppSettings(s), () => undefined);
+    load();
+    void host.onSettings(load).then((o) => (gone ? o() : (off = o)));
+    return () => {
+      gone = true;
+      off?.();
+    };
+  }, [host]);
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>("statuses");
   const startExtract = (tabId: string, value: string, from: string) => {
     const side = sideOfTab(tabId);
     if (side) setExtracting({ side, tab: tabId, value, from });
@@ -840,6 +857,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           value={extracting.value}
           from={extracting.from}
           taken={ctx.side === extracting.side ? ctx.variables.map((v) => v.name) : []}
+          defaults={appSettings}
           save={(v) =>
             host.addVariable(extracting.side, { ...v, value: extracting.value, source: "extracted", originTabId: extracting.tab })
           }
@@ -860,7 +878,10 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           onSet={setStatus}
           onSave={(side, look) => host.saveStatus(side, look).catch(report)}
           onMakeGlobal={(id) => host.makeGlobal(id).catch(report)}
-          onSettings={() => setSheet("settings")}
+          onSettings={() => {
+            setSettingsSection("statuses");
+            setSheet("settings");
+          }}
           onClose={closeSheet}
         />
       )}
@@ -906,7 +927,23 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         </div>
       )}
       {sheet === "prompts" && <PromptLibrary host={host} selectKey={libraryKey} onError={setError} onClose={closeSheet} />}
-      {sheet === "settings" && <StatusSettings config={statusConfig} host={host} onError={setError} onClose={closeSheet} />}
+      {sheet === "settings" && (
+        <SettingsSheet
+          section={settingsSection}
+          onSection={setSettingsSection}
+          statusConfig={statusConfig}
+          host={host}
+          sideTabName={(id) => {
+            const side = workspace.store
+              .getState()
+              .workspace.windows.flatMap((w) => w.sideTabs)
+              .find((x) => x.id === id);
+            return side && sideTabName(side);
+          }}
+          onError={setError}
+          onClose={closeSheet}
+        />
+      )}
       {palette && (
         <Palette
           items={paletteItems}

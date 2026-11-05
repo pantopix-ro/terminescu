@@ -305,6 +305,21 @@ export interface AttentionSettings {
   chime: boolean;
 }
 
+/** Longest TTL a variable default may hold: 30 days. Same as `MAX_TTL_SECS` in settings.rs. */
+export const MAX_TTL_SECS = 30 * 86_400;
+
+/** Settings › Variables and Shell (D25, D27). */
+export interface AppSettings {
+  /** The mode an extracted variable starts with. */
+  varMode: VarMode;
+  /** The TTL a session or secret variable starts with; null keeps it until its side tab ends. */
+  varTtlSecs: number | null;
+  /** `VISUAL` and `EDITOR` point at `terminescu edit --wait`. */
+  editor: boolean;
+}
+
+export const DEFAULT_SETTINGS: AppSettings = { varMode: "saved", varTtlSecs: null, editor: false };
+
 /** Where a saved command runs (D24). */
 export type CommandTarget = "focused" | "newTab" | "newSideTab";
 export const COMMAND_TARGETS: readonly CommandTarget[] = ["focused", "newTab", "newSideTab"];
