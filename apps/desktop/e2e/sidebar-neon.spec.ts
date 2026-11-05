@@ -19,6 +19,18 @@ test("new side tabs open with different neon edges", async ({ page }) => {
   for (let i = 0; i < 4; i++) {
     const row = rows.nth(i);
     await expect(row).toHaveAttribute("style", new RegExp(`--st-accent: var\\(--neon-${accents[i]}\\)`));
+    // The neon washes 12% into the row's background (the Wash board).
+    await expect(row).toHaveAttribute("style", new RegExp(`--st-bg: color-mix\\(in srgb, var\\(--neon-${accents[i]}\\) 12%, var\\(--panel(-2)?\\)\\)`));
+    expect(await row.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe(
+      await row.evaluate(() => {
+        const probe = document.createElement("i");
+        probe.style.color = "var(--panel)";
+        document.body.appendChild(probe);
+        const c = getComputedStyle(probe).color;
+        probe.remove();
+        return c;
+      }),
+    );
     // The icon takes the neon too, and no neon is amber.
     const [icon, amber] = await row.evaluate((el) => [
       getComputedStyle(el.querySelector(".ao-i")!).color,

@@ -28,7 +28,8 @@ test("a manual status shows on the side tab until back to auto", async ({ page }
   await editor.getByLabel("Status label").press("Enter");
   await expect(editor).toBeHidden();
   await expect(side.locator(".ao-stat.manual")).toHaveText("Review");
-  await expect(side).toHaveAttribute("style", /--st-bg: var\(--tint-magenta\)/);
+  // The row's neon washes over the status background (task 8.25).
+  await expect(side).toHaveAttribute("style", /--st-bg: color-mix\(in srgb, var\(--neon-\w+\) 12%, var\(--tint-magenta\)\)/);
 
   await page.keyboard.press("Meta+Shift+S");
   await expect(editor.getByLabel("Status label")).toHaveValue("Review");

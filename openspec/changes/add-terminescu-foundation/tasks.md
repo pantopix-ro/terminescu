@@ -479,7 +479,8 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
 - [x] 8.25 A random neon per new sidebar row (owner request, 2026-11-05), as the Edge + icon
       proposal: eight `--neon-*` tokens (no amber), `pick_neon` takes the first one no row uses
       from a hash of the side tab id, saved in the existing `side_tabs.accent` column; rows from
-      before keep the neutral edge. Verify: core and persist tests, `sidebar-neon.spec.ts`.
+      before keep the neutral edge. The owner picked the Wash look on 2026-11-05: the neon also
+      mixes 12% into the row's background. Verify: core and persist tests, `sidebar-neon.spec.ts`.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

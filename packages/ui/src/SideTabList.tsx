@@ -211,11 +211,15 @@ function Row(props: {
   const group = side.tabs.length > 1;
   const open = group && (active || expanded) && !collapsed;
   // A status background tints the row; otherwise the active row takes the raised panel. The
-  // row's own neon (task 8.25) paints the edge and the icon; the status keeps chip and tint.
+  // row's own neon (task 8.25) paints the edge and the icon and washes 12% into that
+  // background (the Wash board); the status keeps its chip.
+  const look = rowStyle(shown?.look, "st");
+  const ground = look["--st-bg"] ?? (active ? "var(--panel-2)" : "var(--panel)");
+  const neon = side.accent && `var(--neon-${side.accent})`;
   const style = {
-    ...(active ? { "--st-bg": "var(--panel-2)" } : {}),
-    ...rowStyle(shown?.look, "st"),
-    ...(side.accent ? { "--st-accent": `var(--neon-${side.accent})` } : {}),
+    ...look,
+    "--st-bg": neon ? `color-mix(in srgb, ${neon} 12%, ${ground})` : ground,
+    ...(neon ? { "--st-accent": neon } : {}),
   } as React.CSSProperties;
   return (
     <>
