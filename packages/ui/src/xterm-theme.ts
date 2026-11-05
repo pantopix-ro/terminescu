@@ -44,8 +44,10 @@ export const ANSI_SLOTS = [
   "brightBlue", "brightMagenta", "brightCyan", "brightWhite",
 ] as const satisfies readonly (keyof ITheme)[];
 
+/** SF Mono Regular (task 8.24): WebKit names the system's mono font `ui-monospace`. */
 export const terminalFont = {
-  fontFamily: '"Geist Mono", ui-monospace, "SF Mono", Menlo, monospace',
+  fontFamily: 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace',
+  fontWeight: "normal",
   fontSize: 13,
   lineHeight: 18 / 13,
 } as const;

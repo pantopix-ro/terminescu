@@ -10,6 +10,10 @@ same tokens. Amber SHALL mean needs you, focus and drop targets only.
 - **WHEN** the token test compares the xterm theme with the CSS tokens
 - **THEN** all 16 ANSI colors match
 
+#### Scenario: Terminal font
+- **WHEN** a terminal pane opens
+- **THEN** it draws in SF Mono Regular, the system's mono font, at 13 px
+
 ### Requirement: Keyboard model
 Plain keys SHALL always go to the focused pane. App actions SHALL be `⌘` chords: `⌘K`, `⌘T`,
 `⌘N`, `⌘D`, `⌘⇧D`, `⌘W`, `⌘1`-`⌘9`, `⌃⌘1`-`⌃⌘9`, `⌘I`, `⌘E`, `⌘⇧P`, `⌘⇧S`, `⌘⇧A`, `⌘\`,
@@ -74,6 +78,24 @@ panes without resizing them, and it SHALL slide out when the pointer leaves.
 #### Scenario: Peek at the context
 - **WHEN** the panel is auto-hidden and the pointer rests on the right edge
 - **THEN** the panel slides over the panes and no terminal receives a resize
+
+### Requirement: Adjustable sidebar
+The sidebar's right edge SHALL drag its width from 180 to 480 px, saved with the settings. Hovering
+the sidebar SHALL show a pixel button that collapses it to the rows' icons and expands it again.
+A collapsed row's icon SHALL show a pixel tooltip with the row's name and status on hover, and a
+name the row cuts short SHALL show whole in the same tooltip, laid over it.
+
+#### Scenario: Drag the width
+- **WHEN** the person drags the sidebar's edge 60 px to the right
+- **THEN** the sidebar grows by 60 px, keeps that width after a restart, and a double click on the edge brings back 272 px
+
+#### Scenario: Icons only
+- **WHEN** the person hovers the sidebar, clicks the collapse button, then rests the pointer on a row's icon
+- **THEN** only the icons show, and a pixel tooltip beside the icon shows the row's name and status
+
+#### Scenario: A long name
+- **WHEN** the pointer rests on a side tab or tab name that ends in an ellipsis
+- **THEN** a pixel tooltip over the name shows it whole; a name that fits shows none
 
 ### Requirement: Independent scrolling
 The sidebar, each pane and the context panel SHALL scroll on their own, and the tab bar SHALL

@@ -14,6 +14,8 @@ fn defaults_then_a_saved_change_reads_back() {
         var_ttl_secs: Some(3600),
         editor: true,
         zoom_percent: 125,
+        sidebar_width: 320,
+        sidebar_collapsed: true,
     };
     settings::set(&db, s).unwrap();
     assert_eq!(settings::get(&db).unwrap(), s);
@@ -44,6 +46,25 @@ fn json_with_unknown_fields_or_missing_ones_still_reads() {
     assert!(!s.editor);
     // Settings saved before task 8.8 have no zoom: they read as 100%.
     assert_eq!(s.zoom_percent, 100);
+    // And before task 8.23 no sidebar fields: the default width, not collapsed.
+    assert_eq!(s.sidebar_width, settings::SIDEBAR_WIDTH);
+    assert!(!s.sidebar_collapsed);
+}
+
+#[test]
+fn a_sidebar_width_out_of_range_is_brought_into_it() {
+    let db = Db::open_in_memory().unwrap();
+    for (asked, kept) in [
+        (0, settings::SIDEBAR_MIN),
+        (900, settings::SIDEBAR_MAX),
+        (300, 300),
+    ] {
+        let s = Settings {
+            sidebar_width: asked,
+            ..Settings::default()
+        };
+        assert_eq!(settings::set(&db, s).unwrap().sidebar_width, kept);
+    }
 }
 
 #[test]

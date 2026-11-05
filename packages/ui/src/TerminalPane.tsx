@@ -69,7 +69,7 @@ let fonts: Promise<unknown> | undefined;
 /** xterm.js measures the cell once, so the font must be loaded first. */
 function fontsReady(): Promise<unknown> {
   fonts ??= document.fonts
-    ? document.fonts.load(`${terminalFont.fontSize}px "Geist Mono"`).catch(() => undefined)
+    ? document.fonts.load(`${terminalFont.fontSize}px ${terminalFont.fontFamily}`).catch(() => undefined)
     : Promise.resolve();
   return fonts;
 }
