@@ -6,6 +6,8 @@ import { Swatches } from "./Swatches";
 
 export interface StatusEditorProps {
   side: SideTab;
+  /** Which status it opens on; a click on a tab's chip opens the tab's. Default: the side tab. */
+  initialTarget?: "side" | "tab";
   /** The active tab of the side tab, offered as the second target. */
   tab: Tab | undefined;
   sideName: string;
@@ -28,7 +30,7 @@ const lookOf = (s: SavedStatus): ManualStatus => ({ statusId: s.id, label: s.lab
 /** `⌘⇧S`: the status of the focused side tab or its active tab (design board "Status"). */
 export function StatusEditor(props: StatusEditorProps) {
   const { side, tab, statuses, config } = props;
-  const [target, setTarget] = useState<"side" | "tab">("side");
+  const [target, setTarget] = useState<"side" | "tab">(props.initialTarget === "tab" && tab ? "tab" : "side");
   const owner = target === "tab" && tab ? tab : side;
   const [draft, setDraft] = useState<ManualStatus>(owner.status ?? EMPTY);
   // Typed or recolored since the last load: a change from elsewhere then leaves the draft alone.
@@ -162,6 +164,7 @@ export function StatusEditor(props: StatusEditorProps) {
           <div className="ao-field">
             <span className="ao-pixel ao-dim">Global</span>
             <div className="status-presets">
+              {!global.length && <span className="small ao-dim">No global statuses yet.</span>}
               {global.map((s) => (
                 <button key={s.id} type="button" className="preset" onClick={() => apply(lookOf(s))}>
                   <StatusChip chip={{ ...s, set: true, need: false }} />

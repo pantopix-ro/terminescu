@@ -17,6 +17,10 @@ resizable dividers. A side tab SHALL hold any mix of pane kinds.
 - **WHEN** the person presses `⌥⌘T` in a side tab with two terminal tabs
 - **THEN** a third tab opens as an Untitled text tab and the sidebar group shows 3 tabs
 
+#### Scenario: Add a side tab from the empty space
+- **WHEN** the pointer rests on the empty sidebar space under the last side tab
+- **THEN** a `+` shows there, and a click on it adds a side tab
+
 #### Scenario: Split a tab
 - **WHEN** the person presses `⌘D` in a terminal pane
 - **THEN** the tab shows two panes side by side, the new one running the login shell in the same cwd

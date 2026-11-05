@@ -411,6 +411,15 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       the native webview zoom of every window and of each new one. Three View menu actions,
       editable in Settings › Keys; `⌘⇧=` runs zoom in unless it has its own action.
       `zoom.spec.ts` (3), keys tests.
+- [x] 8.9 Sidebar status chip (owner request, 2026-11-05): a click on a side tab's or a tab's
+      status chip opens the status editor on it, with this side tab's and the global statuses.
+      Verify: Playwright clicks both chips and picks a global status.
+      Done: `ChipButton` in `SideTabList` stops the drag and the row select; the editor takes
+      `initialTarget`, and an empty global list says so. `sidebar-status.spec.ts` (2).
+- [x] 8.10 Add a side tab from the sidebar's empty space (owner request, 2026-11-05): hovering
+      the space under the last row shows a `+` that adds one. Verify: Playwright hovers it and
+      clicks. Done: `.side-fill` fills the list's free height; the `+` also shows on keyboard
+      focus and hides while a tab drags. `sidebar-status.spec.ts` (1).
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

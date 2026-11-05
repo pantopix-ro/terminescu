@@ -542,6 +542,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       case "palette":
         return setPalette((p) => !p);
       case "status_editor":
+        setStatusFor("side");
         if (activeSide) setSheet((s) => (s === "status" ? undefined : "status"));
         return;
       case "settings":
@@ -794,6 +795,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     secretNote(shownCtx.variables.filter((v) => v.mode === "secret" && text.includes(`$${v.name}`)).map((v) => v.name));
   };
   const [notice, setNotice] = useState<string>();
+  // Which status the editor opens on: the side tab's, or its active tab's (a tab's chip).
+  const [statusFor, setStatusFor] = useState<"side" | "tab">("side");
   // Task 8.8: one zoom for every window, saved with the settings; the host applies it.
   const zoom = async (dir: 1 | -1 | 0) => {
     try {
@@ -889,6 +892,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const editStatus = (side: string, tab?: string) => {
     if (tab) selectTab(side, tab);
     else setSideTabId(side);
+    setStatusFor(tab ? "tab" : "side");
     setSheet("status");
   };
   const menuItems = (target: MenuTarget): MenuEntry[] => {
@@ -1154,6 +1158,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               onMenu={(at, target) => setMenu({ ...at, target })}
               renaming={renaming}
               onRename={rename}
+              onStatus={editStatus}
               onRenameEnd={() => {
                 setRenaming(undefined);
                 refocus();
@@ -1403,6 +1408,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       )}
       {sheet === "status" && activeSide && (
         <StatusEditor
+          key={`${activeSide.id}:${statusFor}`}
+          initialTarget={statusFor}
           side={activeSide}
           tab={activeTab}
           sideName={sideTabName(activeSide)}

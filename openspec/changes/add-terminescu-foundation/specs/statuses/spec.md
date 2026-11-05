@@ -20,6 +20,10 @@ tints. Amber SHALL NOT be offered as an accent or background.
 - **WHEN** the person sets `Review` on a side tab and later picks "back to auto"
 - **THEN** the row shows `Review` until then, and the generated status after
 
+#### Scenario: Edit from the sidebar chip
+- **WHEN** the person clicks the status chip of a side tab or of a tab in the sidebar
+- **THEN** the status editor opens on that side tab or tab, with this side tab's and the global statuses to pick from
+
 ### Requirement: Needs you shows over manual statuses
 The amber needs-you marker SHALL show on a tab and its side tab whenever a Claude session in
 it waits, whatever manual status is set.

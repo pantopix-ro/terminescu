@@ -3,7 +3,7 @@ import { leaf, panesOf, type AgentView, type Shown, type SideTab, type Tab } fro
 import { useState, type KeyboardEvent, type MouseEvent } from "react";
 import { DOT, tabAgent, type Agents } from "./agents";
 import { StatusChip } from "./StatusChip";
-import { chipOf, rowStyle, SORTS, type Builtins, type SortMode } from "./status";
+import { chipOf, rowStyle, SORTS, type Builtins, type Chip, type SortMode } from "./status";
 
 export interface SideTabListProps {
   sideTabs: SideTab[];
@@ -33,6 +33,32 @@ export interface SideTabListProps {
   /** A new name, or null to go back to the generated one. */
   onRename?(id: string, title: string | null): void;
   onRenameEnd?(): void;
+  /** A click on a status chip: edit that side tab's status, or its tab's. */
+  onStatus?(sideTabId: string, tabId?: string): void;
+}
+
+/**
+ * A status chip that opens the status editor. It stops the pointer and key events so the
+ * row neither starts a drag nor selects itself.
+ */
+function ChipButton({ chip, label, onClick }: { chip: Chip; label: string; onClick?(): void }) {
+  if (!onClick) return <StatusChip chip={chip} />;
+  return (
+    <button
+      type="button"
+      className="chip-btn"
+      aria-label={label}
+      title="Edit status"
+      onPointerDown={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+    >
+      <StatusChip chip={chip} />
+    </button>
+  );
 }
 
 /** What a sidebar right click was on. */
@@ -150,6 +176,7 @@ function Row(props: {
   renaming?: string;
   onRename?(id: string, title: string | null): void;
   onRenameEnd?(): void;
+  onStatus?(sideTabId: string, tabId?: string): void;
 }) {
   const { side, active, expanded, dragging, agents, statuses, builtins, docs } = props;
   const shown = statuses[side.id];
@@ -207,7 +234,11 @@ function Row(props: {
           <span className="t">{sideTabName(side, docs)}</span>
         )}
         <span className="side-trail">
-        <StatusChip chip={chip} />
+        <ChipButton
+          chip={chip}
+          label={`Status ${chip.label}: edit the status of ${sideTabName(side, docs)}`}
+          onClick={props.onStatus && (() => props.onStatus!(side.id))}
+        />
         {group && !active && (
           <button
             type="button"
@@ -267,7 +298,13 @@ function Row(props: {
               ) : (
                 <span className="grow">{tabName(t, docs)}</span>
               )}
-              {statuses[t.id]?.look && <StatusChip chip={chipOf(statuses[t.id], builtins)} />}
+              {statuses[t.id]?.look && (
+                <ChipButton
+                  chip={chipOf(statuses[t.id], builtins)}
+                  label={`Status ${chipOf(statuses[t.id], builtins).label}: edit the status of ${tabName(t, docs)}`}
+                  onClick={props.onStatus && (() => props.onStatus!(side.id, t.id))}
+                />
+              )}
               {active && <span>{tabChord(i, side.tabs.length)}</span>}
             </div>
           ))}
@@ -310,6 +347,7 @@ export function SideTabList({
   renaming,
   onRename,
   onRenameEnd,
+  onStatus,
 }: SideTabListProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   return (
@@ -356,11 +394,20 @@ export function SideTabList({
               renaming={renaming}
               onRename={onRename}
               onRenameEnd={onRenameEnd}
+              onStatus={onStatus}
             />
           </div>
         ))}
         <Gap index={sideTabs.length} dragging={dragging && !draggingSide && sort === "manual"} />
         <Gap index={sideTabs.length} dragging={dragging && !draggingSide} end />
+        {/* The empty space under the last row: hovering it shows a + that adds a side tab. */}
+        {!dragging && (
+          <div className="side-fill" onDoubleClick={onNew}>
+            <button type="button" className="side-add" aria-label="Add a side tab" title="New side tab (⌘N)" onClick={onNew}>
+              <i className="ao-i ao-i-plus" />
+            </button>
+          </div>
+        )}
       </div>
       <div className="side-foot small ao-dim">
         <span className="ao-key">⌃⌘</span>
