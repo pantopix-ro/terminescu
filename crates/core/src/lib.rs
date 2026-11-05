@@ -10,6 +10,7 @@ pub mod hook_install;
 pub mod launcher;
 pub mod layout;
 pub mod persist;
+pub mod prompts;
 pub mod runtime;
 pub mod state;
 pub mod status;

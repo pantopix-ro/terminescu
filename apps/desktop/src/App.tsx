@@ -22,6 +22,7 @@ import {
   type Shown,
   type StatusConfig,
   type Variable,
+  type Prompt,
   type Command,
   type Host,
   type Workspace,
@@ -34,6 +35,7 @@ import {
   insertText,
   ExtractDialog,
   PIN_EVENT,
+  PromptLibrary,
   paneEvent,
   REVEAL_ROWS_EVENT,
   quoteOf,
@@ -163,7 +165,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const [palette, setPalette] = useState(false);
   const [mode, setMode] = useState<ContextMode>(loadMode);
   const [dragging, setDragging] = useState<string>();
-  const [sheet, setSheet] = useState<"status" | "settings">();
+  const [sheet, setSheet] = useState<"status" | "settings" | "prompts">();
+  const [libraryKey, setLibraryKey] = useState<string>();
 
   const send = (c: Command): Promise<boolean> =>
     host.send(c).then(
@@ -291,6 +294,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         return;
       case "settings":
         return setSheet((s) => (s === "settings" ? undefined : "settings"));
+      case "prompt_library":
+        setLibraryKey(undefined);
+        return setSheet((s) => (s === "prompts" ? undefined : "prompts"));
       case "context_panel":
         return changeMode(mode === "pinned" ? "auto" : "pinned");
       case "focus_left":
@@ -379,6 +385,24 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     };
   }, [host, sideId]);
   const shownCtx: Ctx = ctx.side === sideId ? ctx : { variables: [], items: [], pins: [] };
+
+  // The library, last used first, for the panel's Prompts section and `⌘I` (D14).
+  const [prompts, setPrompts] = useState<Prompt[]>([]);
+  useEffect(() => {
+    let gone = false;
+    let off: (() => void) | undefined;
+    const load = () =>
+      void host
+        .searchPrompts("")
+        .then((p) => !gone && setPrompts(p))
+        .catch((e: unknown) => !gone && setError(String(e)));
+    load();
+    void host.onPrompts(load).then((o) => (gone ? o() : (off = o)));
+    return () => {
+      gone = true;
+      off?.();
+    };
+  }, [host]);
 
   // A pin to show: the transcript pane of its session scrolls to it; a terminal pin scrolls its
   // pane, when that pane is still open in this side tab.
@@ -664,6 +688,11 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
             onRemoveVariable={(name) => (sideId ? host.removeVariable(sideId, name) : Promise.resolve())}
             onAddItem={(kind, value) => (sideId ? host.addItem(sideId, kind, value, "pasted", activeTab?.id ?? null) : Promise.resolve())}
             onRemoveItem={(id) => host.removeItem(id)}
+            prompts={prompts}
+            onOpenPrompt={(key) => {
+              setLibraryKey(key);
+              setSheet("prompts");
+            }}
             onOpenUrl={(url) => void host.openUrl(url).catch((e: unknown) => setError(String(e)))}
           />
         </div>
@@ -724,6 +753,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           onClose={closeSheet}
         />
       )}
+      {sheet === "prompts" && <PromptLibrary host={host} selectKey={libraryKey} onError={setError} onClose={closeSheet} />}
       {sheet === "settings" && <StatusSettings config={statusConfig} host={host} onError={setError} onClose={closeSheet} />}
       {palette && (
         <Palette

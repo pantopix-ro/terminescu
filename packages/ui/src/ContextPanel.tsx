@@ -1,4 +1,4 @@
-import { VAR_MODES, type Item, type ItemKind, type NewVariable, type Pin, type Variable, type VarMode, type VariableChange } from "@terminescu/host";
+import { VAR_MODES, type Item, type ItemKind, type NewVariable, type Pin, type Prompt, type Variable, type VarMode, type VariableChange } from "@terminescu/host";
 import { useEffect, useRef, useState } from "react";
 import { parseTtl, timeLeft } from "./names";
 
@@ -24,6 +24,10 @@ export interface ContextPanelProps {
   onAddItem?(kind: ItemKind, value: string): Promise<unknown>;
   onRemoveItem?(id: string): Promise<unknown>;
   onOpenUrl?(url: string): void;
+  /** The library, last used first (D14). */
+  prompts?: Prompt[];
+  /** Opens the library at a prompt, or at its start. */
+  onOpenPrompt?(key?: string): void;
 }
 
 const SECTIONS = ["Context", "Pins", "Prompts"] as const;
@@ -268,7 +272,33 @@ function Items(props: ContextPanelProps & { section: Section }) {
       </ul>
     );
   }
-  return <p className="small ao-dim ctx-empty">{section === "Pins" ? "No pins yet." : "No prompts yet."}</p>;
+  if (section === "Prompts") {
+    const { prompts = [], onOpenPrompt } = props;
+    return (
+      <>
+        <div className="ctx-group">
+          <span className="ao-pixel ao-dim">Prompts</span>
+          <span className="small ao-dim">{prompts.length}</span>
+          <span className="grow" />
+          <button type="button" className="ao-btn ghost ctx-mode" onClick={() => onOpenPrompt?.()}>
+            library ⌘⇧I
+          </button>
+        </div>
+        <ul className="ctx-list" aria-label="Prompts">
+          {prompts.map((p) => (
+            <li key={p.id} className="ctx-item" data-prompt={p.key}>
+              <button type="button" className="ctx-value link-plain" title={p.body} onClick={() => onOpenPrompt?.(p.key)}>
+                {p.name}
+              </button>
+              <span className="small ao-dim">{p.variables.map((v) => `{{${v}}}`).join(" ")}</span>
+            </li>
+          ))}
+        </ul>
+        {prompts.length === 0 && <p className="small ao-dim ctx-empty">No prompts yet.</p>}
+      </>
+    );
+  }
+  return <p className="small ao-dim ctx-empty">No pins yet.</p>;
 }
 
 function Body(props: ContextPanelProps) {

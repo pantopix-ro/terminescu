@@ -1,7 +1,8 @@
 export type * from "./protocol";
 export type { Host, PaneView } from "./host";
-export { ACTION_EVENT, AGENT_EVENT, CONTEXT_EVENT, createIpcHost, PATCHES_EVENT, STATUS_CONFIG_EVENT, STATUS_EVENT } from "./ipc";
-export { ACCENTS, AUTOS, isVariableName, MAX_LABEL, TINTS, VAR_MODES } from "./protocol";
+export { ACTION_EVENT, AGENT_EVENT, CONTEXT_EVENT, createIpcHost, PATCHES_EVENT, PROMPTS_EVENT, STATUS_CONFIG_EVENT, STATUS_EVENT } from "./ipc";
+export { ACCENTS, AUTOS, isVariableName, MAX_LABEL, TINTS, VAR_MODES, variablesOf } from "./protocol";
+export { keyOf } from "./prompt-store";
 export { computeStatuses, paneAuto, type PaneDynamic, type PaneFacts } from "./status";
 export { ACTIONS, actionFor, chordLabel, type ActionDef } from "./keys";
 export * from "./layout";

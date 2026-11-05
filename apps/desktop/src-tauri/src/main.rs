@@ -17,6 +17,7 @@ use terminescu_core::db::Db;
 use terminescu_core::hook_install;
 use terminescu_core::launcher;
 use terminescu_core::persist;
+use terminescu_core::prompts::{self, NewPrompt, Prompt};
 use terminescu_core::runtime::Runtime;
 use terminescu_core::state::{Command, CommandError, Core, Id, Snapshot, Workspace};
 use terminescu_core::status::{Auto, Look, ManualStatus, RuleKind, Shown};
@@ -191,6 +192,97 @@ fn var_remove(
         .map_err(|e| e.to_string())?;
     let _ = app.emit(CONTEXT_EVENT, &side_tab);
     Ok(())
+}
+
+/// Every window refreshes its library and insert palette on this (D14).
+const PROMPTS_EVENT: &str = "host://prompts";
+
+fn prompt_changed(app: &AppHandle, r: prompts::Result<Prompt>) -> Result<Prompt, String> {
+    let p = r.map_err(|e| e.to_string())?;
+    let _ = app.emit(PROMPTS_EVENT, &p.id);
+    Ok(p)
+}
+
+#[tauri::command(async)]
+fn prompts_search(
+    state: State<'_, AppState>,
+    query: String,
+    archived: bool,
+) -> Result<Vec<Prompt>, String> {
+    prompts::search(&lock(&state.db), &query, archived).map_err(|e| e.to_string())
+}
+
+#[tauri::command(async)]
+fn prompt_create(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    prompt: NewPrompt,
+) -> Result<Prompt, String> {
+    let r = prompts::create(&lock(&state.db), &prompt);
+    prompt_changed(&app, r)
+}
+
+#[tauri::command(async)]
+fn prompt_save(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    body: String,
+) -> Result<Prompt, String> {
+    let r = prompts::save(&lock(&state.db), &id, &body);
+    prompt_changed(&app, r)
+}
+
+#[tauri::command(async)]
+fn prompt_update(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    name: String,
+    tags: Vec<String>,
+) -> Result<Prompt, String> {
+    let r = prompts::update(&lock(&state.db), &id, &name, &tags);
+    prompt_changed(&app, r)
+}
+
+#[tauri::command(async)]
+fn prompt_versions(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Vec<prompts::Version>, String> {
+    prompts::versions(&lock(&state.db), &id).map_err(|e| e.to_string())
+}
+
+#[tauri::command(async)]
+fn prompt_restore(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    version: u32,
+) -> Result<Prompt, String> {
+    let r = prompts::restore(&lock(&state.db), &id, version);
+    prompt_changed(&app, r)
+}
+
+#[tauri::command(async)]
+fn prompt_duplicate(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Prompt, String> {
+    let r = prompts::duplicate(&lock(&state.db), &id);
+    prompt_changed(&app, r)
+}
+
+#[tauri::command(async)]
+fn prompt_archive(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    archived: bool,
+) -> Result<Prompt, String> {
+    let r = prompts::set_archived(&lock(&state.db), &id, archived);
+    prompt_changed(&app, r)
 }
 
 #[tauri::command(async)]
@@ -710,6 +802,9 @@ fn main() {
             std::fs::create_dir_all(&dir)?;
             let db = Db::open(dir.join("terminescu.sqlite"))?;
             db.local_owner()?;
+            if let Err(e) = prompts::import_seeds(&db, prompts::SEEDS) {
+                eprintln!("terminescu: seed prompts not imported: {e}");
+            }
             let db = Arc::new(Mutex::new(db));
             let (runtime, windows) = start_runtime(app.handle(), db.clone())?;
             app.manage(AppState { runtime, db });
@@ -732,6 +827,14 @@ fn main() {
             items_list,
             item_add,
             item_remove,
+            prompts_search,
+            prompt_create,
+            prompt_save,
+            prompt_update,
+            prompt_versions,
+            prompt_restore,
+            prompt_duplicate,
+            prompt_archive,
             host_statuses,
             status_config,
             status_save,

@@ -9,6 +9,8 @@ import type {
   Item,
   PatchBatch,
   Pin,
+  Prompt,
+  PromptVersion,
   Rule,
   SavedStatus,
   Shown,
@@ -21,6 +23,7 @@ import type {
 export const PATCHES_EVENT = "host://patches";
 export const AGENT_EVENT = "host://agent";
 export const CONTEXT_EVENT = "host://context";
+export const PROMPTS_EVENT = "host://prompts";
 export const STATUS_EVENT = "host://status";
 export const STATUS_CONFIG_EVENT = "host://status-config";
 /** The app menu sends each action to the focused window only. */
@@ -60,6 +63,15 @@ export function createIpcHost(): Host {
       invoke<Item>("item_add", { sideTab, kind, value, source, originTabId }),
     removeItem: (id) => invoke("item_remove", { id }),
     onContext: (listener) => listen<string>(CONTEXT_EVENT, (e) => listener(e.payload)),
+    searchPrompts: (query, archived = false) => invoke<Prompt[]>("prompts_search", { query, archived }),
+    createPrompt: (prompt) => invoke<Prompt>("prompt_create", { prompt }),
+    savePrompt: (id, body) => invoke<Prompt>("prompt_save", { id, body }),
+    updatePrompt: (id, name, tags) => invoke<Prompt>("prompt_update", { id, name, tags }),
+    promptVersions: (id) => invoke<PromptVersion[]>("prompt_versions", { id }),
+    restorePrompt: (id, version) => invoke<Prompt>("prompt_restore", { id, version }),
+    duplicatePrompt: (id) => invoke<Prompt>("prompt_duplicate", { id }),
+    archivePrompt: (id, archived) => invoke<Prompt>("prompt_archive", { id, archived }),
+    onPrompts: (listener) => listen(PROMPTS_EVENT, () => listener()),
     statuses: () => invoke<Record<Id, Shown>>("host_statuses"),
     onStatuses: (listener) => listen<Record<Id, Shown>>(STATUS_EVENT, (e) => listener(e.payload)),
     statusConfig: () => invoke<StatusConfig>("status_config"),

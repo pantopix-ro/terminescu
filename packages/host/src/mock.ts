@@ -3,6 +3,7 @@
 
 import type { Host, PaneView } from "./host";
 import { actionFor } from "./keys";
+import { PromptStore } from "./prompt-store";
 import { hasSplit, isSessionId, leaf, panesOf, removePane, resizeSplit, splitPane, terminalsOf } from "./layout";
 import {
   ACCENTS,
@@ -180,6 +181,11 @@ export function createMockHost(initial?: Workspace): MockHost {
     return structuredClone(v);
   };
   const contextListeners = new Set<(sideTabId: string) => void>();
+  const promptListeners = new Set<() => void>();
+  // Invented seeds, enough for the library and insert tests.
+  const library = new PromptStore(() => queueMicrotask(() => promptListeners.forEach((l) => l())));
+  library.create({ key: "review-plan", name: "Review plan", tags: ["plan", "review"], body: "Review the plan for {{ticket}}. Rate your confidence from 1 to 10.\n" });
+  library.create({ key: "open-prs", name: "Open PRs", tags: ["git"], body: "Open a PR from {{branch}} into develop.\n" });
   const contextChanged = (side: string) => {
     for (const l of contextListeners) l(side);
   };
@@ -586,6 +592,34 @@ export function createMockHost(initial?: Workspace): MockHost {
       if (at < 0) return;
       const [gone] = itemList.splice(at, 1);
       contextChanged(gone!.sideTabId);
+    },
+    async searchPrompts(query, archived = false) {
+      return library.search(query, archived);
+    },
+    async createPrompt(prompt) {
+      return library.create(prompt);
+    },
+    async savePrompt(promptId, body) {
+      return library.save(promptId, body);
+    },
+    async updatePrompt(promptId, name, tags) {
+      return library.update(promptId, name, tags);
+    },
+    async promptVersions(promptId) {
+      return library.versions(promptId);
+    },
+    async restorePrompt(promptId, version) {
+      return library.restore(promptId, version);
+    },
+    async duplicatePrompt(promptId) {
+      return library.duplicate(promptId);
+    },
+    async archivePrompt(promptId, archived) {
+      return library.archive(promptId, archived);
+    },
+    async onPrompts(listener) {
+      promptListeners.add(listener);
+      return () => promptListeners.delete(listener);
     },
     async onContext(listener) {
       contextListeners.add(listener);

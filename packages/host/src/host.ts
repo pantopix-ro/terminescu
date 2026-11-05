@@ -10,6 +10,9 @@ import type {
   NewPin,
   PatchBatch,
   Pin,
+  Prompt,
+  PromptVersion,
+  NewPrompt,
   Rule,
   RuleKind,
   SavedStatus,
@@ -71,6 +74,24 @@ export interface Host {
   /** The same link twice is kept once. */
   addItem(sideTabId: Id, kind: ItemKind, value: string, source: string, originTabId?: Id | null): Promise<Item>;
   removeItem(id: Id): Promise<void>;
+  /**
+   * The prompt library (D14). Every word must match: `#tag` a whole tag, any other word the
+   * name, a tag or the body. Archived prompts come only with `archived`. Last used first.
+   */
+  searchPrompts(query: string, archived?: boolean): Promise<Prompt[]>;
+  createPrompt(prompt: NewPrompt): Promise<Prompt>;
+  /** A new version when the body changed. */
+  savePrompt(id: Id, body: string): Promise<Prompt>;
+  /** Renames and retags without a version. */
+  updatePrompt(id: Id, name: string, tags: string[]): Promise<Prompt>;
+  /** Newest first. */
+  promptVersions(id: Id): Promise<PromptVersion[]>;
+  /** The old body becomes a new version. */
+  restorePrompt(id: Id, version: number): Promise<Prompt>;
+  duplicatePrompt(id: Id): Promise<Prompt>;
+  archivePrompt(id: Id, archived: boolean): Promise<Prompt>;
+  /** A prompt changed in any window. Resolves with a function that removes the listener. */
+  onPrompts(listener: () => void): Promise<() => void>;
   /** A side tab's context changed. Resolves with a function that removes the listener. */
   onContext(listener: (sideTabId: Id) => void): Promise<() => void>;
   /** Every tab's and side tab's shown status, by id (D15). */

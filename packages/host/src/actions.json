@@ -68,6 +68,12 @@
    "accel": "Cmd+K"
   },
   {
+   "id": "prompt_library",
+   "label": "Prompt Library…",
+   "menu": "View",
+   "accel": "Cmd+Shift+I"
+  },
+  {
    "id": "context_panel",
    "label": "Pin or Auto-hide Context",
    "menu": "View",

@@ -227,8 +227,15 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       real zsh pane, sets the secret afterwards, and a `bash -c` that sources the env file, with
       the variable and its generation stripped as a Claude started earlier would have it, sees
       the value while neither the file nor the scrollback holds it. `⌘I` comes with 6.4.
-- [ ] 6.3 Prompt library: search, tags, versions, restore, duplicate, archive; seed import.
+- [x] 6.3 Prompt library: search, tags, versions, restore, duplicate, archive; seed import.
       Verify: `prompts.test.rs` covers search by tag and body, and restore creating a version.
+      Done: `terminescu_core::prompts` keeps immutable versions (migration 0005 adds last used
+      and use count); search needs every word, `#tag` a whole tag, other words the name, a tag
+      or the body; restore and save add versions, duplicate starts a `-copy` key at v1, archive
+      hides. The 8 files in `seeds/prompts` are embedded and imported once per database; a key
+      the person has wins, a deleted seed stays deleted. `crates/core/tests/prompts.rs` covers
+      it. The library opens with `⌘⇧I` or from the panel's Prompts section. Limits: the body is
+      a plain textarea until text tabs land (group 7, D29), and images in prompts wait too.
 - [ ] 6.4 `⌘I` insert: prompts and variables, resolution from context, missing variables asked
       inline, bracketed paste, insert and send. Verify: test that plain insert writes no `\r`.
 - [ ] 6.5 Save as prompt from the insert dialog with variable detection. Verify: saving text

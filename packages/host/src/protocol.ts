@@ -253,6 +253,46 @@ export interface Item {
   createdAt: number;
 }
 
+/** A library prompt at its current version (D14). */
+export interface Prompt {
+  id: Id;
+  key: string;
+  name: string;
+  tags: string[];
+  archived: boolean;
+  version: number;
+  body: string;
+  /** The `{{names}}` the body uses, in order of first use. */
+  variables: string[];
+  lastUsedAt: number | null;
+  useCount: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface PromptVersion {
+  version: number;
+  body: string;
+  createdAt: number;
+}
+
+export interface NewPrompt {
+  key?: string | null;
+  name: string;
+  tags: string[];
+  body: string;
+}
+
+/** The `{{name}}` placeholders of a body, each once, in order; the core's `variables_of`. */
+export function variablesOf(body: string): string[] {
+  const out: string[] = [];
+  for (const m of body.matchAll(/\{\{([^{}]*)\}\}/g)) {
+    const name = m[1]!.trim();
+    if (isVariableName(name) && !out.includes(name)) out.push(name);
+  }
+  return out;
+}
+
 /** `pr_api`, `API_TOKEN`: what `$NAME` and `{{name}}` accept. `TERMINESCU_*` is reserved. */
 export function isVariableName(name: string): boolean {
   return /^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(name) && !name.startsWith("TERMINESCU_");
