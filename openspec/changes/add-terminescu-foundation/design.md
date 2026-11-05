@@ -261,6 +261,12 @@ sends Ctrl-C. Launchers rerun at app start for panes the daemon spawned fresh (a
 after a daemon reconnect. A launcher command belongs to one side tab; a missing or multi-line
 value refuses it, since no one is there to answer.
 
+Amended 2026-11-05 at the owner's request: saved prompts and commands, the text the sidebar
+injects into a pane, are mostly global. The library's prompts already are. A new command now
+starts global; "this side tab only" scopes it to one side tab, the tab group. A launcher command
+stays per side tab, since it defines that side tab. Rejected: per-tab scope, since a tab
+lives too briefly to own a command. Task 8.6.
+
 ### D25. Smaller v1 choices
 The transcript pane ships in P1 in a minimal form: read-only user and assistant messages with
 Pin and Extract per message and per selection; tool calls, diffs and thinking come in P2.
