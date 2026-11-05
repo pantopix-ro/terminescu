@@ -4,9 +4,11 @@ import { useEffect, useState, type KeyboardEvent, type MouseEvent } from "react"
 import { DOT, tabAgent, type Agents } from "./agents";
 import { StatusChip } from "./StatusChip";
 import { chipOf, rowStyle, type Builtins, type Chip, type SortMode } from "./status";
+import { ShellPicker, usePicker } from "./ShellPicker";
 import { Tip, useTip } from "./Tip";
 
 type Tips = ReturnType<typeof useTip>;
+type Picker = ReturnType<typeof usePicker>;
 
 export interface SideTabListProps {
   sideTabs: SideTab[];
@@ -195,8 +197,9 @@ function Row(props: {
   onIconPick?(id: string, at: { x: number; y: number }): void;
   collapsed: boolean;
   tips: Tips;
+  picker: Picker;
 }) {
-  const { side, active, expanded, dragging, agents, statuses, builtins, docs, collapsed, tips } = props;
+  const { side, active, expanded, dragging, agents, statuses, builtins, docs, collapsed, tips, picker } = props;
   const name = sideTabName(side, docs);
   const shown = statuses[side.id];
   const need = shown?.waiting || side.tabs.some((t) => tabAgent(t, agents)?.state === "waiting" || tabRequest(t, docs));
@@ -237,8 +240,14 @@ function Row(props: {
         data-side={side.id}
         aria-current={active ? "true" : undefined}
         aria-label={collapsed ? `${name}, ${chip.label}` : undefined}
-        onMouseEnter={collapsed ? (e) => tips.show(e.currentTarget, name, chip.label) : undefined}
-        onMouseLeave={tips.hide}
+        // A rest on the row lists its shells beside it (task 8.28); collapsed, every row does.
+        onMouseEnter={(e) => {
+          if ((collapsed || group) && !dragging && props.renaming !== side.id) picker.enter(side.id, e.currentTarget);
+        }}
+        onMouseLeave={() => {
+          tips.hide();
+          picker.leave();
+        }}
         onClick={props.onSelect}
         onContextMenu={(e) => {
           if (!props.onMenu) return;
@@ -286,11 +295,6 @@ function Row(props: {
           </span>
         )}
         <span className="side-trail">
-        <ChipButton
-          chip={chip}
-          label={`Status ${chip.label}: edit the status of ${name}`}
-          onClick={props.onStatus && ((at) => props.onStatus!(side.id, undefined, at))}
-        />
         {group && !active && (
           <button
             type="button"
@@ -313,7 +317,13 @@ function Row(props: {
               <i key={t.id} className="ao-cell" data-cell={t.id} style={t.accent && { background: `var(--neon-${t.accent})` }} />
             ))}
           </span>
-          {side.tabs.length} {side.tabs.length === 1 ? "tab" : "tabs"}
+          <span className="grow" />
+          {/* The status sits under the name, so the name has the row's width (task 8.28). */}
+          <ChipButton
+            chip={chip}
+            label={`Status ${chip.label}: edit the status of ${name}`}
+            onClick={props.onStatus && ((at) => props.onStatus!(side.id, undefined, at))}
+          />
         </span>
       </div>
       {open && (
@@ -430,12 +440,19 @@ export function SideTabList({
 }: SideTabListProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const tips = useTip();
+  const picker = usePicker();
   const { hide } = tips;
+  const { close } = picker;
+  const hideAll = () => {
+    hide();
+    close();
+  };
   // A drag, a rename, a scroll or a width change moves the rows from under the tooltip.
-  useEffect(hide, [dragging, renaming, collapsed, sideTabs.length]);
+  useEffect(hideAll, [dragging, renaming, collapsed, sideTabs.length]);
+  const picked = picker.at && sideTabs.find((s) => s.id === picker.at!.sideId);
   return (
     <nav className={`ao-side${collapsed ? " collapsed" : ""}`} aria-label="Side tabs">
-      <div className="side-list" onScroll={hide}>
+      <div className="side-list" onScroll={hideAll}>
         {sideTabs.map((s, i) => (
           <div key={s.id} className="side-item">
             <Gap index={i} dragging={dragging && !draggingSide && sort === "manual"} />
@@ -463,6 +480,7 @@ export function SideTabList({
               onIconPick={onIconPick}
               collapsed={collapsed}
               tips={tips}
+              picker={picker}
             />
           </div>
         ))}
@@ -490,6 +508,30 @@ export function SideTabList({
         <span className="ao-key">1</span>–<span className="ao-key">9</span> switch side tab
       </div>
       <Tip tip={tips.tip} />
+      {picker.at && picked && !dragging && (
+        <ShellPicker at={picker.at} label={`Shells in ${sideTabName(picked, docs)}`} onEnter={picker.keep} onLeave={picker.leave}>
+          <div className="px-pick-head">
+            <span className="px-tip-name">{sideTabName(picked, docs)}</span>
+            <span className="px-tip-status">{chipOf(statuses[picked.id], builtins).label}</span>
+          </div>
+          {picked.tabs.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              className={`px-pick-item${picked.id === activeId && t.id === activeTabId ? " active" : ""}`}
+              data-pick={t.id}
+              onClick={() => {
+                close();
+                onSelectTab(picked.id, t.id);
+              }}
+            >
+              <KidIcon agent={tabAgent(t, agents)} icon={t.icon} accent={t.accent} />
+              <span className="grow">{tabName(t, docs)}</span>
+              {statuses[t.id]?.look && <StatusChip chip={chipOf(statuses[t.id], builtins)} />}
+            </button>
+          ))}
+        </ShellPicker>
+      )}
     </nav>
   );
 }

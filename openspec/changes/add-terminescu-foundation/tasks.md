@@ -485,6 +485,13 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       apart (`tabs.accent`, migration 0009); the tab's icon in the sidebar and the tab bar and
       its square under the row name take it; every row now shows its squares. `fill_accents`
       gives saved rows and tabs a neon at start. Verify: core tests, `sidebar-neon.spec.ts` (2).
+- [x] 8.27 Stacked context panel (owner request, 2026-11-05): Context, Pins and Prompts show one
+      under the other with sticky pixel headers; the section tabs are gone and `.ctx-scroll`
+      scrolls under the fixed header, pinned or overlaid. Verify: `context.spec.ts` stack test.
+- [x] 8.28 Side tab row redesign (owner request, 2026-11-05): a 24 px icon over two lines, the
+      status under the name beside the squares, no tab count; `ShellPicker` lists a row's shells
+      beside it after a 250 ms rest (groups, or any row when collapsed) and one click selects the
+      shell. Verify: `sidebar-layout.spec.ts` (4).
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

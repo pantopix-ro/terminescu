@@ -77,7 +77,6 @@ test("a new prompt shows in the context panel and opens the library at it", asyn
   await page.keyboard.press("Escape");
 
   await page.keyboard.press("Meta+Backslash");
-  await page.locator(".ctx-tab", { hasText: "Prompts" }).click();
   const row = page.locator('aside.ctx-pinned .ctx-item[data-prompt="audit-export"]');
   await expect(row).toContainText("{{pr_api}}");
   await row.getByRole("button", { name: "Audit export" }).click();

@@ -70,7 +70,6 @@ test("a pinned phrase shows in Pins and reopens highlighted", async ({ page }) =
   await page.keyboard.press("Meta+Shift+L");
   await expect(page.locator(".tr-msg")).toHaveCount(2);
   await page.keyboard.press("Meta+Backslash");
-  await page.locator(".ctx-tab", { hasText: "Pins" }).click();
 
   const phrase = "batches of 5,000 rows on a cursor over id";
   await select(page, "a1", phrase);
