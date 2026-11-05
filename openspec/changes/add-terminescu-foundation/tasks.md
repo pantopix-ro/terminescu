@@ -244,8 +244,13 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       Inserts skip xterm's paste, which turns line breaks into `\r` outside bracketed mode:
       `pasteBytes` never writes `\r`, brackets any multi-line text, and drops paste markers in
       it. `insert.test.ts` and `prompts.spec.ts` check the exact bytes on the pane.
-- [ ] 6.5 Save as prompt from the insert dialog with variable detection. Verify: saving text
+- [x] 6.5 Save as prompt from the insert dialog with variable detection. Verify: saving text
       containing the `branch` value offers `{{branch}}`.
+      Done: one `SavePromptForm` serves the insert dialog's prompt step and a "Save as prompt"
+      button on the person's own transcript messages. `detectVariables` finds context values
+      of 3 or more characters, longest first, and a secret by its `$NAME`; each becomes a
+      ticked `{{name}}` the person can untick, with a live preview. `insert.test.ts` and
+      `prompts.spec.ts` cover the `branch` case from both entry points.
 - [ ] 6.6 Attention: status line count, dock badge, macOS notification on by default without
       sound, chime off by default, `⌘⇧A`. Verify: manual with a waiting session in the background.
 

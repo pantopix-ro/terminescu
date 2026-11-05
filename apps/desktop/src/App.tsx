@@ -37,6 +37,7 @@ import {
   PIN_EVENT,
   PromptLibrary,
   InsertDialog,
+  SavePromptForm,
   paneEvent,
   REVEAL_ROWS_EVENT,
   quoteOf,
@@ -166,7 +167,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const [palette, setPalette] = useState(false);
   const [mode, setMode] = useState<ContextMode>(loadMode);
   const [dragging, setDragging] = useState<string>();
-  const [sheet, setSheet] = useState<"status" | "settings" | "prompts" | "insert">();
+  const [sheet, setSheet] = useState<"status" | "settings" | "prompts" | "insert" | "save-prompt">();
+  const [toSave, setToSave] = useState("");
   const [libraryKey, setLibraryKey] = useState<string>();
 
   const send = (c: Command): Promise<boolean> =>
@@ -668,6 +670,10 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                               });
                             }}
                             extract={(value) => startExtract(activeTab.id, value, "transcript")}
+                            savePrompt={(text) => {
+                              setToSave(text);
+                              setSheet("save-prompt");
+                            }}
                             reveal={reveal?.session === transcript ? reveal : undefined}
                             onFocus={() => focusIn(activeTab.id, paneId)}
                           />
@@ -783,9 +789,35 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               ? host.addVariable(sideId, { name, value, mode: "saved", ttlSecs: null, source: "typed", originTabId: activeTab?.id ?? null })
               : Promise.resolve()
           }
+          onSavePrompt={(p) => host.createPrompt(p).catch(report)}
           onError={setError}
           onClose={closeSheet}
         />
+      )}
+      {sheet === "save-prompt" && (
+        <div className="sheet-back" onPointerDown={closeSheet}>
+          <div
+            className="ao-frame insert-dialog"
+            role="dialog"
+            aria-label="Save as prompt"
+            onPointerDown={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.key === "Escape" && closeSheet()}
+          >
+            <div className="ao-frame-body">
+              <SavePromptForm
+                text={toSave}
+                variables={shownCtx.variables}
+                onSave={(p) =>
+                  host.createPrompt(p).then((saved) => {
+                    setLibraryKey(saved.key);
+                    setSheet("prompts");
+                  })
+                }
+                onCancel={closeSheet}
+              />
+            </div>
+          </div>
+        </div>
       )}
       {sheet === "prompts" && <PromptLibrary host={host} selectKey={libraryKey} onError={setError} onClose={closeSheet} />}
       {sheet === "settings" && <StatusSettings config={statusConfig} host={host} onError={setError} onClose={closeSheet} />}

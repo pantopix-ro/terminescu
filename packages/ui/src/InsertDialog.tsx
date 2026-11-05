@@ -1,4 +1,5 @@
-import { isVariableName, type Pin, type Prompt, type Variable } from "@terminescu/host";
+import { isVariableName, type NewPrompt, type Pin, type Prompt, type Variable } from "@terminescu/host";
+import { SavePromptForm } from "./SavePromptForm";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { insertText } from "./names";
 import { renderPrompt } from "./insert";
@@ -11,6 +12,8 @@ export interface InsertDialogProps {
   onInsert(text: string, send: boolean, prompt?: Prompt): void;
   /** Saves a value typed for a missing variable to the side tab's context. */
   onSaveVariable(name: string, value: string): Promise<unknown>;
+  /** Save as prompt (D14); resolves once saved. */
+  onSavePrompt(prompt: NewPrompt): Promise<unknown>;
   onError(message: string): void;
   onClose(): void;
 }
@@ -38,7 +41,11 @@ function PromptStep({ prompt, props, onBack }: { prompt: Prompt; props: InsertDi
   const [edited, setEdited] = useState<string>();
   const text = edited ?? rendered.text;
   const first = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
-  useEffect(() => first.current?.focus(), []);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState<string>();
+  useEffect(() => {
+    if (!saving) first.current?.focus();
+  }, [saving]);
 
   const go = async (send: boolean) => {
     if (!text.trim()) return;
@@ -62,6 +69,20 @@ function PromptStep({ prompt, props, onBack }: { prompt: Prompt; props: InsertDi
     }
   };
 
+  if (saving)
+    return (
+      <SavePromptForm
+        text={text}
+        variables={variables}
+        onSave={(p) =>
+          props.onSavePrompt(p).then(() => {
+            setSaving(false);
+            setSaved(p.name);
+          })
+        }
+        onCancel={() => setSaving(false)}
+      />
+    );
   return (
     <div className="ins-step" onKeyDown={keys}>
       <div className="ins-head">
@@ -115,8 +136,15 @@ function PromptStep({ prompt, props, onBack }: { prompt: Prompt; props: InsertDi
       />
       <div className="pl-row">
         <span className="small ao-dim grow">
-          {rendered.missing.length ? `still empty: ${rendered.missing.map((n) => `{{${n}}}`).join(" ")}` : "nothing is sent until you choose to"}
+          {saved
+            ? `saved as ${saved}`
+            : rendered.missing.length
+              ? `still empty: ${rendered.missing.map((n) => `{{${n}}}`).join(" ")}`
+              : "nothing is sent until you choose to"}
         </span>
+        <button type="button" className="ao-btn ghost" onClick={() => setSaving(true)}>
+          Save as prompt
+        </button>
         <button type="button" className="ao-btn ghost" onClick={() => void go(true)}>
           Insert and send ⌘⇧↵
         </button>

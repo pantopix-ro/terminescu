@@ -47,3 +47,22 @@ describe("renderPrompt", () => {
     expect(renderPrompt("{{owner}}", [], [], { owner: "acme" })).toEqual({ text: "acme", missing: [] });
   });
 });
+
+describe("save as prompt", () => {
+  it("offers {{branch}} for the branch value, longest values first, secrets by $NAME", async () => {
+    const { detectVariables, templatize } = await import("../src/detect");
+    const vars = [
+      v("branch", "session", "feature/audit-export"),
+      v("feature", "saved", "feature"),
+      v("id", "saved", "42"),
+      v("API_TOKEN", "secret", null),
+    ];
+    const text = "Open a PR from feature/audit-export, the feature branch, with $API_TOKEN. 42";
+    const found = detectVariables(text, vars);
+    expect(found.map((f) => f.name)).toEqual(["branch", "API_TOKEN", "feature"]);
+    expect(templatize(text, found)).toBe("Open a PR from {{branch}}, the {{feature}} branch, with {{API_TOKEN}}. 42");
+    expect(templatize(text, found.filter((f) => f.name !== "feature"))).toBe(
+      "Open a PR from {{branch}}, the feature branch, with {{API_TOKEN}}. 42",
+    );
+  });
+});

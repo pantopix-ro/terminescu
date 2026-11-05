@@ -26,6 +26,8 @@ export interface TranscriptPaneProps {
   pin(entry: TextEntry, range?: [number, number]): Promise<unknown>;
   /** Opens the extract dialog for the text. */
   extract(value: string): void;
+  /** Save as prompt, offered on the person's own messages (D14). */
+  savePrompt?(text: string): void;
   reveal?: Reveal;
   onFocus(): void;
 }
@@ -70,7 +72,7 @@ function selected(root: HTMLElement): { entryId: string; range: [number, number]
  * A read-only mirror of a Claude session: user and assistant messages with Pin and Extract per
  * message and per selection (task 4.4, D25). Tool calls, diffs and thinking come in P2.
  */
-export function TranscriptPane({ paneId, session, read, pin, extract, reveal, onFocus }: TranscriptPaneProps) {
+export function TranscriptPane({ paneId, session, read, pin, extract, savePrompt, reveal, onFocus }: TranscriptPaneProps) {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [error, setError] = useState<string>();
   const [mark, setMark] = useState<{ entryId: string; range: [number, number] }>();
@@ -207,6 +209,11 @@ export function TranscriptPane({ paneId, session, read, pin, extract, reveal, on
                 >
                   Extract
                 </button>
+                {e.kind === "user" && savePrompt && (
+                  <button type="button" className="ao-btn ghost tr-act" onMouseDown={(ev) => ev.preventDefault()} onClick={() => savePrompt(e.text)}>
+                    Save as prompt
+                  </button>
+                )}
               </div>
               <div className="tr-text">
                 {mark?.entryId === e.id ? (

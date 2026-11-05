@@ -23,6 +23,8 @@ export { anchor, quoteOf, QUOTE_CONTEXT, type Quote } from "./anchor";
 export { insertText, parseTtl, suggestName, timeAgo, timeLeft } from "./names";
 export { PromptLibrary, type PromptLibraryProps } from "./PromptLibrary";
 export { InsertDialog, type InsertDialogProps } from "./InsertDialog";
+export { SavePromptForm, type SavePromptFormProps } from "./SavePromptForm";
+export { detectVariables, templatize, type Found } from "./detect";
 export { INSERT_EVENT, type InsertDetail } from "./events";
 export { pasteBytes, renderPins, renderPrompt, type Rendered } from "./insert";
 export { EXTRACT_EVENT, PIN_EVENT, TranscriptPane, type Reveal, type TextEntry } from "./TranscriptPane";

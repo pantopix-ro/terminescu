@@ -193,3 +193,8 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 .ins-missing { display: flex; flex-direction: column; gap: var(--space-1); }
 .ins-var { display: grid; grid-template-columns: minmax(80px, auto) minmax(0, 1fr) auto; gap: var(--space-2); align-items: center; }
 .ins-text { min-height: 180px; resize: vertical; font-size: 12px; line-height: 1.5; white-space: pre-wrap; }
+.save-prompt { display: flex; flex-direction: column; gap: var(--space-2); }
+.sp-found { display: flex; flex-direction: column; gap: 2px; }
+.sp-found code { color: var(--fg); }
+.sp-body { min-height: 140px; resize: vertical; font-size: 12px; line-height: 1.5; white-space: pre-wrap; color: var(--dim); }
+.app-error-inline { color: var(--red); margin: 0; }

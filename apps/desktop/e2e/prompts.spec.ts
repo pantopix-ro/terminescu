@@ -158,3 +158,60 @@ test("insert and send adds one Enter; a variable goes in from the list", async (
   await dialog.getByRole("button", { name: "Insert and send ⌘⇧↵" }).click();
   await expect.poll(async () => (await inputs()).slice(mid.length)).toMatch(/^\x1b\[200~Review the plan for PROJ-482\..*\n\x1b\[201~\r$/s);
 });
+
+// Task 6.5: save as prompt, offering `{{name}}` for context values in the text (D14).
+test("saving a sent message that holds the branch value offers {{branch}}", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+  await page.locator(".term-pane").first().click();
+  const pane = (await page.locator(".app-pane .ao-tp").first().getAttribute("data-pane"))!;
+  await page.keyboard.press("Meta+Backslash");
+  const panel = page.locator("aside.ctx-pinned");
+  await panel.getByRole("button", { name: "+ variable" }).click();
+  const form = panel.getByRole("form", { name: "Add a variable" });
+  await form.getByLabel("Name").fill("branch");
+  await form.getByLabel("Value").fill("feature/audit-export");
+  await form.getByRole("button", { name: "Add" }).click();
+  await page.evaluate((pane) => {
+    const h = (window as any).__terminescu.host;
+    h.setAgent(pane, { session: "sess-0b5c", state: "done", lastMessage: null });
+    h.appendTranscript("sess-0b5c", [
+      { id: "u1", offset: 0, timestamp: null, kind: "user", text: "Rebase feature/audit-export on develop and push." },
+      { id: "t1", offset: 0, timestamp: null, kind: "turnEnd" },
+    ]);
+  }, pane);
+  await page.locator(".term-pane").first().click();
+  await page.keyboard.press("Meta+Shift+L");
+  const msg = page.locator('.tr-msg[data-entry="u1"]');
+  await msg.hover();
+  await msg.getByRole("button", { name: "Save as prompt" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Save as prompt" });
+  await expect(dialog.getByLabel("Use {{branch}}")).toBeChecked();
+  await expect(dialog.getByLabel("Prompt preview")).toHaveValue("Rebase {{branch}} on develop and push.");
+  await dialog.getByLabel("Prompt name").fill("Rebase branch");
+  await dialog.getByRole("button", { name: "Save prompt" }).click();
+
+  const lib = page.getByRole("dialog", { name: "Prompt library" });
+  await expect(lib.locator('.pl-item.sel[data-prompt="rebase-branch"]')).toBeVisible();
+  await expect(lib.getByLabel("Prompt body")).toHaveValue("Rebase {{branch}} on develop and push.");
+});
+
+test("the insert dialog saves its edited text as a prompt", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+  await page.locator(".term-pane").first().click();
+  await page.keyboard.press("Meta+I");
+  const dialog = page.getByRole("dialog", { name: "Insert" });
+  await dialog.getByLabel("Search prompts and variables").fill("open prs");
+  await dialog.getByLabel("Search prompts and variables").press("Enter");
+  await dialog.getByLabel("Value for branch").fill("feature/audit-export");
+  await dialog.getByLabel("Text to insert").fill("Open a PR from feature/audit-export into main.");
+  await dialog.getByRole("button", { name: "Save as prompt" }).click();
+  await dialog.getByLabel("Prompt name").fill("Open PRs to main");
+  await dialog.getByRole("button", { name: "Save prompt" }).click();
+  await expect(dialog).toContainText("saved as Open PRs to main");
+  const body = await page.evaluate(async () => (await (window as any).__terminescu.host.searchPrompts("main"))[0].body);
+  // `branch` was typed, not in the context: nothing to offer, the text is kept as written.
+  expect(body).toBe("Open a PR from feature/audit-export into main.");
+});
