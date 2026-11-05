@@ -102,6 +102,32 @@ pub enum Control {
         name: Option<String>,
     },
 
+    /// The app's side of variables: the same as `VarSet`, `VarUnset` and `VarGet`, addressed by
+    /// side tab instead of pane (D21). `VarList` answers with secret values blanked.
+    SideVarSet {
+        req: u64,
+        side_tab: String,
+        name: String,
+        value: String,
+        mode: VarMode,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        ttl_secs: Option<u64>,
+    },
+    SideVarUnset {
+        req: u64,
+        side_tab: String,
+        name: String,
+    },
+    SideVarList {
+        req: u64,
+        side_tab: String,
+    },
+    /// Wipes every variable of a side tab that closed. Answered by `Done`.
+    SideVarsDrop {
+        req: u64,
+        side_tab: String,
+    },
+
     // Daemon to client.
     Welcome {
         version: u32,
@@ -136,6 +162,11 @@ pub enum Control {
     Panes {
         req: u64,
         panes: Vec<PaneInfo>,
+    },
+    /// A side tab's variables changed: set, unset, expired or dropped. Names only; sent to clients
+    /// that asked for [`FEATURE_VARS`].
+    VarsChanged {
+        side_tab: String,
     },
     Vars {
         req: u64,
@@ -172,6 +203,8 @@ pub struct SpawnSpec {
 
 /// The `Hello` feature for [`Control::Shell`] pushes.
 pub const FEATURE_SHELL: &str = "shell";
+/// The `Hello` feature for the `SideVar*` requests and [`Control::VarsChanged`] pushes.
+pub const FEATURE_VARS: &str = "vars";
 
 /// Where a variable lives (D21). Saved variables live in the core's SQLite, never here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -186,6 +219,9 @@ pub struct Var {
     pub name: String,
     pub value: String,
     pub mode: VarMode,
+    /// Time left before a TTL removes it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_in_ms: Option<u64>,
 }
 
 /// A variable name a shell can export: a letter or `_`, then letters, digits or `_`.
@@ -403,6 +439,7 @@ mod tests {
                 name: "from_date".into(),
                 value: "2026-11-01".into(),
                 mode: VarMode::Session,
+                expires_in_ms: Some(1000),
             }],
         }));
     }

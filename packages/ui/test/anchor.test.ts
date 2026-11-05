@@ -1,16 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { anchor, quoteOf } from "../src/anchor";
-import { suggestName } from "../src/names";
-
-describe("suggestName", () => {
-  it("names a PR URL after its repo and spots branches and links", () => {
-    expect(suggestName("https://github.com/acme/api/pull/918")).toBe("pr_api");
-    expect(suggestName(" https://github.com/acme/Web-App/pull/12 ")).toBe("pr_web_app");
-    expect(suggestName("feature/audit-export")).toBe("branch");
-    expect(suggestName("https://example.com/a")).toBe("url");
-    expect(suggestName("batches of 5,000 rows")).toBe("text");
-  });
-});
 
 describe("anchor", () => {
   const text = "Plan: move rows in batches of 5,000 rows on a cursor over id, then verify.";

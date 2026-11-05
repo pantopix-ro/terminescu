@@ -13,7 +13,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use terminescu_protocol::client::{Client, ClientError};
 use terminescu_protocol::{
-    Control, FEATURE_SHELL, Frame, PaneId, PaneInfo, ShellState, SpawnSpec, decode, encode,
+    Control, FEATURE_SHELL, FEATURE_VARS, Frame, PaneId, PaneInfo, ShellState, SpawnSpec, Var,
+    VarMode, decode, encode,
 };
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
@@ -37,6 +38,10 @@ pub enum DaemonEvent {
     Shell {
         pane: PaneId,
         shell: ShellState,
+    },
+    /// A side tab's session or secret variables changed (D21).
+    VarsChanged {
+        side_tab: String,
     },
     /// The connection ended; the client is no longer usable.
     Disconnected,
@@ -66,6 +71,8 @@ pub struct DaemonClient {
     pub instance: String,
     /// The daemon pushes shell changes (`FEATURE_SHELL`); an older one leaves them to polling.
     pub pushes_shell: bool,
+    /// The daemon serves `SideVar*` requests and `VarsChanged` pushes (`FEATURE_VARS`).
+    pub side_vars: bool,
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -79,11 +86,12 @@ impl DaemonClient {
         let client = Client::connect_with(
             socket,
             concat!("terminescu-core ", env!("CARGO_PKG_VERSION")),
-            &[FEATURE_SHELL],
+            &[FEATURE_SHELL, FEATURE_VARS],
         )?;
         let version = client.version;
         let instance = client.instance.clone();
         let pushes_shell = client.features.iter().any(|f| f == FEATURE_SHELL);
+        let side_vars = client.features.iter().any(|f| f == FEATURE_VARS);
         let (stream, leftover) = client.into_parts();
         stream.set_read_timeout(None)?;
         let reader = stream.try_clone()?;
@@ -99,6 +107,7 @@ impl DaemonClient {
             version,
             instance,
             pushes_shell,
+            side_vars,
         })
     }
 
@@ -165,6 +174,74 @@ impl DaemonClient {
         }))
     }
 
+    fn need_side_vars(&self) -> Result<(), DaemonError> {
+        if self.side_vars {
+            Ok(())
+        } else {
+            Err(DaemonError::Daemon {
+                code: "old_daemon".into(),
+                message: "the running daemon predates side tab variables; it updates once its \
+                          last shell exits"
+                    .into(),
+            })
+        }
+    }
+
+    fn done(&self, make: impl FnOnce(u64) -> Control) -> Result<(), DaemonError> {
+        self.need_side_vars()?;
+        match self.request(make)? {
+            Control::Done { .. } => Ok(()),
+            other => Err(DaemonError::Unexpected(Box::new(other))),
+        }
+    }
+
+    /// Sets a session or secret variable on a side tab (D21).
+    pub fn side_var_set(
+        &self,
+        side_tab: &str,
+        name: &str,
+        value: String,
+        mode: VarMode,
+        ttl_secs: Option<u64>,
+    ) -> Result<(), DaemonError> {
+        self.done(|req| Control::SideVarSet {
+            req,
+            side_tab: side_tab.into(),
+            name: name.into(),
+            value,
+            mode,
+            ttl_secs,
+        })
+    }
+
+    pub fn side_var_unset(&self, side_tab: &str, name: &str) -> Result<(), DaemonError> {
+        self.done(|req| Control::SideVarUnset {
+            req,
+            side_tab: side_tab.into(),
+            name: name.into(),
+        })
+    }
+
+    /// The side tab's session and secret variables; secret values come back empty.
+    pub fn side_var_list(&self, side_tab: &str) -> Result<Vec<Var>, DaemonError> {
+        self.need_side_vars()?;
+        match self.request(|req| Control::SideVarList {
+            req,
+            side_tab: side_tab.into(),
+        })? {
+            Control::Vars { vars, .. } => Ok(vars),
+            other => Err(DaemonError::Unexpected(Box::new(other))),
+        }
+    }
+
+    /// Wipes a closed side tab's variables.
+    pub fn side_vars_drop(&self, side_tab: &str) -> Result<(), DaemonError> {
+        self.done(|req| Control::SideVarsDrop {
+            req,
+            side_tab: side_tab.into(),
+        })
+    }
+
     /// Ends the connection; the reader thread then reports `Disconnected`.
     pub fn shutdown(&self) {
         let _ = lock(&self.writer).shutdown(std::net::Shutdown::Both);
@@ -198,8 +275,13 @@ fn read_loop(
                     }
                     Control::Exited { pane, code } => Some(DaemonEvent::Exited { pane, code }),
                     Control::Shell { pane, shell } => Some(DaemonEvent::Shell { pane, shell }),
+                    Control::VarsChanged { side_tab } => {
+                        Some(DaemonEvent::VarsChanged { side_tab })
+                    }
                     Control::Spawned { req, .. }
                     | Control::Panes { req, .. }
+                    | Control::Vars { req, .. }
+                    | Control::Done { req }
                     | Control::Error { req: Some(req), .. } => {
                         if let Some(tx) = lock(&pending).remove(&req) {
                             let _ = tx.send(c);

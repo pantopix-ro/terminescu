@@ -21,8 +21,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 use terminescu_protocol::paths::{CORE_SOCKET_ENV, PANE_ID_ENV, PTYD_SOCKET_ENV, peer_uid};
 use terminescu_protocol::{
-    Control, FEATURE_SHELL, Frame, PROTOCOL_VERSION, PaneId, PaneInfo, ShellState, SpawnSpec,
-    decode, encode, is_var_name, negotiate,
+    Control, FEATURE_SHELL, FEATURE_VARS, Frame, PROTOCOL_VERSION, PaneId, PaneInfo, ShellState,
+    SpawnSpec, decode, encode, is_var_name, negotiate,
 };
 
 /// Frames a client may have queued before it counts as stuck.
@@ -75,6 +75,8 @@ struct ClientHandle {
     stream: UnixStream,
     /// Asked for `Control::Shell` pushes in its `Hello`.
     shell: bool,
+    /// Asked for `Control::VarsChanged` pushes.
+    vars: bool,
 }
 
 struct Shared {
@@ -130,6 +132,21 @@ impl Shared {
         let targets: Vec<(u64, SyncSender<Vec<u8>>)> = lock(&self.clients)
             .iter()
             .filter(|(_, c)| c.shell)
+            .map(|(id, c)| (*id, c.tx.clone()))
+            .collect();
+        for (id, tx) in targets {
+            self.push(id, &tx, bytes.clone());
+        }
+    }
+
+    /// Tells the clients that asked that a side tab's variables changed. Names no value.
+    fn broadcast_vars(&self, side_tab: &str) {
+        let bytes = encode(&Frame::Control(Control::VarsChanged {
+            side_tab: side_tab.into(),
+        }));
+        let targets: Vec<(u64, SyncSender<Vec<u8>>)> = lock(&self.clients)
+            .iter()
+            .filter(|(_, c)| c.vars)
             .map(|(id, c)| (*id, c.tx.clone()))
             .collect();
         for (id, tx) in targets {
@@ -434,7 +451,7 @@ fn serve_client(shared: Arc<Shared>, mut stream: UnixStream) {
                         instance: shared.instance.clone(),
                         features: features
                             .iter()
-                            .filter(|f| f.as_str() == FEATURE_SHELL)
+                            .filter(|f| f.as_str() == FEATURE_SHELL || f.as_str() == FEATURE_VARS)
                             .cloned()
                             .collect(),
                     },
@@ -448,6 +465,7 @@ fn serve_client(shared: Arc<Shared>, mut stream: UnixStream) {
                         tx: tx.clone(),
                         stream: handle,
                         shell: features.iter().any(|f| f == FEATURE_SHELL),
+                        vars: features.iter().any(|f| f == FEATURE_VARS),
                     },
                 );
                 greeted = true;
@@ -573,6 +591,7 @@ fn handle(shared: &Arc<Shared>, client: u64, tx: &SyncSender<Vec<u8>>, frame: Fr
                         let ttl = ttl_secs.map(Duration::from_secs);
                         lock(&shared.vars).set(&side, &name, value, mode, ttl);
                         reply(tx, Control::Done { req });
+                        shared.broadcast_vars(&side);
                     }
                     Err(e) => reply(tx, e),
                 }
@@ -581,6 +600,7 @@ fn handle(shared: &Arc<Shared>, client: u64, tx: &SyncSender<Vec<u8>>, frame: Fr
                 Ok(side) => {
                     lock(&shared.vars).unset(&side, &name);
                     reply(tx, Control::Done { req });
+                    shared.broadcast_vars(&side);
                 }
                 Err(e) => reply(tx, e),
             },
@@ -598,6 +618,56 @@ fn handle(shared: &Arc<Shared>, client: u64, tx: &SyncSender<Vec<u8>>, frame: Fr
                 }
                 Err(e) => reply(tx, e),
             },
+            Control::SideVarSet {
+                req,
+                side_tab,
+                name,
+                value,
+                mode,
+                ttl_secs,
+            } => {
+                if !is_var_name(&name) {
+                    return reply(
+                        tx,
+                        error(
+                            "bad_name",
+                            format!("`{name}` cannot be exported"),
+                            Some(req),
+                        ),
+                    );
+                }
+                let ttl = ttl_secs.map(Duration::from_secs);
+                lock(&shared.vars).set(&side_tab, &name, value, mode, ttl);
+                reply(tx, Control::Done { req });
+                shared.broadcast_vars(&side_tab);
+            }
+            Control::SideVarUnset {
+                req,
+                side_tab,
+                name,
+            } => {
+                lock(&shared.vars).unset(&side_tab, &name);
+                reply(tx, Control::Done { req });
+                shared.broadcast_vars(&side_tab);
+            }
+            Control::SideVarList { req, side_tab } => {
+                let (generation, vars) = lock(&shared.vars).list_masked(&side_tab);
+                reply(
+                    tx,
+                    Control::Vars {
+                        req,
+                        generation,
+                        vars,
+                    },
+                );
+            }
+            Control::SideVarsDrop { req, side_tab } => {
+                let had = lock(&shared.vars).drop_side(&side_tab);
+                reply(tx, Control::Done { req });
+                if had {
+                    shared.broadcast_vars(&side_tab);
+                }
+            }
             other => reply(tx, error("unexpected", format!("{other:?}"), None)),
         },
     }
@@ -667,7 +737,10 @@ pub fn run(opts: Options) -> io::Result<bool> {
         loop {
             std::thread::sleep(Duration::from_millis(200).min(idle.opts.idle));
             // Expired variables leave memory on time, whether or not a shell asks (D21).
-            lock(&idle.vars).sweep();
+            let expired = lock(&idle.vars).sweep();
+            for side in expired {
+                idle.broadcast_vars(&side);
+            }
             let quiet = lock(&idle.clients).is_empty() && idle.live_panes() == 0;
             if !quiet {
                 idle.touch();

@@ -28,6 +28,8 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 .tabs-hint { align-self: center; white-space: nowrap; flex: none; padding-right: var(--space-2); }
 .app-pane { position: relative; background: var(--panel); color: var(--dim); min-height: 0; display: flex; }
 .app-empty { padding: var(--space-4); }
+.app-note { position: absolute; left: var(--space-4); right: var(--space-4); bottom: calc(var(--space-2) + 1.6em); color: var(--amber); z-index: 3; cursor: default; }
+.ctx-insert { padding: 0 var(--space-1); font-size: 11px; }
 .app-error { position: absolute; left: var(--space-4); bottom: var(--space-2); color: var(--red); z-index: 3; }
 
 /* Splits (D3): nested flex boxes, the sizes are flex weights. */
@@ -130,3 +132,36 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 .side-sort { display: inline-flex; align-items: center; gap: var(--space-1); }
 .side-sort select { padding: 0 var(--space-1); font-size: 11px; height: 22px; }
 .ao-tab .ao-stat { margin: 0; }
+
+/* Context (D12, D13, D21): the extract dialog and the variable rows. */
+.x-dialog { width: min(480px, calc(100% - 32px)); }
+.x-body { display: flex; flex-direction: column; gap: var(--space-2); }
+.x-row { display: grid; grid-template-columns: 56px minmax(0, 1fr); align-items: center; gap: var(--space-2); }
+.x-name { display: flex; align-items: center; gap: 2px; }
+.x-name .ao-input { flex: 1; min-width: 0; color: var(--magenta); }
+.x-value { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--dim); }
+.x-value.masked, .ctx-value.masked { letter-spacing: 2px; }
+.x-modes { display: flex; gap: var(--space-1); flex-wrap: wrap; }
+.x-mode { height: 24px; }
+.x-hint { margin: 0 0 0 64px; }
+.x-ttl { width: 120px; }
+.x-foot { display: flex; justify-content: flex-end; gap: var(--space-2); }
+.ctx-var { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "name value value" "meta meta acts"; align-items: center; row-gap: 2px; }
+.ctx-var > .ctx-name { grid-area: name; }
+.ctx-var > .ctx-value, .ctx-var > input { grid-area: value; min-width: 0; }
+.ctx-var > .ctx-row-acts { grid-area: acts; }
+.ctx-var > .ctx-meta { grid-area: meta; }
+.ctx-var.session, .ctx-var.secret { outline: 1px dashed var(--line-strong); outline-offset: -3px; }
+.ctx-meta { color: var(--faint); font-size: 11px; }
+.ctx-row-acts { display: inline-flex; gap: 2px; }
+.ctx-row-acts { align-items: center; white-space: nowrap; }
+.ctx-row-acts select { height: 20px; font: inherit; font-size: 11px; padding: 0 4px; color: var(--fg); background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: 0; appearance: none; }
+.ctx-var.secret .ctx-row-acts select { color: var(--amber); border-color: var(--amber); }
+.ctx-group { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3) var(--space-1); }
+.ctx-group .ao-pixel { font-size: 8px; }
+.ctx-add { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-1); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--line); }
+.ctx-add .ao-input { min-width: 0; height: 24px; }
+.ctx-add .wide { grid-column: 1 / 3; }
+.ctx-item { display: flex; align-items: center; gap: var(--space-2); padding: 4px var(--space-3); border-bottom: 1px solid var(--line); font-size: 12px; }
+.ctx-item .ctx-value { flex: 1; min-width: 0; }
+.link-plain { background: none; border: 0; padding: 0; font: inherit; text-align: left; cursor: text; }

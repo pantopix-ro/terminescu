@@ -1,7 +1,7 @@
 import type { Entry, TranscriptChunk } from "@terminescu/host";
 import { useEffect, useRef, useState } from "react";
 import { anchor } from "./anchor";
-import { suggestName } from "./names";
+import { EXTRACT_EVENT, PIN_EVENT } from "./events";
 
 /** How often an open transcript reads what Claude added. */
 const POLL_MS = 1000;
@@ -24,14 +24,13 @@ export interface TranscriptPaneProps {
   read(offset: number): Promise<TranscriptChunk>;
   /** Pins a whole entry, or `[start, end)` of its text. */
   pin(entry: TextEntry, range?: [number, number]): Promise<unknown>;
-  extract(name: string, value: string): Promise<unknown>;
+  /** Opens the extract dialog for the text. */
+  extract(value: string): void;
   reveal?: Reveal;
   onFocus(): void;
 }
 
-/** The DOM events the app sends to the focused transcript pane for `⌘⇧P` and `⌘E`. */
-export const PIN_EVENT = "terminescu:pin";
-export const EXTRACT_EVENT = "terminescu:extract";
+export { EXTRACT_EVENT, PIN_EVENT };
 
 const shown = (e: Entry): e is TextEntry | Extract<Entry, { kind: "compaction" }> =>
   e.kind === "user" || e.kind === "assistant" || e.kind === "compaction";
@@ -74,7 +73,6 @@ function selected(root: HTMLElement): { entryId: string; range: [number, number]
 export function TranscriptPane({ paneId, session, read, pin, extract, reveal, onFocus }: TranscriptPaneProps) {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [error, setError] = useState<string>();
-  const [extracting, setExtracting] = useState<{ value: string; name: string; error?: string }>();
   const [mark, setMark] = useState<{ entryId: string; range: [number, number] }>();
   const root = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -141,7 +139,7 @@ export function TranscriptPane({ paneId, session, read, pin, extract, reveal, on
     );
   }, [reveal?.nonce, reveal?.entryId, entries.length]);
 
-  const startExtract = (value: string) => setExtracting({ value, name: suggestName(value) });
+  const startExtract = (value: string) => extract(value);
   const doPin = (entry: TextEntry, range?: [number, number]) => void pin(entry, range).catch((e: unknown) => setError(String(e)));
 
   // `⌘⇧P` and `⌘E` from the app act on the selection.
@@ -169,16 +167,6 @@ export function TranscriptPane({ paneId, session, read, pin, extract, reveal, on
     const range = selectionIn(msg.querySelector(".tr-text")!);
     if (how === "pin") doPin(entry, range);
     else startExtract(range ? entry.text.slice(...range) : entry.text);
-  };
-
-  const saveExtract = async () => {
-    if (!extracting) return;
-    try {
-      await extract(extracting.name.trim(), extracting.value);
-      setExtracting(undefined);
-    } catch (e) {
-      setExtracting({ ...extracting, error: String(e) });
-    }
   };
 
   return (
@@ -240,39 +228,6 @@ export function TranscriptPane({ paneId, session, read, pin, extract, reveal, on
         <p className="small app-error tr-error" role="alert">
           {error}
         </p>
-      )}
-      {extracting && (
-        <form
-          className="tr-extract"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void saveExtract();
-          }}
-          onKeyDown={(e) => e.key === "Escape" && setExtracting(undefined)}
-        >
-          <span className="small ao-dim">Save as variable</span>
-          <input
-            className="ao-input tr-name"
-            aria-label="Variable name"
-            autoFocus
-            value={extracting.name}
-            onChange={(e) => setExtracting({ ...extracting, name: e.target.value, error: undefined })}
-          />
-          <span className="tr-value small" title={extracting.value}>
-            {extracting.value}
-          </span>
-          <button type="submit" className="ao-btn primary">
-            Save
-          </button>
-          <button type="button" className="ao-btn ghost" onClick={() => setExtracting(undefined)}>
-            Cancel
-          </button>
-          {extracting.error && (
-            <span className="small app-error" role="alert">
-              {extracting.error}
-            </span>
-          )}
-        </form>
       )}
     </div>
   );

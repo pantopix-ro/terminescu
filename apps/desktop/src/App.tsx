@@ -17,6 +17,7 @@ import {
   transcriptOf,
   type AgentUpdate,
   type ManualStatus,
+  type Item,
   type Pin,
   type Shown,
   type StatusConfig,
@@ -29,7 +30,12 @@ import {
 import {
   ContextPanel,
   EXTRACT_EVENT,
+  INSERT_EVENT,
+  insertText,
+  ExtractDialog,
   PIN_EVENT,
+  paneEvent,
+  REVEAL_ROWS_EVENT,
   quoteOf,
   TranscriptPane,
   type Agents,
@@ -275,10 +281,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       }
       case "pin":
       case "extract":
-        // The focused transcript pane acts on its selection.
-        document
-          .querySelector(`[data-transcript="${CSS.escape(focused ?? "")}"]`)
-          ?.dispatchEvent(new Event(id === "pin" ? PIN_EVENT : EXTRACT_EVENT));
+        // The focused pane, transcript or terminal, acts on its selection.
+        if (focused) paneEvent(focused, new Event(id === "pin" ? PIN_EVENT : EXTRACT_EVENT));
         return;
       case "palette":
         return setPalette((p) => !p);
@@ -354,16 +358,18 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     throw e;
   };
 
-  // The active side tab's variables and pins, read again whenever the core says they changed.
-  const [ctx, setCtx] = useState<{ side?: string; variables: Variable[]; pins: Pin[] }>({ variables: [], pins: [] });
+  // The active side tab's variables, links, text and pins, read again whenever the core says
+  // they changed.
+  type Ctx = { side?: string; variables: Variable[]; items: Item[]; pins: Pin[] };
+  const [ctx, setCtx] = useState<Ctx>({ variables: [], items: [], pins: [] });
   const sideId = activeSide?.id;
   useEffect(() => {
     if (!sideId) return;
     let gone = false;
     let off: (() => void) | undefined;
     const load = () =>
-      void Promise.all([host.variables(sideId), host.pins(sideId)])
-        .then(([variables, pins]) => !gone && setCtx({ side: sideId, variables, pins }))
+      void Promise.all([host.variables(sideId), host.items(sideId), host.pins(sideId)])
+        .then(([variables, items, pins]) => !gone && setCtx({ side: sideId, variables, items, pins }))
         .catch((e: unknown) => !gone && setError(String(e)));
     load();
     void host.onContext((s) => s === sideId && load()).then((o) => (gone ? o() : (off = o)));
@@ -372,18 +378,65 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       off?.();
     };
   }, [host, sideId]);
-  const shownCtx = ctx.side === sideId ? ctx : { variables: [], pins: [] };
+  const shownCtx: Ctx = ctx.side === sideId ? ctx : { variables: [], items: [], pins: [] };
 
-  // A pin to show: the transcript pane of its session scrolls to it.
+  // A pin to show: the transcript pane of its session scrolls to it; a terminal pin scrolls its
+  // pane, when that pane is still open in this side tab.
   const [reveal, setReveal] = useState<Reveal & { session: string }>();
   const openPin = (pin: Pin) => {
-    const shown = activeTab && panesOf(activeTab.layout).some((p) => transcriptOf(activeTab.layout, p) === pin.session);
+    if (pin.paneId) {
+      const tab = activeSide?.tabs.find((t) => terminalsOf(t.layout).includes(pin.paneId!));
+      if (!tab) return setError("That pane is closed; the pin keeps its text.");
+      focusIn(tab.id, pin.paneId);
+      const rows = [pin.rowStart ?? 0, pin.rowEnd ?? pin.rowStart ?? 0];
+      setTimeout(() => paneEvent(pin.paneId!, new CustomEvent(REVEAL_ROWS_EVENT, { detail: rows })));
+      return;
+    }
+    const session = pin.session;
+    if (!session || !pin.entryId) return;
+    const shown = activeTab && panesOf(activeTab.layout).some((p) => transcriptOf(activeTab.layout, p) === session);
     if (!shown && activeTab && focused) {
       followNewPane(activeTab.id);
-      void send({ type: "OpenTranscript", paneId: focused, session: pin.session });
+      void send({ type: "OpenTranscript", paneId: focused, session });
     }
-    setReveal({ ...pin, session: pin.session, nonce: Date.now() });
+    setReveal({ ...pin, entryId: pin.entryId, session, nonce: Date.now() });
   };
+
+  // `⌘E` opens one dialog, whichever pane the text came from (D13).
+  const [extracting, setExtracting] = useState<{ side: string; tab: string; value: string; from: string }>();
+  const startExtract = (tabId: string, value: string, from: string) => {
+    const side = sideOfTab(tabId);
+    if (side) setExtracting({ side, tab: tabId, value, from });
+  };
+  const pinTerminal = (tabId: string, paneId: string, text: string, rows: [number, number]) => {
+    const side = sideOfTab(tabId);
+    if (!side) return;
+    void host
+      .addPin({
+        sideTabId: side,
+        originTabId: tabId,
+        session: null,
+        entryId: null,
+        paneId,
+        rowStart: rows[0],
+        rowEnd: rows[1],
+        exact: text,
+        prefix: null,
+        suffix: null,
+        start: null,
+        end: null,
+      })
+      .catch((e: unknown) => setError(String(e)));
+  };
+  // A secret goes in as `$NAME` (D21, D35). In a Claude pane the person learns where the value
+  // goes and where it must not: a raw value typed into a prompt stays in Claude's transcript.
+  const insertVariable = (v: Variable) => {
+    if (!focused || !activeTab || transcriptOf(activeTab.layout, focused)) return;
+    paneEvent(focused, new CustomEvent(INSERT_EVENT, { detail: insertText(v) }));
+    if (agents[focused] && v.mode === "secret")
+      setNotice(`Claude sees $${v.name}; its commands read the value from the environment. Typed raw, a value stays in Claude's transcript.`);
+  };
+  const [notice, setNotice] = useState<string>();
   const sideOfTab = (tabId: string) => sideTabs.find((s) => s.tabs.some((t) => t.id === tabId))?.id;
 
   const actRef = useRef(act);
@@ -558,8 +611,12 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                               const q = range ? quoteOf(entry.text, ...range) : undefined;
                               return host.addPin({
                                 sideTabId: side,
+                                originTabId: activeTab.id,
                                 session: transcript,
                                 entryId: entry.id,
+                                paneId: null,
+                                rowStart: null,
+                                rowEnd: null,
                                 exact: q ? q.exact : entry.text,
                                 prefix: q?.prefix ?? null,
                                 suffix: q?.suffix ?? null,
@@ -567,10 +624,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                                 end: range?.[1] ?? null,
                               });
                             }}
-                            extract={(name, value) => {
-                              const side = sideOfTab(activeTab.id);
-                              return side ? host.extractVariable(side, name, value) : Promise.resolve();
-                            }}
+                            extract={(value) => startExtract(activeTab.id, value, "transcript")}
                             reveal={reveal?.session === transcript ? reveal : undefined}
                             onFocus={() => focusIn(activeTab.id, paneId)}
                           />
@@ -583,6 +637,11 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                 />
               )}
               {!activeTab && <p className="small app-empty">No side tabs. Press + in the sidebar.</p>}
+              {notice && (
+                <p className="small app-note" role="status" onClick={() => setNotice(undefined)}>
+                  {notice}
+                </p>
+              )}
               {error && (
                 <p className="small app-error" role="alert" onClick={() => setError(undefined)}>
                   {error}
@@ -595,9 +654,17 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
             onMode={changeMode}
             owner={activeSide && sideTabName(activeSide)}
             variables={shownCtx.variables}
+            items={shownCtx.items}
             pins={shownCtx.pins}
             onOpenPin={openPin}
             onRemovePin={(p) => void host.removePin(p.id).catch((e: unknown) => setError(String(e)))}
+            onAddVariable={(v) => (sideId ? host.addVariable(sideId, { ...v, originTabId: activeTab?.id ?? null }) : Promise.resolve())}
+            onChangeVariable={(name, change) => (sideId ? host.changeVariable(sideId, name, change) : Promise.resolve())}
+            onInsertVariable={focused && activeTab && !transcriptOf(activeTab.layout, focused) ? insertVariable : undefined}
+            onRemoveVariable={(name) => (sideId ? host.removeVariable(sideId, name) : Promise.resolve())}
+            onAddItem={(kind, value) => (sideId ? host.addItem(sideId, kind, value, "pasted", activeTab?.id ?? null) : Promise.resolve())}
+            onRemoveItem={(id) => host.removeItem(id)}
+            onOpenUrl={(url) => void host.openUrl(url).catch((e: unknown) => setError(String(e)))}
           />
         </div>
         <DragOverlay dropAnimation={null}>
@@ -621,9 +688,26 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               open={(cols, rows, onOutput) => host.openPane(paneId, cols, rows, onOutput)}
               openUrl={(url) => void host.openUrl(url).catch((e: unknown) => setError(String(e)))}
               onTerminal={terminals && ((t) => (t ? terminals.set(paneId, t) : terminals.delete(paneId)))}
+              onSelection={(how, text, rows) =>
+                how === "pin" ? pinTerminal(tab.id, paneId, text, rows) : startExtract(tab.id, text, "terminal")
+              }
             />
           )),
         ),
+      )}
+      {extracting && (
+        <ExtractDialog
+          value={extracting.value}
+          from={extracting.from}
+          taken={ctx.side === extracting.side ? ctx.variables.map((v) => v.name) : []}
+          save={(v) =>
+            host.addVariable(extracting.side, { ...v, value: extracting.value, source: "extracted", originTabId: extracting.tab })
+          }
+          onClose={() => {
+            setExtracting(undefined);
+            refocus();
+          }}
+        />
       )}
       {sheet === "status" && activeSide && (
         <StatusEditor

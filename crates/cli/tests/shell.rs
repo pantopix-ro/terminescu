@@ -282,3 +282,41 @@ fn fish_reports_commands_and_loads_variables() {
         None => eprintln!("fish is not installed; skipping"),
     }
 }
+
+/// Task 6.2: Claude's Bash tool sources `CLAUDE_ENV_FILE` before each command. A secret set
+/// after Claude started reaches that command through the `var env` line the `SessionStart` hook
+/// wrote, and the value never lands in the file or the scrollback (D35).
+#[test]
+fn claude_bash_sees_a_secret_through_the_env_file() {
+    let mut s = Session::start("/bin/zsh");
+    s.type_line(
+        "printf '%s' '{\"hook_event_name\":\"SessionStart\",\"session_id\":\"sess-0b5c\"}' \
+         | CLAUDE_ENV_FILE=\"$HOME/claude-env.sh\" terminescu hook; echo done:$((5*5))",
+    );
+    s.wait_output(b"done:25");
+    s.var(Control::SideVarSet {
+        req: 2,
+        side_tab: "st-1".into(),
+        name: "API_TOKEN".into(),
+        value: SECRET.into(),
+        mode: VarMode::Secret,
+        ttl_secs: None,
+    });
+    // `env -u` stands for a Claude started before the secret existed: it inherited neither the
+    // value nor the generation that carries it, so only the file brings it.
+    s.type_line(
+        "env -u API_TOKEN -u TERMINESCU_VARS -u TERMINESCU_VARS_GEN bash -c 'source \"$HOME/claude-env.sh\"; \
+         printf %s \"$API_TOKEN\" > \"$HOME/seen.txt\"'; echo done:$((9*9))",
+    );
+    s.wait_output(b"done:81");
+    assert_eq!(s.read_home("seen.txt"), SECRET);
+    let file = s.read_home("claude-env.sh");
+    assert!(file.contains(" var env "), "{file}");
+    assert!(!file.contains(SECRET), "the env file holds the value");
+    assert!(
+        !s.output
+            .windows(SECRET.len())
+            .any(|w| w == SECRET.as_bytes()),
+        "the secret reached the scrollback"
+    );
+}

@@ -124,9 +124,21 @@ test("extract saves the selection as a variable with a suggested name", async ({
   await page.locator('.tr-msg[data-entry="a1"] .tr-act', { hasText: "Extract" }).click();
   await name.fill("pr_api");
   await name.press("Enter");
-  await expect(page.locator(".tr-extract [role=alert]")).toContainText("already has a variable pr_api");
+  await expect(page.locator(".x-dialog [role=alert]")).toContainText("already has a variable pr_api");
   await name.press("Escape");
-  await expect(page.locator(".tr-extract")).toHaveCount(0);
+  await expect(page.locator(".x-dialog")).toHaveCount(0);
+
+  // A secret: masked in the dialog and the panel, inserted by reference (D21, D35).
+  await select(page, "a1", "Plan");
+  await page.locator('.tr-msg[data-entry="a1"] .tr-act', { hasText: "Extract" }).click();
+  await name.fill("PLAN_NOTE");
+  await page.getByRole("radio", { name: "Secret" }).click();
+  await expect(page.locator(".x-value")).not.toContainText("Plan");
+  await name.press("Enter");
+  const secret = page.locator('.ctx-var[data-var="PLAN_NOTE"]');
+  await expect(secret).toHaveAttribute("data-mode", "secret");
+  await expect(secret.locator(".ctx-value")).not.toContainText("Plan");
+  await expect(secret.locator(".ctx-meta")).toHaveText("inserts as $PLAN_NOTE");
 });
 
 test("⌘⇧L in a pane without Claude says so and opens nothing", async ({ page }) => {

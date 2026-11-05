@@ -17,6 +17,9 @@ import {
   type ManualStatus,
   type Pin,
   type Variable,
+  type Item,
+  type NewVariable,
+  isVariableName,
   type CommandError,
   type Patch,
   type PatchBatch,
@@ -135,6 +138,47 @@ export function createMockHost(initial?: Workspace): MockHost {
   const transcripts = new Map<string, Entry[]>();
   const pinList: Pin[] = [];
   const vars: Variable[] = [];
+  // Secret values stay here and never come back out through `variables` (D21).
+  const secrets = new Map<string, string>();
+  const secretKey = (side: string, name: string) => `${side}\u0000${name}`;
+  const itemList: Item[] = [];
+  const live = (side: string) => {
+    const now = Date.now();
+    for (let i = vars.length - 1; i >= 0; i--) {
+      const v = vars[i]!;
+      if (v.expiresAt != null && v.expiresAt <= now) {
+        vars.splice(i, 1);
+        secrets.delete(secretKey(v.sideTabId, v.name));
+      }
+    }
+    return vars.filter((v) => v.sideTabId === side);
+  };
+  const putVariable = (side: string, nv: NewVariable, replace: boolean): Variable => {
+    if (!isVariableName(nv.name)) throw new Error(`${nv.name} is not a variable name`);
+    if (!nv.value.trim()) throw new Error("nothing to save");
+    const at = live(side).findIndex((v) => v.name === nv.name);
+    const old = at >= 0 ? live(side)[at] : undefined;
+    if (old && !replace) throw new Error(`this side tab already has a variable ${nv.name}`);
+    if (old?.mode === "secret" && nv.mode !== "secret") {
+      throw new Error(`${nv.name} is a secret and stays one; remove it and add it again to change its mode`);
+    }
+    if (old) vars.splice(vars.indexOf(old), 1);
+    const v: Variable = {
+      id: old?.mode === "saved" && nv.mode === "saved" ? old.id : nv.mode === "saved" ? id() : `${nv.mode}:${nv.name}`,
+      sideTabId: side,
+      name: nv.name,
+      value: nv.mode === "secret" ? null : nv.value,
+      mode: nv.mode,
+      source: nv.source,
+      originTabId: nv.originTabId ?? null,
+      expiresAt: nv.mode !== "saved" && nv.ttlSecs ? Date.now() + nv.ttlSecs * 1000 : null,
+    };
+    if (nv.mode === "secret") secrets.set(secretKey(side, nv.name), nv.value);
+    else secrets.delete(secretKey(side, nv.name));
+    vars.push(v);
+    contextChanged(side);
+    return structuredClone(v);
+  };
   const contextListeners = new Set<(sideTabId: string) => void>();
   const contextChanged = (side: string) => {
     for (const l of contextListeners) l(side);
@@ -475,7 +519,11 @@ export function createMockHost(initial?: Workspace): MockHost {
       return structuredClone(pinList.filter((p) => p.sideTabId === side));
     },
     async addPin(pin) {
-      if (!isSessionId(pin.session)) throw new Error(`${pin.session} is not a Claude session id`);
+      const transcript = pin.session != null && pin.entryId != null && pin.paneId == null;
+      const terminal = pin.session == null && pin.paneId != null && pin.rowStart != null && pin.rowEnd != null;
+      if (!transcript && !terminal) throw new Error("a pin needs a session and entry, or a pane and rows");
+      if (transcript && !isSessionId(pin.session!)) throw new Error(`${pin.session} is not a Claude session id`);
+      if (!pin.exact.trim()) throw new Error("nothing to save");
       const saved: Pin = { ...pin, id: id(), createdAt: Date.now() };
       pinList.push(saved);
       contextChanged(pin.sideTabId);
@@ -488,19 +536,56 @@ export function createMockHost(initial?: Workspace): MockHost {
       contextChanged(gone!.sideTabId);
     },
     async variables(side) {
-      return structuredClone(vars.filter((v) => v.sideTabId === side));
+      const order = (v: Variable) => (v.mode === "saved" ? 0 : 1);
+      return structuredClone(
+        live(side)
+          .map((v, i) => [v, i] as const)
+          .sort(([a, i], [b, j]) => order(a) - order(b) || (order(a) ? a.name.localeCompare(b.name) : i - j))
+          .map(([v]) => v),
+      );
     },
-    async extractVariable(side, name, value) {
-      if (!/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(name) || name.startsWith("TERMINESCU_")) {
-        throw new Error(`${name} is not a variable name`);
+    async addVariable(side, nv, replace = false) {
+      return putVariable(side, nv, replace);
+    },
+    async changeVariable(side, name, change) {
+      const old = live(side).find((v) => v.name === name);
+      if (!old) throw new Error(`no variable ${name}`);
+      const mode = change.mode ?? old.mode;
+      if (old.mode === "secret" && mode !== "secret") {
+        throw new Error(`${name} is a secret and stays one; remove it and add it again to change its mode`);
       }
-      if (vars.some((v) => v.sideTabId === side && v.name === name)) {
-        throw new Error(`side tab ${side} already has a variable ${name}`);
-      }
-      const v: Variable = { id: id(), sideTabId: side, name, value, source: "extracted" };
-      vars.push(v);
+      const value = change.value ?? old.value ?? secrets.get(secretKey(side, name))!;
+      const ttlSecs = change.ttlSecs ?? (old.expiresAt ? Math.max(1, Math.round((old.expiresAt - Date.now()) / 1000)) : null);
+      return putVariable(side, { name, value, mode, ttlSecs, source: old.source ?? "typed", originTabId: old.originTabId }, true);
+    },
+    async removeVariable(side, name) {
+      const at = vars.findIndex((v) => v.sideTabId === side && v.name === name);
+      if (at < 0) return;
+      vars.splice(at, 1);
+      secrets.delete(secretKey(side, name));
       contextChanged(side);
-      return structuredClone(v);
+    },
+    async items(side) {
+      return structuredClone(itemList.filter((i) => i.sideTabId === side));
+    },
+    async addItem(side, kind, raw, source, originTabId = null) {
+      const value = raw.trim();
+      if (!value) throw new Error("nothing to save");
+      if (kind === "link" && (!/^https?:\/\//.test(value) || /\s/.test(value))) {
+        throw new Error(`${value.slice(0, 80)} is not an http(s) link`);
+      }
+      const same = itemList.find((i) => i.sideTabId === side && i.kind === "link" && kind === "link" && i.value === value);
+      if (same) return structuredClone(same);
+      const item: Item = { id: id(), sideTabId: side, kind, value, source, originTabId, createdAt: Date.now() };
+      itemList.push(item);
+      contextChanged(side);
+      return structuredClone(item);
+    },
+    async removeItem(itemId) {
+      const at = itemList.findIndex((i) => i.id === itemId);
+      if (at < 0) return;
+      const [gone] = itemList.splice(at, 1);
+      contextChanged(gone!.sideTabId);
     },
     async onContext(listener) {
       contextListeners.add(listener);

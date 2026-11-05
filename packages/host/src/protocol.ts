@@ -182,12 +182,19 @@ export interface TranscriptChunk {
   reset: boolean;
 }
 
-/** A pin on a transcript entry, whole or a selection in it (D12). */
+/**
+ * A pin on a transcript entry, whole or a selection in it, or on rows of a terminal pane (D12).
+ * Transcript pins carry `session` and `entryId`; terminal pins carry `paneId` and the rows.
+ */
 export interface Pin {
   id: Id;
   sideTabId: Id;
-  session: string;
-  entryId: string;
+  originTabId: Id | null;
+  session: string | null;
+  entryId: string | null;
+  paneId: Id | null;
+  rowStart: number | null;
+  rowEnd: number | null;
   exact: string;
   prefix: string | null;
   suffix: string | null;
@@ -199,10 +206,54 @@ export interface Pin {
 
 export type NewPin = Omit<Pin, "id" | "createdAt">;
 
+/** Where a variable lives (D21): SQLite, the daemon's memory, or the daemon and masked. */
+export type VarMode = "saved" | "session" | "secret";
+export const VAR_MODES: readonly VarMode[] = ["saved", "session", "secret"];
+
 export interface Variable {
   id: Id;
   sideTabId: Id;
   name: string;
+  /** Null for a secret: its value never reaches a window. */
+  value: string | null;
+  mode: VarMode;
+  /** typed, pasted, extracted or auto. */
+  source: string | null;
+  originTabId: Id | null;
+  /** When a TTL removes it, Unix ms. */
+  expiresAt: number | null;
+}
+
+export interface NewVariable {
+  name: string;
+  value: string;
+  mode: VarMode;
+  ttlSecs?: number | null;
+  source: string;
+  originTabId?: Id | null;
+}
+
+/** Absent fields stay. A secret stays a secret; its TTL changes only with its value again. */
+export interface VariableChange {
+  value?: string;
+  mode?: VarMode;
+  ttlSecs?: number;
+}
+
+export type ItemKind = "link" | "text";
+
+/** A link or a piece of text in a side tab's context. */
+export interface Item {
+  id: Id;
+  sideTabId: Id;
+  kind: ItemKind;
   value: string;
   source: string | null;
+  originTabId: Id | null;
+  createdAt: number;
+}
+
+/** `pr_api`, `API_TOKEN`: what `$NAME` and `{{name}}` accept. `TERMINESCU_*` is reserved. */
+export function isVariableName(name: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(name) && !name.startsWith("TERMINESCU_");
 }

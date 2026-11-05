@@ -495,3 +495,73 @@ fn a_client_that_asks_gets_shell_pushes_with_run_counters() {
         quiet.recv_until(|f| matches!(f, Frame::Control(Control::Shell { .. })).then_some(()));
     assert!(got.is_err(), "no shell push without the feature");
 }
+
+/// D21: the app reaches a side tab's variables without a pane, never reads a secret back, and
+/// hears about every change, including an expiry, without a value in the push.
+#[test]
+fn the_app_lists_masked_variables_and_hears_each_change() {
+    let d = Daemon::start(60);
+    let mut app =
+        Client::connect_with(&d.socket, "test", &[terminescu_protocol::FEATURE_VARS]).unwrap();
+    assert_eq!(app.features, [terminescu_protocol::FEATURE_VARS]);
+    app.set_read_timeout(Some(Duration::from_secs(15))).unwrap();
+    let changed = |c: &mut Client| {
+        c.recv_until(|f| match f {
+            Frame::Control(Control::VarsChanged { side_tab }) => Some(side_tab.clone()),
+            _ => None,
+        })
+        .unwrap()
+    };
+    let set = Control::SideVarSet {
+        req: 9,
+        side_tab: "st-2".into(),
+        name: "API_TOKEN".into(),
+        value: "tok-example".into(),
+        mode: VarMode::Secret,
+        ttl_secs: Some(3),
+    };
+    assert_eq!(var_call(&mut app, set), Control::Done { req: 9 });
+    assert_eq!(changed(&mut app), "st-2");
+    let listed = var_call(
+        &mut app,
+        Control::SideVarList {
+            req: 9,
+            side_tab: "st-2".into(),
+        },
+    );
+    let Control::Vars { vars, .. } = listed else {
+        panic!("unexpected {listed:?}");
+    };
+    assert_eq!(vars.len(), 1);
+    assert_eq!(vars[0].value, "", "the list never carries a secret");
+    assert!(vars[0].expires_in_ms.is_some());
+    // The TTL passes with nobody reading: the sweep still tells the app.
+    assert_eq!(changed(&mut app), "st-2");
+
+    let session = Control::SideVarSet {
+        req: 9,
+        side_tab: "st-2".into(),
+        name: "from_date".into(),
+        value: "2026-10-01".into(),
+        mode: VarMode::Session,
+        ttl_secs: None,
+    };
+    assert_eq!(var_call(&mut app, session), Control::Done { req: 9 });
+    assert_eq!(changed(&mut app), "st-2");
+    let dropped = Control::SideVarsDrop {
+        req: 9,
+        side_tab: "st-2".into(),
+    };
+    assert_eq!(var_call(&mut app, dropped), Control::Done { req: 9 });
+    assert_eq!(changed(&mut app), "st-2");
+    let Control::Vars { vars, .. } = var_call(
+        &mut app,
+        Control::SideVarList {
+            req: 9,
+            side_tab: "st-2".into(),
+        },
+    ) else {
+        panic!("no list");
+    };
+    assert!(vars.is_empty());
+}

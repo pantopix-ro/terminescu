@@ -53,6 +53,8 @@ pub type Emit = Box<dyn Fn(&PatchBatch) + Send + Sync>;
 pub type AgentSink = Box<dyn Fn(&AgentUpdate) + Send + Sync>;
 /// Every tab's and side tab's status, sent whenever one changes (D15).
 pub type StatusSink = Box<dyn Fn(&BTreeMap<Id, Shown>) + Send + Sync>;
+/// Hears which side tab's daemon variables changed (D21).
+pub type ContextSink = Box<dyn Fn(&str) + Send + Sync>;
 /// How often expiries and Claude idle rules are checked when nothing else happens.
 const STATUS_TICK: Duration = Duration::from_secs(1);
 /// Makes sure a daemon runs, then connects to it. Called at start and after a drop.
@@ -153,6 +155,7 @@ struct Inner {
     status_dirty: Mutex<bool>,
     status_wake: Condvar,
     status_sink: Mutex<Option<StatusSink>>,
+    context_sink: Mutex<Option<ContextSink>>,
     queued: Condvar,
     emit: Emit,
     connect: Connect,
@@ -278,6 +281,7 @@ impl Runtime {
                 status_dirty: Mutex::new(true),
                 status_wake: Condvar::new(),
                 status_sink: Mutex::default(),
+                context_sink: Mutex::default(),
                 queued: Condvar::new(),
                 emit,
                 connect,
@@ -415,6 +419,14 @@ impl Runtime {
                 }
             }
         }
+    }
+
+    /// The side tab and tab of a daemon pane, for requests from `terminescu` in that pane.
+    pub fn place_of_daemon(&self, daemon: PaneId) -> Option<(Id, Id)> {
+        let pane = self.pane_of_daemon(daemon)?;
+        let ws = self.workspace();
+        ws.locate_pane(&pane)
+            .map(|(side, tab)| (side.id.clone(), tab.id.clone()))
     }
 
     fn pane_of_daemon(&self, daemon: PaneId) -> Option<Id> {
@@ -898,6 +910,18 @@ impl Runtime {
         *lock(&self.inner.status_sink) = Some(sink);
     }
 
+    /// Where the UI hears that a side tab's session or secret variables changed.
+    pub fn on_context(&self, sink: ContextSink) {
+        *lock(&self.inner.context_sink) = Some(sink);
+    }
+
+    /// Tells the UI a side tab's context changed outside a window, as from the CLI.
+    pub fn context_changed(&self, side_tab: &str) {
+        if let Some(sink) = lock(&self.inner.context_sink).as_ref() {
+            sink(side_tab);
+        }
+    }
+
     /// Every tab's and side tab's status now.
     pub fn statuses(&self) -> BTreeMap<Id, Shown> {
         self.compute_statuses()
@@ -1035,6 +1059,11 @@ impl Runtime {
                     DaemonEvent::Shell { pane, shell } => {
                         if let Some(p) = self.pane_of_daemon(pane) {
                             self.shell_changed(&p, shell);
+                        }
+                    }
+                    DaemonEvent::VarsChanged { side_tab } => {
+                        if let Some(sink) = lock(&self.inner.context_sink).as_ref() {
+                            sink(&side_tab);
                         }
                     }
                     DaemonEvent::Disconnected => break,

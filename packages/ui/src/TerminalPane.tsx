@@ -6,6 +6,7 @@ import "@xterm/xterm/css/xterm.css";
 import type { PaneView } from "@terminescu/host";
 import { useEffect, useRef, useState } from "react";
 import { claimPane, paneElement, releasePane } from "./pane-registry";
+import { EXTRACT_EVENT, INSERT_EVENT, PIN_EVENT } from "./events";
 import { webglBudget } from "./webgl-budget";
 import { terminalFont, xtermTheme } from "./xterm-theme";
 
@@ -21,7 +22,15 @@ export interface TerminalPaneProps {
   openUrl(url: string): void;
   /** Hands out the terminal, for tests. */
   onTerminal?(term: Terminal | null): void;
+  /**
+   * `⌘⇧P` or `⌘E` with text selected: the text and its first and last buffer rows (D12). Nothing
+   * selected, nothing happens.
+   */
+  onSelection?(how: "pin" | "extract", text: string, rows: [number, number]): void;
 }
+
+/** Scrolls a terminal to a pin's rows and selects them; `detail` is `[first, last]`. */
+export const REVEAL_ROWS_EVENT = "terminescu:reveal-rows";
 
 interface Live {
   term: Terminal;
@@ -75,16 +84,47 @@ function dropWebgl(live: Live, el: HTMLElement) {
  * chords pass through to the app menu; every other key goes to the shell, with Option as Meta.
  * Links open on `⌘`-click.
  */
-export function TerminalPane({ paneId, visible, focused, onFocus, open, openUrl, onTerminal }: TerminalPaneProps) {
+export function TerminalPane({ paneId, visible, focused, onFocus, open, openUrl, onTerminal, onSelection }: TerminalPaneProps) {
   const live = useRef<Live | null>(null);
   const [ready, setReady] = useState(false);
-  const callbacks = useRef({ open, openUrl, onTerminal, onFocus });
-  callbacks.current = { open, openUrl, onTerminal, onFocus };
+  const callbacks = useRef({ open, openUrl, onTerminal, onFocus, onSelection });
+  callbacks.current = { open, openUrl, onTerminal, onFocus, onSelection };
 
   useEffect(() => {
     const el = claimPane(paneId);
     const focusIn = () => callbacks.current.onFocus?.();
     el.addEventListener("focusin", focusIn);
+    // `⌘⇧P` and `⌘E` from the app act on the terminal's selection.
+    const selection = (how: "pin" | "extract") => () => {
+      const term = live.current?.term;
+      const pos = term?.getSelectionPosition();
+      const text = term?.getSelection() ?? "";
+      if (!term || !pos || !text.trim()) return;
+      callbacks.current.onSelection?.(how, text, [pos.start.y, pos.end.y]);
+    };
+    const onPin = selection("pin");
+    const onExtract = selection("extract");
+    const onReveal = (e: Event) => {
+      const term = live.current?.term;
+      const rows = (e as CustomEvent<[number, number]>).detail;
+      if (!term || !rows) return;
+      const last = term.buffer.active.length - 1;
+      if (rows[0] > last) return;
+      term.scrollToLine(Math.max(0, rows[0] - 2));
+      term.selectLines(rows[0], Math.min(rows[1], last));
+    };
+    // xterm's paste wraps the text in bracketed paste when the program asked for it.
+    const onInsert = (e: Event) => {
+      const term = live.current?.term;
+      const text = (e as CustomEvent<string>).detail;
+      if (!term || !live.current?.view || !text) return;
+      term.paste(text);
+      term.focus();
+    };
+    el.addEventListener(PIN_EVENT, onPin);
+    el.addEventListener(EXTRACT_EVENT, onExtract);
+    el.addEventListener(INSERT_EVENT, onInsert);
+    el.addEventListener(REVEAL_ROWS_EVENT, onReveal);
     let disposed = false;
     let observer: ResizeObserver | undefined;
     let frame = 0;
@@ -145,6 +185,10 @@ export function TerminalPane({ paneId, visible, focused, onFocus, open, openUrl,
       cancelAnimationFrame(frame);
       observer?.disconnect();
       el.removeEventListener("focusin", focusIn);
+      el.removeEventListener(PIN_EVENT, onPin);
+      el.removeEventListener(EXTRACT_EVENT, onExtract);
+      el.removeEventListener(INSERT_EVENT, onInsert);
+      el.removeEventListener(REVEAL_ROWS_EVENT, onReveal);
       const l = live.current;
       live.current = null;
       if (l) {

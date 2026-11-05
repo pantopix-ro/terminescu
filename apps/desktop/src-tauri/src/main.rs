@@ -21,6 +21,7 @@ use terminescu_core::runtime::Runtime;
 use terminescu_core::state::{Command, CommandError, Core, Id, Snapshot, Workspace};
 use terminescu_core::status::{Auto, Look, ManualStatus, RuleKind, Shown};
 use terminescu_core::status_store::{self, SavedStatus, StatusConfig};
+use terminescu_core::vars;
 use terminescu_core::views::ViewId;
 use terminescu_protocol::core::{CoreMessage, CoreReply, CoreRequest};
 use terminescu_protocol::paths;
@@ -124,26 +125,108 @@ fn pin_remove(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<
     Ok(())
 }
 
+/// Saved variables from SQLite, session and secret ones from the daemon; a secret comes without
+/// its value (D21).
 #[tauri::command(async)]
 fn vars_list(
     state: State<'_, AppState>,
     side_tab: String,
 ) -> Result<Vec<context::Variable>, String> {
-    context::variables(&lock(&state.db), &side_tab).map_err(|e| e.to_string())
+    let daemon = state.runtime.daemon();
+    vars::list(&lock(&state.db), daemon.as_deref(), &side_tab).map_err(|e| e.to_string())
+}
+
+/// Adds a variable from the panel or an extract. A name in use is refused unless `replace`.
+#[tauri::command(async)]
+fn var_add(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    side_tab: String,
+    variable: vars::NewVariable,
+    replace: bool,
+) -> Result<context::Variable, String> {
+    let daemon = state.runtime.daemon();
+    let v = vars::add(
+        &lock(&state.db),
+        daemon.as_deref(),
+        &side_tab,
+        &variable,
+        replace,
+    )
+    .map_err(|e| e.to_string())?;
+    let _ = app.emit(CONTEXT_EVENT, &side_tab);
+    Ok(v)
 }
 
 #[tauri::command(async)]
-fn var_extract(
+fn var_change(
     app: AppHandle,
     state: State<'_, AppState>,
     side_tab: String,
     name: String,
-    value: String,
+    change: vars::VariableChange,
 ) -> Result<context::Variable, String> {
-    let v = context::add_variable(&lock(&state.db), &side_tab, &name, &value, "extracted")
-        .map_err(|e| e.to_string())?;
+    let daemon = state.runtime.daemon();
+    let v = vars::change(
+        &lock(&state.db),
+        daemon.as_deref(),
+        &side_tab,
+        &name,
+        &change,
+    )
+    .map_err(|e| e.to_string())?;
     let _ = app.emit(CONTEXT_EVENT, &side_tab);
     Ok(v)
+}
+
+#[tauri::command(async)]
+fn var_remove(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    side_tab: String,
+    name: String,
+) -> Result<(), String> {
+    let daemon = state.runtime.daemon();
+    vars::remove(&lock(&state.db), daemon.as_deref(), &side_tab, &name)
+        .map_err(|e| e.to_string())?;
+    let _ = app.emit(CONTEXT_EVENT, &side_tab);
+    Ok(())
+}
+
+#[tauri::command(async)]
+fn items_list(state: State<'_, AppState>, side_tab: String) -> Result<Vec<context::Item>, String> {
+    context::items(&lock(&state.db), &side_tab).map_err(|e| e.to_string())
+}
+
+#[tauri::command(async)]
+fn item_add(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    side_tab: String,
+    kind: context::ItemKind,
+    value: String,
+    source: String,
+    origin_tab_id: Option<String>,
+) -> Result<context::Item, String> {
+    let item = context::add_item(
+        &lock(&state.db),
+        &side_tab,
+        kind,
+        &value,
+        &source,
+        origin_tab_id.as_deref(),
+    )
+    .map_err(|e| e.to_string())?;
+    let _ = app.emit(CONTEXT_EVENT, &side_tab);
+    Ok(item)
+}
+
+#[tauri::command(async)]
+fn item_remove(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<(), String> {
+    if let Some(side) = context::remove_item(&lock(&state.db), &id).map_err(|e| e.to_string())? {
+        let _ = app.emit(CONTEXT_EVENT, side);
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -368,7 +451,7 @@ fn start_runtime(
     let run = paths::run_paths();
     paths::ensure_private_dir(&run.dir)?;
     let hooks: Arc<OnceLock<Runtime>> = Arc::default();
-    if let Err(e) = serve_core_socket(&run.core_socket, hooks.clone()) {
+    if let Err(e) = serve_core_socket(&run.core_socket, hooks.clone(), db.clone()) {
         eprintln!("terminescu: core socket not served, hooks and statuses stay off: {e}");
     }
     let log = paths::support_dir().join("logs/ptyd.log");
@@ -409,9 +492,17 @@ fn start_runtime(
             return;
         }
         let now = side_ids(&saved.workspace);
-        let closed = lock(&sides).difference(&now).next().is_some();
+        let gone: Vec<Id> = lock(&sides).difference(&now).cloned().collect();
         *lock(&sides) = now;
-        if let (true, Some(rt)) = (closed, rt.get()) {
+        if let (false, Some(rt)) = (gone.is_empty(), rt.get()) {
+            // Session and secret variables end with their side tab (D21).
+            if let Some(d) = rt.daemon().filter(|d| d.side_vars) {
+                for side in &gone {
+                    if let Err(e) = d.side_vars_drop(side) {
+                        eprintln!("terminescu: variables of a closed side tab not dropped: {e}");
+                    }
+                }
+            }
             match status_store::rules(&db) {
                 Ok(rules) => rt.set_status_rules(rules),
                 Err(e) => eprintln!("terminescu: status rules not reloaded: {e}"),
@@ -438,6 +529,10 @@ fn start_runtime(
             eprintln!("terminescu: status broadcast failed: {e}");
         }
     }));
+    let handle = app.clone();
+    runtime.on_context(Box::new(move |side: &str| {
+        let _ = handle.emit(CONTEXT_EVENT, side);
+    }));
     runtime.set_status_rules(rules);
     let _ = hooks.set(runtime.clone());
     Ok((runtime, windows))
@@ -454,9 +549,12 @@ fn side_ids(ws: &Workspace) -> std::collections::HashSet<Id> {
         .collect()
 }
 
-/// Answers `terminescu hook`, `status` and saved `var set` (D34, D36). Saved variables arrive
-/// with task 6.1; until then `var set` gets `not_built`, which the CLI turns into a warning.
-fn serve_core_socket(path: &Path, runtime: Arc<OnceLock<Runtime>>) -> std::io::Result<()> {
+/// Answers `terminescu hook`, `status` and saved `var set` (D34, D36).
+fn serve_core_socket(
+    path: &Path,
+    runtime: Arc<OnceLock<Runtime>>,
+    db: Arc<Mutex<Db>>,
+) -> std::io::Result<()> {
     core_socket::serve(
         path,
         Arc::new(move |message: CoreMessage| match message.request {
@@ -480,8 +578,31 @@ fn serve_core_socket(path: &Path, runtime: Arc<OnceLock<Runtime>>) -> std::io::R
                 },
                 None => CoreReply::error("starting", "Terminescu is still starting"),
             },
-            CoreRequest::VarSet { .. } => {
-                CoreReply::error("not_built", "saved variables arrive in a later version")
+            // `terminescu var set NAME value` without a mode: a saved variable, replacing any
+            // value under that name except a secret's.
+            CoreRequest::VarSet { name, value } => {
+                let Some(rt) = runtime.get() else {
+                    return CoreReply::error("starting", "Terminescu is still starting");
+                };
+                let Some((side, tab)) = rt.place_of_daemon(message.pane) else {
+                    return CoreReply::error("no_side_tab", "this pane is not in the layout");
+                };
+                let new = vars::NewVariable {
+                    name,
+                    value,
+                    mode: context::Mode::Saved,
+                    ttl_secs: None,
+                    source: "typed".into(),
+                    origin_tab_id: Some(tab),
+                };
+                let daemon = rt.daemon();
+                match vars::add(&lock(&db), daemon.as_deref(), &side, &new, true) {
+                    Ok(_) => {
+                        rt.context_changed(&side);
+                        CoreReply::Ok
+                    }
+                    Err(e) => CoreReply::error("bad_var", e.to_string()),
+                }
             }
         }),
     )
@@ -605,7 +726,12 @@ fn main() {
             pin_add,
             pin_remove,
             vars_list,
-            var_extract,
+            var_add,
+            var_change,
+            var_remove,
+            items_list,
+            item_add,
+            item_remove,
             host_statuses,
             status_config,
             status_save,

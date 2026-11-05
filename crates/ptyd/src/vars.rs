@@ -35,6 +35,8 @@ pub struct Vars {
     /// One counter for all side tabs, so a pane that moves to another side tab never sees the
     /// generation it already loaded.
     next_generation: u64,
+    /// Side tabs whose variables expired on a read, for the next sweep to report.
+    expired: Vec<String>,
 }
 
 impl Vars {
@@ -75,8 +77,17 @@ impl Vars {
         }
     }
 
-    /// Drops every expired variable. Returns whether any went.
-    pub fn sweep(&mut self) -> bool {
+    /// Wipes every variable of a side tab. Returns whether it had any.
+    pub fn drop_side(&mut self, side: &str) -> bool {
+        self.expired.retain(|s| s != side);
+        self.by_side
+            .remove(side)
+            .is_some_and(|s| !s.vars.is_empty())
+    }
+
+    /// Drops every expired variable. Returns the side tabs that lost one since the last sweep,
+    /// including those a read expired.
+    pub fn sweep(&mut self) -> Vec<String> {
         let now = Instant::now();
         let sides: Vec<String> = self
             .by_side
@@ -87,13 +98,29 @@ impl Vars {
         for side in &sides {
             self.expire(side, now);
         }
-        !sides.is_empty()
+        let mut changed = std::mem::take(&mut self.expired);
+        changed.sort();
+        changed.dedup();
+        changed
     }
 
     fn expire(&mut self, side: &str, now: Instant) {
         self.bump(side)
             .vars
             .retain(|_, e| e.expires.is_none_or(|t| t > now));
+        self.expired.push(side.into());
+    }
+
+    /// The side tab's variables for the app's context panel: secret values never leave the
+    /// daemon this way.
+    pub fn list_masked(&mut self, side: &str) -> (u64, Vec<Var>) {
+        let (generation, mut vars) = self.get(side, None);
+        for v in &mut vars {
+            if v.mode == VarMode::Secret {
+                v.value = String::new();
+            }
+        }
+        (generation, vars)
     }
 
     /// The side tab's generation and variables, or just `name`. Drops expired ones first, so a
@@ -114,6 +141,9 @@ impl Vars {
                 name: n.clone(),
                 value: e.value.to_string(),
                 mode: e.mode,
+                expires_in_ms: e
+                    .expires
+                    .map(|t| t.saturating_duration_since(now).as_millis() as u64),
             })
             .collect();
         (s.generation, vars)
@@ -174,15 +204,40 @@ mod tests {
             VarMode::Secret,
             Some(Duration::from_millis(20)),
         );
-        assert!(!v.sweep(), "nothing has expired yet");
+        assert!(v.sweep().is_empty(), "nothing has expired yet");
         let g1 = v.by_side["s1"].generation;
         std::thread::sleep(Duration::from_millis(30));
-        assert!(v.sweep());
+        assert_eq!(v.sweep(), ["s2"]);
         assert!(v.by_side["s2"].vars.is_empty());
         assert_eq!(
             v.by_side["s1"].generation, g1,
             "other side tabs keep theirs"
         );
-        assert!(!v.sweep());
+        assert!(v.sweep().is_empty());
+    }
+
+    #[test]
+    fn a_read_that_expires_is_reported_by_the_next_sweep() {
+        let mut v = Vars::default();
+        v.set(
+            "s1",
+            "T",
+            "x".into(),
+            VarMode::Secret,
+            Some(Duration::from_millis(20)),
+        );
+        let (_, listed) = v.list_masked("s1");
+        assert_eq!(
+            listed[0].value, "",
+            "a secret value never leaves through a list"
+        );
+        assert!(listed[0].expires_in_ms.is_some_and(|ms| ms <= 20));
+        std::thread::sleep(Duration::from_millis(30));
+        assert!(v.get("s1", None).1.is_empty());
+        assert_eq!(v.sweep(), ["s1"]);
+        v.set("s1", "K", "y".into(), VarMode::Session, None);
+        assert!(v.drop_side("s1"));
+        assert!(!v.drop_side("s1"));
+        assert_eq!(v.get("s1", None), (0, vec![]));
     }
 }

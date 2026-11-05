@@ -15,6 +15,7 @@ pub mod state;
 pub mod status;
 pub mod status_store;
 pub mod transcript;
+pub mod vars;
 pub mod views;
 
 pub fn new_id() -> String {

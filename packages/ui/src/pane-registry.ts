@@ -65,3 +65,15 @@ export function focusPane(paneId: string) {
   // A transcript pane has no terminal; its root takes the focus.
   document.querySelector<HTMLElement>(`[data-transcript="${CSS.escape(paneId)}"]`)?.focus();
 }
+
+/**
+ * Sends a DOM event to a pane: the transcript pane's root, or the terminal's element. Returns
+ * whether the pane exists.
+ */
+export function paneEvent(paneId: string, event: Event): boolean {
+  const target =
+    document.querySelector<HTMLElement>(`[data-transcript="${CSS.escape(paneId)}"]`) ?? elements.get(paneId);
+  if (!target) return false;
+  target.dispatchEvent(event);
+  return true;
+}

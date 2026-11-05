@@ -3,7 +3,10 @@ import type {
   Auto,
   Command,
   Id,
+  Item,
+  ItemKind,
   Look,
+  NewVariable,
   NewPin,
   PatchBatch,
   Pin,
@@ -15,6 +18,7 @@ import type {
   StatusConfig,
   TranscriptChunk,
   Variable,
+  VariableChange,
 } from "./protocol";
 
 /** One window's view of a pane (D33). */
@@ -56,10 +60,18 @@ export interface Host {
   pins(sideTabId: Id): Promise<Pin[]>;
   addPin(pin: NewPin): Promise<Pin>;
   removePin(id: Id): Promise<void>;
+  /** Saved variables, then session and secret ones; a secret comes without its value (D21). */
   variables(sideTabId: Id): Promise<Variable[]>;
-  /** Saves extracted text as a variable; a name in use is refused (D13). */
-  extractVariable(sideTabId: Id, name: string, value: string): Promise<Variable>;
-  /** A side tab's pins or variables changed. Resolves with a function that removes the listener. */
+  /** Adds a variable; a name in use is refused unless `replace` (D13, D21). */
+  addVariable(sideTabId: Id, variable: NewVariable, replace?: boolean): Promise<Variable>;
+  changeVariable(sideTabId: Id, name: string, change: VariableChange): Promise<Variable>;
+  removeVariable(sideTabId: Id, name: string): Promise<void>;
+  /** Links and text of a side tab's context. */
+  items(sideTabId: Id): Promise<Item[]>;
+  /** The same link twice is kept once. */
+  addItem(sideTabId: Id, kind: ItemKind, value: string, source: string, originTabId?: Id | null): Promise<Item>;
+  removeItem(id: Id): Promise<void>;
+  /** A side tab's context changed. Resolves with a function that removes the listener. */
   onContext(listener: (sideTabId: Id) => void): Promise<() => void>;
   /** Every tab's and side tab's shown status, by id (D15). */
   statuses(): Promise<Record<Id, Shown>>;

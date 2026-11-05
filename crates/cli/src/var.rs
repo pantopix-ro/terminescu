@@ -287,13 +287,13 @@ fn set(args: &[String]) -> ExitCode {
     done(reply)
 }
 
-/// Saved variables live in the app's database (task 6.1). With the app closed the call warns and
-/// still succeeds (D36).
+/// Saved variables live in the app's database (D21). With the app closed or still starting the
+/// call warns and still succeeds (D36).
 fn set_saved(pane: PaneId, name: String, value: String) -> ExitCode {
     let message = CoreMessage::new(pane, CoreRequest::VarSet { name, value });
     match request(&core_socket(), &message, TIMEOUT) {
         Ok(CoreReply::Ok) => ExitCode::SUCCESS,
-        Ok(CoreReply::Error { code, message }) if code == "not_built" => warn(&format!(
+        Ok(CoreReply::Error { code, message }) if code == "starting" => warn(&format!(
             "not saved: {message}; --session keeps it until the Mac restarts"
         )),
         Ok(CoreReply::Error { code, message }) => fail(&format!("{code}: {message}")),
@@ -400,6 +400,7 @@ mod tests {
             name: name.into(),
             value: value.into(),
             mode,
+            expires_in_ms: None,
         }
     }
 

@@ -7,6 +7,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (1, include_str!("../migrations/0001_init.sql")),
     (2, include_str!("../migrations/0002_app_state.sql")),
     (3, include_str!("../migrations/0003_statuses.sql")),
+    (4, include_str!("../migrations/0004_context.sql")),
 ];
 
 pub const SCHEMA_VERSION: u32 = MIGRATIONS[MIGRATIONS.len() - 1].0;
@@ -38,6 +39,8 @@ impl Db {
 
     fn init(mut conn: Connection) -> Result<Self> {
         conn.pragma_update(None, "foreign_keys", "ON")?;
+        // A variable switched to session or secret leaves no old value in freed pages (D21).
+        conn.pragma_update(None, "secure_delete", "ON")?;
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
         migrate(&mut conn)?;
         Ok(Self { conn })
@@ -45,6 +48,14 @@ impl Db {
 
     pub fn conn(&self) -> &Connection {
         &self.conn
+    }
+
+    /// Writes the WAL back and truncates it, so a value just deleted under `secure_delete` leaves
+    /// no copy in the WAL file either (D21).
+    pub fn scrub(&self) -> Result<()> {
+        self.conn
+            .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()))?;
+        Ok(())
     }
 
     /// The one local owner of v1, created on first call (D18).

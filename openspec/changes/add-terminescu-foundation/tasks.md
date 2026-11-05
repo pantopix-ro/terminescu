@@ -201,15 +201,32 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
 
 ## 6. Context and prompts (P1)
 
-- [ ] 6.1 Context panel: variables with storage modes, pins, links, text; `⌘E` extract with
+- [x] 6.1 Context panel: variables with storage modes, pins, links, text; `⌘E` extract with
       suggested names, `⌘⇧P` pin of a selection or a whole message with text-quote anchors
       (D12). Verify: `suggest.test.ts` names a GitHub PR URL `pr_<repo>`; `anchor.test.ts`
       re-anchors a pin after its offsets shift. From the group 4 review: an extracted value now
       sits in SQLite in plaintext and shows unmasked; the secret mode masks it and keeps the
       value out of SQLite (D35).
-- [ ] 6.2 Insert a secret as `$NAME`, with the transcript warning (D21, D35). Verify: test reads
+      Done: saved variables, links and text live in SQLite (`context_items`, migration 0004);
+      session and secret variables live in the daemon per side tab (`SideVar*` messages, feature
+      `vars`), and a list blanks secret values. A name is unique across both stores; a secret
+      stays a secret. Moving a saved value to the daemon deletes the row with `secure_delete`
+      and truncates the WAL; `context_vars.rs` checks no db file holds it after. Closing a side
+      tab drops its daemon variables. Pins point at a transcript entry or terminal rows
+      (`rowStart`/`rowEnd`). One `ExtractDialog` serves both pane kinds. Limits: daemon values
+      do not follow a moved tab yet (group 8), die when the daemon idle-exits with no panes, and
+      side tabs closed while the app was down keep theirs until the daemon exits.
+- [x] 6.2 Insert a secret as `$NAME`, with the transcript warning (D21, D35). Verify: test reads
       only `$API_TOKEN` on the pty, and a Claude Bash command fixture sourcing the
       `CLAUDE_ENV_FILE` line sees the value.
+      Done: each variable row has an insert button that pastes into the focused terminal
+      through xterm (bracketed paste when the program asked for it, no Enter): `$NAME` for a
+      secret, the value otherwise. Inserting a secret into a Claude pane shows a note that a raw
+      value typed into a prompt stays in Claude's transcript. `context.spec.ts` reads the pane
+      buffer and finds `$API_TOKEN` and no value; `shell.rs` runs the `SessionStart` hook in a
+      real zsh pane, sets the secret afterwards, and a `bash -c` that sources the env file, with
+      the variable and its generation stripped as a Claude started earlier would have it, sees
+      the value while neither the file nor the scrollback holds it. `⌘I` comes with 6.4.
 - [ ] 6.3 Prompt library: search, tags, versions, restore, duplicate, archive; seed import.
       Verify: `prompts.test.rs` covers search by tag and body, and restore creating a version.
 - [ ] 6.4 `⌘I` insert: prompts and variables, resolution from context, missing variables asked
