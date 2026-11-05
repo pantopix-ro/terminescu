@@ -1,6 +1,6 @@
-import { VAR_MODES, type Item, type ItemKind, type NewVariable, type Pin, type Prompt, type Variable, type VarMode, type VariableChange } from "@terminescu/host";
+import { VAR_MODES, type Item, type ItemKind, type NewVariable, type Pin, type Prompt, type TouchedFile, type Variable, type VarMode, type VariableChange } from "@terminescu/host";
 import { useEffect, useRef, useState } from "react";
-import { parseTtl, timeLeft } from "./names";
+import { parseTtl, timeAgo, timeLeft } from "./names";
 
 export type ContextMode = "pinned" | "auto";
 
@@ -26,6 +26,11 @@ export interface ContextPanelProps {
   onAddItem?(kind: ItemKind, value: string): Promise<unknown>;
   onRemoveItem?(id: string): Promise<unknown>;
   onOpenUrl?(url: string): void;
+  /** Files Claude wrote or edited in this side tab, last touched first (D30). */
+  files?: TouchedFile[];
+  /** Opens a touched file in a text tab. */
+  onOpenFile?(file: TouchedFile): void;
+  onForgetFile?(id: string): Promise<unknown>;
   /** The library, last used first (D14). */
   prompts?: Prompt[];
   /** Opens the library at a prompt, or at its start. */
@@ -205,11 +210,11 @@ function AddItem({ props, fail }: { props: ContextPanelProps; fail(e: unknown): 
 }
 
 function Items(props: ContextPanelProps & { section: Section }) {
-  const { section, variables = [], items = [], pins = [], onOpenPin, onRemovePin } = props;
+  const { section, variables = [], items = [], pins = [], files = [], onOpenPin, onRemovePin } = props;
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string>();
   const fail = (e: unknown) => setError(String(e));
-  useMinuteTick(section === "Context" && variables.some((v) => v.expiresAt != null));
+  useMinuteTick(section === "Context" && (files.length > 0 || variables.some((v) => v.expiresAt != null)));
   if (section === "Context") {
     return (
       <>
@@ -259,6 +264,30 @@ function Items(props: ContextPanelProps & { section: Section }) {
             </li>
           ))}
         </ul>
+        <div className="ctx-group">
+          <span className="ao-pixel ao-dim">Files</span>
+          <span className="small ao-dim">{files.length}</span>
+        </div>
+        {files.length ? (
+          <ul className="ctx-list" aria-label="Files">
+            {files.map((f) => (
+              <li key={f.id} className={`ctx-item file ${f.change}`}>
+                <span className={`ctx-change ${f.change}`} title={f.change}>
+                  {f.change === "added" ? "A" : "M"}
+                </span>
+                <button type="button" className="ctx-value link" title={f.path} onClick={() => props.onOpenFile?.(f)}>
+                  {f.shown}
+                </button>
+                <span className="small ao-dim">{timeAgo(f.updatedAt)}</span>
+                <button type="button" className="ctx-pin-x" aria-label={`Forget ${f.shown}`} onClick={() => void props.onForgetFile?.(f.id)?.catch(fail)}>
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="small ao-dim ctx-empty">Files Claude writes or edits here show up in this list.</p>
+        )}
       </>
     );
   }

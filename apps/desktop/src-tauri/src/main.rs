@@ -794,6 +794,23 @@ fn item_remove(app: AppHandle, state: State<'_, AppState>, id: String) -> Result
     Ok(())
 }
 
+#[tauri::command(async)]
+fn files_touched(
+    state: State<'_, AppState>,
+    side_tab: String,
+) -> Result<Vec<terminescu_core::files::TouchedFile>, String> {
+    terminescu_core::files::list(&lock(&state.db), &side_tab).map_err(|e| e.to_string())
+}
+
+#[tauri::command(async)]
+fn files_forget(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<(), String> {
+    let side = terminescu_core::files::remove(&lock(&state.db), &id).map_err(|e| e.to_string())?;
+    if let Some(side) = side {
+        let _ = app.emit(CONTEXT_EVENT, side);
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn host_statuses(state: State<'_, AppState>) -> BTreeMap<Id, Shown> {
     state.runtime.statuses()
@@ -1146,6 +1163,15 @@ fn serve_core_socket(
             CoreRequest::Hook { event } => {
                 if let Some(rt) = runtime.get() {
                     rt.hook(message.pane, &event);
+                    // A file Claude wrote or edited lands in the side tab's Files (D30).
+                    if let (Some(t), Some((side, tab))) = (
+                        terminescu_core::files::touched(&event),
+                        rt.place_of_daemon(message.pane),
+                    ) && terminescu_core::files::record(&lock(&db), &side, Some(&tab), &t)
+                        .is_ok()
+                    {
+                        rt.context_changed(&side);
+                    }
                 }
                 CoreReply::Ok
             }
@@ -1383,6 +1409,8 @@ fn main() {
             var_change,
             var_remove,
             items_list,
+            files_touched,
+            files_forget,
             item_add,
             item_remove,
             prompts_search,

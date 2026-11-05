@@ -28,6 +28,7 @@ import {
   type KeyBindings,
   type ManualStatus,
   type Item,
+  type TouchedFile,
   type Pin,
   type Shown,
   type StatusConfig,
@@ -556,16 +557,16 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
 
   // The active side tab's variables, links, text and pins, read again whenever the core says
   // they changed.
-  type Ctx = { side?: string; variables: Variable[]; items: Item[]; pins: Pin[] };
-  const [ctx, setCtx] = useState<Ctx>({ variables: [], items: [], pins: [] });
+  type Ctx = { side?: string; variables: Variable[]; items: Item[]; pins: Pin[]; files: TouchedFile[] };
+  const [ctx, setCtx] = useState<Ctx>({ variables: [], items: [], pins: [], files: [] });
   const sideId = activeSide?.id;
   useEffect(() => {
     if (!sideId) return;
     let gone = false;
     let off: (() => void) | undefined;
     const load = () =>
-      void Promise.all([host.variables(sideId), host.items(sideId), host.pins(sideId)])
-        .then(([variables, items, pins]) => !gone && setCtx({ side: sideId, variables, items, pins }))
+      void Promise.all([host.variables(sideId), host.items(sideId), host.pins(sideId), host.touchedFiles(sideId)])
+        .then(([variables, items, pins, files]) => !gone && setCtx({ side: sideId, variables, items, pins, files }))
         .catch((e: unknown) => !gone && setError(String(e)));
     load();
     void host.onContext((s) => s === sideId && load()).then((o) => (gone ? o() : (off = o)));
@@ -574,7 +575,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       off?.();
     };
   }, [host, sideId]);
-  const shownCtx: Ctx = ctx.side === sideId ? ctx : { variables: [], items: [], pins: [] };
+  const shownCtx: Ctx = ctx.side === sideId ? ctx : { variables: [], items: [], pins: [], files: [] };
 
   // The library, last used first, for the panel's Prompts section and `⌘I` (D14).
   const [prompts, setPrompts] = useState<Prompt[]>([]);
@@ -1006,6 +1007,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
             }
             onAddItem={(kind, value) => (sideId ? host.addItem(sideId, kind, value, "pasted", activeTab?.id ?? null) : Promise.resolve())}
             onRemoveItem={(id) => host.removeItem(id)}
+            files={shownCtx.files}
+            onOpenFile={(f) => openDoc(f.path, false)}
+            onForgetFile={(id) => host.forgetFile(id)}
             prompts={prompts}
             onOpenPrompt={(key) => {
               setLibraryKey(key);

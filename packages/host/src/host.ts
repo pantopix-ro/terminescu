@@ -13,6 +13,7 @@ import type {
   FileList,
   Id,
   Item,
+  TouchedFile,
   ItemKind,
   Look,
   NewVariable,
@@ -120,6 +121,10 @@ export interface Host {
   /** The same link twice is kept once. */
   addItem(sideTabId: Id, kind: ItemKind, value: string, source: string, originTabId?: Id | null): Promise<Item>;
   removeItem(id: Id): Promise<void>;
+  /** Files Claude wrote or edited in a side tab, last touched first (D30). */
+  touchedFiles(sideTabId: Id): Promise<TouchedFile[]>;
+  /** Drops a Files entry; the file stays on disk. */
+  forgetFile(id: Id): Promise<void>;
   /**
    * The prompt library (D14). Every word must match: `#tag` a whole tag, any other word the
    * name, a tag or the body. Archived prompts come only with `archived`. Last used first.

@@ -24,6 +24,7 @@ import {
   type Pin,
   type Variable,
   type Item,
+  type TouchedFile,
   type NewVariable,
   isVariableName,
   type CommandError,
@@ -91,6 +92,8 @@ export interface MockHost extends Host {
   editWait(pane: Id, path: string): Promise<void>;
   /** Plays files dropped from Finder. */
   dropFiles(paths: string[]): void;
+  /** Plays a `PostToolUse` hook for Write or Edit in a pane: the file joins its side tab's Files. */
+  touchFile(pane: Id, path: string, change: "added" | "modified"): void;
 }
 
 /** `*` matches any run of characters, `?` one; the whole text must match (as `glob` in the core). */
@@ -284,6 +287,7 @@ export function createMockHost(initial?: Workspace): MockHost {
   const secrets = new Map<string, string>();
   const secretKey = (side: string, name: string) => `${side}\u0000${name}`;
   const itemList: Item[] = [];
+  const touched: TouchedFile[] = [];
   const live = (side: string) => {
     const now = Date.now();
     for (let i = vars.length - 1; i >= 0; i--) {
@@ -920,6 +924,15 @@ export function createMockHost(initial?: Workspace): MockHost {
       const [gone] = itemList.splice(at, 1);
       contextChanged(gone!.sideTabId);
     },
+    async touchedFiles(side) {
+      return structuredClone(touched.filter((f) => f.sideTabId === side).sort((a, b) => b.updatedAt - a.updatedAt));
+    },
+    async forgetFile(fileId) {
+      const at = touched.findIndex((f) => f.id === fileId);
+      if (at < 0) return;
+      const [gone] = touched.splice(at, 1);
+      contextChanged(gone!.sideTabId);
+    },
     async searchPrompts(query, archived = false) {
       return library.search(query, archived);
     },
@@ -1004,6 +1017,17 @@ export function createMockHost(initial?: Workspace): MockHost {
     },
     dropFiles(paths) {
       for (const l of dropListeners) l(paths);
+    },
+    touchFile(pane, path, change) {
+      const side = ws.windows.flatMap((w) => w.sideTabs).find((s) => s.tabs.some((t) => panesOf(t.layout).includes(pane)));
+      if (!side) return;
+      const tab = side.tabs.find((t) => panesOf(t.layout).includes(pane))!;
+      const shown = path.startsWith(`${MOCK_CWD}/`) ? path.slice(MOCK_CWD.length + 1) : path;
+      const old = touched.find((f) => f.sideTabId === side.id && f.path === path);
+      const updatedAt = Math.max(Date.now(), ...touched.map((f) => f.updatedAt + 1));
+      if (old) Object.assign(old, { change: old.change === "added" ? "added" : change, originTabId: tab.id, updatedAt });
+      else touched.push({ id: id(), sideTabId: side.id, path, shown, change, originTabId: tab.id, updatedAt });
+      contextChanged(side.id);
     },
     async editWait(pane, path) {
       const side = ws.windows.flatMap((w) => w.sideTabs).find((s) => s.tabs.some((t) => panesOf(t.layout).includes(pane)));

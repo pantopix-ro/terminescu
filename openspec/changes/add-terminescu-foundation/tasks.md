@@ -347,9 +347,12 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       Done: `doc_open_prompt` and `doc_open_variable` (secrets refused, session variables stay
       session only) reuse an open document; "edit in a text tab" in the library and "edit" on
       context variables. `prompts.rs` saves a prompt document twice and lists both versions.
-- [ ] 7.10 Files section: `PostToolUse` payloads of Write, Edit, MultiEdit, NotebookEdit, paths
+- [x] 7.10 Files section: `PostToolUse` payloads of Write, Edit, MultiEdit, NotebookEdit, paths
       relative to the side tab's cwd, added or modified, one entry per path, click opens a text
       tab (D30). Verify: `files.test.rs` feeds two hook payloads for one path and gets one entry.
+      Done: `files::touched` reads the four tools' paths (relative ones join the event cwd); the
+      core socket records them per side tab and emits a context change. The panel lists them
+      with A or M, opens a text tab on click, forgets on ×. `crates/core/tests/files.rs`, e2e.
 
 ## 8. The browser moves (P2)
 

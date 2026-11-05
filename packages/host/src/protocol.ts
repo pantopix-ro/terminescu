@@ -258,6 +258,19 @@ export interface Item {
   createdAt: number;
 }
 
+/** A file Claude wrote or edited in a side tab, from a `PostToolUse` hook (D30). */
+export interface TouchedFile {
+  id: Id;
+  sideTabId: Id;
+  /** Absolute. */
+  path: string;
+  /** Relative to the session's folder when the file lies under it. */
+  shown: string;
+  change: "added" | "modified";
+  originTabId: Id | null;
+  updatedAt: number;
+}
+
 /** A library prompt at its current version (D14). */
 export interface Prompt {
   id: Id;

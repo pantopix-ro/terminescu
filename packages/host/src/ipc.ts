@@ -15,6 +15,7 @@ import type {
   FileList,
   Id,
   Item,
+  TouchedFile,
   PatchBatch,
   Pin,
   Prompt,
@@ -107,6 +108,8 @@ export function createIpcHost(): Host {
     addItem: (sideTab, kind, value, source, originTabId = null) =>
       invoke<Item>("item_add", { sideTab, kind, value, source, originTabId }),
     removeItem: (id) => invoke("item_remove", { id }),
+    touchedFiles: (sideTab) => invoke<TouchedFile[]>("files_touched", { sideTab }),
+    forgetFile: (id) => invoke("files_forget", { id }),
     onContext: (listener) => listen<string>(CONTEXT_EVENT, (e) => listener(e.payload)),
     searchPrompts: (query, archived = false) => invoke<Prompt[]>("prompts_search", { query, archived }),
     createPrompt: (prompt) => invoke<Prompt>("prompt_create", { prompt }),

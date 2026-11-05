@@ -276,3 +276,27 @@ test("a variable opens in a text tab, saves its value, and a secret has no edit 
   await page.keyboard.press("Meta+KeyS");
   await expect(panel.locator('.ctx-var[data-var="plan_notes"] .ctx-value')).toHaveText("first draft, second pass");
 });
+
+test("a file Claude edits twice shows once in Files as added and opens on click", async ({ page }) => {
+  await start(page);
+  const path = "/Users/owner/acme-api/src/audit.ts";
+  await page.evaluate((path) => (window as any).__terminescu.host.files.set(path, "export const audit = 1;\n"), path);
+  const pane = await page.locator(".ao-tp").first().getAttribute("data-pane");
+  await page.evaluate(
+    ({ pane, path }) => {
+      const h = (window as any).__terminescu.host;
+      h.touchFile(pane, path, "added");
+      h.touchFile(pane, path, "modified");
+    },
+    { pane, path },
+  );
+  await page.keyboard.press("Meta+Backslash");
+  const files = page.locator('aside.ctx-pinned ul[aria-label="Files"] li');
+  await expect(files).toHaveCount(1);
+  await expect(files.first()).toHaveClass(/added/);
+  await files.first().getByRole("button", { name: "src/audit.ts", exact: true }).click();
+  await expect(page.locator(".app-main .ao-tab").nth(1)).toContainText("audit.ts");
+  await expect(page.locator(".text-pane .cm-content")).toContainText("export const audit");
+  await files.first().getByRole("button", { name: "Forget src/audit.ts" }).click();
+  await expect(files).toHaveCount(0);
+});
