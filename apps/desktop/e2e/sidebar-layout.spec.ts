@@ -52,7 +52,8 @@ test("the collapse button shows on hover and leaves only icons with a tooltip", 
   await expect(row.locator(".ao-i").first()).toBeVisible();
 
   await row.hover();
-  const tip = page.getByRole("tooltip");
+  // Collapsed, every row's shell list carries its name and status.
+  const tip = page.getByRole("group", { name: /^Shells in / });
   await expect(tip).toContainText("shell");
   await expect(tip.locator(".px-tip-status")).toHaveText("Idle");
   await page.mouse.move(1000, 400);
@@ -82,4 +83,42 @@ test("a name the row cuts short shows whole in a tooltip; one that fits does not
   // The tooltip starts where the name does, so the text reads on.
   const [t, n] = [(await tip.boundingBox())!, (await name.boundingBox())!];
   expect(Math.abs(t.x + 6 - n.x)).toBeLessThan(2);
+});
+
+// Task 8.28: a bigger icon, the status under the name, no tab count, and a row's shells beside it.
+test("a row puts its status under the name and lists its shells on hover, one click away", async ({ page }) => {
+  await start(page);
+  await page.keyboard.press("Meta+t");
+  await expect(page.locator(".ao-tab")).toHaveCount(2);
+  const first = page.locator(".ao-st").first();
+  await expect(first).not.toContainText(/\d tabs?\b/);
+  const [icon, name, chip] = await first.evaluate((el) =>
+    [el.querySelector(":scope > .ao-i")!, el.querySelector(".t")!, el.querySelector(".m .chip-btn")!].map((n) => n.getBoundingClientRect().toJSON()),
+  );
+  expect(icon.width).toBe(24);
+  expect(chip.top).toBeGreaterThanOrEqual(name.bottom - 1);
+
+  await page.getByRole("button", { name: "Add a side tab" }).click();
+  await expect(page.locator(".ao-st")).toHaveCount(2);
+  await expect(page.locator(".ao-st").nth(1)).toHaveClass(/active/);
+
+  await first.hover();
+  const pick = page.getByRole("group", { name: /^Shells in / });
+  await expect(pick.locator(".px-pick-item")).toHaveCount(2);
+  // It sits beside the row, over the panes.
+  const [p, r] = [(await pick.boundingBox())!, (await first.boundingBox())!];
+  expect(p.x).toBeGreaterThanOrEqual(r.x + r.width);
+
+  const second = pick.locator(".px-pick-item").nth(1);
+  const id = await second.getAttribute("data-pick");
+  await second.click();
+  await expect(pick).toHaveCount(0);
+  await expect(first).toHaveClass(/active/);
+  await expect(page.locator(`.ao-st-kid[data-kid="${id}"]`)).toHaveClass(/active/);
+
+  await page.mouse.move(1000, 400);
+  await page.locator(".ao-st").nth(1).hover();
+  await page.waitForTimeout(400);
+  // A row with one shell needs no list while the sidebar is open.
+  await expect(pick).toHaveCount(0);
 });

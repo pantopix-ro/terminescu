@@ -73,7 +73,13 @@ has waited longest.
 ### Requirement: Collapsible context panel
 `⌘\` SHALL cycle the context panel between pinned and auto-hide. When auto-hidden, hovering a
 6px edge at the right of the window for 150 ms SHALL slide the panel in as an overlay over the
-panes without resizing them, and it SHALL slide out when the pointer leaves.
+panes without resizing them, and it SHALL slide out when the pointer leaves. The panel SHALL
+show its Context, Pins and Prompts sections one under the other, with no section switcher, and
+its body SHALL scroll on its own under a fixed header.
+
+#### Scenario: All sections at once
+- **WHEN** the panel is pinned and holds more variables than its height fits
+- **THEN** Context, Pins and Prompts show stacked in that order, and the panel body scrolls down to Prompts while the header stays
 
 #### Scenario: Peek at the context
 - **WHEN** the panel is auto-hidden and the pointer rests on the right edge
@@ -91,11 +97,21 @@ name the row cuts short SHALL show whole in the same tooltip, laid over it.
 
 #### Scenario: Icons only
 - **WHEN** the person hovers the sidebar, clicks the collapse button, then rests the pointer on a row's icon
-- **THEN** only the icons show, and a pixel tooltip beside the icon shows the row's name and status
+- **THEN** only the icons show, and a pixel list beside the icon shows the row's name, status and shells
 
 #### Scenario: A long name
 - **WHEN** the pointer rests on a side tab or tab name that ends in an ellipsis
 - **THEN** a pixel tooltip over the name shows it whole; a name that fits shows none
+
+### Requirement: Side tab row and shell list
+A side tab row SHALL show a 24 px icon over its two lines, the name alone on the first line, and
+the tabs' squares with the status on the second; it SHALL NOT show a tab count. Resting the
+pointer on a row with two or more tabs, or on any row while collapsed, SHALL open a pixel list
+of the row's shells beside it, over the panes; one click on a shell SHALL select that row and tab.
+
+#### Scenario: Jump to a shell
+- **WHEN** another row is active and the pointer rests on a row with three tabs, then clicks its third shell in the list
+- **THEN** that row and its third tab become active with one click, and the list closes
 
 ### Requirement: Independent scrolling
 The sidebar, each pane and the context panel SHALL scroll on their own, and the tab bar SHALL

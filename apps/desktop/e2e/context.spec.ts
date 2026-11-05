@@ -60,7 +60,7 @@ test("links are kept once; text is kept as typed", async ({ page }) => {
     await field.fill(v);
     await field.press("Enter");
   }
-  const items = page.locator(".ctx-item");
+  const items = page.locator('.ctx-section[data-section="Context"] .ctx-item');
   await expect(items).toHaveCount(2);
   await expect(items.nth(0)).toHaveClass(/link/);
   await expect(items.nth(1)).toHaveText(/api, web/);
@@ -77,7 +77,6 @@ test("⌘⇧P pins a terminal selection and the pin selects its rows again", asy
     term.selectLines(0, 0);
   }, pane);
   await page.keyboard.press("Meta+Shift+P");
-  await page.locator(".ctx-tab", { hasText: "Pins" }).click();
   const pin = page.locator('.ctx-pin[data-kind="terminal"]');
   await expect(pin).toHaveCount(1);
   await expect(pin.locator(".ctx-quote")).toContainText(`mock ${pane} $`);
@@ -128,4 +127,33 @@ test("inserting a secret types only $NAME, and a Claude pane says where the valu
   await expect.poll(screen).toContain("$API_TOKEN");
   expect(await screen()).not.toContain("tok-example");
   await expect(page.locator(".app-note")).toContainText("Claude sees $API_TOKEN");
+});
+
+// Task 8.27: the three sections stack in one scrolling panel.
+test("Context, Pins and Prompts stack one under the other and the panel scrolls", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 420 });
+  await page.goto("/");
+  await expect(page.locator(".term-pane")).toHaveCount(1);
+  await page.keyboard.press("Meta+Backslash");
+  const panel = page.locator("aside.ctx-pinned");
+  const heads = panel.locator(".ctx-sec-head");
+  await expect(heads).toHaveText(["Context", "Pins", "Prompts"]);
+  await expect(panel.getByRole("tab")).toHaveCount(0);
+  const tops = await panel.locator(".ctx-section").evaluateAll((els) => els.map((e) => e.getBoundingClientRect().top));
+  expect(tops[0]!).toBeLessThan(tops[1]!);
+  expect(tops[1]!).toBeLessThan(tops[2]!);
+
+  const scroll = panel.locator(".ctx-scroll");
+  for (let i = 0; i < 6; i++) {
+    await panel.getByRole("button", { name: "+ variable" }).click();
+    const form = panel.getByRole("form", { name: "Add a variable" });
+    await form.getByLabel("Name").fill(`v${i}`);
+    await form.getByLabel("Value").fill("example");
+    await form.getByRole("button", { name: "Add" }).click();
+  }
+  const overflow = await scroll.evaluate((e) => e.scrollHeight > e.clientHeight);
+  expect(overflow).toBe(true);
+  await scroll.evaluate((e) => (e.scrollTop = e.scrollHeight));
+  await expect(panel.locator('.ctx-section[data-section="Prompts"]')).toBeInViewport();
+  await expect(panel.locator(".ctx-head")).toBeInViewport();
 });

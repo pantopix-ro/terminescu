@@ -313,8 +313,7 @@ function Items(props: ContextPanelProps & { section: Section }) {
     return (
       <>
         <div className="ctx-group">
-          <span className="ao-pixel ao-dim">Prompts</span>
-          <span className="small ao-dim">{prompts.length}</span>
+          <span className="small ao-dim">{prompts.length} saved</span>
           <span className="grow" />
           <button type="button" className="ao-btn ghost ctx-mode" onClick={() => onOpenPrompt?.()}>
             library ⌘⇧I
@@ -339,7 +338,6 @@ function Items(props: ContextPanelProps & { section: Section }) {
 
 function Body(props: ContextPanelProps) {
   const { mode, onMode, owner } = props;
-  const [section, setSection] = useState<Section>("Context");
   return (
     <>
       <div className="ctx-head">
@@ -357,22 +355,13 @@ function Body(props: ContextPanelProps) {
           <span className="small">{mode === "pinned" ? "auto-hide" : "pin"}</span>
         </button>
       </div>
-      <div className="ctx-tabs" role="tablist">
-        {SECTIONS.map((s) => (
-          <button
-            key={s}
-            type="button"
-            role="tab"
-            aria-selected={s === section}
-            className={`ctx-tab${s === section ? " active" : ""}`}
-            onClick={() => setSection(s)}
-          >
-            {s}
-          </button>
-        ))}
-      </div>
       <div className="ctx-scroll">
-        <Items {...props} section={section} />
+        {SECTIONS.map((s) => (
+          <section key={s} className="ctx-section" aria-label={s} data-section={s}>
+            <h3 className="ctx-sec-head ao-pixel">{s}</h3>
+            <Items {...props} section={s} />
+          </section>
+        ))}
       </div>
     </>
   );
