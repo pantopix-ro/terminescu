@@ -421,14 +421,16 @@ export function createMockHost(initial?: Workspace): MockHost {
   }
   // A new tab's icon: one no other tab uses yet, from the tab id, as `pick_icon` in state.rs.
   /** The first entry of `pool` not in `used`, from a hash of `seed`, as state.rs picks. */
-  function pickUnused<T>(pool: readonly T[], seed: string, used: (s: SideTab) => (T | undefined)[]): T {
+  function pickUnused<T>(pool: readonly T[], seed: string, used: (s?: SideTab) => (T | undefined)[], once = false): T {
     let h = 0x811c9dc5;
     for (const ch of seed) h = Math.imul(h ^ ch.charCodeAt(0), 0x01000193) >>> 0;
     const taken = new Set<T | undefined>();
     // The first side tab is made while `ws` is still being set up, with nothing to avoid.
-    try {
-      for (const s of allSideTabs()) for (const u of used(s)) taken.add(u);
-    } catch {}
+    if (once) for (const u of used()) taken.add(u);
+    else
+      try {
+        for (const s of allSideTabs()) for (const u of used(s)) taken.add(u);
+      } catch {}
     for (let k = 0; k < pool.length; k++) {
       const item = pool[(h + k) % pool.length]!;
       if (!taken.has(item)) return item;
@@ -439,15 +441,19 @@ export function createMockHost(initial?: Workspace): MockHost {
     return pickUnused(
       ICONS.filter((i) => i !== "agent"),
       tabId,
-      (s) => s.tabs.map((t) => t.icon),
+      (s) => s!.tabs.map((t) => t.icon),
     );
   }
   function pickNeon(sideTabId: string): Neon {
-    return pickUnused(NEONS, sideTabId, (s) => [s.accent]);
+    return pickUnused(NEONS, sideTabId, (s) => [s!.accent]);
   }
-  function newTab(): Tab {
+  /** A neon none of `siblings` uses yet, as `pick_tab_neon` picks it (task 8.26). */
+  function pickTabNeon(siblings: Tab[], tabId: string): Neon {
+    return pickUnused(NEONS, tabId, () => siblings.map((t) => t.accent), true);
+  }
+  function newTab(siblings: Tab[] = []): Tab {
     const tabId = id();
-    return { id: tabId, title: null, layout: { type: "pane", id: id() }, icon: pickIcon(tabId) };
+    return { id: tabId, title: null, layout: { type: "pane", id: id() }, icon: pickIcon(tabId), accent: pickTabNeon(siblings, tabId) };
   }
   function newSideTab(): SideTab {
     const tab = newTab();
@@ -531,7 +537,7 @@ export function createMockHost(initial?: Workspace): MockHost {
       }
       case "CreateTab": {
         const index = sideTab(c.sideTabId).tabs.length;
-        return [{ type: "TabCreated", sideTabId: c.sideTabId, index, tab: newTab() }];
+        return [{ type: "TabCreated", sideTabId: c.sideTabId, index, tab: newTab(sideTab(c.sideTabId).tabs) }];
       }
       case "CloseTab": {
         const closed = closesSource(c.tabId);
@@ -608,7 +614,7 @@ export function createMockHost(initial?: Workspace): MockHost {
           return [{ type: "LayoutChanged", tabId: tab.id, layout: layout! }];
         }
         const tabId = id();
-        const tab: Tab = { id: tabId, title: null, layout: { type: "pane", id: id(), doc: c.docId }, icon: pickIcon(tabId) };
+        const tab: Tab = { id: tabId, title: null, layout: { type: "pane", id: id(), doc: c.docId }, icon: pickIcon(tabId), accent: pickTabNeon(side.tabs, tabId) };
         return [{ type: "TabCreated", sideTabId: c.sideTabId, index: side.tabs.length, tab }];
       }
       case "ClosePane": {

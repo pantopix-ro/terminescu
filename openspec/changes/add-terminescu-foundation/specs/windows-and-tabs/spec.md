@@ -29,6 +29,10 @@ resizable dividers. A side tab SHALL hold any mix of pane kinds.
 - **WHEN** the person adds three side tabs, or drags a tab out to a row of its own
 - **THEN** each new row opens with a random neon from cyan, pink, lime, violet, mint, blue, rose and ice that no other row uses yet, on its left edge and its icon, washed 12% into the row's background (over a status background when one is set)
 
+#### Scenario: Tabs get their own neon
+- **WHEN** the person opens three tabs in a side tab
+- **THEN** each tab's icon takes a neon its side tab's other tabs don't use, and the row shows one square per tab in that tab's neon under its name; rows and tabs saved before neons get one at the next start
+
 #### Scenario: New tabs get their own icon
 - **WHEN** the person opens three tabs
 - **THEN** each opens with a random icon from the list that no other tab uses yet, and a one-tab side tab row shows its tab's icon

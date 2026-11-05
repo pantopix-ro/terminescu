@@ -30,6 +30,7 @@ fn db() -> Db {
         id: id.into(),
         title: None,
         tabs: vec![Tab {
+            accent: None,
             status: None,
             icon: None,
             id: tab.into(),

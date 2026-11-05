@@ -52,6 +52,33 @@ pub fn pick_neon(ws: &Workspace, side_tab_id: &str) -> String {
     pick_unused(NEONS, side_tab_id, &used)
 }
 
+/// The neon a new tab opens with (task 8.26): one its side tab's other tabs don't use yet.
+pub fn pick_tab_neon(siblings: &[Tab], tab_id: &str) -> String {
+    let used: Vec<&str> = siblings
+        .iter()
+        .filter_map(|t| t.accent.as_deref())
+        .collect();
+    pick_unused(NEONS, tab_id, &used)
+}
+
+/// Gives a neon to every side tab and tab saved before neons existed, as a new one would get.
+pub fn fill_accents(ws: &mut Workspace) {
+    for w in 0..ws.windows.len() {
+        for s in 0..ws.windows[w].side_tabs.len() {
+            if ws.windows[w].side_tabs[s].accent.is_none() {
+                let id = ws.windows[w].side_tabs[s].id.clone();
+                ws.windows[w].side_tabs[s].accent = Some(pick_neon(ws, &id));
+            }
+            let side = &mut ws.windows[w].side_tabs[s];
+            for t in 0..side.tabs.len() {
+                if side.tabs[t].accent.is_none() {
+                    side.tabs[t].accent = Some(pick_tab_neon(&side.tabs, &side.tabs[t].id));
+                }
+            }
+        }
+    }
+}
+
 /// The first entry of `pool` not in `used`, starting at a hash of `seed`.
 fn pick_unused(pool: &[&str], seed: &str, used: &[&str]) -> String {
     // FNV-1a: stable across builds, unlike the std hasher.
@@ -109,6 +136,9 @@ pub struct Tab {
     /// One of [`ICONS`]; absent shows the default icon.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
+    /// One of [`NEONS`] (task 8.26): the icon's colour and the tab's square in the sidebar.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accent: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -623,22 +653,20 @@ impl Core {
         &self.ws
     }
 
-    /// A tab with one new pane.
-    fn new_tab(&mut self) -> Tab {
-        self.new_tab_beside(&[])
-    }
-
-    /// A new tab whose icon also differs from `others`, tabs made in the same command.
+    /// A new tab whose icon also differs from `others`, and whose neon differs from theirs:
+    /// its side tab's tabs, or the tabs made in the same command.
     fn new_tab_beside(&mut self, others: &[Tab]) -> Tab {
         let id = (self.new_id)();
         let also: Vec<Option<String>> = others.iter().map(|t| t.icon.clone()).collect();
         let icon = Some(pick_icon(&self.ws, &id, &also));
+        let accent = Some(pick_tab_neon(others, &id));
         Tab {
             id,
             title: None,
             layout: Layout::pane((self.new_id)()),
             status: None,
             icon,
+            accent,
         }
     }
 
@@ -693,12 +721,13 @@ impl Core {
                 }]
             }
             Command::CreateTab { side_tab_id } => {
-                let index = ws
+                let siblings = ws
                     .side_tab(&side_tab_id)
                     .ok_or(CommandError::UnknownSideTab(side_tab_id.clone()))?
                     .tabs
-                    .len();
-                let tab = self.new_tab();
+                    .clone();
+                let index = siblings.len();
+                let tab = self.new_tab_beside(&siblings);
                 vec![Patch::TabCreated {
                     side_tab_id,
                     index,
@@ -1057,6 +1086,7 @@ impl Core {
                             let id = (self.new_id)();
                             Tab {
                                 icon: Some(pick_icon(ws, &id, &[])),
+                                accent: Some(pick_tab_neon(&side.tabs, &id)),
                                 id,
                                 title: None,
                                 layout: pane,
@@ -1555,6 +1585,50 @@ mod tests {
         })
         .unwrap();
         assert!(c.workspace().windows[0].side_tabs[0].accent.is_some());
+    }
+
+    #[test]
+    fn tabs_of_a_side_tab_open_with_different_neons() {
+        let mut c = core();
+        let side = c.workspace().windows[0].side_tabs[0].id.clone();
+        for _ in 0..4 {
+            c.handle(Command::CreateTab {
+                side_tab_id: side.clone(),
+            })
+            .unwrap();
+        }
+        let neons: Vec<String> = c
+            .workspace()
+            .side_tab(&side)
+            .unwrap()
+            .tabs
+            .iter()
+            .map(|t| t.accent.clone().expect("a new tab has a neon"))
+            .collect();
+        let mut unique = neons.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(unique.len(), 5, "{neons:?}");
+    }
+
+    #[test]
+    fn rows_and_tabs_from_before_neons_get_one() {
+        let mut c = core();
+        let side = c.workspace().windows[0].side_tabs[0].id.clone();
+        c.handle(Command::CreateTab {
+            side_tab_id: side.clone(),
+        })
+        .unwrap();
+        let mut ws = c.workspace().clone();
+        let s = &mut ws.windows[0].side_tabs[0];
+        s.accent = None;
+        let kept = s.tabs[1].accent.clone();
+        s.tabs[0].accent = None;
+        fill_accents(&mut ws);
+        let s = &ws.windows[0].side_tabs[0];
+        assert!(s.accent.is_some());
+        assert_eq!(s.tabs[1].accent, kept);
+        assert!(s.tabs[0].accent.is_some() && s.tabs[0].accent != kept);
     }
 
     #[test]
