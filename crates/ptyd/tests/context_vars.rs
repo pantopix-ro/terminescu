@@ -59,10 +59,12 @@ fn db_at(path: &std::path::Path) -> Db {
             id: "w1".into(),
             side_tabs: vec![SideTab {
                 status: None,
+                icon: None,
                 id: "s1".into(),
                 title: Some("PROJ-482".into()),
                 tabs: vec![Tab {
                     status: None,
+                    icon: None,
                     id: "t1".into(),
                     title: None,
                     layout: Layout::pane("p1"),

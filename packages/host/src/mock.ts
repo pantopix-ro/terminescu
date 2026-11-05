@@ -15,6 +15,7 @@ import {
   ZOOM_STEPS,
   type AppSettings,
   TINTS,
+  ICONS,
   type AgentUpdate,
   type AgentView,
   type AttentionSettings,
@@ -594,6 +595,12 @@ export function createMockHost(initial?: Workspace): MockHost {
         }
         const status: ManualStatus | null = c.status && { ...c.status, label: c.status.label.trim() };
         return [{ type: "StatusSet", id: c.targetId, status }];
+      }
+      case "SetIcon": {
+        const known = allSideTabs().some((s) => s.id === c.targetId || s.tabs.some((t) => t.id === c.targetId));
+        if (!known) return fail("UnknownTab", c.targetId);
+        if (c.icon !== null && !(ICONS as readonly string[]).includes(c.icon)) return fail("BadIcon", c.icon);
+        return [{ type: "IconSet", id: c.targetId, icon: c.icon }];
       }
       case "RestyleStatus": {
         const users = [...allSideTabs(), ...allSideTabs().flatMap((s) => s.tabs)].filter((x) => x.status?.statusId === c.statusId);

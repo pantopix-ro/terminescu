@@ -53,8 +53,10 @@ test("the keyboard opens the menu, walks it and runs an item; Esc closes it", as
   await expect(menu).toBeHidden();
   await expect(sideRow(page)).toBeFocused();
 
-  // Down to "New tab", Enter: the side tab gets a second tab.
+  // Down past "Change icon…" to "New tab", Enter: the side tab gets a second tab.
   await page.keyboard.press("Shift+F10");
+  await page.keyboard.press("ArrowDown");
+  await expect(item(page, "Change icon…")).toBeFocused();
   await page.keyboard.press("ArrowDown");
   await expect(item(page, "New tab")).toBeFocused();
   await page.keyboard.press("Enter");

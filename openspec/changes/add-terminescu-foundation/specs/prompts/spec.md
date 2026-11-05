@@ -20,6 +20,10 @@ SHALL be edited in the same text editor as text tabs, and saving SHALL create a 
 - **WHEN** the person searches the library for `confidence`
 - **THEN** every prompt whose current body contains the word is listed
 
+#### Scenario: Add a prompt from the empty space
+- **WHEN** the pointer rests on the empty library space under the last prompt
+- **THEN** a `+` shows there, as in the sidebar, and a click on it opens the new prompt form
+
 #### Scenario: Edit a prompt in a text tab
 - **WHEN** the person clicks `review-plan` in the context panel, edits it and presses `⌘S`
 - **THEN** the prompt gets version 5 and version 4 stays restorable

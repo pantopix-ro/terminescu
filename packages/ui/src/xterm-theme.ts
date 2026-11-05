@@ -1,3 +1,4 @@
+import type { Tint } from "@terminescu/host";
 import type { ITheme } from "@xterm/xterm";
 import { colors } from "./generated/colors";
 
@@ -25,6 +26,16 @@ export const xtermTheme: ITheme = {
   brightCyan: colors["ansi-14"],
   brightWhite: colors["ansi-15"],
 };
+
+/**
+ * The theme for a pane whose status has a background (task 8.14): the status tint replaces the
+ * panel colour, so a side tab's terminals read as one group. Text colours stay.
+ */
+export function themeFor(tint?: Tint | null): ITheme {
+  if (!tint) return xtermTheme;
+  const background = colors[`tint-${tint}`];
+  return { ...xtermTheme, background, cursorAccent: background };
+}
 
 /** xterm's 16 ANSI slots in index order. */
 export const ANSI_SLOTS = [

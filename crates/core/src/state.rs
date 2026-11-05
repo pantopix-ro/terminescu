@@ -11,6 +11,13 @@ use serde::{Deserialize, Serialize};
 
 pub type Id = String;
 
+/// The icons a side tab or tab can pick instead of its default one (task 8.16). Each name is
+/// an `ao-i-*` class of the design system.
+pub const ICONS: &[&str] = &[
+    "term", "agent", "group", "tab", "window", "split", "doc", "tpl", "prompt", "var", "link",
+    "pin", "play", "check", "bp", "pr", "merge", "save", "in", "out",
+];
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Workspace {
@@ -34,6 +41,9 @@ pub struct SideTab {
     /// Set by hand in the status editor; absent means the generated status shows (D15).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<ManualStatus>,
+    /// One of [`ICONS`]; absent shows the default icon.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -45,6 +55,9 @@ pub struct Tab {
     pub layout: Layout,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<ManualStatus>,
+    /// One of [`ICONS`]; absent shows the default icon.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -87,6 +100,11 @@ pub enum Command {
     RenameSideTab {
         side_tab_id: Id,
         title: Option<String>,
+    },
+    /// A side tab's or tab's icon from [`ICONS`]; `None` goes back to the default (task 8.16).
+    SetIcon {
+        target_id: Id,
+        icon: Option<String>,
     },
     /// Closes a side tab with every tab in it; its context goes with it (task 8.7).
     CloseSideTab {
@@ -198,6 +216,10 @@ pub enum Patch {
         tab_id: Id,
         title: Option<String>,
     },
+    IconSet {
+        id: Id,
+        icon: Option<String>,
+    },
     /// The tab's whole split tree after a split, close, resize or resume change.
     LayoutChanged {
         tab_id: Id,
@@ -247,6 +269,8 @@ pub enum CommandError {
     BadSession(String),
     #[error("{0}")]
     BadStatus(String),
+    #[error("{0} is not a known icon")]
+    BadIcon(String),
 }
 
 impl Workspace {
@@ -446,6 +470,15 @@ pub fn apply(ws: &mut Workspace, patch: &Patch) -> Result<(), CommandError> {
                 .ok_or_else(|| CommandError::UnknownTab(tab_id.clone()))?;
             tab.title = title.clone();
         }
+        Patch::IconSet { id, icon } => {
+            if let Some(tab) = ws.tab_mut(id) {
+                tab.icon = icon.clone();
+            } else {
+                ws.side_tab_mut(id)
+                    .ok_or_else(|| CommandError::UnknownTab(id.clone()))?
+                    .icon = icon.clone();
+            }
+        }
         Patch::LayoutChanged { tab_id, layout } => {
             let tab = ws
                 .tab_mut(tab_id)
@@ -547,6 +580,7 @@ impl Core {
             title: None,
             layout: Layout::pane((self.new_id)()),
             status: None,
+            icon: None,
         }
     }
 
@@ -561,6 +595,7 @@ impl Core {
             title: None,
             tabs,
             status: None,
+            icon: None,
         }
     }
 
@@ -657,6 +692,7 @@ impl Core {
                     title: None,
                     tabs: vec![],
                     status: None,
+                    icon: None,
                 };
                 let to_side_tab_id = side_tab.id.clone();
                 [
@@ -686,6 +722,7 @@ impl Core {
                     title: None,
                     tabs: vec![],
                     status: None,
+                    icon: None,
                 };
                 let to_side_tab_id = side_tab.id.clone();
                 [
@@ -848,6 +885,18 @@ impl Core {
                     .filter(|t| !t.is_empty());
                 vec![Patch::SideTabRenamed { side_tab_id, title }]
             }
+            Command::SetIcon { target_id, icon } => {
+                if ws.tab(&target_id).is_none() && ws.side_tab(&target_id).is_none() {
+                    return Err(CommandError::UnknownTab(target_id));
+                }
+                if let Some(i) = icon.as_deref().filter(|i| !ICONS.contains(i)) {
+                    return Err(CommandError::BadIcon(i.to_string()));
+                }
+                vec![Patch::IconSet {
+                    id: target_id,
+                    icon,
+                }]
+            }
             Command::CloseSideTab { side_tab_id } => {
                 ws.side_tab(&side_tab_id)
                     .ok_or(CommandError::UnknownSideTab(side_tab_id.clone()))?;
@@ -939,6 +988,7 @@ impl Core {
                             title: None,
                             layout: pane,
                             status: None,
+                            icon: None,
                         },
                     }],
                 }
@@ -1220,6 +1270,7 @@ mod tests {
                 title: None,
                 tabs: Vec::new(),
                 status: None,
+                icon: None,
             },
             tab_ids: vec!["id2".into()],
         });
@@ -1232,6 +1283,7 @@ mod tests {
                 title: None,
                 tabs: Vec::new(),
                 status: None,
+                icon: None,
             },
             tab_ids: vec![moved[0].clone(), moved[0].clone()],
         });
@@ -1370,6 +1422,45 @@ mod tests {
             c.handle(Command::CloseSideTab { side_tab_id: side })
                 .is_err()
         );
+    }
+
+    #[test]
+    fn an_icon_comes_from_the_list_and_resets() {
+        let mut c = core();
+        let side = c.workspace().windows[0].side_tabs[0].id.clone();
+        c.handle(Command::SetIcon {
+            target_id: side.clone(),
+            icon: Some("pin".into()),
+        })
+        .unwrap();
+        c.handle(Command::SetIcon {
+            target_id: "id2".into(),
+            icon: Some("doc".into()),
+        })
+        .unwrap();
+        let s = c.workspace().side_tab(&side).unwrap();
+        assert_eq!(s.icon.as_deref(), Some("pin"));
+        assert_eq!(s.tabs[0].icon.as_deref(), Some("doc"));
+        assert_eq!(
+            c.handle(Command::SetIcon {
+                target_id: side.clone(),
+                icon: Some("rocket".into()),
+            }),
+            Err(CommandError::BadIcon("rocket".into()))
+        );
+        assert_eq!(
+            c.handle(Command::SetIcon {
+                target_id: "nope".into(),
+                icon: None,
+            }),
+            Err(CommandError::UnknownTab("nope".into()))
+        );
+        c.handle(Command::SetIcon {
+            target_id: side.clone(),
+            icon: None,
+        })
+        .unwrap();
+        assert_eq!(c.workspace().side_tab(&side).unwrap().icon, None);
     }
 
     #[test]

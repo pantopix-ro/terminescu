@@ -15,6 +15,7 @@ use terminescu_core::vars;
 fn tab(id: &str, pane: &str) -> Tab {
     Tab {
         status: None,
+        icon: None,
         id: id.into(),
         title: None,
         layout: Layout::pane(pane),
@@ -24,6 +25,7 @@ fn tab(id: &str, pane: &str) -> Tab {
 fn side(id: &str, title: &str, tabs: Vec<Tab>) -> SideTab {
     SideTab {
         status: None,
+        icon: None,
         id: id.into(),
         title: Some(title.into()),
         tabs,

@@ -1,4 +1,6 @@
 import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { StatusChip } from "./StatusChip";
+import type { Chip } from "./status";
 
 export type MenuEntry =
   | {
@@ -11,6 +13,10 @@ export type MenuEntry =
       run?(): void;
       /** A submenu, opened with a hover, a click or the right arrow. */
       items?: MenuEntry[];
+      /** Shown as a status chip in place of the plain label, which stays for screen readers. */
+      chip?: Chip;
+      /** The current choice: a check on the right. */
+      checked?: boolean;
     }
   | "-";
 
@@ -144,7 +150,14 @@ function Panel({
               }
             }}
           >
-            <span className="grow">{it.label}</span>
+            {it.chip ? (
+              <span className="grow" aria-label={it.label}>
+                <StatusChip chip={it.chip} />
+              </span>
+            ) : (
+              <span className="grow">{it.label}</span>
+            )}
+            {it.checked && <i className="ao-i x1 ao-i-check" aria-label="current" />}
             {it.hint && <span className="ctx-hint">{it.hint}</span>}
             {it.items && <i className="ao-i x1 ao-i-chevr" aria-hidden="true" />}
           </div>

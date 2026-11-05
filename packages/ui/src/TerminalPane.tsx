@@ -3,14 +3,14 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal, type IBufferLine } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import type { PaneView } from "@terminescu/host";
+import type { PaneView, Tint } from "@terminescu/host";
 import { useEffect, useRef, useState } from "react";
-import { claimPane, paneElement, releasePane } from "./pane-registry";
+import { claimPane, keyboardHeld, paneElement, releasePane } from "./pane-registry";
 import { EXTRACT_EVENT, INSERT_EVENT, PIN_EVENT, type InsertDetail } from "./events";
 import { pasteBytes } from "./insert";
 import { findPaths } from "./paths";
 import { webglBudget } from "./webgl-budget";
-import { terminalFont, xtermTheme } from "./xterm-theme";
+import { terminalFont, themeFor } from "./xterm-theme";
 
 export interface TerminalPaneProps {
   paneId: string;
@@ -34,6 +34,8 @@ export interface TerminalPaneProps {
    * selected, nothing happens.
    */
   onSelection?(how: "pin" | "extract", text: string, rows: [number, number]): void;
+  /** The status background the terminal takes, live (task 8.14). None keeps the panel colour. */
+  tint?: Tint | null;
 }
 
 /** Scrolls a terminal to a pin's rows and selects them; `detail` is `[first, last]`. */
@@ -111,11 +113,13 @@ export function terminalSelection(paneId: string): string {
  * chords pass through to the app menu; every other key goes to the shell, with Option as Meta.
  * Links open on `⌘`-click.
  */
-export function TerminalPane({ paneId, visible, focused, onFocus, open, openUrl, openPath, onTerminal, onSelection }: TerminalPaneProps) {
+export function TerminalPane({ paneId, visible, focused, onFocus, open, openUrl, openPath, onTerminal, onSelection, tint }: TerminalPaneProps) {
   const live = useRef<Live | null>(null);
   const [ready, setReady] = useState(false);
   const callbacks = useRef({ open, openUrl, openPath, onTerminal, onFocus, onSelection });
   callbacks.current = { open, openUrl, openPath, onTerminal, onFocus, onSelection };
+  const tintNow = useRef(tint);
+  tintNow.current = tint;
 
   useEffect(() => {
     const el = claimPane(paneId);
@@ -167,7 +171,7 @@ export function TerminalPane({ paneId, visible, focused, onFocus, open, openUrl,
       };
       const term = new Terminal({
         ...terminalFont,
-        theme: xtermTheme,
+        theme: themeFor(tintNow.current),
         scrollback: 10_000,
         macOptionIsMeta: true,
         linkHandler: { activate },
@@ -259,8 +263,17 @@ export function TerminalPane({ paneId, visible, focused, onFocus, open, openUrl,
   }, [paneId, visible, ready]);
 
   useEffect(() => {
-    if (visible && focused) live.current?.term.focus();
+    if (visible && focused && !keyboardHeld()) live.current?.term.focus();
   }, [visible, focused, ready]);
+
+  // A new status recolours the running terminal at once; the slot around it follows in CSS.
+  useEffect(() => {
+    const el = paneElement(paneId);
+    if (tint) el.dataset.tint = tint;
+    else delete el.dataset.tint;
+    const term = live.current?.term;
+    if (term) term.options.theme = themeFor(tint);
+  }, [paneId, tint, ready]);
 
   return null;
 }

@@ -94,6 +94,14 @@ export function applyPatch(ws: Workspace, p: Patch): void {
       else delete target.status;
       return;
     }
+    case "IconSet": {
+      const all = sideTabs(ws);
+      const target = all.flatMap((s) => s.tabs).find((t) => t.id === p.id) ?? all.find((s) => s.id === p.id);
+      if (!target) throw new PatchError(`unknown tab ${p.id}`);
+      if (p.icon) target.icon = p.icon;
+      else delete target.icon;
+      return;
+    }
   }
 }
 

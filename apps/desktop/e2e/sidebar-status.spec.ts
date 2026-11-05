@@ -1,8 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// Owner requests of 2026-11-05 on the mock host: a click on a sidebar status opens the status
-// editor with the global and this side tab's statuses, and the empty space under the last
-// side tab shows a + that adds one.
+// Owner requests of 2026-11-05 on the mock host: a click on a sidebar status opens a quick
+// list of the global and this side tab's statuses (task 8.18), and the empty space under the
+// last side tab shows a + that adds one.
 
 const mock = (page: Page, fn: string, ...args: unknown[]) =>
   page.evaluate(({ fn, args }) => (window as any).__terminescu.host[fn](...args), { fn, args });
@@ -17,7 +17,7 @@ async function start(page: Page) {
 
 const look = (label: string) => ({ label, accent: "blue", background: null });
 
-test("a click on a side tab's status opens the editor with global and local statuses", async ({ page }) => {
+test("a click on a side tab's status opens the quick list of saved statuses", async ({ page }) => {
   await start(page);
   const side = (await workspace(page)).windows[0].sideTabs[0];
   await mock(page, "makeGlobal", (await mock(page, "saveStatus", side.id, look("Blocked"))).id);
@@ -25,18 +25,24 @@ test("a click on a side tab's status opens the editor with global and local stat
 
   const row = page.locator(".ao-side .ao-st").first();
   await row.getByRole("button", { name: /^Status Idle: edit the status of / }).click();
-  const editor = page.getByRole("dialog");
-  await expect(editor).toContainText("side tab ·");
-  await expect(editor.locator(".status-presets").first()).toContainText("PROJ-482 review");
-  await expect(editor.locator(".status-presets").nth(1)).toContainText("Blocked");
+  const quick = page.getByRole("menu", { name: "Status" });
+  await expect(quick.getByRole("menuitem")).toHaveText(["Idle", "PROJ-482 review", "Blocked", "Edit status…⌘⇧S"]);
+  await expect(page.locator(".status-editor")).toHaveCount(0);
 
-  await editor.getByRole("button", { name: "Blocked" }).click();
+  await quick.getByRole("menuitem", { name: "Blocked" }).click();
+  await expect(quick).toHaveCount(0);
   await expect(row.locator(".ao-stat.manual")).toHaveText("Blocked");
   // The chip click neither started a drag nor selected another tab.
   expect((await workspace(page)).windows[0].sideTabs).toHaveLength(1);
+
+  // The current status carries the check; Auto clears it.
+  await row.getByRole("button", { name: /^Status Blocked/ }).click();
+  await expect(quick.getByRole("menuitem", { name: "Blocked" }).locator(".ao-i-check")).toHaveCount(1);
+  await page.keyboard.press("Enter");
+  await expect(row.locator(".ao-stat.manual")).toHaveCount(0);
 });
 
-test("a tab's status chip opens the editor on that tab", async ({ page }) => {
+test("a tab's status chip opens the quick list on that tab; Edit status opens the editor", async ({ page }) => {
   await start(page);
   const side = (await workspace(page)).windows[0].sideTabs[0];
   await mock(page, "send", { type: "CreateTab", sideTabId: side.id });
@@ -44,6 +50,7 @@ test("a tab's status chip opens the editor on that tab", async ({ page }) => {
   await mock(page, "send", { type: "SetStatus", targetId: first.id, status: look("Deploying") });
 
   await page.locator(".ao-st-kids .ao-st-kid").first().getByRole("button", { name: /^Status Deploying/ }).click();
+  await page.getByRole("menu", { name: "Status" }).getByRole("menuitem", { name: "Edit status…" }).click();
   const editor = page.getByRole("dialog");
   await expect(editor.getByRole("tab", { name: /^Tab:/ })).toHaveAttribute("aria-selected", "true");
   await expect(editor.getByLabel("Status label")).toHaveValue("Deploying");

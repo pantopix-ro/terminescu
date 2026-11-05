@@ -21,6 +21,14 @@ resizable dividers. A side tab SHALL hold any mix of pane kinds.
 - **WHEN** the pointer rests on the empty sidebar space under the last side tab
 - **THEN** a `+` shows there, and a click on it adds a side tab
 
+#### Scenario: Rename with a double click
+- **WHEN** the person double-clicks the name of a side tab or of a tab, in the sidebar or the tab bar, types `PROJ-482` and presses Enter
+- **THEN** the name changes in place; Esc keeps the old name, and only the field double-clicked opens
+
+#### Scenario: Pick an icon
+- **WHEN** the person double-clicks the icon of a side tab or of a tab, or picks "Change icon…" in its menu
+- **THEN** a list of 20 predefined icons opens; a pick replaces the default icon and persists, and "Default icon" brings the old one back, Claude's state dot staying either way
+
 #### Scenario: Split a tab
 - **WHEN** the person presses `⌘D` in a terminal pane
 - **THEN** the tab shows two panes side by side, the new one running the login shell in the same cwd
@@ -66,7 +74,7 @@ SHALL run an item, and Esc SHALL close it.
 
 #### Scenario: Side tab actions
 - **WHEN** the person opens a side tab's menu
-- **THEN** it offers rename, new tab, edit status, merge into, move to new window and close, and close asks first since the context goes with it
+- **THEN** it offers rename, change icon, new tab, edit status, merge into, move to new window and close, and close asks first since the context goes with it
 
 #### Scenario: Move a side tab to a new window
 - **WHEN** the person picks "Move to new window" on PROJ-482
@@ -74,7 +82,7 @@ SHALL run an item, and Esc SHALL close it.
 
 #### Scenario: Tab and command actions
 - **WHEN** the person opens the menu of a tab under its side tab, or of a saved command
-- **THEN** a tab offers rename, edit status, move to and close; a command offers run, insert, restart when down, edit (keeping its scope), duplicate and delete
+- **THEN** a tab offers rename, change icon, edit status, move to and close; a command offers run, insert, restart when down, edit (keeping its scope), duplicate and delete
 
 ### Requirement: Layout persistence
 Windows, side tabs, tabs, splits, sizes and the active tab SHALL persist, each row with an

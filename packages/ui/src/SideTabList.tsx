@@ -1,5 +1,5 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import { leaf, panesOf, type AgentView, type Shown, type SideTab, type Tab } from "@terminescu/host";
+import { leaf, panesOf, type AgentView, type Icon, type Shown, type SideTab, type Tab } from "@terminescu/host";
 import { useState, type KeyboardEvent, type MouseEvent } from "react";
 import { DOT, tabAgent, type Agents } from "./agents";
 import { StatusChip } from "./StatusChip";
@@ -32,27 +32,37 @@ export interface SideTabListProps {
   /** A new name, or null to go back to the generated one. */
   onRename?(id: string, title: string | null): void;
   onRenameEnd?(): void;
-  /** A click on a status chip: edit that side tab's status, or its tab's. */
-  onStatus?(sideTabId: string, tabId?: string): void;
+  /** A double click on a side tab's or a tab's name: edit it in place. */
+  onRenameStart?(id: string): void;
+  /** A click on a status chip, at a window point: pick that side tab's status, or its tab's. */
+  onStatus?(sideTabId: string, tabId: string | undefined, at: { x: number; y: number }): void;
+  /** A double click on a side tab's or a tab's icon, at a window point: pick another (task 8.16). */
+  onIconPick?(id: string, at: { x: number; y: number }): void;
 }
 
+/** Where an icon picker opens: under the double-clicked icon. */
+export const pickAt = (e: MouseEvent) => {
+  const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+  return { x: r.left, y: r.bottom + 4 };
+};
+
 /**
- * A status chip that opens the status editor. It stops the pointer and key events so the
+ * A status chip that opens the quick status list. It stops the pointer and key events so the
  * row neither starts a drag nor selects itself.
  */
-function ChipButton({ chip, label, onClick }: { chip: Chip; label: string; onClick?(): void }) {
+function ChipButton({ chip, label, onClick }: { chip: Chip; label: string; onClick?(at: { x: number; y: number }): void }) {
   if (!onClick) return <StatusChip chip={chip} />;
   return (
     <button
       type="button"
       className="chip-btn"
       aria-label={label}
-      title="Edit status"
+      title="Set status"
       onPointerDown={(e) => e.stopPropagation()}
       onKeyDown={(e) => e.stopPropagation()}
       onClick={(e) => {
         e.stopPropagation();
-        onClick();
+        onClick(pickAt(e));
       }}
     >
       <StatusChip chip={chip} />
@@ -73,7 +83,7 @@ function menuAt(e: MouseEvent | KeyboardEvent): { x: number; y: number } {
 const menuKey = (e: KeyboardEvent) => e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey);
 
 /** A name edited in place: Enter or leaving the field saves, Esc keeps the old one. */
-function RenameInput({ value, label, onDone, onCancel }: { value: string; label: string; onDone(v: string): void; onCancel(): void }) {
+export function RenameInput({ value, label, onDone, onCancel }: { value: string; label: string; onDone(v: string): void; onCancel(): void }) {
   const [text, setText] = useState(value);
   // Esc and Enter end the edit once; the blur that follows must not save again.
   const [ended, setEnded] = useState(false);
@@ -175,7 +185,9 @@ function Row(props: {
   renaming?: string;
   onRename?(id: string, title: string | null): void;
   onRenameEnd?(): void;
-  onStatus?(sideTabId: string, tabId?: string): void;
+  onRenameStart?(id: string): void;
+  onStatus?(sideTabId: string, tabId: string | undefined, at: { x: number; y: number }): void;
+  onIconPick?(id: string, at: { x: number; y: number }): void;
 }) {
   const { side, active, expanded, dragging, agents, statuses, builtins, docs } = props;
   const shown = statuses[side.id];
@@ -221,7 +233,14 @@ function Row(props: {
           }
         }}
       >
-        <i className={`ao-i ${group ? "ao-i-group" : side.tabs[0] && tabAgent(side.tabs[0], agents) ? "ao-i-agent" : "ao-i-term"}`} />
+        <i
+          className={`ao-i ao-i-${side.icon ?? (group ? "group" : side.tabs[0] && tabAgent(side.tabs[0], agents) ? "agent" : "term")}`}
+          title="Double-click to change the icon"
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            props.onIconPick?.(side.id, pickAt(e));
+          }}
+        />
         {props.renaming === side.id ? (
           <RenameInput
             value={side.title ?? sideTabName(side, docs)}
@@ -230,13 +249,22 @@ function Row(props: {
             onCancel={() => props.onRenameEnd?.()}
           />
         ) : (
-          <span className="t">{sideTabName(side, docs)}</span>
+          <span
+            className="t"
+            title="Double-click to rename"
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              props.onRenameStart?.(side.id);
+            }}
+          >
+            {sideTabName(side, docs)}
+          </span>
         )}
         <span className="side-trail">
         <ChipButton
           chip={chip}
           label={`Status ${chip.label}: edit the status of ${sideTabName(side, docs)}`}
-          onClick={props.onStatus && (() => props.onStatus!(side.id))}
+          onClick={props.onStatus && ((at) => props.onStatus!(side.id, undefined, at))}
         />
         {group && !active && (
           <button
@@ -286,7 +314,14 @@ function Row(props: {
                 }
               }}
             >
-              <KidIcon agent={tabAgent(t, agents)} />
+              <KidIcon
+                agent={tabAgent(t, agents)}
+                icon={t.icon}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  props.onIconPick?.(t.id, pickAt(e));
+                }}
+              />
               {props.renaming === t.id ? (
                 <RenameInput
                   value={t.title ?? tabName(t, docs)}
@@ -295,13 +330,22 @@ function Row(props: {
                   onCancel={() => props.onRenameEnd?.()}
                 />
               ) : (
-                <span className="grow">{tabName(t, docs)}</span>
+                <span
+                  className="grow"
+                  title="Double-click to rename"
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    props.onRenameStart?.(t.id);
+                  }}
+                >
+                  {tabName(t, docs)}
+                </span>
               )}
               {statuses[t.id]?.look && (
                 <ChipButton
                   chip={chipOf(statuses[t.id], builtins)}
                   label={`Status ${chipOf(statuses[t.id], builtins).label}: edit the status of ${tabName(t, docs)}`}
-                  onClick={props.onStatus && (() => props.onStatus!(side.id, t.id))}
+                  onClick={props.onStatus && ((at) => props.onStatus!(side.id, t.id, at))}
                 />
               )}
               {active && <span>{tabChord(i, side.tabs.length)}</span>}
@@ -317,12 +361,17 @@ function Row(props: {
  * The sidebar: one row per side tab. A side tab with more than one tab is a group and lists its
  * tabs under the row; the active group stays open, a chevron opens the others (D3).
  */
-function KidIcon({ agent }: { agent: AgentView | undefined }) {
-  if (!agent) return <i className="ao-i x1 ao-i-term" />;
+/** A tab's icon: the one picked, else Claude's or a terminal's; Claude's state dot stays either way. */
+export function KidIcon({ agent, icon, onDoubleClick }: { agent: AgentView | undefined; icon?: Icon; onDoubleClick?(e: MouseEvent): void }) {
   return (
     <>
-      <i className="ao-i x1 ao-i-agent" aria-label="Claude" />
-      <span className={`ao-dot ${DOT[agent.state]}`} title={agent.state} />
+      <i
+        className={`ao-i x1 ao-i-${icon ?? (agent ? "agent" : "term")}`}
+        aria-label={agent && !icon ? "Claude" : undefined}
+        title={onDoubleClick && "Double-click to change the icon"}
+        onDoubleClick={onDoubleClick}
+      />
+      {agent && <span className={`ao-dot ${DOT[agent.state]}`} title={agent.state} />}
     </>
   );
 }
@@ -345,7 +394,9 @@ export function SideTabList({
   renaming,
   onRename,
   onRenameEnd,
+  onRenameStart,
   onStatus,
+  onIconPick,
 }: SideTabListProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   return (
@@ -373,7 +424,9 @@ export function SideTabList({
               renaming={renaming}
               onRename={onRename}
               onRenameEnd={onRenameEnd}
+              onRenameStart={onRenameStart}
               onStatus={onStatus}
+              onIconPick={onIconPick}
             />
           </div>
         ))}

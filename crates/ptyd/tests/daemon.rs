@@ -207,6 +207,10 @@ fn pane_environment_drops_claude_and_names_the_pane() {
     );
     assert!(out.contains("TERM=xterm-256color\r\n"), "{out}");
     assert!(out.contains("TERM_PROGRAM=Terminescu\r\n"), "{out}");
+    // Colour is on by default, unless the environment already decides it.
+    if std::env::var_os("CLICOLOR").is_none() && std::env::var_os("NO_COLOR").is_none() {
+        assert!(out.contains("CLICOLOR=1\r\n"), "{out}");
+    }
     // The shell gets SIGPIPE at its default, so a pipeline ends the way it does elsewhere.
     assert!(out.contains("sigpipe=141"), "{out}");
 }
