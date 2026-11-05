@@ -255,3 +255,5 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 .text-bar-error { color: var(--red); }
 .text-status { display: flex; gap: var(--space-3); flex: none; justify-content: flex-end; padding: 2px var(--space-3); background: var(--bg); color: var(--faint); border-top: 2px solid var(--line); font-size: 11px; white-space: nowrap; overflow: hidden; }
 .tab-dirty { width: 6px; height: 6px; flex: none; background: var(--amber); }
+.close-dialog { width: min(420px, calc(100vw - 32px)); margin-top: 10vh; }
+.close-actions { display: flex; gap: var(--space-2); margin-top: var(--space-3); }

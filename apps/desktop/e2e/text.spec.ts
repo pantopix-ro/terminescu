@@ -62,3 +62,51 @@ test("a change on disk reloads a clean buffer and puts a bar over a dirty one", 
   await expect(editor).toContainText("theirs");
   await expect(editor).not.toContainText("mine");
 });
+
+async function dirtyText(page: Page, text: string) {
+  await page.keyboard.press("Meta+Alt+KeyT");
+  await expect(page.locator(".text-pane .cm-content")).toBeFocused();
+  await page.keyboard.type(text);
+  await expect(page.locator(".app-main .ao-tab .tab-dirty")).toBeVisible();
+}
+
+test("closing a dirty text tab asks: Cancel keeps it, Don't save drops it", async ({ page }) => {
+  await start(page);
+  await dirtyText(page, "draft for acme/api");
+  await page.keyboard.press("Meta+KeyW");
+  const dialog = page.getByRole("alertdialog", { name: "Unsaved changes" });
+  await expect(dialog).toContainText("Save changes to Untitled?");
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator(".app-main .ao-tab")).toHaveCount(2);
+  await page.locator(".app-main .ao-tab").nth(1).getByRole("button", { name: "Close tab" }).click();
+  await dialog.getByRole("button", { name: "Don't save" }).click();
+  await expect(page.locator(".app-main .ao-tab")).toHaveCount(1);
+  expect(await files(page)).toEqual({});
+});
+
+test("Save on close writes the file first; a cancelled Save dialog keeps the tab", async ({ page }) => {
+  await start(page);
+  await dirtyText(page, "release notes");
+  await page.keyboard.press("Meta+KeyW");
+  const dialog = page.getByRole("alertdialog", { name: "Unsaved changes" });
+  // The Save dialog is cancelled: nothing closes.
+  await page.evaluate(() => (window as any).__terminescu.host.dialogAnswers.push(null));
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.locator(".app-main .ao-tab")).toHaveCount(2);
+  await page.locator(".text-pane .cm-content").click();
+  await page.keyboard.press("Meta+KeyW");
+  await page.evaluate(() => (window as any).__terminescu.host.dialogAnswers.push("/Users/owner/acme-api/NOTES.md"));
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.locator(".app-main .ao-tab")).toHaveCount(1);
+  expect((await files(page))["/Users/owner/acme-api/NOTES.md"]).toBe("release notes");
+});
+
+test("a clean text tab closes without asking", async ({ page }) => {
+  await start(page);
+  await page.keyboard.press("Meta+Alt+KeyT");
+  await expect(page.locator(".app-main .ao-tab")).toHaveCount(2);
+  await page.keyboard.press("Meta+KeyW");
+  await expect(page.locator(".app-main .ao-tab")).toHaveCount(1);
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+});

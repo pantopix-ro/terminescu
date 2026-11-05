@@ -273,24 +273,59 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     });
   };
 
-  // `⌘S` and Save As on the focused text pane: its last keystrokes go first, an Untitled
-  // buffer asks where to save.
-  const saveFocused = async (as: boolean) => {
-    const pane = focused && textPane(focused);
-    if (!pane) return setError("Focus a text pane to save.");
+  // Saves a text pane: its last keystrokes go first, an Untitled buffer or Save As asks where.
+  // False when the person cancelled the dialog or the save failed.
+  const saveDoc = async (paneId: string, as: boolean): Promise<boolean> => {
+    const pane = textPane(paneId);
+    if (!pane) return false;
     try {
       await pane.flush();
-      const doc = docs[pane.docId] ?? (await host.document(pane.docId));
+      const doc = await host.document(pane.docId);
       let path: string | null | undefined;
       if (as || doc.source.kind === "untitled") {
-        if (doc.sessionOnly) return setError(`${doc.title} is session only and never goes to disk.`);
+        if (doc.sessionOnly) throw new Error(`${doc.title} is session only and never goes to disk.`);
         path = await host.chooseSavePath(doc.source.kind === "file" ? doc.source.path : doc.title);
-        if (!path) return;
+        if (!path) return false;
       }
       noteDoc(await host.saveDocument(pane.docId, path));
+      return true;
     } catch (e) {
       setError(String(e));
+      return false;
     }
+  };
+  const saveFocused = (as: boolean) => {
+    if (!focused || !textPane(focused)) return setError("Focus a text pane to save.");
+    void saveDoc(focused, as);
+  };
+
+  // Closing panes with unsaved text asks first: Save, Don't save or Cancel (D27).
+  const [closing, setClosing] = useState<{ panes: string[]; titles: string[]; command: Command }>();
+  const closeWith = async (panes: string[], command: Command) => {
+    const dirty: { pane: string; title: string }[] = [];
+    for (const p of panes) {
+      const t = textPane(p);
+      if (!t) continue;
+      await t.flush();
+      const d = await host.document(t.docId).catch(() => undefined);
+      if (d?.dirty) dirty.push({ pane: p, title: d.title });
+    }
+    if (!dirty.length) return void send(command);
+    setClosing({ panes: dirty.map((d) => d.pane), titles: dirty.map((d) => d.title), command });
+  };
+  const closePane = (paneId: string) => void closeWith([paneId], { type: "ClosePane", paneId });
+  const closeTab = (tabId: string) => {
+    const tab = sideTabs.flatMap((sd) => sd.tabs).find((t) => t.id === tabId);
+    void closeWith(tab ? panesOf(tab.layout) : [], { type: "CloseTab", tabId });
+  };
+  const finishClose = async (choice: "save" | "discard" | "cancel") => {
+    const c = closing;
+    setClosing(undefined);
+    if (!c || choice === "cancel") return refocus();
+    if (choice === "save") {
+      for (const p of c.panes) if (!(await saveDoc(p, false))) return refocus();
+    }
+    void send(c.command);
   };
 
   // A closed pane hands focus to the pane before it, as the core hands it its space.
@@ -348,7 +383,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         followNewPane(activeTab.id);
         return void send({ type: "SplitPane", paneId: focused, dir: id === "split_right" ? "row" : "column" });
       case "close":
-        if (focused) void send({ type: "ClosePane", paneId: focused });
+        if (focused) closePane(focused);
         return;
       case "new_text":
         if (!activeSide) return;
@@ -790,7 +825,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                 if (activeSide) selectTab(activeSide.id, id);
                 refocus();
               }}
-              onClose={(tabId) => void send({ type: "CloseTab", tabId })}
+              onClose={closeTab}
               onNew={() => act("new_tab")}
             />
             <section className="app-pane">
@@ -810,7 +845,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                           <i className={`ao-i x1 ${transcript ? "ao-i-agent" : docOf(activeTab.layout, paneId) ? "ao-i-doc" : "ao-i-term"}`} />
                           <span>{transcript ? "transcript" : (docs[docOf(activeTab.layout, paneId) ?? ""]?.title ?? (docOf(activeTab.layout, paneId) ? "text" : "shell"))}</span>
                           <span className="grow" />
-                          <button type="button" className="tp-close" aria-label="Close pane" onClick={() => void send({ type: "ClosePane", paneId })}>
+                          <button type="button" className="tp-close" aria-label="Close pane" onClick={() => closePane(paneId)}>
                             ×
                           </button>
                         </div>
@@ -1051,6 +1086,38 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           onError={setError}
           onClose={closeSheet}
         />
+      )}
+      {closing && (
+        <div className="sheet-back" onPointerDown={() => void finishClose("cancel")}>
+          <div
+            className="ao-frame close-dialog"
+            role="alertdialog"
+            aria-label="Unsaved changes"
+            onPointerDown={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.key === "Escape" && void finishClose("cancel")}
+          >
+            <div className="ao-frame-body">
+              <p>
+                {closing.titles.length === 1
+                  ? `Save changes to ${closing.titles[0]}?`
+                  : `Save changes to ${closing.titles.length} documents: ${closing.titles.join(", ")}?`}
+              </p>
+              <p className="small ao-dim">Unsaved edits are lost when the pane closes.</p>
+              <div className="close-actions">
+                <button type="button" className="ao-btn ghost" onClick={() => void finishClose("discard")}>
+                  Don't save
+                </button>
+                <span className="grow" />
+                <button type="button" className="ao-btn ghost" onClick={() => void finishClose("cancel")}>
+                  Cancel
+                </button>
+                <button type="button" className="ao-btn primary" autoFocus onClick={() => void finishClose("save")}>
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
       {palette && (
         <Palette

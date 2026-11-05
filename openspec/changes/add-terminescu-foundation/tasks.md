@@ -315,9 +315,11 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
 - [ ] 7.4 Editor requests: `terminescu edit --wait`, split beside the caller, Waiting status,
       `⌘↵` returns, close ends the wait; opt-in `EDITOR` in Settings › Shell (D27). Verify:
       `GIT_EDITOR="terminescu edit --wait" git commit` in a test repo finishes after `⌘↵`.
-- [ ] 7.5 Save and close flows: `⌘S`, Save dialog for Untitled, Save As in menu and palette,
+- [x] 7.5 Save and close flows: `⌘S`, Save dialog for Untitled, Save As in menu and palette,
       Save / Don't save / Cancel on close, dirty dot (D27). Verify: Playwright with a mock Host
       covers each close choice.
+      Done: `saveDoc` and `closeWith` in App.tsx flush the editor first; one prompt for every
+      dirty document of a pane or tab; a cancelled Save dialog keeps it open. `e2e/text.spec.ts`.
 - [x] 7.6 Disk watcher: reload clean buffers, changed-on-disk bar with Reload and Keep mine,
       20 MB read-only, binary refused (D28). Verify: `watch.test.rs` writes the file under a
       dirty buffer and gets the conflict event, not a reload.
