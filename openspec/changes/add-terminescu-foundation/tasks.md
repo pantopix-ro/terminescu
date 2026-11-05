@@ -336,8 +336,12 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
 - [ ] 7.7 `{{variable}}` chips, autocomplete from the side tab's context, unknown-name warning,
       secrets as `$NAME` only; pasted images saved next to the file (D29). Verify:
       `varchips.test.ts` flags `{{tikcet}}` and offers `$API_TOKEN` for a secret.
-- [ ] 7.8 Send to pane (`⌘⇧↵`) as bracketed paste without Enter. Verify: test reads the
+- [x] 7.8 Send to pane (`⌘⇧↵`) as bracketed paste without Enter. Verify: test reads the
       paste markers and no `\r` on the target pty.
+      Done: `sendToPane` in App.tsx pastes the selection, or the whole text, into the tab's last
+      focused terminal (else a Claude pane, else the first, then the side tab's other tabs) via
+      `INSERT_EVENT` with `stay`, so the editor keeps focus. `e2e/text.spec.ts` checks the markers
+      and that no `\r` reaches the pane.
 - [ ] 7.9 Prompt library editing in the text editor, `⌘S` creating a version (D14). Verify:
       `prompts.test.rs` saves twice and lists two versions.
 - [ ] 7.10 Files section: `PostToolUse` payloads of Write, Edit, MultiEdit, NotebookEdit, paths

@@ -8,4 +8,6 @@ export const INSERT_EVENT = "terminescu:insert";
 export interface InsertDetail {
   text: string;
   send?: boolean;
+  /** Focus stays where it was, as for "Send to pane" from a text pane (D29). */
+  stay?: boolean;
 }

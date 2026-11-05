@@ -22,6 +22,7 @@ import {
   type AgentUpdate,
   type DocView,
   type FileList,
+  type Tab,
   type AppSettings,
   type ActionDef,
   type KeyBindings,
@@ -214,6 +215,11 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     setTabBySide((m) => ({ ...m, [sideId]: tabId }));
   };
   const focusIn = (tabId: string, paneId: string) => setFocusByTab((m) => ({ ...m, [tabId]: paneId }));
+  // The terminal each tab focused last: where "Send to pane" pastes (D29).
+  const lastTerminal = useRef<Record<string, string>>({});
+  useEffect(() => {
+    if (activeTab && focused && terminalsOf(activeTab.layout).includes(focused)) lastTerminal.current[activeTab.id] = focused;
+  }, [activeTab, focused]);
 
   // What a command created gets selected once its patch arrives: a check that runs on every
   // workspace change until it finds its target.
@@ -331,6 +337,23 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     await host.returnEdit(doc.id).catch((e: unknown) => setError(String(e)));
     void send({ type: "ClosePane", paneId: focused });
   };
+  // `⌘⇧↵` in a text pane: the selection, or all of it, goes to a terminal as a paste without
+  // Enter. The target is the tab's last focused terminal, else one running Claude, else the
+  // first; then the other tabs of the side tab.
+  const sendToPane = () => {
+    const pane = focused && textPane(focused);
+    if (!pane || !activeSide || !activeTab) return setError("Focus a text pane to send its text.");
+    const text = pane.selectionOrAll();
+    if (!text.trim()) return;
+    const pickIn = (t: Tab) => {
+      const terms = terminalsOf(t.layout);
+      const last = lastTerminal.current[t.id];
+      return (last && terms.includes(last) ? last : undefined) ?? terms.find((p) => agents[p]) ?? terms[0];
+    };
+    const target = [activeTab, ...activeSide.tabs.filter((t) => t.id !== activeTab.id)].map(pickIn).find(Boolean);
+    if (!target) return setError("No terminal pane in this side tab to send to.");
+    paneEvent(target, new CustomEvent(INSERT_EVENT, { detail: { text, stay: true } }));
+  };
   const saveFocused = (as: boolean) => {
     if (!focused || !textPane(focused)) return setError("Focus a text pane to save.");
     void saveDoc(focused, as);
@@ -432,6 +455,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         return openFinder();
       case "return_edit":
         return void returnEdit();
+      case "send_to_pane":
+        return sendToPane();
       case "open_transcript": {
         const session = focused && agents[focused]?.session;
         if (!activeTab || !focused) return;

@@ -202,3 +202,27 @@ test("closing an editor request's pane ends the wait", async ({ page }) => {
   await expect(page.locator(".ao-tp")).toHaveCount(1);
   await expect.poll(() => page.evaluate(() => (window as any).__edited)).toBe("ended");
 });
+
+test("⌘⇧↵ sends the selection to the terminal as a bracketed paste with no Enter", async ({ page }) => {
+  await start(page);
+  const term = await page.locator(".ao-tp").first().getAttribute("data-pane");
+  await page.keyboard.press("Meta+KeyD");
+  await expect(page.locator(".ao-tp")).toHaveCount(2);
+  // Splits a text pane beside the terminal: ⌥ on + ▾ › Text.
+  await page.locator(`.ao-tp[data-pane="${term}"] .term-pane`).click();
+  await page.getByRole("button", { name: "Choose tab kind" }).click();
+  await page.getByRole("menuitem", { name: /Text/ }).click({ modifiers: ["Alt"] });
+  await expect(page.locator(".ao-tp")).toHaveCount(3);
+  const editor = page.locator(".text-pane .cm-content");
+  await expect(editor).toBeFocused();
+  await page.keyboard.type("Review PROJ-482\nthen check acme/api\n\nnot this");
+  await page.keyboard.press("Meta+ArrowUp");
+  await page.keyboard.press("Shift+ArrowDown");
+  await page.keyboard.press("Shift+ArrowDown");
+  const before = await page.evaluate((p) => (window as any).__terminescu.host.inputs.get(p) ?? "", term);
+  await page.keyboard.press("Meta+Shift+Enter");
+  await expect
+    .poll(() => page.evaluate((p) => (window as any).__terminescu.host.inputs.get(p) ?? "", term))
+    .toBe(`${before}\x1b[200~Review PROJ-482\nthen check acme/api\n\x1b[201~`);
+  await expect(editor).toBeFocused();
+});

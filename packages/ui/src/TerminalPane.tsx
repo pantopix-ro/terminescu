@@ -140,7 +140,7 @@ export function TerminalPane({ paneId, visible, focused, onFocus, open, openUrl,
       const d = (e as CustomEvent<InsertDetail>).detail;
       if (!term || !view || !d?.text) return;
       view.input(pasteBytes(d.text, term.modes.bracketedPasteMode, d.send));
-      term.focus();
+      if (!d.stay) term.focus();
     };
     el.addEventListener(PIN_EVENT, onPin);
     el.addEventListener(EXTRACT_EVENT, onExtract);
