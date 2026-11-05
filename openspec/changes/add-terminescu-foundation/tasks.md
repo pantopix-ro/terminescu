@@ -467,8 +467,8 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       `QuickStatus`: the box for a new status takes the cursor, the current, Auto, side tab
       and global statuses follow. Verify: store test, `sidebar-status.spec.ts` (3).
 - [ ] 8.22 Neon accent per sidebar row and a 12 px icon set: proposals on the Screens canvas
-      v45 (boards RowAccents, IconsHiRes; recommended Edge + icon, 12×12). Waits on the
-      owner's pick.
+      v45 (boards RowAccents, IconsHiRes; recommended Edge + icon, 12×12). The neon part is
+      built as 8.25; the 12 px icons wait on the owner's pick.
 - [x] 8.23 Adjustable sidebar (owner request, 2026-11-05): the right edge drags the width
       (180-480 px, `sidebarWidth` in the settings, double click resets 272); hovering shows a
       pixel button that collapses it to the icons (`sidebarCollapsed`); collapsed icons show a
@@ -476,6 +476,10 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       settings test, `sidebar-layout.spec.ts` (3), checked in the running app.
 - [x] 8.24 SF Mono Regular as the terminal font (owner request, 2026-11-05). Done:
       `terminalFont` starts with `ui-monospace`, WebKit's name for the system SF Mono.
+- [x] 8.25 A random neon per new sidebar row (owner request, 2026-11-05), as the Edge + icon
+      proposal: eight `--neon-*` tokens (no amber), `pick_neon` takes the first one no row uses
+      from a hash of the side tab id, saved in the existing `side_tabs.accent` column; rows from
+      before keep the neutral edge. Verify: core and persist tests, `sidebar-neon.spec.ts`.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

@@ -24,6 +24,7 @@ fn tab(id: &str, pane: &str) -> Tab {
 
 fn side(id: &str, title: &str, tabs: Vec<Tab>) -> SideTab {
     SideTab {
+        accent: None,
         status: None,
         icon: None,
         id: id.into(),

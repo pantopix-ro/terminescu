@@ -23,11 +23,6 @@ pub const ICONS: &[&str] = &[
 /// When every icon is taken it reuses one.
 pub fn pick_icon(ws: &Workspace, tab_id: &str, also: &[Option<String>]) -> String {
     let pool: Vec<&str> = ICONS.iter().copied().filter(|i| *i != "agent").collect();
-    // FNV-1a: stable across builds, unlike the std hasher.
-    let hash = tab_id.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |h, b| {
-        (h ^ u64::from(b)).wrapping_mul(0x100_0000_01b3)
-    });
-    let start = (hash % pool.len() as u64) as usize;
     let used: Vec<&str> = ws
         .windows
         .iter()
@@ -36,6 +31,34 @@ pub fn pick_icon(ws: &Workspace, tab_id: &str, also: &[Option<String>]) -> Strin
         .filter_map(|t| t.icon.as_deref())
         .chain(also.iter().filter_map(|i| i.as_deref()))
         .collect();
+    pick_unused(&pool, tab_id, &used)
+}
+
+/// The neon accents a sidebar row can take (task 8.25), as `--neon-*` tokens. No amber,
+/// orange or yellow: amber means "needs you".
+pub const NEONS: &[&str] = &[
+    "cyan", "pink", "lime", "violet", "mint", "blue", "rose", "ice",
+];
+
+/// The neon a new side tab opens with: one no other row in the workspace uses yet, picked from
+/// its id like [`pick_icon`]. When every neon is taken it reuses one.
+pub fn pick_neon(ws: &Workspace, side_tab_id: &str) -> String {
+    let used: Vec<&str> = ws
+        .windows
+        .iter()
+        .flat_map(|w| &w.side_tabs)
+        .filter_map(|s| s.accent.as_deref())
+        .collect();
+    pick_unused(NEONS, side_tab_id, &used)
+}
+
+/// The first entry of `pool` not in `used`, starting at a hash of `seed`.
+fn pick_unused(pool: &[&str], seed: &str, used: &[&str]) -> String {
+    // FNV-1a: stable across builds, unlike the std hasher.
+    let hash = seed.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |h, b| {
+        (h ^ u64::from(b)).wrapping_mul(0x100_0000_01b3)
+    });
+    let start = (hash % pool.len() as u64) as usize;
     (0..pool.len())
         .map(|k| pool[(start + k) % pool.len()])
         .find(|i| !used.contains(i))
@@ -69,6 +92,9 @@ pub struct SideTab {
     /// One of [`ICONS`]; absent shows the default icon.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
+    /// One of [`NEONS`], given when the row is made (task 8.25); absent keeps the neutral edge.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accent: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -627,12 +653,15 @@ impl Core {
             made.push(tab);
         }
         let tabs = made;
+        let id = (self.new_id)();
+        let accent = Some(pick_neon(&self.ws, &id));
         SideTab {
-            id: (self.new_id)(),
+            id,
             title: None,
             tabs,
             status: None,
             icon: None,
+            accent,
         }
     }
 
@@ -724,8 +753,10 @@ impl Core {
                     return Err(CommandError::IndexOutOfRange(index));
                 }
                 let closed = source_empties(&tab_id, None);
+                let id = (self.new_id)();
                 let side_tab = SideTab {
-                    id: (self.new_id)(),
+                    accent: Some(pick_neon(ws, &id)),
+                    id,
                     title: None,
                     tabs: vec![],
                     status: None,
@@ -754,8 +785,10 @@ impl Core {
                     .ok_or(CommandError::UnknownTab(tab_id.clone()))?;
                 let closed = source_empties(&tab_id, None);
                 let window_id = (self.new_id)();
+                let id = (self.new_id)();
                 let side_tab = SideTab {
-                    id: (self.new_id)(),
+                    accent: Some(pick_neon(ws, &id)),
+                    id,
                     title: None,
                     tabs: vec![],
                     status: None,
@@ -1306,6 +1339,7 @@ mod tests {
             window_id: "id1".into(),
             index: 0,
             side_tab: SideTab {
+                accent: None,
                 id: "fresh".into(),
                 title: None,
                 tabs: Vec::new(),
@@ -1319,6 +1353,7 @@ mod tests {
             window_id: "id1".into(),
             index: 0,
             side_tab: SideTab {
+                accent: None,
                 id: "fresh".into(),
                 title: None,
                 tabs: Vec::new(),
@@ -1487,6 +1522,39 @@ mod tests {
                 .iter()
                 .all(|i| ICONS.contains(&i.as_str()) && i != "agent")
         );
+    }
+
+    #[test]
+    fn new_side_tabs_open_with_different_neons() {
+        let mut c = core();
+        let window = c.workspace().windows[0].id.clone();
+        for _ in 0..5 {
+            c.handle(Command::CreateSideTab {
+                window_id: window.clone(),
+                index: None,
+            })
+            .unwrap();
+        }
+        let neons: Vec<String> = c.workspace().windows[0]
+            .side_tabs
+            .iter()
+            .map(|s| s.accent.clone().expect("a new side tab has a neon"))
+            .collect();
+        let mut unique = neons.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(unique.len(), neons.len(), "{neons:?}");
+        assert!(neons.iter().all(|n| NEONS.contains(&n.as_str())));
+
+        // A tab moved out to a row of its own gets a neon too.
+        let tab = c.workspace().windows[0].side_tabs[0].tabs[0].id.clone();
+        c.handle(Command::MoveTabToNewSideTab {
+            tab_id: tab,
+            window_id: window,
+            index: 0,
+        })
+        .unwrap();
+        assert!(c.workspace().windows[0].side_tabs[0].accent.is_some());
     }
 
     #[test]

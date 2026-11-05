@@ -25,6 +25,10 @@ resizable dividers. A side tab SHALL hold any mix of pane kinds.
 - **WHEN** the person double-clicks the name of a side tab or of a tab, in the sidebar or the tab bar, types `PROJ-482` and presses Enter
 - **THEN** the name changes in place; Esc keeps the old name, and only the field double-clicked opens
 
+#### Scenario: New side tabs get their own neon
+- **WHEN** the person adds three side tabs, or drags a tab out to a row of its own
+- **THEN** each new row opens with a random neon from cyan, pink, lime, violet, mint, blue, rose and ice that no other row uses yet, on its left edge and its icon; a status keeps its chip and background
+
 #### Scenario: New tabs get their own icon
 - **WHEN** the person opens three tabs
 - **THEN** each opens with a random icon from the list that no other tab uses yet, and a one-tab side tab row shows its tab's icon

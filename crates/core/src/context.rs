@@ -443,6 +443,7 @@ mod tests {
             windows: vec![Window {
                 id: "w1".into(),
                 side_tabs: vec![SideTab {
+                    accent: None,
                     status: None,
                     icon: None,
                     id: "s1".into(),
