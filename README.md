@@ -23,6 +23,10 @@ shell, and Terminescu never starts a turn on its own.
 > another side tab, and `⌘K` opens a palette (tasks 3.1, 3.2). The layout survives a restart;
 > after a reboot each pane gets a fresh shell in its last folder and a Resume button for its
 > Claude session (tasks 3.3, 3.4). The context panel pins or hides behind a hover edge (3.5).
+> The app registers `terminescu hook` in Claude Code's settings on start. A tab running Claude
+> shows the agent icon and turns amber while Claude waits on a permission prompt, clearing when
+> the prompt is answered or denied (tasks 4.1 to 4.3). `⌘⇧L` opens a read-only transcript beside
+> a Claude pane, where a selection pins to the context or extracts to a variable (task 4.4).
 
 ## See it
 

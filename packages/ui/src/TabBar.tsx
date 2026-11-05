@@ -1,6 +1,7 @@
 import { horizontalListSortingStrategy, SortableContext, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { Tab } from "@terminescu/host";
+import { DOT, tabAgent, type Agents } from "./agents";
 import { tabName } from "./SideTabList";
 
 export interface TabBarProps {
@@ -9,9 +10,24 @@ export interface TabBarProps {
   onSelect(tabId: string): void;
   onClose(tabId: string): void;
   onNew(): void;
+  /** Claude sessions by pane: a tab with one shows the agent icon and its state (D34). */
+  agents?: Agents;
 }
 
-function TabItem({ tab, active, onSelect, onClose }: { tab: Tab; active: boolean; onSelect(): void; onClose(): void }) {
+function TabItem({
+  tab,
+  active,
+  agents,
+  onSelect,
+  onClose,
+}: {
+  tab: Tab;
+  active: boolean;
+  agents: Agents;
+  onSelect(): void;
+  onClose(): void;
+}) {
+  const agent = tabAgent(tab, agents);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: tab.id });
   return (
     <div
@@ -22,11 +38,18 @@ function TabItem({ tab, active, onSelect, onClose }: { tab: Tab; active: boolean
       tabIndex={0}
       aria-selected={active}
       data-tab={tab.id}
-      className={`ao-tab${active ? " active" : ""}${isDragging ? " placeholder" : ""}`}
+      data-agent={agent?.state}
+      className={`ao-tab${active ? " active" : ""}${isDragging ? " placeholder" : ""}${agent?.state === "waiting" ? " wait" : ""}`}
       style={{ transform: CSS.Translate.toString(transform), transition }}
       onClick={onSelect}
       onKeyDown={(e) => e.key === "Enter" && onSelect()}
     >
+      {agent && (
+        <>
+          <i className="ao-i x1 ao-i-agent" aria-label="Claude" />
+          <span className={`ao-dot ${DOT[agent.state]}`} title={agent.state} />
+        </>
+      )}
       <span className="n">{tabName(tab)}</span>
       <button
         type="button"
@@ -45,7 +68,7 @@ function TabItem({ tab, active, onSelect, onClose }: { tab: Tab; active: boolean
 }
 
 /** The active side tab's tabs, across the top like browser tabs. Drag one to reorder it. */
-export function TabBar({ tabs, activeId, onSelect, onClose, onNew }: TabBarProps) {
+export function TabBar({ tabs, activeId, onSelect, onClose, onNew, agents = {} }: TabBarProps) {
   return (
     <div className="ao-tabs" role="tablist" data-tauri-drag-region>
       <SortableContext items={tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
@@ -54,6 +77,7 @@ export function TabBar({ tabs, activeId, onSelect, onClose, onNew }: TabBarProps
             key={t.id}
             tab={t}
             active={t.id === activeId}
+            agents={agents}
             onSelect={() => onSelect(t.id)}
             onClose={() => onClose(t.id)}
           />

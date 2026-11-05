@@ -4,8 +4,11 @@ import { paneElement, parkPane } from "./pane-registry";
 
 export interface SplitViewProps {
   layout: Layout;
-  /** Draws the frame around one pane; the terminal goes into `slot`. */
-  renderPane(paneId: string, resume: string | undefined, slot: ReactNode): ReactNode;
+  /**
+   * Draws the frame around one pane; the terminal goes into `slot`. A transcript pane gets the
+   * session it mirrors and no slot (task 4.4).
+   */
+  renderPane(paneId: string, resume: string | undefined, slot: ReactNode, transcript?: string): ReactNode;
   /** Resolves `false` when the resize was refused, so the preview snaps back. */
   onResize(splitId: string, sizes: number[]): void | Promise<boolean>;
 }
@@ -86,7 +89,10 @@ function Split({ node, renderPane, onResize }: { node: Extract<Layout, { type: "
 }
 
 function Node({ node, renderPane, onResize }: { node: Layout } & Omit<SplitViewProps, "layout">) {
-  if (node.type === "pane") return <>{renderPane(node.id, node.resume, <PaneSlot paneId={node.id} />)}</>;
+  if (node.type === "pane") {
+    if (node.transcript) return <>{renderPane(node.id, undefined, null, node.transcript)}</>;
+    return <>{renderPane(node.id, node.resume, <PaneSlot paneId={node.id} />)}</>;
+  }
   return <Split node={node} renderPane={renderPane} onResize={onResize} />;
 }
 

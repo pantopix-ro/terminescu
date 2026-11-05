@@ -3,8 +3,22 @@
 
 import type { Host, PaneView } from "./host";
 import { actionFor } from "./keys";
-import { hasSplit, isSessionId, leaf, panesOf, removePane, resizeSplit, splitPane } from "./layout";
-import type { Command, CommandError, Patch, PatchBatch, SideTab, Snapshot, Tab, Workspace } from "./protocol";
+import { hasSplit, isSessionId, leaf, panesOf, removePane, resizeSplit, splitPane, terminalsOf } from "./layout";
+import type {
+  AgentUpdate,
+  AgentView,
+  Command,
+  Entry,
+  Pin,
+  Variable,
+  CommandError,
+  Patch,
+  PatchBatch,
+  SideTab,
+  Snapshot,
+  Tab,
+  Workspace,
+} from "./protocol";
 import { applyBatch } from "./reducer";
 
 export class MockCommandError extends Error {
@@ -23,6 +37,10 @@ export interface MockHost extends Host {
   readonly resizes: string[];
   /** Text a ResumePane typed, per pane. */
   readonly typed: Map<string, string>;
+  /** Plays the core's part for hook events: sets or clears a pane's agent. */
+  setAgent(pane: string, agent: AgentView | null): void;
+  /** Appends entries to a session's fake transcript. */
+  appendTranscript(session: string, entries: Entry[]): void;
 }
 
 const encoder = new TextEncoder();
@@ -73,6 +91,15 @@ export function createMockHost(initial?: Workspace): MockHost {
   const openedUrls: string[] = [];
   const resizes: string[] = [];
   const typed = new Map<string, string>();
+  const agents = new Map<string, AgentView>();
+  const agentListeners = new Set<(u: AgentUpdate) => void>();
+  const transcripts = new Map<string, Entry[]>();
+  const pinList: Pin[] = [];
+  const vars: Variable[] = [];
+  const contextListeners = new Set<(sideTabId: string) => void>();
+  const contextChanged = (side: string) => {
+    for (const l of contextListeners) l(side);
+  };
 
   function firstStart(): Workspace {
     const windowId = id();
@@ -143,16 +170,20 @@ export function createMockHost(initial?: Workspace): MockHost {
         const title = c.title?.trim() || null;
         return [{ type: "TabRenamed", tabId: c.tabId, title }];
       }
-      case "SplitPane": {
+      case "SplitPane":
+      case "OpenTranscript": {
+        if (c.type === "OpenTranscript" && !isSessionId(c.session)) return fail("BadSession", c.session);
         const tab = tabOfPane(c.paneId);
-        const layout = splitPane(tab.layout, c.paneId, c.dir, id(), id());
+        const [dir, session] = c.type === "SplitPane" ? [c.dir, undefined] : (["row", c.session] as const);
+        const layout = splitPane(tab.layout, c.paneId, dir, id(), id(), session);
         if (layout === "small") return fail("PaneTooSmall", c.paneId);
         return [{ type: "LayoutChanged", tabId: tab.id, layout: layout! }];
       }
       case "ClosePane": {
         const tab = tabOfPane(c.paneId);
         const layout = removePane(tab.layout, c.paneId);
-        if (layout) return [{ type: "LayoutChanged", tabId: tab.id, layout }];
+        // A tab left with only transcript panes closes, as in the core.
+        if (layout && terminalsOf(layout).length) return [{ type: "LayoutChanged", tabId: tab.id, layout }];
         return [{ type: "TabClosed", tabId: tab.id }, ...closesSource(tab.id)];
       }
       case "ResizeSplit": {
@@ -219,6 +250,64 @@ export function createMockHost(initial?: Workspace): MockHost {
           open = false;
         },
       };
+    },
+    setAgent(pane, agent) {
+      if (agent) agents.set(pane, agent);
+      else agents.delete(pane);
+      for (const l of agentListeners) l({ pane, agent });
+    },
+    async agents() {
+      return [...agents].map(([pane, agent]) => ({ pane, agent }));
+    },
+    async onAgent(listener) {
+      agentListeners.add(listener);
+      return () => agentListeners.delete(listener);
+    },
+    appendTranscript(session, entries) {
+      const list = transcripts.get(session) ?? [];
+      // Offsets stand in for byte positions: one per entry.
+      for (const e of entries) list.push({ ...e, offset: list.length });
+      transcripts.set(session, list);
+    },
+    async readTranscript(session, offset) {
+      const list = transcripts.get(session);
+      if (!list) throw new Error(`no transcript for session ${session}`);
+      return { entries: structuredClone(list.slice(offset)), offset: list.length, reset: false };
+    },
+    async pins(side) {
+      return structuredClone(pinList.filter((p) => p.sideTabId === side));
+    },
+    async addPin(pin) {
+      if (!isSessionId(pin.session)) throw new Error(`${pin.session} is not a Claude session id`);
+      const saved: Pin = { ...pin, id: id(), createdAt: Date.now() };
+      pinList.push(saved);
+      contextChanged(pin.sideTabId);
+      return structuredClone(saved);
+    },
+    async removePin(pinId) {
+      const at = pinList.findIndex((p) => p.id === pinId);
+      if (at < 0) return;
+      const [gone] = pinList.splice(at, 1);
+      contextChanged(gone!.sideTabId);
+    },
+    async variables(side) {
+      return structuredClone(vars.filter((v) => v.sideTabId === side));
+    },
+    async extractVariable(side, name, value) {
+      if (!/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(name) || name.startsWith("TERMINESCU_")) {
+        throw new Error(`${name} is not a variable name`);
+      }
+      if (vars.some((v) => v.sideTabId === side && v.name === name)) {
+        throw new Error(`side tab ${side} already has a variable ${name}`);
+      }
+      const v: Variable = { id: id(), sideTabId: side, name, value, source: "extracted" };
+      vars.push(v);
+      contextChanged(side);
+      return structuredClone(v);
+    },
+    async onContext(listener) {
+      contextListeners.add(listener);
+      return () => contextListeners.delete(listener);
     },
     async openUrl(url) {
       openedUrls.push(url);

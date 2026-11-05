@@ -43,8 +43,15 @@ export function rescale(weights: number[]): number[] {
  * The tree with `added` placed after `target`: undefined when `target` is unknown, "small"
  * when the split would leave a share under MIN_SIZE.
  */
-export function splitPane(l: Layout, target: Id, dir: Dir, added: Id, splitId: Id): Layout | undefined | "small" {
-  const fresh: Layout = { type: "pane", id: added };
+export function splitPane(
+  l: Layout,
+  target: Id,
+  dir: Dir,
+  added: Id,
+  splitId: Id,
+  transcript?: string,
+): Layout | undefined | "small" {
+  const fresh: Layout = transcript ? { type: "pane", id: added, transcript } : { type: "pane", id: added };
   let small = false;
   const go = (node: Layout): Layout | undefined => {
     if (node.type === "pane") {
@@ -141,4 +148,14 @@ export function resizeSplit(l: Layout, splitId: Id, sizes: number[]): Layout | "
 /** A Claude session id safe to type after `claude --resume`, as `is_session_id` in runtime.rs. */
 export function isSessionId(s: string): boolean {
   return /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(s);
+}
+
+/** The session a transcript pane mirrors, or undefined for a terminal pane. */
+export function transcriptOf(l: Layout, id: Id): string | undefined {
+  return leaf(l, id)?.transcript;
+}
+
+/** Pane ids that run a shell, in reading order: transcript panes left out. */
+export function terminalsOf(l: Layout): Id[] {
+  return panesOf(l).filter((p) => !transcriptOf(l, p));
 }

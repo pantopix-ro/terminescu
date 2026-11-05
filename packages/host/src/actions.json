@@ -32,6 +32,24 @@
    "accel": "Cmd+W"
   },
   {
+   "id": "open_transcript",
+   "label": "Open Transcript",
+   "menu": "Shell",
+   "accel": "Cmd+Shift+L"
+  },
+  {
+   "id": "extract",
+   "label": "Extract Selection to Variable",
+   "menu": "Shell",
+   "accel": "Cmd+E"
+  },
+  {
+   "id": "pin",
+   "label": "Pin Selection",
+   "menu": "Shell",
+   "accel": "Cmd+Shift+P"
+  },
+  {
    "id": "palette",
    "label": "Command Palette…",
    "menu": "View",

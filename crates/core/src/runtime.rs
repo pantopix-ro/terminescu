@@ -17,10 +17,12 @@
 //! reattach, the others get a fresh login shell in their last cwd, and a pane that ran a Claude
 //! session offers to resume it (D23).
 
+use crate::agent::{self, Agent, AgentState, AgentUpdate};
 use crate::daemon::{DaemonClient, DaemonError, DaemonEvent};
 use crate::layout::Layout;
 use crate::persist::{PaneRecord, Saved};
 use crate::state::{Command, CommandError, Core, Id, PatchBatch, Snapshot, Workspace};
+use crate::transcript::Tail;
 use crate::views::{Action, Sink, ViewId, Views};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -38,8 +40,12 @@ const FRAME: Duration = Duration::from_millis(16);
 const CWD_POLL: Duration = Duration::from_secs(5);
 /// How many unlinked exits `pane_exited` remembers for `spawn_for`.
 const EARLY_EXITS: usize = 64;
+/// How often a waiting session's transcript is read for a denial (D34).
+const TAIL_POLL: Duration = Duration::from_millis(250);
 
 pub type Emit = Box<dyn Fn(&PatchBatch) + Send + Sync>;
+/// Receives each change of a pane's Claude session state (task 4.2).
+pub type AgentSink = Box<dyn Fn(&AgentUpdate) + Send + Sync>;
 /// Makes sure a daemon runs, then connects to it. Called at start and after a drop.
 pub type Connect =
     Box<dyn Fn(mpsc::Sender<DaemonEvent>) -> Result<DaemonClient, DaemonError> + Send + Sync>;
@@ -116,6 +122,12 @@ struct Inner {
     instance: Mutex<String>,
     panes: Mutex<Panes>,
     views: Mutex<Views>,
+    /// The Claude session per pane, with a transcript tail while it waits (D34).
+    agents: Mutex<HashMap<Id, (Agent, Option<Tail>)>>,
+    agent_sink: Mutex<Option<AgentSink>>,
+    /// Transcript files found by session id, so a polled transcript pane walks the projects
+    /// folder once.
+    paths: Mutex<HashMap<String, std::path::PathBuf>>,
     queued: Condvar,
     emit: Emit,
     connect: Connect,
@@ -154,7 +166,7 @@ impl Runtime {
             Some(saved) => {
                 let same = saved.instance.as_deref() == Some(client.instance.as_str());
                 let mut ws = saved.workspace;
-                for (pane, side) in ws.pane_sides() {
+                for (pane, side) in ws.terminal_sides() {
                     let rec = saved.panes.get(&pane).cloned().unwrap_or_default();
                     let running = rec
                         .daemon
@@ -233,6 +245,9 @@ impl Runtime {
                 instance: Mutex::new(client.instance.clone()),
                 panes: Mutex::new(panes),
                 views: Mutex::new(Views::default()),
+                agents: Mutex::default(),
+                agent_sink: Mutex::default(),
+                paths: Mutex::default(),
                 queued: Condvar::new(),
                 emit,
                 connect,
@@ -245,7 +260,7 @@ impl Runtime {
             let ws = core.workspace().clone();
             let _guard = lock(&rt.inner.effects);
             drop(core);
-            for (pane, side) in ws.pane_sides() {
+            for (pane, side) in ws.terminal_sides() {
                 if let Some(d) = rt.daemon_of(&pane) {
                     let _ = client.set_side_tab(d, &side);
                 }
@@ -258,6 +273,7 @@ impl Runtime {
         rt.thread("daemon-events", move |me| me.events(rx))?;
         rt.thread("view-flush", |me| me.flush())?;
         rt.thread("cwd-poll", |me| me.poll_cwds())?;
+        rt.thread("agent-tail", |me| me.tail_agents())?;
         Ok((rt, windows))
     }
 
@@ -405,7 +421,7 @@ impl Runtime {
 
     pub fn command(&self, cmd: Command) -> Result<u64, CommandError> {
         let mut core = lock(&self.inner.core);
-        let before = core.workspace().pane_sides();
+        let before = core.workspace().terminal_sides();
         // Typed text and the cwd a split inherits, read before the batch changes the layout.
         let (typed, inherit) = match &cmd {
             Command::ResumePane { pane_id } => {
@@ -430,7 +446,7 @@ impl Runtime {
         let guard = lock(&self.inner.effects);
         drop(core);
         let cwd = inherit.and_then(|p| self.live_cwd(&p));
-        let mut effects = diff_effects(&before, &ws.pane_sides(), cwd);
+        let mut effects = diff_effects(&before, &ws.terminal_sides(), cwd);
         if let Some((pane, text)) = typed {
             effects.push(Effect::Type { pane, text });
         }
@@ -467,6 +483,7 @@ impl Runtime {
             for e in effects {
                 if let Effect::Close { pane } = e {
                     lock(&self.inner.views).remove_pane(&pane);
+                    self.drop_agent(&pane);
                     if let Some(d) = panes.unlink(&pane) {
                         panes.orphans.push(d);
                     }
@@ -489,6 +506,9 @@ impl Runtime {
                         panes.meta.remove(&pane);
                         panes.unlink(&pane)
                     };
+                    // After the unlink: a hook resolves its pane under `panes`, so none lands
+                    // for this pane once the agent is gone.
+                    self.drop_agent(&pane);
                     if let Some(d) = daemon {
                         let _ = client.close(d);
                     }
@@ -584,6 +604,14 @@ impl Runtime {
     /// A Claude Code hook event from a pane (D34). The session it names becomes the pane's
     /// session until `SessionEnd`, so a reboot can offer to resume it.
     pub fn hook(&self, daemon: PaneId, event: &serde_json::Value) {
+        {
+            // `panes` stays held while the agent changes, so a closing pane can't get an
+            // agent back after `drop_agent` (lock order: panes, then agents).
+            let panes = lock(&self.inner.panes);
+            if let Some(pane) = panes.by_daemon.get(&daemon) {
+                self.hook_agent(pane, event);
+            }
+        }
         let name = event.get("hook_event_name").and_then(|v| v.as_str());
         let session = event
             .get("session_id")
@@ -606,6 +634,145 @@ impl Runtime {
             rec.session = next;
             true
         });
+    }
+
+    /// The transcript file of a Claude session: the one its hooks named, else the session's
+    /// file in Claude's projects folder (task 4.4).
+    pub fn transcript_path(&self, session: &str) -> Option<std::path::PathBuf> {
+        if !is_session_id(session) {
+            return None;
+        }
+        let known = lock(&self.inner.agents)
+            .values()
+            .find(|(a, _)| a.session == session)
+            .and_then(|(a, _)| a.transcript.clone());
+        if known.is_some() {
+            return known;
+        }
+        if let Some(p) = lock(&self.inner.paths).get(session).filter(|p| p.is_file()) {
+            return Some(p.clone());
+        }
+        let found = crate::transcript::find_in(&crate::transcript::projects_dir(), session)?;
+        lock(&self.inner.paths).insert(session.into(), found.clone());
+        Some(found)
+    }
+
+    /// Where the UI gets agent changes; the current agents come from [`Runtime::agents`].
+    pub fn on_agent(&self, sink: AgentSink) {
+        *lock(&self.inner.agent_sink) = Some(sink);
+    }
+
+    /// Every pane's Claude session, for a window that just opened.
+    pub fn agents(&self) -> Vec<AgentUpdate> {
+        lock(&self.inner.agents)
+            .iter()
+            .map(|(pane, (a, _))| AgentUpdate {
+                pane: pane.clone(),
+                agent: Some(a.view()),
+            })
+            .collect()
+    }
+
+    fn tell(&self, updates: Vec<AgentUpdate>) {
+        if updates.is_empty() {
+            return;
+        }
+        if let Some(sink) = lock(&self.inner.agent_sink).as_ref() {
+            for u in &updates {
+                sink(u);
+            }
+        }
+    }
+
+    /// Agent updates go out while `agents` is held, so the UI sees them in the order the core
+    /// made them. The sink only emits an event and never calls back into the runtime.
+    fn drop_agent(&self, pane: &str) {
+        let mut agents = lock(&self.inner.agents);
+        if agents.remove(pane).is_some() {
+            self.tell(vec![AgentUpdate {
+                pane: pane.into(),
+                agent: None,
+            }]);
+        }
+        drop(agents);
+    }
+
+    /// Applies a hook event to the pane's agent and tells the UI when it shows differently.
+    fn hook_agent(&self, pane: &str, event: &serde_json::Value) {
+        let mut agents = lock(&self.inner.agents);
+        let update = {
+            let (old, old_tail) = match agents.remove(pane) {
+                Some((a, t)) => (Some(a), t),
+                None => (None, None),
+            };
+            let shown = old.as_ref().map(Agent::view);
+            let next = agent::on_hook(old, event);
+            let after = next.as_ref().map(Agent::view);
+            if let Some(a) = next {
+                // Only a waiting session needs its transcript read; a denial fires no hook.
+                let tail = match (a.state, &a.transcript) {
+                    (AgentState::Waiting, Some(path)) => match old_tail {
+                        Some(t) if t.path() == path => Some(t),
+                        _ => Some(Tail::from_end(path)),
+                    },
+                    _ => None,
+                };
+                agents.insert(pane.into(), (a, tail));
+            }
+            (shown != after).then(|| AgentUpdate {
+                pane: pane.into(),
+                agent: after,
+            })
+        };
+        self.tell(update.into_iter().collect());
+        drop(agents);
+    }
+
+    /// Reads the transcripts of waiting sessions: a denied prompt or a finished turn ends
+    /// Waiting (D34).
+    fn tail_agents(self) {
+        while !self.inner.stopped.load(Ordering::SeqCst) {
+            std::thread::sleep(TAIL_POLL);
+            // Read the files with no lock held, then apply what was read to agents that still
+            // wait on the same file.
+            let waiting: Vec<(Id, String, Tail)> = lock(&self.inner.agents)
+                .iter()
+                .filter_map(|(pane, (a, t))| Some((pane.clone(), a.session.clone(), t.clone()?)))
+                .collect();
+            let read: Vec<_> = waiting
+                .into_iter()
+                .filter_map(|(pane, session, mut t)| {
+                    let from = t.offset();
+                    let entries = t.read().ok()?;
+                    Some((pane, session, from, t, entries))
+                })
+                .collect();
+            let mut agents = lock(&self.inner.agents);
+            let mut updates = Vec::new();
+            for (pane, session, from, t, entries) in read {
+                let Some((a, tail)) = agents.get_mut(&pane) else {
+                    continue;
+                };
+                if a.session != session
+                    || tail
+                        .as_ref()
+                        .is_none_or(|c| c.path() != t.path() || c.offset() != from)
+                {
+                    continue;
+                }
+                if entries.iter().any(|e| agent::on_entry(a, e)) {
+                    *tail = None;
+                    updates.push(AgentUpdate {
+                        pane,
+                        agent: Some(a.view()),
+                    });
+                } else {
+                    *tail = Some(t);
+                }
+            }
+            self.tell(updates);
+            drop(agents);
+        }
     }
 
     /// Reads each pane's cwd every few seconds, so a reboot restarts shells where they were.
@@ -725,7 +892,7 @@ impl Runtime {
                     let ws = core.workspace().clone();
                     let _guard = lock(&self.inner.effects);
                     drop(core);
-                    for (pane, side) in ws.pane_sides() {
+                    for (pane, side) in ws.terminal_sides() {
                         let d = self.daemon_of(&pane);
                         if d.is_some_and(|d| live.contains(&d)) {
                             // A new connection has no subscriptions: attach views again.

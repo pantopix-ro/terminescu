@@ -78,6 +78,11 @@ pub enum Command {
         pane_id: Id,
         dir: Dir,
     },
+    /// A read-only transcript of `session` beside `pane_id`, on the right (task 4.4).
+    OpenTranscript {
+        pane_id: Id,
+        session: String,
+    },
     /// Closes a pane; the last pane of a tab closes the tab.
     ClosePane {
         pane_id: Id,
@@ -165,6 +170,8 @@ pub enum CommandError {
     NothingToResume(Id),
     #[error("pane {0} is too small to split")]
     PaneTooSmall(Id),
+    #[error("{0} is not a Claude session id")]
+    BadSession(String),
 }
 
 impl Workspace {
@@ -213,6 +220,20 @@ impl Workspace {
                     .find(|t| t.layout.has_pane(pane_id))
                     .map(|t| (s, t))
             })
+    }
+
+    /// Every pane that runs a shell with its side tab, in order: transcript panes left out.
+    pub fn terminal_sides(&self) -> Vec<(Id, Id)> {
+        self.windows
+            .iter()
+            .flat_map(|w| w.side_tabs.iter())
+            .flat_map(|s| {
+                s.tabs
+                    .iter()
+                    .flat_map(|t| t.layout.terminals())
+                    .map(|p| (p.clone(), s.id.clone()))
+            })
+            .collect()
     }
 
     /// Every pane with its side tab, in order.
@@ -538,13 +559,28 @@ impl Core {
                     .filter(|t| !t.is_empty());
                 vec![Patch::TabRenamed { tab_id, title }]
             }
-            Command::SplitPane { pane_id, dir } => {
+            Command::SplitPane { .. } | Command::OpenTranscript { .. } => {
+                let (pane_id, dir, new) = match cmd {
+                    Command::SplitPane { pane_id, dir } => {
+                        (pane_id, dir, Layout::pane((self.new_id)()))
+                    }
+                    Command::OpenTranscript { pane_id, session } => {
+                        if !crate::runtime::is_session_id(&session) {
+                            return Err(CommandError::BadSession(session));
+                        }
+                        (
+                            pane_id,
+                            Dir::Row,
+                            Layout::transcript((self.new_id)(), session),
+                        )
+                    }
+                    _ => unreachable!(),
+                };
                 let (_, tab) = ws
                     .locate_pane(&pane_id)
                     .ok_or(CommandError::UnknownPane(pane_id.clone()))?;
                 let tab_id = tab.id.clone();
                 let current = tab.layout.clone();
-                let new = Layout::pane((self.new_id)());
                 let layout =
                     current
                         .split(&pane_id, dir, new, (self.new_id)())
@@ -558,7 +594,12 @@ impl Core {
                 let (_, tab) = ws
                     .locate_pane(&pane_id)
                     .ok_or(CommandError::UnknownPane(pane_id.clone()))?;
-                match tab.layout.remove(&pane_id) {
+                // A transcript pane has no shell: a tab left with only those closes too.
+                let left = tab
+                    .layout
+                    .remove(&pane_id)
+                    .map(|l| l.filter(|l| !l.terminals().is_empty()));
+                match left {
                     Ok(Some(layout)) => vec![Patch::LayoutChanged {
                         tab_id: tab.id.clone(),
                         layout,
@@ -844,6 +885,38 @@ mod tests {
     }
 
     #[test]
+    fn a_transcript_pane_opens_beside_and_runs_no_shell() {
+        let mut c = core();
+        assert_eq!(
+            c.handle(Command::OpenTranscript {
+                pane_id: "id3".into(),
+                session: "--resume".into()
+            }),
+            Err(CommandError::BadSession("--resume".into()))
+        );
+        c.handle(Command::OpenTranscript {
+            pane_id: "id3".into(),
+            session: "sess-0b5c".into(),
+        })
+        .unwrap();
+        let layout = &c.workspace().windows[0].side_tabs[0].tabs[0].layout;
+        assert_eq!(layout.panes().len(), 2);
+        assert_eq!(layout.terminals(), vec!["id3"]);
+        assert_eq!(c.workspace().terminal_sides().len(), 1);
+        let json = serde_json::to_string(layout).unwrap();
+        assert!(json.contains(r#""transcript":"sess-0b5c""#), "{json}");
+        c.handle(Command::ClosePane {
+            pane_id: "id3".into(),
+        })
+        .unwrap();
+        assert_eq!(
+            shape(&c),
+            vec![Vec::<Vec<String>>::new()],
+            "a tab left with only a transcript closes"
+        );
+    }
+
+    #[test]
     fn resume_clears_the_offer_and_needs_one() {
         let mut c = core();
         assert_eq!(
@@ -856,6 +929,7 @@ mod tests {
         ws.windows[0].side_tabs[0].tabs[0].layout = Layout::Pane {
             id: "id3".into(),
             resume: Some("sess-1".into()),
+            transcript: None,
         };
         c.restore(ws);
         c.handle(Command::DismissResume {

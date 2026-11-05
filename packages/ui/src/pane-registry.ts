@@ -60,5 +60,8 @@ export function releasePane(paneId: string) {
 
 /** Gives the pane's terminal the keyboard. */
 export function focusPane(paneId: string) {
-  elements.get(paneId)?.querySelector<HTMLTextAreaElement>("textarea")?.focus();
+  const term = elements.get(paneId)?.querySelector<HTMLTextAreaElement>("textarea");
+  if (term) return term.focus();
+  // A transcript pane has no terminal; its root takes the focus.
+  document.querySelector<HTMLElement>(`[data-transcript="${CSS.escape(paneId)}"]`)?.focus();
 }

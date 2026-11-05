@@ -63,15 +63,21 @@ pub fn save(db: &Db, saved: &Saved) -> Result<()> {
                     params![t.id, owner, s.id, ti as i64, t.title, layout, now],
                 )?;
                 ids[2].push(&t.id);
+                let terminals = t.layout.terminals();
                 for p in t.layout.panes() {
                     let rec = saved.panes.get(p).cloned().unwrap_or_default();
+                    let kind = if terminals.contains(&p) {
+                        "terminal"
+                    } else {
+                        "transcript"
+                    };
                     tx.execute(
                         "INSERT INTO panes (id, owner_id, tab_id, kind, daemon_pane_id, cwd, session_id, created_at)
-                         VALUES (?1, ?2, ?3, 'terminal', ?4, ?5, ?6, ?7)
-                         ON CONFLICT (id) DO UPDATE SET tab_id = excluded.tab_id,
+                         VALUES (?1, ?2, ?3, ?8, ?4, ?5, ?6, ?7)
+                         ON CONFLICT (id) DO UPDATE SET tab_id = excluded.tab_id, kind = excluded.kind,
                            daemon_pane_id = excluded.daemon_pane_id, cwd = excluded.cwd,
                            session_id = excluded.session_id",
-                        params![p, owner, t.id, rec.daemon.map(|d| d as i64), rec.cwd, rec.session, now],
+                        params![p, owner, t.id, rec.daemon.map(|d| d as i64), rec.cwd, rec.session, now, kind],
                     )?;
                     ids[3].push(p);
                 }
@@ -174,6 +180,22 @@ pub fn load(db: &Db) -> Result<Option<Saved>> {
             {
                 *resume = None;
             }
+            // A transcript pane with a bad id goes; one with a good id stays shell-less.
+            if let Some(Layout::Pane {
+                transcript: Some(t),
+                ..
+            }) = layout.leaf_mut(&pane)
+                && !crate::runtime::is_session_id(t)
+            {
+                layout = layout
+                    .remove(&pane)
+                    .ok()
+                    .flatten()
+                    .unwrap_or_else(|| Layout::pane(crate::new_id()));
+            }
+        }
+        if layout.terminals().is_empty() {
+            layout = Layout::pane(crate::new_id());
         }
         if let Some((_, s)) = side_tabs.iter_mut().find(|(_, s)| s.id == side_tab_id) {
             s.tabs.push(Tab { id, title, layout });

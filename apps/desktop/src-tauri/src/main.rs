@@ -9,9 +9,11 @@ use std::time::Duration;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WebviewUrl, WebviewWindowBuilder, Wry};
+use terminescu_core::context;
 use terminescu_core::core_socket;
 use terminescu_core::daemon::DaemonClient;
 use terminescu_core::db::Db;
+use terminescu_core::hook_install;
 use terminescu_core::launcher;
 use terminescu_core::persist;
 use terminescu_core::runtime::Runtime;
@@ -22,6 +24,9 @@ use terminescu_protocol::paths;
 
 /// Event that carries every patch batch to every window.
 const PATCHES_EVENT: &str = "host://patches";
+const AGENT_EVENT: &str = "host://agent";
+/// A side tab's pins or variables changed; the payload is its id.
+const CONTEXT_EVENT: &str = "host://context";
 /// Event that carries an app action from the menu to the focused window (D17).
 const ACTION_EVENT: &str = "menu://action";
 
@@ -43,11 +48,95 @@ struct ActionDef {
 
 struct AppState {
     runtime: Runtime,
+    db: Arc<Mutex<Db>>,
 }
 
 #[tauri::command]
 fn host_snapshot(state: State<'_, AppState>) -> Snapshot {
     state.runtime.snapshot()
+}
+
+#[tauri::command]
+fn host_agents(state: State<'_, AppState>) -> Vec<terminescu_core::agent::AgentUpdate> {
+    state.runtime.agents()
+}
+
+#[derive(serde::Serialize)]
+struct TranscriptChunk {
+    entries: Vec<terminescu_core::transcript::Entry>,
+    /// Where the next read starts.
+    offset: u64,
+    /// The file shrank or was replaced: `entries` start over from the top.
+    reset: bool,
+}
+
+/// The entries added to a session's transcript since `offset` (task 4.4).
+// File and database reads run on a worker thread, so a big transcript or a save in progress
+// never stalls the window.
+#[tauri::command(async)]
+fn transcript_read(
+    state: State<'_, AppState>,
+    session: String,
+    offset: u64,
+) -> Result<TranscriptChunk, String> {
+    let path = state
+        .runtime
+        .transcript_path(&session)
+        .ok_or_else(|| format!("no transcript for session {session}"))?;
+    let mut tail = terminescu_core::transcript::Tail::at(path, offset);
+    let entries = tail.read().map_err(|e| e.to_string())?;
+    let reset = tail.offset() < offset || entries.first().is_some_and(|e| e.offset < offset);
+    Ok(TranscriptChunk {
+        entries,
+        offset: tail.offset(),
+        reset,
+    })
+}
+
+#[tauri::command(async)]
+fn pins_list(state: State<'_, AppState>, side_tab: String) -> Result<Vec<context::Pin>, String> {
+    context::pins(&lock(&state.db), &side_tab).map_err(|e| e.to_string())
+}
+
+#[tauri::command(async)]
+fn pin_add(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    pin: context::Pin,
+) -> Result<context::Pin, String> {
+    let pin = context::add_pin(&lock(&state.db), &pin).map_err(|e| e.to_string())?;
+    let _ = app.emit(CONTEXT_EVENT, &pin.side_tab_id);
+    Ok(pin)
+}
+
+#[tauri::command(async)]
+fn pin_remove(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<(), String> {
+    if let Some(side) = context::remove_pin(&lock(&state.db), &id).map_err(|e| e.to_string())? {
+        let _ = app.emit(CONTEXT_EVENT, side);
+    }
+    Ok(())
+}
+
+#[tauri::command(async)]
+fn vars_list(
+    state: State<'_, AppState>,
+    side_tab: String,
+) -> Result<Vec<context::Variable>, String> {
+    context::variables(&lock(&state.db), &side_tab).map_err(|e| e.to_string())
+}
+
+#[tauri::command(async)]
+fn var_extract(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    side_tab: String,
+    name: String,
+    value: String,
+) -> Result<context::Variable, String> {
+    let v = context::add_variable(&lock(&state.db), &side_tab, &name, &value, "extracted")
+        .map_err(|e| e.to_string())?;
+    let _ = app.emit(CONTEXT_EVENT, &side_tab);
+    Ok(v)
 }
 
 #[tauri::command]
@@ -126,8 +215,14 @@ fn start_runtime(
 ) -> Result<(Runtime, Vec<String>), Box<dyn std::error::Error>> {
     let bin = paths::bin_dir();
     let daemon = launcher::install(&sidecar("terminescu-ptyd")?, &bin)?;
-    if let Err(e) = launcher::install_cli(&sidecar("terminescu")?, &bin) {
-        eprintln!("terminescu: CLI copy failed: {e}");
+    match launcher::install_cli(&sidecar("terminescu")?, &bin) {
+        // Claude Code runs the hook from the copy, whose path survives updates (D36).
+        Ok(cli) => match hook_install::install(&hook_install::user_settings(), &cli) {
+            Ok(true) => eprintln!("terminescu: Claude Code hooks installed"),
+            Ok(false) => {}
+            Err(e) => eprintln!("terminescu: Claude Code hooks not installed: {e}"),
+        },
+        Err(e) => eprintln!("terminescu: CLI copy failed: {e}"),
     }
     let run = paths::run_paths();
     paths::ensure_private_dir(&run.dir)?;
@@ -165,6 +260,12 @@ fn start_runtime(
         connect,
         persist,
     )?;
+    let handle = app.clone();
+    runtime.on_agent(Box::new(move |update| {
+        if let Err(e) = handle.emit(AGENT_EVENT, update) {
+            eprintln!("terminescu: agent broadcast failed: {e}");
+        }
+    }));
     let _ = hooks.set(runtime.clone());
     Ok((runtime, windows))
 }
@@ -180,8 +281,8 @@ fn serve_core_socket(path: &Path, runtime: Arc<OnceLock<Runtime>>) -> std::io::R
     core_socket::serve(
         path,
         Arc::new(move |message: CoreMessage| match message.request {
-            // The session a hook names is kept for the resume offer (task 3.4); statuses
-            // follow from task 4.2 on.
+            // The session a hook names drives the tab's agent state (task 4.2) and the resume
+            // offer (task 3.4).
             CoreRequest::Hook { event } => {
                 if let Some(rt) = runtime.get() {
                     rt.hook(message.pane, &event);
@@ -300,8 +401,9 @@ fn main() {
             std::fs::create_dir_all(&dir)?;
             let db = Db::open(dir.join("terminescu.sqlite"))?;
             db.local_owner()?;
-            let (runtime, windows) = start_runtime(app.handle(), Arc::new(Mutex::new(db)))?;
-            app.manage(AppState { runtime });
+            let db = Arc::new(Mutex::new(db));
+            let (runtime, windows) = start_runtime(app.handle(), db.clone())?;
+            app.manage(AppState { runtime, db });
             for id in &windows {
                 open_window(app.handle(), id)?;
             }
@@ -309,6 +411,13 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             host_snapshot,
+            host_agents,
+            transcript_read,
+            pins_list,
+            pin_add,
+            pin_remove,
+            vars_list,
+            var_extract,
             host_command,
             pane_open,
             pane_close,

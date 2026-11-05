@@ -1,3 +1,4 @@
+import type { Pin, Variable } from "@terminescu/host";
 import { useEffect, useRef, useState } from "react";
 
 export type ContextMode = "pinned" | "auto";
@@ -7,6 +8,11 @@ export interface ContextPanelProps {
   onMode(mode: ContextMode): void;
   /** The active side tab's name; the context belongs to it. */
   owner: string | undefined;
+  variables?: Variable[];
+  pins?: Pin[];
+  /** Scrolls a transcript to the pin, opening one when needed (D12). */
+  onOpenPin?(pin: Pin): void;
+  onRemovePin?(pin: Pin): void;
 }
 
 const SECTIONS = ["Context", "Pins", "Prompts"] as const;
@@ -20,7 +26,43 @@ const EMPTY: Record<Section, string> = {
 /** How long the pointer rests on the edge before the panel slides in. */
 export const HOVER_MS = 150;
 
-function Body({ mode, onMode, owner }: ContextPanelProps) {
+function Items({ section, variables = [], pins = [], onOpenPin, onRemovePin }: ContextPanelProps & { section: Section }) {
+  if (section === "Context" && variables.length) {
+    return (
+      <ul className="ctx-list">
+        {variables.map((v) => (
+          <li key={v.id} className="ctx-var" data-var={v.name}>
+            <span className="ctx-name">{v.name}</span>
+            <span className="ctx-value small" title={v.value}>
+              {v.value}
+            </span>
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  if (section === "Pins" && pins.length) {
+    return (
+      <ul className="ctx-list">
+        {pins.map((p) => (
+          <li key={p.id} className="ctx-pin" data-pin={p.id}>
+            <button type="button" className="ctx-pin-open" title="Show in the transcript" onClick={() => onOpenPin?.(p)}>
+              <i className="ao-i x1 ao-i-pin" />
+              <span className="ctx-quote">{p.exact}</span>
+            </button>
+            <button type="button" className="ctx-pin-x" aria-label="Remove pin" onClick={() => onRemovePin?.(p)}>
+              ×
+            </button>
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  return <p className="small ao-dim ctx-empty">{EMPTY[section]}</p>;
+}
+
+function Body(props: ContextPanelProps) {
+  const { mode, onMode, owner } = props;
   const [section, setSection] = useState<Section>("Context");
   return (
     <>
@@ -54,7 +96,7 @@ function Body({ mode, onMode, owner }: ContextPanelProps) {
         ))}
       </div>
       <div className="ctx-scroll">
-        <p className="small ao-dim ctx-empty">{EMPTY[section]}</p>
+        <Items {...props} section={section} />
       </div>
     </>
   );

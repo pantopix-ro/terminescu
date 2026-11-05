@@ -1,6 +1,7 @@
 import { useDroppable } from "@dnd-kit/core";
-import type { SideTab, Tab } from "@terminescu/host";
+import type { AgentView, SideTab, Tab } from "@terminescu/host";
 import { useState } from "react";
+import { DOT, tabAgent, type Agents } from "./agents";
 
 export interface SideTabListProps {
   sideTabs: SideTab[];
@@ -11,6 +12,8 @@ export interface SideTabListProps {
   onNew(): void;
   /** A tab is being dragged: show the drop targets (task 3.2). */
   dragging: boolean;
+  /** Claude sessions by pane: a side tab with one waiting gets the amber marker (D34). */
+  agents?: Agents;
 }
 
 /** A side tab's name: its own title, else its first tab's title, else "shell". */
@@ -54,11 +57,13 @@ function Row(props: {
   expanded: boolean;
   activeTabId: string | undefined;
   dragging: boolean;
+  agents: Agents;
   onSelect(): void;
   onSelectTab(tabId: string): void;
   onToggle(): void;
 }) {
-  const { side, active, expanded, dragging } = props;
+  const { side, active, expanded, dragging, agents } = props;
+  const need = side.tabs.some((t) => tabAgent(t, agents)?.state === "waiting");
   const { setNodeRef, isOver } = useDroppable({ id: dropInto(side.id), disabled: !dragging || active });
   const group = side.tabs.length > 1;
   const open = group && (active || expanded);
@@ -69,14 +74,14 @@ function Row(props: {
         ref={setNodeRef}
         role="button"
         tabIndex={0}
-        className={`ao-st${active ? " active" : ""}${isOver ? " drop-into" : ""}`}
+        className={`ao-st${active ? " active" : ""}${isOver ? " drop-into" : ""}${need ? " need" : ""}`}
         style={style}
         data-side={side.id}
         aria-current={active ? "true" : undefined}
         onClick={props.onSelect}
         onKeyDown={(e) => e.key === "Enter" && props.onSelect()}
       >
-        <i className={`ao-i ${group ? "ao-i-group" : "ao-i-term"}`} />
+        <i className={`ao-i ${group ? "ao-i-group" : side.tabs[0] && tabAgent(side.tabs[0], agents) ? "ao-i-agent" : "ao-i-term"}`} />
         <span className="t">{sideTabName(side)}</span>
         {group && !active ? (
           <button
@@ -116,7 +121,7 @@ function Row(props: {
               data-kid={t.id}
               onClick={() => props.onSelectTab(t.id)}
             >
-              <i className="ao-i x1 ao-i-term" />
+              <KidIcon agent={tabAgent(t, agents)} />
               <span className="grow">{tabName(t)}</span>
               {active && <span>{tabChord(i, side.tabs.length)}</span>}
             </div>
@@ -131,7 +136,26 @@ function Row(props: {
  * The sidebar: one row per side tab. A side tab with more than one tab is a group and lists its
  * tabs under the row; the active group stays open, a chevron opens the others (D3).
  */
-export function SideTabList({ sideTabs, activeId, activeTabId, onSelect, onSelectTab, onNew, dragging }: SideTabListProps) {
+function KidIcon({ agent }: { agent: AgentView | undefined }) {
+  if (!agent) return <i className="ao-i x1 ao-i-term" />;
+  return (
+    <>
+      <i className="ao-i x1 ao-i-agent" aria-label="Claude" />
+      <span className={`ao-dot ${DOT[agent.state]}`} title={agent.state} />
+    </>
+  );
+}
+
+export function SideTabList({
+  sideTabs,
+  activeId,
+  activeTabId,
+  onSelect,
+  onSelectTab,
+  onNew,
+  dragging,
+  agents = {},
+}: SideTabListProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   return (
     <nav className="ao-side" aria-label="Side tabs">
@@ -153,6 +177,7 @@ export function SideTabList({ sideTabs, activeId, activeTabId, onSelect, onSelec
               expanded={!!expanded[s.id]}
               activeTabId={activeTabId}
               dragging={dragging}
+              agents={agents}
               onSelect={() => onSelect(s.id)}
               onSelectTab={(t) => onSelectTab(s.id, t)}
               onToggle={() => setExpanded((m) => ({ ...m, [s.id]: !m[s.id] }))}

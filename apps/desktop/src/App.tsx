@@ -9,9 +9,28 @@ import {
   type CollisionDetection,
   type DragEndEvent,
 } from "@dnd-kit/core";
-import { ACTIONS, chordLabel, panesOf, type Command, type Host, type Workspace, type WorkspaceStore } from "@terminescu/host";
+import {
+  ACTIONS,
+  chordLabel,
+  panesOf,
+  terminalsOf,
+  transcriptOf,
+  type AgentUpdate,
+  type Pin,
+  type Variable,
+  type Command,
+  type Host,
+  type Workspace,
+  type WorkspaceStore,
+} from "@terminescu/host";
 import {
   ContextPanel,
+  EXTRACT_EVENT,
+  PIN_EVENT,
+  quoteOf,
+  TranscriptPane,
+  type Agents,
+  type Reveal,
   DROP_END,
   focusPane,
   Palette,
@@ -214,6 +233,20 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       case "close":
         if (focused) void send({ type: "ClosePane", paneId: focused });
         return;
+      case "open_transcript": {
+        const session = focused && agents[focused]?.session;
+        if (!activeTab || !focused) return;
+        if (!session) return setError("No Claude session runs in this pane.");
+        followNewPane(activeTab.id);
+        return void send({ type: "OpenTranscript", paneId: focused, session });
+      }
+      case "pin":
+      case "extract":
+        // The focused transcript pane acts on its selection.
+        document
+          .querySelector(`[data-transcript="${CSS.escape(focused ?? "")}"]`)
+          ?.dispatchEvent(new Event(id === "pin" ? PIN_EVENT : EXTRACT_EVENT));
+        return;
       case "palette":
         return setPalette((p) => !p);
       case "context_panel":
@@ -228,6 +261,58 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       }
     }
   };
+  // Claude sessions by pane, from hook events in the core (D34).
+  const [agents, setAgents] = useState<Agents>({});
+  useEffect(() => {
+    let off: (() => void) | undefined;
+    let gone = false;
+    const apply = (u: AgentUpdate) =>
+      setAgents((m) => {
+        const next = { ...m };
+        if (u.agent) next[u.pane] = u.agent;
+        else delete next[u.pane];
+        return next;
+      });
+    void host.onAgent(apply).then((o) => (gone ? o() : (off = o)));
+    void host.agents().then((all) => !gone && all.forEach(apply));
+    return () => {
+      gone = true;
+      off?.();
+    };
+  }, [host]);
+
+  // The active side tab's variables and pins, read again whenever the core says they changed.
+  const [ctx, setCtx] = useState<{ side?: string; variables: Variable[]; pins: Pin[] }>({ variables: [], pins: [] });
+  const sideId = activeSide?.id;
+  useEffect(() => {
+    if (!sideId) return;
+    let gone = false;
+    let off: (() => void) | undefined;
+    const load = () =>
+      void Promise.all([host.variables(sideId), host.pins(sideId)])
+        .then(([variables, pins]) => !gone && setCtx({ side: sideId, variables, pins }))
+        .catch((e: unknown) => !gone && setError(String(e)));
+    load();
+    void host.onContext((s) => s === sideId && load()).then((o) => (gone ? o() : (off = o)));
+    return () => {
+      gone = true;
+      off?.();
+    };
+  }, [host, sideId]);
+  const shownCtx = ctx.side === sideId ? ctx : { variables: [], pins: [] };
+
+  // A pin to show: the transcript pane of its session scrolls to it.
+  const [reveal, setReveal] = useState<Reveal & { session: string }>();
+  const openPin = (pin: Pin) => {
+    const shown = activeTab && panesOf(activeTab.layout).some((p) => transcriptOf(activeTab.layout, p) === pin.session);
+    if (!shown && activeTab && focused) {
+      followNewPane(activeTab.id);
+      void send({ type: "OpenTranscript", paneId: focused, session: pin.session });
+    }
+    setReveal({ ...pin, session: pin.session, nonce: Date.now() });
+  };
+  const sideOfTab = (tabId: string) => sideTabs.find((s) => s.tabs.some((t) => t.id === tabId))?.id;
+
   const actRef = useRef(act);
   actRef.current = act;
   useEffect(() => {
@@ -321,6 +406,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               activeId={activeSide?.id}
               activeTabId={activeTab?.id}
               dragging={!!dragging}
+              agents={agents}
               onSelect={(id) => {
                 setSideTabId(id);
                 refocus();
@@ -336,6 +422,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
             <TabBar
               tabs={tabs}
               activeId={activeTab?.id}
+              agents={agents}
               onSelect={(id) => {
                 if (activeSide) selectTab(activeSide.id, id);
                 refocus();
@@ -349,7 +436,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                   key={activeTab.id}
                   layout={activeTab.layout}
                   onResize={(splitId, sizes) => send({ type: "ResizeSplit", splitId, sizes })}
-                  renderPane={(paneId, resume, slot) => (
+                  renderPane={(paneId, resume, slot, transcript) => (
                     <section
                       className={`ao-tp${multi && paneId === focused ? " focused" : ""}`}
                       data-pane={paneId}
@@ -357,8 +444,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                     >
                       {multi && (
                         <div className="ao-tp-head">
-                          <i className="ao-i x1 ao-i-term" />
-                          <span>shell</span>
+                          <i className={`ao-i x1 ${transcript ? "ao-i-agent" : "ao-i-term"}`} />
+                          <span>{transcript ? "transcript" : "shell"}</span>
                           <span className="grow" />
                           <button type="button" className="tp-close" aria-label="Close pane" onClick={() => void send({ type: "ClosePane", paneId })}>
                             ×
@@ -377,7 +464,38 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                           </button>
                         </div>
                       )}
-                      <div className="ao-tp-body">{slot}</div>
+                      <div className="ao-tp-body">
+                        {transcript ? (
+                          <TranscriptPane
+                            paneId={paneId}
+                            session={transcript}
+                            read={(offset) => host.readTranscript(transcript, offset)}
+                            pin={(entry, range) => {
+                              const side = sideOfTab(activeTab.id);
+                              if (!side) return Promise.resolve();
+                              const q = range ? quoteOf(entry.text, ...range) : undefined;
+                              return host.addPin({
+                                sideTabId: side,
+                                session: transcript,
+                                entryId: entry.id,
+                                exact: q ? q.exact : entry.text,
+                                prefix: q?.prefix ?? null,
+                                suffix: q?.suffix ?? null,
+                                start: range?.[0] ?? null,
+                                end: range?.[1] ?? null,
+                              });
+                            }}
+                            extract={(name, value) => {
+                              const side = sideOfTab(activeTab.id);
+                              return side ? host.extractVariable(side, name, value) : Promise.resolve();
+                            }}
+                            reveal={reveal?.session === transcript ? reveal : undefined}
+                            onFocus={() => focusIn(activeTab.id, paneId)}
+                          />
+                        ) : (
+                          slot
+                        )}
+                      </div>
                     </section>
                   )}
                 />
@@ -390,7 +508,15 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               )}
             </section>
           </main>
-          <ContextPanel mode={mode} onMode={changeMode} owner={activeSide && sideTabName(activeSide)} />
+          <ContextPanel
+            mode={mode}
+            onMode={changeMode}
+            owner={activeSide && sideTabName(activeSide)}
+            variables={shownCtx.variables}
+            pins={shownCtx.pins}
+            onOpenPin={openPin}
+            onRemovePin={(p) => void host.removePin(p.id).catch((e: unknown) => setError(String(e)))}
+          />
         </div>
         <DragOverlay dropAnimation={null}>
           {dragTab && (
@@ -403,7 +529,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       {/* Every pane of the window keeps its terminal; the active tab's panes show (D33). */}
       {sideTabs.flatMap((side) =>
         side.tabs.flatMap((tab) =>
-          panesOf(tab.layout).map((paneId) => (
+          terminalsOf(tab.layout).map((paneId) => (
             <TerminalPane
               key={paneId}
               paneId={paneId}

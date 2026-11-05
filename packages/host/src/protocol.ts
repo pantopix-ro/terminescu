@@ -7,7 +7,14 @@ export type Dir = "row" | "column";
 
 /** A tab's split tree (D3). Sizes are thousandths and add up to 1000. */
 export type Layout =
-  | { type: "pane"; id: Id; /** A Claude session to resume after a reboot (D23). */ resume?: string }
+  | {
+      type: "pane";
+      id: Id;
+      /** A Claude session to resume after a reboot (D23). */
+      resume?: string;
+      /** Set on a transcript pane: the Claude session it mirrors; such a pane has no shell (task 4.4). */
+      transcript?: string;
+    }
   | { type: "split"; id: Id; dir: Dir; children: Layout[]; sizes: number[] };
 
 export interface Tab {
@@ -39,6 +46,7 @@ export type Command =
   | { type: "MoveTabToNewSideTab"; tabId: Id; windowId: Id; index: number }
   | { type: "RenameTab"; tabId: Id; title: string | null }
   | { type: "SplitPane"; paneId: Id; dir: Dir }
+  | { type: "OpenTranscript"; paneId: Id; session: string }
   | { type: "ClosePane"; paneId: Id }
   | { type: "ResizeSplit"; splitId: Id; sizes: number[] }
   | { type: "ResumePane"; paneId: Id }
@@ -73,6 +81,66 @@ export interface CommandError {
     | "UnknownSplit"
     | "BadSizes"
     | "NothingToResume"
-    | "PaneTooSmall";
+    | "PaneTooSmall"
+    | "BadSession";
   id: Id | number;
+}
+
+/** A Claude session's state in its pane (D34). */
+export type AgentState = "idle" | "running" | "waiting" | "done";
+
+export interface AgentView {
+  session: string;
+  state: AgentState;
+  /** Claude's last reply from `Stop`, cut to a preview. */
+  lastMessage: string | null;
+}
+
+/** One pane's agent changed; `agent: null` means the pane shows its shell again. */
+export interface AgentUpdate {
+  pane: Id;
+  agent: AgentView | null;
+}
+
+/** A transcript line as the core reads it (D11). v1 shows user and assistant text (D25). */
+export type Entry = { id: string; offset: number; timestamp: string | null } & (
+  | { kind: "user"; text: string }
+  | { kind: "assistant"; text: string }
+  | { kind: "toolDenied" }
+  | { kind: "turnEnd" }
+  | { kind: "compaction" }
+  | { kind: "compactSummary"; text: string }
+);
+
+export interface TranscriptChunk {
+  entries: Entry[];
+  /** Where the next read starts. */
+  offset: number;
+  /** The file shrank or was replaced: `entries` start over from the top. */
+  reset: boolean;
+}
+
+/** A pin on a transcript entry, whole or a selection in it (D12). */
+export interface Pin {
+  id: Id;
+  sideTabId: Id;
+  session: string;
+  entryId: string;
+  exact: string;
+  prefix: string | null;
+  suffix: string | null;
+  /** UTF-16 offsets of `exact` in the entry text, as the webview counts them; null for a whole entry. */
+  start: number | null;
+  end: number | null;
+  createdAt: number;
+}
+
+export type NewPin = Omit<Pin, "id" | "createdAt">;
+
+export interface Variable {
+  id: Id;
+  sideTabId: Id;
+  name: string;
+  value: string;
+  source: string | null;
 }

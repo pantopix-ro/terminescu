@@ -2,7 +2,8 @@
 //! (D34). It forwards the event to the app and gets out of the way.
 
 use crate::common::{core_socket, pane_id};
-use std::io::Read;
+use std::io::{Read, Write};
+use std::path::Path;
 use std::process::ExitCode;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
@@ -14,6 +15,8 @@ const BUDGET: Duration = Duration::from_millis(80);
 const STDIN_WAIT: Duration = Duration::from_millis(50);
 /// Hook events carry tool input, which can be a whole file; past this the event is dropped.
 const MAX_EVENT: u64 = 4 * 1024 * 1024;
+/// The file Claude Code sources before each Bash command; `SessionStart` hooks may append to it.
+const CLAUDE_ENV_FILE: &str = "CLAUDE_ENV_FILE";
 
 pub fn run() -> ExitCode {
     let start = Instant::now();
@@ -38,9 +41,14 @@ pub fn run() -> ExitCode {
     if bytes.len() as u64 > MAX_EVENT {
         return ExitCode::SUCCESS;
     }
-    let Ok(event) = serde_json::from_slice(&bytes) else {
+    let Ok(event) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
         return ExitCode::SUCCESS;
     };
+    if event.get("hook_event_name").and_then(|v| v.as_str()) == Some("SessionStart")
+        && let Some(file) = std::env::var_os(CLAUDE_ENV_FILE).filter(|f| !f.is_empty())
+    {
+        let _ = add_env_line(Path::new(&file));
+    }
     let left = BUDGET.saturating_sub(start.elapsed());
     if !left.is_zero() {
         // The app may be closed or busy; either way Claude must not notice.
@@ -51,4 +59,24 @@ pub fn run() -> ExitCode {
         );
     }
     ExitCode::SUCCESS
+}
+
+/// The line that gives Claude's Bash commands the side tab's session and secret variables
+/// (D35). The values never touch the file: Claude runs `var env` each time.
+fn env_line(cli: &Path) -> String {
+    let quoted = format!("'{}'", cli.to_string_lossy().replace('\'', r"'\''"));
+    format!("eval \"$({quoted} var env 2>/dev/null)\"\n")
+}
+
+/// Appends [`env_line`] once; a resumed session reuses the same file.
+fn add_env_line(file: &Path) -> std::io::Result<()> {
+    let line = env_line(&std::env::current_exe()?);
+    if std::fs::read_to_string(file).is_ok_and(|text| text.contains(line.trim_end())) {
+        return Ok(());
+    }
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(file)?
+        .write_all(line.as_bytes())
 }

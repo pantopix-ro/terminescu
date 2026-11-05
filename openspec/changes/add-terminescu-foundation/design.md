@@ -141,7 +141,7 @@ Shells and Claude don't read `⌘` on macOS, so every app action is a `⌘` chor
 terminal keeps every other key: `⌘K` palette, `⌘T` tab, `⌘N` side tab, `⌘D` and `⌘⇧D` split,
 `⌘W` close, `⌘1`-`⌘9` tab, `⌃⌘1`-`⌃⌘9` side tab, `⌘I` insert, `⌘E` extract, `⌘⇧P` pin,
 `⌘⇧S` status editor, `⌘⇧A` jump to the oldest waiting session, `⌥⌘T` text tab, `⌘O` open
-file. The app's chord wins in every pane kind, text panes included: `⌘D` splits, `⌘I`
+file, `⌘⇧L` transcript pane beside a Claude pane. The app's chord wins in every pane kind, text panes included: `⌘D` splits, `⌘I`
 inserts, `⌘K` opens the palette, `⌘E` extracts, and CodeMirror's select-next moves to `⌃⌘G`.
 Every shortcut is editable in Settings › Keys in v1, which flags conflicts. Rejected: the first draft's
 Esc Esc plus single letters, which made the person leave the terminal before every action.
@@ -342,8 +342,10 @@ are JSON strings and not built for throughput.
 ### D34. Hook events map to states, and the hook never gets in Claude's way
 `SessionStart` maps the session to the pane. `UserPromptSubmit` sets Running.
 `PermissionRequest` sets Waiting (amber) about 0.05 s after `PreToolUse`; it is the fast signal.
-`Notification` `permission_prompt` follows only after 6 s unanswered, and `elicitation_dialog`
-also sets Waiting. `PostToolUse` and `PostToolUseFailure` clear Waiting back to Running.
+`Notification` `permission_prompt` follows only after 6 s unanswered and sets nothing: each
+hook posts on its own connection, so it can land after a fast approval. `elicitation_dialog`
+sets Waiting. `PostToolUse` and `PostToolUseFailure` clear Waiting back to Running; one that
+lands after `Stop` leaves the tab Done.
 Denying a prompt fires no hook (spike 0.5), so while a tab is Waiting the core tails its
 transcript and sets Done on a line with `toolDenialKind` or `subtype: "turn_duration"`; the
 next `UserPromptSubmit` also clears it. `PermissionDenied` covers auto-mode denials and clears

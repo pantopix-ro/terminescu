@@ -36,6 +36,10 @@ pub enum Layout {
         /// A Claude session that ran here before a reboot; the pane offers to resume it (D23).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         resume: Option<String>,
+        /// Set on a transcript pane: the Claude session it mirrors, read-only (task 4.4). Such
+        /// a pane has no shell.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        transcript: Option<String>,
     },
     Split {
         id: Id,
@@ -59,7 +63,33 @@ impl Layout {
         Layout::Pane {
             id: id.into(),
             resume: None,
+            transcript: None,
         }
+    }
+
+    /// A transcript pane mirroring `session` (task 4.4).
+    pub fn transcript(id: impl Into<Id>, session: impl Into<String>) -> Self {
+        Layout::Pane {
+            id: id.into(),
+            resume: None,
+            transcript: Some(session.into()),
+        }
+    }
+
+    /// The panes that run a shell, in reading order: every pane but transcript panes.
+    pub fn terminals(&self) -> Vec<&Id> {
+        let mut out = Vec::new();
+        self.walk(&mut |l| {
+            if let Layout::Pane {
+                id,
+                transcript: None,
+                ..
+            } = l
+            {
+                out.push(id);
+            }
+        });
+        out
     }
 
     /// Pane ids, in reading order.
@@ -109,7 +139,7 @@ impl Layout {
     pub fn resume_of(&self, pane: &str) -> Option<&str> {
         let mut out = None;
         self.walk(&mut |l| {
-            if let Layout::Pane { id, resume } = l
+            if let Layout::Pane { id, resume, .. } = l
                 && id == pane
             {
                 out = resume.as_deref();

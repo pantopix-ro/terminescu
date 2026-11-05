@@ -157,20 +157,32 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
 
 ## 4. Claude awareness (P1)
 
-- [ ] 4.1 `terminescu hook` and its idempotent installer, with the quoted D36 path: events and
+- [x] 4.1 `terminescu hook` and its idempotent installer, with the quoted D36 path: events and
       rules of D34, 5 s timeout,
       silent stdout, exit 0 without `TERMINESCU_PANE_ID` or socket. Verify: running the
       installer twice leaves one entry per event and other hooks unchanged; `hook.test.rs` runs
       the hook with no pane id and with no socket and gets exit 0 and empty stdout under 100 ms.
-- [ ] 4.2 Session to pane mapping, agent icon, Waiting set and cleared per D34, `CLAUDE_ENV_FILE`
+      Done 2026-11-05; `hook_install.rs` (4 tests) runs at every start, single-quotes the path,
+      honours `CLAUDE_CONFIG_DIR`; `crates/cli/tests/hook.rs` also covers a stdin that never closes.
+- [x] 4.2 Session to pane mapping, agent icon, Waiting set and cleared per D34, `CLAUDE_ENV_FILE`
       line on `SessionStart` (D35). Verify: `waiting.test.rs` replays the spike 0.5 fixtures
       (`sequences.json` with `transcript-denied.jsonl`) and checks each state; manual, a
       permission prompt turns the tab amber, approving clears it and Esc clears it. The denied
-      case reads the transcript tail, so 4.2 lands after 4.3.
-- [ ] 4.3 JSONL tail to `Entry` with byte-offset cursor. Verify: `jsonl.test.rs` with a
-      recorded transcript fixture including a compaction marker.
-- [ ] 4.4 Minimal transcript pane: read-only user and assistant messages, Pin and Extract per
+      case reads the transcript tail, so 4.2 lands after 4.3. Done 2026-11-05; `agent.rs` is the
+      pure state machine, `crates/core/tests/waiting.rs` replays every case; the runtime tails the
+      transcript only while Waiting; the hook appends the `var env` line once (`hook.rs` test).
+      Hooks can arrive out of order: a late `permission_prompt` or post-`Stop` tool event changes
+      nothing (`agent.rs` tests). Known gap: a `claude` killed without `SessionEnd` keeps its
+      icon until the next session in that pane; 5.x can clear it when the foreground is a shell.
+      Manual amber check in the test steps.
+- [x] 4.3 JSONL tail to `Entry` with byte-offset cursor. Verify: `jsonl.test.rs` with a
+      recorded transcript fixture including a compaction marker. Done 2026-11-05;
+      `crates/core/tests/jsonl.rs` (6 tests, `transcript-compact.jsonl`).
+- [x] 4.4 Minimal transcript pane: read-only user and assistant messages, Pin and Extract per
       message and per selection (D25). Verify: manual, pin part of a response and reopen it.
+      Done 2026-11-05; `⌘⇧L` opens it (`OpenTranscript`, a pane without a shell), `⌘⇧P` and `⌘E`
+      act on the selection, pins re-anchor by quote (`anchor.ts`); extract refuses a name in use.
+      Covered by `e2e/transcript.spec.ts`; manual check in the test steps.
 
 ## 5. Statuses (P1)
 
@@ -186,7 +198,9 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
 - [ ] 6.1 Context panel: variables with storage modes, pins, links, text; `⌘E` extract with
       suggested names, `⌘⇧P` pin of a selection or a whole message with text-quote anchors
       (D12). Verify: `suggest.test.ts` names a GitHub PR URL `pr_<repo>`; `anchor.test.ts`
-      re-anchors a pin after its offsets shift.
+      re-anchors a pin after its offsets shift. From the group 4 review: an extracted value now
+      sits in SQLite in plaintext and shows unmasked; the secret mode masks it and keeps the
+      value out of SQLite (D35).
 - [ ] 6.2 Insert a secret as `$NAME`, with the transcript warning (D21, D35). Verify: test reads
       only `$API_TOKEN` on the pty, and a Claude Bash command fixture sourcing the
       `CLAUDE_ENV_FILE` line sees the value.
