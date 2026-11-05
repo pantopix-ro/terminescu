@@ -1,0 +1,26 @@
+{
+  "cwd": "/Users/owner/src/acme-api",
+  "duration_ms": 927,
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PostToolUse",
+  "permission_mode": "default",
+  "prompt_id": "00000000-0000-4000-8000-000000000002",
+  "scratchpad_dir": "/tmp/claude-501/scratch",
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "tool_input": {
+    "command": "wc -l notes.md",
+    "description": "Count lines in notes.md"
+  },
+  "tool_name": "Bash",
+  "tool_response": {
+    "interrupted": false,
+    "isImage": false,
+    "noOutputExpected": false,
+    "stderr": "",
+    "stdout": "       3 notes.md"
+  },
+  "tool_use_id": "toolu_fixture01",
+  "transcript_path": "/Users/owner/.claude/projects/-Users-owner-src-acme-api/00000000-0000-4000-8000-000000000001.jsonl"
+}

@@ -1,0 +1,287 @@
+{
+ "comment": "App actions and their default chords (D17). The app menu (apps/desktop/src-tauri) and the browser fallback (packages/host/src/keys.ts) both read this file.",
+ "actions": [
+  {
+   "id": "new_text",
+   "label": "New Text Tab",
+   "menu": "File",
+   "accel": "Cmd+Alt+T"
+  },
+  {
+   "id": "open_file",
+   "label": "Open File…",
+   "menu": "File",
+   "accel": "Cmd+O"
+  },
+  {
+   "id": "save",
+   "label": "Save",
+   "menu": "File",
+   "accel": "Cmd+S"
+  },
+  {
+   "id": "save_as",
+   "label": "Save As…",
+   "menu": "File",
+   "accel": "Cmd+Alt+Shift+S"
+  },
+  {
+   "id": "return_edit",
+   "label": "Return to Caller",
+   "menu": "File",
+   "accel": "Cmd+Enter"
+  },
+  {
+   "id": "send_to_pane",
+   "label": "Send to Pane",
+   "menu": "File",
+   "accel": "Cmd+Shift+Enter"
+  },
+  {
+   "id": "send_to_tab",
+   "label": "Send to Tab…",
+   "menu": "File",
+   "accel": "Cmd+Alt+Enter"
+  },
+  {
+   "id": "new_tab",
+   "label": "New Tab",
+   "menu": "Shell",
+   "accel": "Cmd+T"
+  },
+  {
+   "id": "new_side_tab",
+   "label": "New Side Tab",
+   "menu": "Shell",
+   "accel": "Cmd+N"
+  },
+  {
+   "id": "split_right",
+   "label": "Split Right",
+   "menu": "Shell",
+   "accel": "Cmd+D"
+  },
+  {
+   "id": "split_down",
+   "label": "Split Down",
+   "menu": "Shell",
+   "accel": "Cmd+Shift+D"
+  },
+  {
+   "id": "close",
+   "label": "Close Pane",
+   "menu": "Shell",
+   "accel": "Cmd+W"
+  },
+  {
+   "id": "open_transcript",
+   "label": "Open Transcript",
+   "menu": "Shell",
+   "accel": "Cmd+Shift+L"
+  },
+  {
+   "id": "extract",
+   "label": "Extract Selection to Variable",
+   "menu": "Shell",
+   "accel": "Cmd+E"
+  },
+  {
+   "id": "pin",
+   "label": "Pin Selection",
+   "menu": "Shell",
+   "accel": "Cmd+Shift+P"
+  },
+  {
+   "id": "insert",
+   "label": "Insert Prompt or Variable…",
+   "menu": "Shell",
+   "accel": "Cmd+I"
+  },
+  {
+   "id": "status_editor",
+   "label": "Edit Status…",
+   "menu": "Shell",
+   "accel": "Cmd+Shift+S"
+  },
+  {
+   "id": "settings",
+   "label": "Settings…",
+   "menu": "View",
+   "accel": "Cmd+Comma"
+  },
+  {
+   "id": "palette",
+   "label": "Command Palette…",
+   "menu": "View",
+   "accel": "Cmd+K"
+  },
+  {
+   "id": "prompt_library",
+   "label": "Prompt Library…",
+   "menu": "View",
+   "accel": "Cmd+Shift+I"
+  },
+  {
+   "id": "context_panel",
+   "label": "Pin or Auto-hide Context",
+   "menu": "View",
+   "accel": "Cmd+Backslash"
+  },
+  {
+   "id": "jump_waiting",
+   "label": "Jump to Waiting Session",
+   "menu": "View",
+   "accel": "Cmd+Shift+A"
+  },
+  {
+   "id": "zoom_in",
+   "label": "Zoom In",
+   "menu": "View",
+   "accel": "Cmd+Equal"
+  },
+  {
+   "id": "zoom_out",
+   "label": "Zoom Out",
+   "menu": "View",
+   "accel": "Cmd+Minus"
+  },
+  {
+   "id": "zoom_reset",
+   "label": "Actual Size",
+   "menu": "View",
+   "accel": "Cmd+0"
+  },
+  {
+   "id": "focus_left",
+   "label": "Focus Pane Left",
+   "menu": "View",
+   "accel": "Cmd+Alt+Left"
+  },
+  {
+   "id": "focus_right",
+   "label": "Focus Pane Right",
+   "menu": "View",
+   "accel": "Cmd+Alt+Right"
+  },
+  {
+   "id": "focus_up",
+   "label": "Focus Pane Up",
+   "menu": "View",
+   "accel": "Cmd+Alt+Up"
+  },
+  {
+   "id": "focus_down",
+   "label": "Focus Pane Down",
+   "menu": "View",
+   "accel": "Cmd+Alt+Down"
+  },
+  {
+   "id": "tab_1",
+   "label": "Tab 1",
+   "menu": "Window",
+   "accel": "Cmd+1"
+  },
+  {
+   "id": "tab_2",
+   "label": "Tab 2",
+   "menu": "Window",
+   "accel": "Cmd+2"
+  },
+  {
+   "id": "tab_3",
+   "label": "Tab 3",
+   "menu": "Window",
+   "accel": "Cmd+3"
+  },
+  {
+   "id": "tab_4",
+   "label": "Tab 4",
+   "menu": "Window",
+   "accel": "Cmd+4"
+  },
+  {
+   "id": "tab_5",
+   "label": "Tab 5",
+   "menu": "Window",
+   "accel": "Cmd+5"
+  },
+  {
+   "id": "tab_6",
+   "label": "Tab 6",
+   "menu": "Window",
+   "accel": "Cmd+6"
+  },
+  {
+   "id": "tab_7",
+   "label": "Tab 7",
+   "menu": "Window",
+   "accel": "Cmd+7"
+  },
+  {
+   "id": "tab_8",
+   "label": "Tab 8",
+   "menu": "Window",
+   "accel": "Cmd+8"
+  },
+  {
+   "id": "tab_9",
+   "label": "Last Tab",
+   "menu": "Window",
+   "accel": "Cmd+9"
+  },
+  {
+   "id": "side_1",
+   "label": "Side Tab 1",
+   "menu": "Window",
+   "accel": "Ctrl+Cmd+1"
+  },
+  {
+   "id": "side_2",
+   "label": "Side Tab 2",
+   "menu": "Window",
+   "accel": "Ctrl+Cmd+2"
+  },
+  {
+   "id": "side_3",
+   "label": "Side Tab 3",
+   "menu": "Window",
+   "accel": "Ctrl+Cmd+3"
+  },
+  {
+   "id": "side_4",
+   "label": "Side Tab 4",
+   "menu": "Window",
+   "accel": "Ctrl+Cmd+4"
+  },
+  {
+   "id": "side_5",
+   "label": "Side Tab 5",
+   "menu": "Window",
+   "accel": "Ctrl+Cmd+5"
+  },
+  {
+   "id": "side_6",
+   "label": "Side Tab 6",
+   "menu": "Window",
+   "accel": "Ctrl+Cmd+6"
+  },
+  {
+   "id": "side_7",
+   "label": "Side Tab 7",
+   "menu": "Window",
+   "accel": "Ctrl+Cmd+7"
+  },
+  {
+   "id": "side_8",
+   "label": "Side Tab 8",
+   "menu": "Window",
+   "accel": "Ctrl+Cmd+8"
+  },
+  {
+   "id": "side_9",
+   "label": "Last Side Tab",
+   "menu": "Window",
+   "accel": "Ctrl+Cmd+9"
+  }
+ ]
+}

@@ -36,10 +36,12 @@ pane named by `TERMINESCU_PANE_ID`, and the pane and its tab SHALL show the `age
 - **THEN** the tab gains the agent icon and its title reads `claude · <cwd>`
 
 ### Requirement: Waiting detection
-`PermissionRequest`, and a `Notification` whose `notification_type` is `permission_prompt` or
-`elicitation_dialog`, SHALL set the pane's tab to Waiting. `PostToolUse`, `PostToolUseFailure`,
-`PermissionDenied`, `UserPromptSubmit` and `Stop` SHALL clear it. A `Notification` of type
-`idle_prompt` SHALL NOT set Waiting.
+`PermissionRequest`, and a `Notification` whose `notification_type` is `elicitation_dialog`,
+SHALL set the pane's tab to Waiting. `PostToolUse`, `PostToolUseFailure`,
+`PermissionDenied`, `UserPromptSubmit` and `Stop` SHALL clear it. While a tab is Waiting the
+app SHALL tail its transcript and clear Waiting on a user-rejected tool result or a
+`turn_duration` line. A `Notification` of type `idle_prompt` or `permission_prompt` SHALL NOT
+set Waiting.
 
 #### Scenario: Permission prompt
 - **WHEN** Claude asks to run a command in a background tab
@@ -49,19 +51,43 @@ pane named by `TERMINESCU_PANE_ID`, and the pane and its tab SHALL show the `age
 - **WHEN** the person approves the command and it runs
 - **THEN** `PostToolUse` arrives, the amber marker clears and the tab shows Running
 
+#### Scenario: Permission denied
+- **WHEN** the person presses Esc on a permission prompt and no hook arrives
+- **THEN** the transcript shows the rejected tool result, the amber marker clears and the tab shows Done
+
 #### Scenario: Finished session left alone
 - **WHEN** a session stops and Claude later sends an `idle_prompt` notification
 - **THEN** the tab stays Done and no amber marker shows
 
+### Requirement: Hook arrival order
+Each hook posts on its own connection, so events MAY arrive out of order. A `permission_prompt`
+notification SHALL NOT bring back Waiting, since it follows `PermissionRequest` by seconds and
+can arrive after the prompt was answered. A tool event that arrives after `Stop` SHALL leave
+the tab Done.
+
+#### Scenario: Late permission notification
+- **WHEN** the person approves a prompt and the `permission_prompt` notification arrives after
+  `PostToolUse`
+- **THEN** the tab stays Running
+
+#### Scenario: Late tool result
+- **WHEN** a `PostToolUse` event arrives after `Stop`
+- **THEN** the tab stays Done
+
 ### Requirement: Transcript mirror
 The app SHALL tail the session's JSONL with a byte-offset cursor, map lines to entries with
-stable ids, and render them in a read-only transcript pane on request. In v1 the pane SHALL
-show user and assistant messages with Pin and Extract on each message and on any selection;
-tool calls, diffs and thinking SHALL be left out.
+stable ids, and render them in a read-only transcript pane on request. The pane SHALL show
+user and assistant messages with Pin and Extract on each message and on any selection. It SHALL
+also show thinking and tool calls, collapsed; an open file tool call SHALL show its
+diff and every open call its output.
 
 #### Scenario: Open a transcript pane
 - **WHEN** the person splits a Claude pane and picks "transcript"
 - **THEN** the new pane lists the session's entries, including ones from before the split
+
+#### Scenario: Open an edit
+- **WHEN** Claude edited a file and the person opens that call in the transcript pane
+- **THEN** the pane shows the removed and added lines and the tool's output
 
 ### Requirement: Resume after reboot
 After a reboot a tab that held a Claude session SHALL show a "resume" button. Pressing it SHALL

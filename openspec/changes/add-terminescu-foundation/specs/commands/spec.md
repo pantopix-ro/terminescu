@@ -3,14 +3,18 @@
 ## ADDED Requirements
 
 ### Requirement: Saved commands
-The system SHALL store shell commands with `{{variable}}` placeholders, scoped to one side tab
-(in its context) or global (in the library), and SHALL list them in a Commands section of the
-sidebar. "Run" SHALL paste the resolved command and send Enter; "Insert" SHALL paste it without
+The system SHALL store shell commands with `{{variable}}` placeholders, global by default (in
+the library) or, when the person opts in, scoped to one side tab (in its context), and SHALL list
+them in a Commands section of the sidebar. A launcher command SHALL stay scoped to its side tab. "Run" SHALL paste the resolved command and send Enter; "Insert" SHALL paste it without
 Enter. The target SHALL be a new tab, the focused pane or a new side tab.
 
 #### Scenario: Run in a new tab
 - **WHEN** the person runs `gh pr checks {{pr_api}}` from PROJ-482's Commands with `pr_api` set
 - **THEN** a new tab opens in PROJ-482 and runs the command with the PR URL filled in
+
+#### Scenario: A new command is global
+- **WHEN** the person saves `git status` from the Commands section without ticking "this side tab only"
+- **THEN** every side tab lists it and fills its `{{variables}}` from its own context
 
 #### Scenario: Missing variable
 - **WHEN** a command uses `{{pr_api}}` and the side tab has no `pr_api`

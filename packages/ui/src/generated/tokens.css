@@ -1,0 +1,73 @@
+/* Terminescu Workbench — generated from tokens.json */
+:root, [data-theme="dark"] {
+  --bg: #111318;
+  --panel: #171a21;
+  --panel-2: #1d2029;
+  --line: #2a2e38;
+  --line-strong: #414756;
+  --fg: #d7dae0;
+  --dim: #8b91a0;
+  --faint: #5c6270;
+  --shadow: #05060a;
+  --amber: #e5a33a;
+  --on-amber: #1a1205;
+  --amber-edge: #f3c470;
+  --green: #57ab5a;
+  --red: #e5534b;
+  --blue: #539bf5;
+  --magenta: #b083f0;
+  --cyan: #39c5cf;
+  --tint-blue: #212f43;
+  --tint-cyan: #1c353d;
+  --tint-green: #21312a;
+  --tint-magenta: #2f2b42;
+  --tint-red: #382328;
+  --tint-amber: #383025;
+  --selection: #294161;
+  --focus: var(--amber);
+  --link: var(--blue);
+  --ansi-0: #2a2e38;
+  --ansi-1: var(--red);
+  --ansi-2: var(--green);
+  --ansi-3: #d4b84a;
+  --ansi-4: var(--blue);
+  --ansi-5: var(--magenta);
+  --ansi-6: var(--cyan);
+  --ansi-7: #b9bdc6;
+  --ansi-8: #6e7585;
+  --ansi-9: #f47067;
+  --ansi-10: #6bc46d;
+  --ansi-11: #e8cc6a;
+  --ansi-12: #6cb6ff;
+  --ansi-13: #dcbdfb;
+  --ansi-14: #56d4dd;
+  --ansi-15: #f0f2f5;
+  --shadow-hard: 6px 6px 0 0 #05060a;
+  --shadow-hard-sm: 3px 3px 0 0 #05060a;
+  --frame-neutral: 0 -2px 0 0 #414756, 0 2px 0 0 #414756, -2px 0 0 0 #414756, 2px 0 0 0 #414756, 6px 6px 0 0 #05060a;
+  --frame-amber: 0 -2px 0 0 #f3c470, 0 2px 0 0 #f3c470, -2px 0 0 0 #f3c470, 2px 0 0 0 #f3c470, 3px 3px 0 0 #05060a;
+  --focus-ring: 0 0 0 2px #111318, 0 0 0 4px #e5a33a;
+}
+:root {
+  --px: 2px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --radius-0: 0;
+  --radius-1: 2px;
+  --radius-2: 4px;
+  --step-fast: 80ms;
+  --step-slow: 240ms;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-pixel: Silkscreen, "Geist Mono", ui-monospace, monospace;
+}
+.title { font-family: var(--font-mono); font-size: 18px; line-height: 24px; font-weight: 600; }
+.body { font-family: var(--font-mono); font-size: 13px; line-height: 20px; font-weight: 400; }
+.body-strong { font-family: var(--font-mono); font-size: 13px; line-height: 20px; font-weight: 600; }
+.small { font-family: var(--font-mono); font-size: 12px; line-height: 16px; font-weight: 400; }
+.term { font-family: var(--font-mono); font-size: 13px; line-height: 18px; font-weight: 400; }
+.pixel-label { font-family: var(--font-pixel); font-size: 8px; line-height: 12px; font-weight: 400; letter-spacing: 0.04em; }
+.pixel-heading { font-family: var(--font-pixel); font-size: 16px; line-height: 20px; font-weight: 400; letter-spacing: 0.02em; }
+.pixel-display { font-family: var(--font-pixel); font-size: 32px; line-height: 32px; font-weight: 400; }

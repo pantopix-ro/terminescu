@@ -1,0 +1,16 @@
+{
+  "background_tasks": [],
+  "cwd": "/Users/owner/src/acme-api",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "Stop",
+  "last_assistant_message": "`notes.md` has 3 lines.",
+  "permission_mode": "default",
+  "prompt_id": "00000000-0000-4000-8000-000000000002",
+  "scratchpad_dir": "/tmp/claude-501/scratch",
+  "session_crons": [],
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "stop_hook_active": false,
+  "transcript_path": "/Users/owner/.claude/projects/-Users-owner-src-acme-api/00000000-0000-4000-8000-000000000001.jsonl"
+}

@@ -1,0 +1,154 @@
+cRestored session: Wed Nov  4 16:32:24 EET 2026
+owner@mac work % printf "\033[32mgreen\033[0m plain\n"; seq 1 120
+[0;32;49mgreen[0;39;49m plain
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51
+52
+53
+54
+55
+56
+57
+58
+59
+60
+61
+62
+63
+64
+65
+66
+67
+68
+69
+70
+71
+72
+73
+74
+75
+76
+77
+78
+79
+80
+81
+82
+83
+84
+85
+86
+87
+88
+89
+90
+91
+92
+93
+94
+95
+96
+97
+98
+99
+100
+101
+102
+103
+104
+105
+106
+107
+108
+109
+110
+111
+112
+113
+114
+115
+116
+117
+118
+119
+120
+owner@mac work % claude --model haiku --permission-mode default
+[30;1H[?1049h[H  12. Create temp files with [0;38;2;177;185;249;49mmktemp[0;39;49m rather than fixed names in [0;38;2;177;185;249;49m/tmp[0;39;49m, which invites collisions and
+      symlink attacks.
+  13. Validate arguments early and print a short usage message when they are missing.
+  14. Add a [0;38;2;177;185;249;49m-h[0;39;49m or [0;38;2;177;185;249;49m--help[0;39;49m flag that prints the usage text.
+  15. Use [0;38;2;177;185;249;49mgetopts[0;39;49m for simple short options instead of hand-parsing [0;38;2;177;185;249;49m$1[0;39;49m.
+  16. Prefer [0;38;2;177;185;249;49m$(command)[0;39;49m over backticks, since it nests cleanly and reads better.
+  17. Read input line by line with [0;38;2;177;185;249;49mwhile IFS= read -r line; do ...; done[0;39;49m, so spaces and backslashes
+      survive.
+  18. Avoid parsing [0;38;2;177;185;249;49mls[0;39;49m output; use globs or [0;38;2;177;185;249;49mfind -print0[0;39;49m with [0;38;2;177;185;249;49mxargs -0[0;39;49m for filenames.
+  19. Use [0;38;2;177;185;249;49mprintf[0;39;49m instead of [0;38;2;177;185;249;49mecho[0;39;49m when output contains flags, escapes, or arbitrary text.
+  20. Run [0;38;2;177;185;249;49mshellcheck[0;39;49m on every script and fix its warnings before you commit.
+  21. Use [0;38;2;177;185;249;49mshfmt[0;39;49m or a consistent style guide so diffs stay readable.
+  22. Keep scripts idempotent, so a rerun after a partial failure does no harm.
+  23. Print what the script is about to do before it does destructive work, and offer a [0;38;2;177;185;249;49m--dry-run[0;39;49m
+      flag.
+  24. Avoid [0;38;2;177;185;249;49mrm -rf "$dir/"[0;39;49m with an unchecked variable; check that [0;38;2;177;185;249;49m$dir[0;39;49m is set and not empty first.
+  25. Use arrays for command arguments, such as [0;38;2;177;185;249;49margs=(-v "$x")[0;39;49m, instead of building strings to eval.
+  26. Never pipe [0;38;2;177;185;249;49mcurl[0;39;49m straight into a shell without checking what it fetched.
+  27. Redirect noisy output with [0;38;2;177;185;249;49m>/dev/null 2>&1[0;39;49m only when you mean to hide it, and log what
+      matters.
+  28. Use [0;38;2;177;185;249;49mset -x[0;39;49m or [0;38;2;177;185;249;49mBASH_XTRACEFD[0;39;49m temporarily to debug, and remove it afterward.
+  29. Test the script on empty input, paths with spaces, and missing files before you rely on it.
+  30. Keep scripts short, and move anything longer than about 100 lines into a language like Python.
+
+[0;38;2;153;153;153;49m✻[0;39;49m [0;38;2;153;153;153;49mCooked for 7s · done 4:33 PM[0;39;49m
+
+[0;38;2;136;136;136;49m────────────────────────────────────────────────────────────────────────────────────────────────────[0;39;49m
+❯ 
+[0;38;2;136;136;136;49m────────────────────────────────────────────────────────────────────────────────────────────────────[0;39;49m
+  [0;38;2;153;153;153;49m⏸ manual mode on · ? for shortcuts · ← 3 agents[0;39;49m[1;1H7(B)B*B+B[28;3H[?1003h[?1004h[?1006h[?1007h[?1042h[?2004h

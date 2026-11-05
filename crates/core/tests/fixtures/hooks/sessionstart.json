@@ -1,0 +1,9 @@
+{
+  "cwd": "/Users/owner/src/acme-api",
+  "hook_event_name": "SessionStart",
+  "model": "claude-haiku-5-5",
+  "scratchpad_dir": "/tmp/claude-501/scratch",
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "source": "startup",
+  "transcript_path": "/Users/owner/.claude/projects/-Users-owner-src-acme-api/00000000-0000-4000-8000-000000000001.jsonl"
+}

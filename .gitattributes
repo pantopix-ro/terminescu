@@ -1,0 +1,2 @@
+# Recorded terminal bytes: never convert line endings.
+*.bin binary

@@ -20,6 +20,10 @@ tints. Amber SHALL NOT be offered as an accent or background.
 - **WHEN** the person sets `Review` on a side tab and later picks "back to auto"
 - **THEN** the row shows `Review` until then, and the generated status after
 
+#### Scenario: Edit from the sidebar chip
+- **WHEN** the person clicks the status chip of a side tab or of a tab in the sidebar
+- **THEN** the status editor opens on that side tab or tab, with this side tab's and the global statuses to pick from
+
 ### Requirement: Needs you shows over manual statuses
 The amber needs-you marker SHALL show on a tab and its side tab whenever a Claude session in
 it waits, whatever manual status is set.
@@ -37,8 +41,8 @@ The sidebar SHALL keep manual order by default and SHALL sort by background, sta
 
 ### Requirement: Global and local statuses
 Settings > Statuses SHALL hold global statuses with label, accent, background and order,
-offered on every side tab and tab. A status saved from the editor SHALL be local to its side tab
-or tab and SHALL offer "make global". Deleting a status in use SHALL return those side tabs and
+offered on every side tab and tab. A status saved from the editor SHALL be local to its side tab,
+including one saved while editing a tab of it, and SHALL offer "make global". Deleting a status in use SHALL return those side tabs and
 tabs to their auto status.
 
 #### Scenario: Promote a local status

@@ -28,6 +28,19 @@ text editor. Every shortcut SHALL be editable in Settings › Keys, which SHALL 
 - **WHEN** the focused pane is a terminal and the person types `c`
 - **THEN** the shell receives `c` and no app action runs
 
+### Requirement: Zoom
+`⌘=` and `⌘+` SHALL zoom every window in one step, fonts and elements and terminal text alike,
+`⌘-` SHALL zoom out and `⌘0` SHALL go back to 100%. The zoom SHALL run from 50% to 200% and
+SHALL be saved with the settings, so a restart and a new window keep it.
+
+#### Scenario: Zoom in and reset
+- **WHEN** the person presses `⌘+` twice and then `⌘0`
+- **THEN** the UI shows at 110% and 125%, and then at 100%, with the terminals refitted each time
+
+#### Scenario: Zoom kept
+- **WHEN** the person zooms to 125% and quits, then opens the app again
+- **THEN** every window opens at 125%
+
 ### Requirement: Attention signals
 When a session waits, the status line SHALL show the count in amber, the dock icon SHALL show
 a badge with the count, and a macOS notification SHALL be posted when the app is in the

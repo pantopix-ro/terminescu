@@ -1,0 +1,9 @@
+packages:
+  - apps/*
+  - packages/*
+allowBuilds:
+  esbuild: true
+# Releases younger than two weeks stay out; these pin transitive CodeMirror parts.
+overrides:
+  "@lezer/common": 1.5.3
+  "@lezer/lr": 1.4.11

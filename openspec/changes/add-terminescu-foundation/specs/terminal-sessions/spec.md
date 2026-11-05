@@ -14,9 +14,9 @@ protocol version on every connection.
 - **THEN** `pnpm dev` is still running and its output is continuous
 
 ### Requirement: Reattach with scrollback
-The daemon SHALL keep the raw output of each pane (the last 8 MB, at most 10,000 lines) with
-its resize history, SHALL replay it when a view reattaches to the pane, and SHALL then send a
-resize so full-screen programs redraw.
+The daemon SHALL keep a screen model of each pane (at most 10,000 lines of history by default),
+SHALL send a snapshot of it when a view reattaches to the pane, and the view SHALL then resize to
+its own size so full-screen programs redraw.
 Moving a tab to another window and restarting the app SHALL both use this reattach.
 
 #### Scenario: Reattach after restart
@@ -26,6 +26,10 @@ Moving a tab to another window and restarting the app SHALL both use this reatta
 #### Scenario: Tab moved to another window
 - **WHEN** a tab running `claude` is dropped into a second window
 - **THEN** the second window shows its scrollback and a redrawn Claude screen, and the session never restarts
+
+#### Scenario: Long Claude session
+- **WHEN** a pane has run `claude` for hours and produced far more than 10,000 lines of output
+- **THEN** a reattached view shows Claude's current screen in the alternate buffer, and the shell history above it
 
 #### Scenario: App upgraded with a newer daemon
 - **WHEN** the app updates to a build with daemon protocol 2 while panes run on daemon protocol 1
@@ -59,8 +63,14 @@ login shell in each pane's last cwd.
 
 ### Requirement: Command line tool
 A `terminescu` CLI SHALL ship inside the app with subcommands `hook`, `status`, `var` (with `env`) and `edit`, and
-SHALL find its pane through `TERMINESCU_PANE_ID`.
+SHALL find its pane through `TERMINESCU_PANE_ID`. The app SHALL keep a copy of it at a path that
+survives app updates, first on each pane's `PATH`. `var env` SHALL answer from the daemon, so it
+works while the app is closed.
 
 #### Scenario: Status from a script
 - **WHEN** a deploy script runs `terminescu status "Deploying" --color cyan --until-exit`
 - **THEN** the tab shows `Deploying` in cyan until the script's command ends, then its auto status
+
+#### Scenario: Variables while the app is closed
+- **WHEN** the app is closed and a pane's shell shows its next prompt
+- **THEN** the shell still loads its side tab's session and secret variables from the daemon

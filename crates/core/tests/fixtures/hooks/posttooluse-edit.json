@@ -1,0 +1,41 @@
+{
+  "cwd": "/Users/owner/src/acme-api",
+  "duration_ms": 17,
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PostToolUse",
+  "permission_mode": "default",
+  "prompt_id": "00000000-0000-4000-8000-000000000004",
+  "scratchpad_dir": "/tmp/claude-501/scratch",
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "tool_input": {
+    "file_path": "/Users/owner/src/acme-api/hello.txt",
+    "new_string": "hello",
+    "old_string": "hi",
+    "replace_all": false
+  },
+  "tool_name": "Edit",
+  "tool_response": {
+    "filePath": "hello.txt",
+    "newString": "hello",
+    "oldString": "hi",
+    "originalFile": "hi\n",
+    "replaceAll": false,
+    "structuredPatch": [
+      {
+        "lines": [
+          "-hi",
+          "+hello"
+        ],
+        "newLines": 1,
+        "newStart": 1,
+        "oldLines": 1,
+        "oldStart": 1
+      }
+    ],
+    "userModified": false
+  },
+  "tool_use_id": "toolu_fixture02",
+  "transcript_path": "/Users/owner/.claude/projects/-Users-owner-src-acme-api/00000000-0000-4000-8000-000000000001.jsonl"
+}

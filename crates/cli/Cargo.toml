@@ -1,0 +1,19 @@
+[package]
+name = "terminescu-cli"
+description = "The terminescu command: Claude Code hook, status, var and edit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "terminescu"
+path = "src/main.rs"
+
+[dependencies]
+terminescu-protocol.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+terminescu-ptyd = { path = "../ptyd" }

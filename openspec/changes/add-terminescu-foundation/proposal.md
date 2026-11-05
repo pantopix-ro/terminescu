@@ -115,3 +115,6 @@ Node 24, pnpm and a logged-in `claude` on the host. tmux is no longer needed.
 - tmux-backed sessions as an option for people who want sessions shared with a plain terminal: later or never?
 - `⌘K` opens the palette, while Terminal.app and iTerm use it to clear the screen. Keep it, or
   move the palette to `⌘P` and keep `⌘K` for clear?
+- A side tab holds one or more tabs, so the core closes it when its last tab closes or moves
+  out (task 1.3). Its context (variables, pins, links) goes with it. Keep the context for an
+  undo, offer "Close side tab" with a confirmation when the context is not empty, or both?
