@@ -70,11 +70,11 @@ export function terminalFontOptions(s: TerminalFontSettings) {
 }
 export type TerminalFont = ReturnType<typeof terminalFontOptions>;
 
-/** The defaults: SF Mono Regular at 13px, line height 1.15. */
+/** The defaults match Terminal.app's Basic profile: SF Mono Regular 11, line spacing 1.0. */
 export const terminalFont: TerminalFont = terminalFontOptions({
   terminalFont: "",
-  terminalFontSize: 13,
-  terminalLineHeight: 115,
+  terminalFontSize: 11,
+  terminalLineHeight: 100,
   terminalLetterSpacing: 0,
   terminalFontWeight: 400,
 });

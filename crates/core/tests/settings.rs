@@ -55,7 +55,7 @@ fn json_with_unknown_fields_or_missing_ones_still_reads() {
     // And before task 8.23 no sidebar fields: the default width, not collapsed.
     assert_eq!(s.sidebar_width, settings::SIDEBAR_WIDTH);
     assert!(!s.sidebar_collapsed);
-    // And before task 8.36 no terminal font: SF Mono at 13px, line height 1.15, tabs at 12px.
+    // And before task 8.36 no terminal font: SF Mono at 11px, line height 1.00, tabs at 12px.
     assert_eq!(s.terminal_font, "");
     assert_eq!(s.terminal_font_size, settings::FONT_SIZE);
     assert_eq!(s.terminal_line_height, settings::LINE_HEIGHT);

@@ -18,10 +18,10 @@ pub const SIDEBAR_WIDTH: u16 = 272;
 pub const SIDEBAR_MIN: u16 = 180;
 pub const SIDEBAR_MAX: u16 = 480;
 /// The terminal's font size in CSS pixels: the default and the range Settings › Terminal allows.
-pub const FONT_SIZE: u8 = 13;
+pub const FONT_SIZE: u8 = 11;
 pub const FONT_SIZES: std::ops::RangeInclusive<u8> = 9..=24;
 /// The terminal's line height in percent of the font size.
-pub const LINE_HEIGHT: u16 = 115;
+pub const LINE_HEIGHT: u16 = 100;
 pub const LINE_HEIGHTS: std::ops::RangeInclusive<u16> = 100..=200;
 /// Extra pixels between the terminal's characters.
 pub const LETTER_SPACINGS: std::ops::RangeInclusive<i8> = -2..=4;

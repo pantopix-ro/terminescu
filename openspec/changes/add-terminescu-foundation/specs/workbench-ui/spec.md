@@ -133,12 +133,21 @@ A Settings screen SHALL offer Statuses, Commands, Variable defaults, Extraction 
 Settings › Terminal SHALL set the terminal's font family, size (9 to 24 px), line height (1.00
 to 2.00), letter spacing (-2 to 4 px) and weight, and the tab bar's text size (9 to 14 px). A
 change SHALL apply at once to every open terminal and tab, and a terminal that fits more rows
-SHALL tell its shell the new size. The defaults are SF Mono at 13 px with line height 1.15 and
-12 px tab text. A font that is not installed SHALL fall back to SF Mono.
+SHALL tell its shell the new size. The defaults SHALL match Terminal.app's Basic profile. A font
+that is not installed SHALL fall back to SF Mono.
+
+#### Scenario: Terminal.app defaults
+- **WHEN** the person opens a terminal without changing Settings › Terminal
+- **THEN** it shows SF Mono Regular at 11 px, line height 1.00, a blinking bar cursor, bold
+  text without bright colours, and 12 px tab text
 
 #### Scenario: Tighter lines
-- **WHEN** the person drags Line height to 1.00
+- **WHEN** the person drags Line height from 1.50 to 1.00
 - **THEN** every open terminal redraws with the tighter lines, fits more rows and resizes its shell
+
+#### Scenario: Option+Enter
+- **WHEN** the person presses Option+Enter in a terminal
+- **THEN** the terminal sends Esc+Return, which Claude Code reads as a newline
 
 #### Scenario: Smaller tab text
 - **WHEN** the person sets Tab text to 10
