@@ -123,8 +123,27 @@ scroll sideways when its tabs overflow.
 
 ### Requirement: Settings
 A Settings screen SHALL offer Statuses, Commands, Variable defaults, Extraction rules
-(read-only in v1), Shell (including the opt-in `EDITOR` setting) and Keys (editable).
+(read-only in v1), Terminal, Shell (including the opt-in `EDITOR` setting) and Keys (editable).
 
 #### Scenario: Default storage mode
 - **WHEN** the person sets the default storage mode to session only in Settings
 - **THEN** variables extracted afterwards start as session only
+
+### Requirement: Terminal font settings
+Settings › Terminal SHALL set the terminal's font family, size (9 to 24 px), line height (1.00
+to 2.00), letter spacing (-2 to 4 px) and weight, and the tab bar's text size (9 to 14 px). A
+change SHALL apply at once to every open terminal and tab, and a terminal that fits more rows
+SHALL tell its shell the new size. The defaults are SF Mono at 13 px with line height 1.15 and
+12 px tab text. A font that is not installed SHALL fall back to SF Mono.
+
+#### Scenario: Tighter lines
+- **WHEN** the person drags Line height to 1.00
+- **THEN** every open terminal redraws with the tighter lines, fits more rows and resizes its shell
+
+#### Scenario: Smaller tab text
+- **WHEN** the person sets Tab text to 10
+- **THEN** every tab name shows at 10 px and its subtitle at 9 px
+
+#### Scenario: Pane header tooltip
+- **WHEN** the person hovers a split pane's header whose name is cut off
+- **THEN** a tooltip shows the whole name

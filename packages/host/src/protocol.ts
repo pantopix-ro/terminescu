@@ -477,7 +477,28 @@ export interface AppSettings {
   sidebarWidth: number;
   /** The sidebar shows only the rows' icons. */
   sidebarCollapsed: boolean;
+  /** The terminal's font family; empty is the system mono font, SF Mono (task 8.36). */
+  terminalFont: string;
+  /** The terminal's font size in CSS pixels, before the zoom. */
+  terminalFontSize: number;
+  /** The terminal's line height in percent of the font size. */
+  terminalLineHeight: number;
+  /** Extra pixels between the terminal's characters. */
+  terminalLetterSpacing: number;
+  /** The terminal's font weight, 100 to 900 in steps of 100. */
+  terminalFontWeight: number;
+  /** The tab bar's text size in CSS pixels; a subtitle is one pixel smaller. */
+  tabFontSize: number;
 }
+
+/** Ranges Settings › Terminal allows. Same as settings.rs. */
+export const FONT_SIZES = [9, 24] as const;
+export const LINE_HEIGHTS = [100, 200] as const;
+export const LETTER_SPACINGS = [-2, 4] as const;
+export const TAB_FONT_SIZES = [9, 14] as const;
+export const FONT_FAMILY_MAX = 64;
+/** A font name keeps to characters a CSS font list takes unquoted. Same check as settings.rs. */
+export const FONT_NAME = /^[\p{L}\p{N} ._-]*$/u;
 
 /** The sidebar's default width and the range a drag may set. Same as settings.rs. */
 export const SIDEBAR_WIDTH = 272;
@@ -491,6 +512,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
   zoomPercent: 100,
   sidebarWidth: SIDEBAR_WIDTH,
   sidebarCollapsed: false,
+  terminalFont: "",
+  terminalFontSize: 13,
+  terminalLineHeight: 115,
+  terminalLetterSpacing: 0,
+  terminalFontWeight: 400,
+  tabFontSize: 12,
 };
 
 /** The steps `⌘+` and `⌘-` walk, in percent. Same as `ZOOM_STEPS` in settings.rs. */

@@ -107,6 +107,7 @@ import {
   CommandsSection,
   playChime,
   type SortMode,
+  terminalFontOptions,
 } from "@terminescu/ui";
 import type { Terminal } from "@xterm/xterm";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -256,10 +257,10 @@ function tabGapAt(x: number, y: number): TabGap | undefined {
 }
 
 /** A split pane's header; dragged to the tab bar, its pane becomes a tab (task 8.32). */
-function PaneHead({ paneId, children }: { paneId: string; children: React.ReactNode }) {
+function PaneHead({ paneId, name, children }: { paneId: string; name: string; children: React.ReactNode }) {
   const { attributes, listeners, setNodeRef } = useDraggable({ id: `pane:${paneId}` });
   return (
-    <div ref={setNodeRef} {...attributes} {...listeners} tabIndex={-1} className="ao-tp-head" title="Drag to the tab bar to make it a tab">
+    <div ref={setNodeRef} {...attributes} {...listeners} tabIndex={-1} className="ao-tp-head" title={`${name}\nDrag to the tab bar to make it a tab`}>
       {children}
     </div>
   );
@@ -824,6 +825,15 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   useEffect(() => {
     document.documentElement.style.setProperty("--chrome", String(100 / appSettings.zoomPercent));
   }, [appSettings.zoomPercent]);
+  // Task 8.36: Settings › Terminal sets the tab text size and every terminal's font, live.
+  useEffect(() => {
+    document.documentElement.style.setProperty("--tab-font", `${appSettings.tabFontSize}px`);
+  }, [appSettings.tabFontSize]);
+  const { terminalFont, terminalFontSize, terminalLineHeight, terminalLetterSpacing, terminalFontWeight } = appSettings;
+  const termFont = useMemo(
+    () => terminalFontOptions({ terminalFont, terminalFontSize, terminalLineHeight, terminalLetterSpacing, terminalFontWeight }),
+    [terminalFont, terminalFontSize, terminalLineHeight, terminalLetterSpacing, terminalFontWeight],
+  );
   // Task 8.23: a drag on the sidebar's edge sets its width live; the drop saves it.
   const [sideDrag, setSideDrag] = useState<number>();
   const sideWidth = sideDrag ?? appSettings.sidebarWidth;
@@ -1349,6 +1359,13 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const dragSideTab = dragging?.startsWith("side:") ? sideTabs.find((s) => s.id === dragging.slice(5)) : undefined;
   const multi = panes.length > 1;
 
+  /** A split pane's header text: the document, the transcript or the shell's live subtitle. */
+  const paneHeadName = (paneId: string, transcript: boolean) => {
+    if (transcript) return "transcript";
+    const docId = activeTab ? docOf(activeTab.layout, paneId) : undefined;
+    if (docId) return docs[docId]?.title ?? "text";
+    return paneSubtitle(labels[paneId], !!agents[paneId]) ?? "shell";
+  };
   return (
     <>
       <DndContext
@@ -1527,9 +1544,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                       onPointerDown={() => focusIn(activeTab.id, paneId)}
                     >
                       {multi && (
-                        <PaneHead paneId={paneId}>
+                        <PaneHead paneId={paneId} name={paneHeadName(paneId, !!transcript)}>
                           <i className={`ao-i x1 ${transcript ? "ao-i-agent" : docOf(activeTab.layout, paneId) ? "ao-i-doc" : "ao-i-term"}`} />
-                          <span>{transcript ? "transcript" : (docs[docOf(activeTab.layout, paneId) ?? ""]?.title ?? (docOf(activeTab.layout, paneId) ? "text" : (paneSubtitle(labels[paneId], !!agents[paneId]) ?? "shell")))}</span>
+                          <span className="tp-name">{paneHeadName(paneId, !!transcript)}</span>
                           <span className="grow" />
                           <button
                             type="button"
@@ -1677,6 +1694,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               key={paneId}
               paneId={paneId}
               tint={statuses[tab.id]?.look?.background ?? statuses[side.id]?.look?.background}
+              font={termFont}
               visible={tab.id === activeTab?.id}
               focused={paneId === focused}
               onFocus={() => focusIn(tab.id, paneId)}

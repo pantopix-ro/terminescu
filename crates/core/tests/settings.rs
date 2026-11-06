@@ -16,8 +16,14 @@ fn defaults_then_a_saved_change_reads_back() {
         zoom_percent: 125,
         sidebar_width: 320,
         sidebar_collapsed: true,
+        terminal_font: "JetBrains Mono".into(),
+        terminal_font_size: 12,
+        terminal_line_height: 100,
+        terminal_letter_spacing: -1,
+        terminal_font_weight: 500,
+        tab_font_size: 10,
     };
-    settings::set(&db, s).unwrap();
+    settings::set(&db, s.clone()).unwrap();
     assert_eq!(settings::get(&db).unwrap(), s);
     // Attention settings live under their own key and stay put.
     assert_eq!(
@@ -49,6 +55,68 @@ fn json_with_unknown_fields_or_missing_ones_still_reads() {
     // And before task 8.23 no sidebar fields: the default width, not collapsed.
     assert_eq!(s.sidebar_width, settings::SIDEBAR_WIDTH);
     assert!(!s.sidebar_collapsed);
+    // And before task 8.36 no terminal font: SF Mono at 13px, line height 1.15, tabs at 12px.
+    assert_eq!(s.terminal_font, "");
+    assert_eq!(s.terminal_font_size, settings::FONT_SIZE);
+    assert_eq!(s.terminal_line_height, settings::LINE_HEIGHT);
+    assert_eq!(s.tab_font_size, settings::TAB_FONT_SIZE);
+}
+
+#[test]
+fn terminal_font_values_out_of_range_are_refused() {
+    let db = Db::open_in_memory().unwrap();
+    let bad = [
+        Settings {
+            terminal_font: "Menlo\", monospace; x".into(),
+            ..Settings::default()
+        },
+        Settings {
+            terminal_font: "M".repeat(65),
+            ..Settings::default()
+        },
+        Settings {
+            terminal_font_size: 8,
+            ..Settings::default()
+        },
+        Settings {
+            terminal_font_size: 25,
+            ..Settings::default()
+        },
+        Settings {
+            terminal_line_height: 99,
+            ..Settings::default()
+        },
+        Settings {
+            terminal_line_height: 201,
+            ..Settings::default()
+        },
+        Settings {
+            terminal_letter_spacing: 5,
+            ..Settings::default()
+        },
+        Settings {
+            terminal_font_weight: 450,
+            ..Settings::default()
+        },
+        Settings {
+            terminal_font_weight: 1000,
+            ..Settings::default()
+        },
+        Settings {
+            tab_font_size: 15,
+            ..Settings::default()
+        },
+    ];
+    for s in bad {
+        assert!(settings::set(&db, s.clone()).is_err(), "{s:?}");
+    }
+    assert_eq!(settings::get(&db).unwrap(), Settings::default());
+    // A name keeps no outer spaces.
+    let s = Settings {
+        terminal_font: "  Fira Code ".into(),
+        ..Settings::default()
+    };
+    assert_eq!(settings::set(&db, s).unwrap().terminal_font, "Fira Code");
 }
 
 #[test]

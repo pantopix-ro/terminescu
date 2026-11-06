@@ -7,7 +7,14 @@ import {
   withBindings,
   type KeyBindings,
   COMMAND_TARGETS,
+  DEFAULT_SETTINGS,
+  FONT_FAMILY_MAX,
+  FONT_NAME,
+  FONT_SIZES,
+  LETTER_SPACINGS,
+  LINE_HEIGHTS,
   MAX_TTL_SECS,
+  TAB_FONT_SIZES,
   VAR_MODES,
   type AppSettings,
   type AttentionSettings,
@@ -20,6 +27,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { MODE_HINT, MODE_LABEL } from "./ExtractDialog";
 import { EXTRACTION_RULES, parseTtl, ttlText } from "./names";
+import { terminalFontOptions } from "./xterm-theme";
 import { StatusesSection } from "./StatusSettings";
 import { TARGET_LABEL } from "./CommandsSection";
 
@@ -28,6 +36,7 @@ export const SETTINGS_SECTIONS = [
   { id: "commands", label: "Commands" },
   { id: "variables", label: "Variables" },
   { id: "extraction", label: "Extraction" },
+  { id: "terminal", label: "Terminal" },
   { id: "shell", label: "Shell" },
   { id: "keys", label: "Keys" },
   { id: "notifications", label: "Notifications" },
@@ -117,6 +126,7 @@ export function SettingsSheet(props: SettingsSheetProps) {
             {section === "commands" && <CommandsSettings {...props} />}
             {section === "variables" && <VariableSettings {...props} />}
             {section === "extraction" && <ExtractionSettings />}
+            {section === "terminal" && <TerminalSettings {...props} />}
             {section === "shell" && <ShellSettings {...props} />}
             {section === "keys" && <KeysSettings {...props} />}
             {section === "notifications" && <NotificationSettings {...props} />}
@@ -276,6 +286,159 @@ function ExtractionSettings() {
         </div>
       ))}
       <p className="small ao-dim">Read-only in this version. Anything else extracted is named text.</p>
+    </section>
+  );
+}
+
+/** Monospaced families macOS ships or people often install; any installed name works. */
+const FONT_SUGGESTIONS = ["SF Mono", "Menlo", "Monaco", "Courier New", "JetBrains Mono", "Fira Code", "Cascadia Code", "Source Code Pro", "Hack", "IBM Plex Mono"];
+const WEIGHTS: [number, string][] = [
+  [100, "Thin"],
+  [200, "Extra light"],
+  [300, "Light"],
+  [400, "Regular"],
+  [500, "Medium"],
+  [600, "Semibold"],
+  [700, "Bold"],
+  [800, "Heavy"],
+  [900, "Black"],
+];
+const PREVIEW = "~/work/acme-api main ❯ ls -la\ndrwxr-xr-x  12 owner  staff   384 src\n-rw-r--r--   1 owner  staff  2.1K README.md\n0O 1lI {}[] => != <= ~~ //";
+
+/** A whole number field that saves each value inside its range and puts back anything else on blur. */
+function NumberField({ label, value, range, onSave }: { label: string; value: number; range: readonly [number, number]; onSave(v: number): void }) {
+  const [text, setText] = useState(String(value));
+  useEffect(() => setText(String(value)), [value]);
+  const valid = (t: string) => /^-?\d+$/.test(t.trim()) && Number(t) >= range[0] && Number(t) <= range[1];
+  return (
+    <input
+      className="ao-input set-num"
+      type="number"
+      aria-label={label}
+      min={range[0]}
+      max={range[1]}
+      step={1}
+      value={text}
+      onChange={(e) => {
+        setText(e.target.value);
+        if (valid(e.target.value) && Number(e.target.value) !== value) onSave(Number(e.target.value));
+      }}
+      onBlur={() => !valid(text) && setText(String(value))}
+    />
+  );
+}
+
+/** Settings › Terminal (task 8.36): the terminal's font and spacing, and the tab text size. */
+function TerminalSettings({ host, onError }: SettingsSheetProps) {
+  const [settings, save] = useAppSettings(host, onError);
+  const [family, setFamily] = useState("");
+  useEffect(() => setFamily(settings?.terminalFont ?? ""), [settings?.terminalFont]);
+  if (!settings) return null;
+  const commitFamily = () => {
+    const name = family.trim();
+    if (name.length > FONT_FAMILY_MAX || !FONT_NAME.test(name)) {
+      onError("A font name has letters, digits, spaces, dots, dashes and underscores.");
+      return setFamily(settings.terminalFont);
+    }
+    if (name !== settings.terminalFont) save({ terminalFont: name });
+  };
+  const font = terminalFontOptions(settings);
+  const lh = settings.terminalLineHeight;
+  return (
+    <section aria-label="Terminal">
+      <h3 className="ao-pixel ao-dim">Terminal font</h3>
+      <div className="srow">
+        <span>Font</span>
+        <input
+          className="ao-input"
+          aria-label="Terminal font"
+          list="terminal-fonts"
+          placeholder="SF Mono"
+          value={family}
+          onChange={(e) => setFamily(e.target.value)}
+          onBlur={commitFamily}
+          onKeyDown={(e) => e.key === "Enter" && commitFamily()}
+        />
+        <datalist id="terminal-fonts">
+          {FONT_SUGGESTIONS.map((f) => (
+            <option key={f} value={f} />
+          ))}
+        </datalist>
+        <span className="small ao-dim grow">empty is SF Mono; a font that is not installed falls back to it</span>
+      </div>
+      <div className="srow">
+        <span>Size</span>
+        <NumberField label="Font size" value={settings.terminalFontSize} range={FONT_SIZES} onSave={(v) => save({ terminalFontSize: v })} />
+        <span className="small ao-dim grow">px, {FONT_SIZES[0]} to {FONT_SIZES[1]}; ⌘+ and ⌘- zoom everything on top</span>
+      </div>
+      <div className="srow">
+        <span>Line height</span>
+        <input
+          type="range"
+          aria-label="Line height"
+          min={LINE_HEIGHTS[0]}
+          max={LINE_HEIGHTS[1]}
+          step={5}
+          value={lh}
+          onChange={(e) => save({ terminalLineHeight: Number(e.target.value) })}
+        />
+        <output className="set-out">{(lh / 100).toFixed(2)}</output>
+        <span className="small ao-dim grow">1.00 fits the most lines</span>
+      </div>
+      <div className="srow">
+        <span>Letter spacing</span>
+        <NumberField label="Letter spacing" value={settings.terminalLetterSpacing} range={LETTER_SPACINGS} onSave={(v) => save({ terminalLetterSpacing: v })} />
+        <span className="small ao-dim grow">px between characters</span>
+      </div>
+      <div className="srow">
+        <span>Weight</span>
+        <select className="ao-input" aria-label="Font weight" value={settings.terminalFontWeight} onChange={(e) => save({ terminalFontWeight: Number(e.target.value) })}>
+          {WEIGHTS.map(([w, name]) => (
+            <option key={w} value={w}>
+              {name}
+            </option>
+          ))}
+        </select>
+        <span className="small ao-dim grow">bold text is three steps heavier</span>
+      </div>
+      <pre
+        className="term-preview"
+        aria-label="Preview"
+        style={{
+          fontFamily: font.fontFamily,
+          fontSize: font.fontSize,
+          lineHeight: font.lineHeight,
+          letterSpacing: font.letterSpacing,
+          fontWeight: font.fontWeight,
+        }}
+      >
+        {PREVIEW}
+      </pre>
+      <h3 className="ao-pixel ao-dim">Tabs</h3>
+      <div className="srow">
+        <span>Tab text</span>
+        <NumberField label="Tab text size" value={settings.tabFontSize} range={TAB_FONT_SIZES} onSave={(v) => save({ tabFontSize: v })} />
+        <span className="small ao-dim grow">px, {TAB_FONT_SIZES[0]} to {TAB_FONT_SIZES[1]}</span>
+      </div>
+      <div className="srow">
+        <button
+          type="button"
+          className="ao-btn ghost"
+          onClick={() =>
+            save({
+              terminalFont: DEFAULT_SETTINGS.terminalFont,
+              terminalFontSize: DEFAULT_SETTINGS.terminalFontSize,
+              terminalLineHeight: DEFAULT_SETTINGS.terminalLineHeight,
+              terminalLetterSpacing: DEFAULT_SETTINGS.terminalLetterSpacing,
+              terminalFontWeight: DEFAULT_SETTINGS.terminalFontWeight,
+              tabFontSize: DEFAULT_SETTINGS.tabFontSize,
+            })
+          }
+        >
+          Reset to defaults
+        </button>
+        <span className="small ao-dim grow">every open terminal changes at once</span>
+      </div>
     </section>
   );
 }

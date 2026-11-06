@@ -10,7 +10,7 @@ import { EXTRACT_EVENT, INSERT_EVENT, PIN_EVENT, type InsertDetail } from "./eve
 import { pasteBytes } from "./insert";
 import { findPaths } from "./paths";
 import { webglBudget } from "./webgl-budget";
-import { terminalFont, themeFor } from "./xterm-theme";
+import { terminalFont, themeFor, type TerminalFont } from "./xterm-theme";
 
 export interface TerminalPaneProps {
   paneId: string;
@@ -36,6 +36,8 @@ export interface TerminalPaneProps {
   onSelection?(how: "pin" | "extract", text: string, rows: [number, number]): void;
   /** The status background the terminal takes, live (task 8.14). None keeps the panel colour. */
   tint?: Tint | null;
+  /** Font and spacing from Settings › Terminal, live (task 8.36). None keeps the defaults. */
+  font?: TerminalFont;
 }
 
 /** Scrolls a terminal to a pin's rows and selects them; `detail` is `[first, last]`. */
@@ -65,13 +67,16 @@ interface Live {
   glLost: boolean;
 }
 
-let fonts: Promise<unknown> | undefined;
-/** xterm.js measures the cell once, so the font must be loaded first. */
-function fontsReady(): Promise<unknown> {
-  fonts ??= document.fonts
-    ? document.fonts.load(`${terminalFont.fontSize}px ${terminalFont.fontFamily}`).catch(() => undefined)
-    : Promise.resolve();
-  return fonts;
+const fonts = new Map<string, Promise<unknown>>();
+/** xterm.js measures the cell when the font changes, so the font must be loaded first. */
+function fontsReady(font: TerminalFont): Promise<unknown> {
+  const key = `${font.fontWeight} ${font.fontSize}px ${font.fontFamily}`;
+  let ready = fonts.get(key);
+  if (!ready) {
+    ready = document.fonts ? document.fonts.load(key).catch(() => undefined) : Promise.resolve();
+    fonts.set(key, ready);
+  }
+  return ready;
 }
 
 const isHttp = (uri: string) => /^https?:\/\//i.test(uri);
@@ -113,13 +118,16 @@ export function terminalSelection(paneId: string): string {
  * chords pass through to the app menu; every other key goes to the shell, with Option as Meta.
  * Links open on `⌘`-click.
  */
-export function TerminalPane({ paneId, visible, focused, onFocus, open, openUrl, openPath, onTerminal, onSelection, tint }: TerminalPaneProps) {
+export function TerminalPane({ paneId, visible, focused, onFocus, open, openUrl, openPath, onTerminal, onSelection, tint, font = terminalFont }: TerminalPaneProps) {
   const live = useRef<Live | null>(null);
   const [ready, setReady] = useState(false);
   const callbacks = useRef({ open, openUrl, openPath, onTerminal, onFocus, onSelection });
   callbacks.current = { open, openUrl, openPath, onTerminal, onFocus, onSelection };
   const tintNow = useRef(tint);
   tintNow.current = tint;
+  const fontNow = useRef(font);
+  fontNow.current = font;
+  const fontKey = JSON.stringify(font);
 
   useEffect(() => {
     const el = claimPane(paneId);
@@ -164,13 +172,14 @@ export function TerminalPane({ paneId, visible, focused, onFocus, open, openUrl,
     let frame = 0;
 
     void (async () => {
-      await fontsReady();
+      const startFont = fontNow.current;
+      await fontsReady(startFont);
       if (disposed) return;
       const activate = (e: MouseEvent, uri: string) => {
         if (e.metaKey && isHttp(uri)) callbacks.current.openUrl(uri);
       };
       const term = new Terminal({
-        ...terminalFont,
+        ...startFont,
         theme: themeFor(tintNow.current),
         scrollback: 10_000,
         macOptionIsMeta: true,
@@ -274,6 +283,24 @@ export function TerminalPane({ paneId, visible, focused, onFocus, open, openUrl,
     const term = live.current?.term;
     if (term) term.options.theme = themeFor(tint);
   }, [paneId, tint, ready]);
+
+  // Settings › Terminal applies at once: xterm.js measures the new cell, then the pane refits
+  // and the shell gets its new size.
+  useEffect(() => {
+    let gone = false;
+    const next = fontNow.current;
+    void fontsReady(next).then(() => {
+      const l = live.current;
+      if (gone || !l) return;
+      // xterm.js skips a value that did not change.
+      Object.assign(l.term.options, next);
+      const el = paneElement(paneId);
+      if (el.clientWidth > 0 && !el.hidden) l.fit.fit();
+    });
+    return () => {
+      gone = true;
+    };
+  }, [paneId, fontKey, ready]);
 
   return null;
 }
