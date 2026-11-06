@@ -24,6 +24,11 @@ test("the wordmark replaces the header row and is a drag region", async ({ page 
   const strip = await page.locator(".app-traffic").boundingBox();
   const tabs = await page.locator(".ao-tabs").boundingBox();
   expect(strip!.height).toBe(tabs!.height);
+  // ESCU is amber; the mark sits centred between the last traffic light (68 pt) and the border.
+  await expect(mark.locator("b")).toHaveText("ESCU");
+  const [m, side] = [(await mark.boundingBox())!, (await page.locator(".app-side").boundingBox())!];
+  const border = side.x + side.width - 2;
+  expect(Math.abs(m.x - 68 - (border - m.x - m.width))).toBeLessThanOrEqual(2);
 });
 
 test("a right click under the rows adds a side tab or changes the sort", async ({ page }) => {

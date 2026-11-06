@@ -1236,7 +1236,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
             {/* The title bar is an overlay (D20): this strip holds the traffic lights and moves the window. */}
             <div className="app-traffic" data-tauri-drag-region>
               <span className="app-wordmark" data-tauri-drag-region aria-label="Terminescu">
-                TERMINE<b>SCU</b>
+                TERMIN<b>ESCU</b>
               </span>
             </div>
             <SideTabList
