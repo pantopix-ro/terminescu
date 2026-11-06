@@ -510,9 +510,13 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       left, right, top or bottom triangle splits that pane 50/50 and its panes take the half
       shown by an amber preview (`DockTab`); the middle 30%, the shown tab and a pane too small
       to halve (red preview) change nothing, and shells, context and pins follow. A pane header
-      dragged to the tab bar, or "Move pane to a new tab", makes it a tab (`PaneToTab`); the
+      dragged to the tab bar makes it a tab (`PaneToTab`); the
       palette adds "Split right/down with tab…" (canvas board). Verify: core and persist tests,
       `dock.test.ts` (host, ui), `dock.spec.ts` (8).
+- [x] 8.33 Dock follow-ups (owner request, 2026-11-06): while a preview shows, a dashed amber
+      outline marks the pane that splits (red when too small, none in the middle); "Move Pane to
+      New Tab" (`pane_to_tab`, ⌘⇧B, Shell menu, palette, Settings › Keys) makes the focused pane
+      of a split tab a tab right after it. Verify: `dock.spec.ts` (9).
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

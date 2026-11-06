@@ -74,6 +74,12 @@
    "accel": "Cmd+W"
   },
   {
+   "id": "pane_to_tab",
+   "label": "Move Pane to New Tab",
+   "menu": "Shell",
+   "accel": "Cmd+Shift+B"
+  },
+  {
    "id": "open_transcript",
    "label": "Open Transcript",
    "menu": "Shell",

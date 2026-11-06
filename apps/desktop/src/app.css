@@ -406,3 +406,5 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 .tab-gap { position: fixed; z-index: 40; width: 2px; pointer-events: none; background: var(--amber); }
 .ao-tp-head { cursor: grab; }
 .ao-tp-head .tp-close { cursor: default; }
+.ao-tp.dock-target { outline: 1px dashed var(--amber); outline-offset: -1px; }
+.ao-tp.dock-target.too-small { outline-color: var(--red); }
