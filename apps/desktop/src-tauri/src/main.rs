@@ -1242,7 +1242,18 @@ fn open_url(url: String) -> Result<(), String> {
 /// `target/debug` under `tauri dev`.
 fn sidecar(name: &str) -> std::io::Result<PathBuf> {
     let exe = std::env::current_exe()?;
-    Ok(exe.parent().unwrap_or(Path::new(".")).join(name))
+    let path = exe.parent().unwrap_or(Path::new(".")).join(name);
+    if !path.is_file() {
+        // A bundle built without tauri.bundle.conf.json lacks the sidecars.
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!(
+                "{name} is missing from {}. Build the app with `pnpm tauri:build`.",
+                path.parent().unwrap_or(Path::new(".")).display()
+            ),
+        ));
+    }
+    Ok(path)
 }
 
 /// Installs the daemon and CLI copies (D32, D36) and starts the runtime on the daemon, from the
