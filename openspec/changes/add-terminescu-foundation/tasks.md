@@ -495,6 +495,9 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
 - [x] 8.29 Tinted tabs with icons (owner request, 2026-11-05): a tab bar tab washes 12% of its neon
       into its background, the active one too, and always shows its icon; `fill_accents` gives
       tabs saved before task 8.20 a random icon at start. Verify: core test, `sidebar-neon.spec.ts` (3).
+- [x] 8.31 Wordmark (owner request, 2026-11-06): ESCU in amber instead of SCU, centred between the
+      last traffic light (68 pt) and the sidebar border; the canvas boards' title bars match
+      (canvas v47). Verify: `sidebar-chrome.spec.ts`.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

@@ -15,8 +15,10 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
    --chrome undoes the zoom, so the row stays 34 pt on screen like the native lights. */
 .app-traffic { height: calc(34px * var(--chrome, 1)); flex: none; display: flex; align-items: center; padding-left: calc(88px * var(--chrome, 1)); border-bottom: 2px solid var(--line-strong); box-sizing: border-box; }
 .app .ao-tabs { height: calc(34px * var(--chrome, 1)); }
-/* The wordmark from the Terminescu reel: Silkscreen, foreground grey with SCU in amber. It
-   zooms with the sidebar, so it fits the width beside the lights. */
+/* The wordmark from the Terminescu reel: Silkscreen, foreground grey with ESCU in amber. It
+   sits centred between the last traffic light (14 pt + 3 lights at 20 pt = 68 pt) and the
+   sidebar's right border, and zooms with the sidebar, so it fits the width beside the lights. */
+.app-traffic:has(.app-wordmark) { justify-content: center; padding-left: calc(68px * var(--chrome, 1)); }
 .app-wordmark { font-family: var(--font-pixel); font-weight: 400; font-size: 16px; line-height: 1; letter-spacing: 1px; min-width: 0; color: var(--fg); white-space: nowrap; overflow: hidden; }
 .app-wordmark b { font-weight: 400; color: var(--amber); }
 .app-side .ao-side { display: flex; flex-direction: column; flex: 1; min-height: 0; }
