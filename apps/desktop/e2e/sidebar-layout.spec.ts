@@ -54,7 +54,8 @@ test("the collapse button shows on hover and leaves only icons with a tooltip", 
   await row.hover();
   // Collapsed, every row's shell list carries its name and status.
   const tip = page.getByRole("group", { name: /^Shells in / });
-  await expect(tip).toContainText("shell");
+  const first = await page.evaluate(() => (window as any).__terminescu.host.workspace().windows[0].sideTabs[0].tabs[0].name);
+  await expect(tip.locator(".px-tip-name")).toHaveText(first);
   await expect(tip.locator(".px-tip-status")).toHaveText("Idle");
   await page.mouse.move(1000, 400);
   await expect(tip).toHaveCount(0);

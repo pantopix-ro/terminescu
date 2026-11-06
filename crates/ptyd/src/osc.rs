@@ -1,11 +1,21 @@
 //! Reads the shell integration's reports out of a pane's output (D9): OSC 133 for prompts and
-//! exit codes, OSC 7 for the cwd and `OSC 633;E` for the command line. The bytes still reach the
-//! screen and the clients untouched; terminals ignore these sequences.
+//! exit codes, OSC 7 for the cwd and `OSC 633;E` for the command line, plus the window title a
+//! program sets with OSC 0 or 2. The bytes still reach the screen and the clients untouched.
 
 use terminescu_protocol::ShellState;
 
 /// Longest OSC payload kept. A command line past this is cut, never split into garbage.
 const MAX_PAYLOAD: usize = 8 * 1024;
+
+/// Longest window title kept, in characters.
+const MAX_TITLE: usize = 200;
+
+/// Glyphs a program puts before its title to show it works or rests; Claude Code cycles ◐ and
+/// ◑ every 960 ms while it works and shows ✳ at rest. Stripped, so the spinner never reads as a
+/// new title.
+const TITLE_GLYPHS: &[char] = &[
+    '✳', '◐', '◑', '◒', '◓', '⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏',
+];
 
 #[derive(Default, PartialEq, Eq, Clone, Copy)]
 enum State {
@@ -103,6 +113,11 @@ impl ShellTracker {
 
 fn apply(state: &mut ShellState, text: &str) -> bool {
     let before = state.clone();
+    if let Some(raw) = text.strip_prefix("0;").or_else(|| text.strip_prefix("2;")) {
+        // A title says nothing about the integration, so it leaves `integrated` alone.
+        state.title = title_of(raw);
+        return *state != before;
+    }
     if let Some(rest) = text.strip_prefix("133;") {
         let mut parts = rest.split(';');
         match parts.next() {
@@ -111,9 +126,11 @@ fn apply(state: &mut ShellState, text: &str) -> bool {
                 state.running = true;
                 state.last_exit = None;
                 state.started += 1;
+                state.title = None;
             }
             Some("D") => {
                 state.running = false;
+                state.title = None;
                 let Some(code) = parts.next().and_then(|c| c.parse().ok()) else {
                     return false;
                 };
@@ -134,6 +151,21 @@ fn apply(state: &mut ShellState, text: &str) -> bool {
     }
     state.integrated = true;
     *state != before
+}
+
+/// A title without its leading glyphs and control characters, cut to [`MAX_TITLE`]; none
+/// when nothing is left.
+fn title_of(raw: &str) -> Option<String> {
+    let clean: String = raw
+        .chars()
+        .filter(|c| !c.is_control())
+        .collect::<String>()
+        .trim_start_matches(|c: char| TITLE_GLYPHS.contains(&c) || c.is_whitespace())
+        .trim_end()
+        .chars()
+        .take(MAX_TITLE)
+        .collect();
+    (!clean.is_empty()).then_some(clean)
 }
 
 /// `\\` is a backslash and `\xHH` a byte; the integration escapes `;` and control characters
@@ -241,7 +273,6 @@ mod tests {
             !t.apply(b"133;A;src=terminescu"),
             "a prompt after the end changes nothing"
         );
-        assert!(!t.apply(b"0;window title"));
         assert!(!t.apply(b"7;not a url"));
         assert!(
             !t.apply(b"133;D;src=terminescu"),
@@ -259,5 +290,32 @@ mod tests {
         assert!(!t.apply(b"133;D;0"), "iTerm2's report after an empty line");
         assert!(!t.apply(b"133;C;"));
         assert_eq!((t.state.running, t.state.last_exit), (false, Some(1)));
+    }
+
+    #[test]
+    fn a_title_loses_its_spinner_and_clears_when_a_command_starts_or_ends() {
+        let mut t = ShellTracker::default();
+        assert!(t.apply("0;✳ Claude Code".as_bytes()));
+        assert_eq!(t.state.title.as_deref(), Some("Claude Code"));
+        assert!(t.apply("2;◐ Fix the export".as_bytes()));
+        assert_eq!(t.state.title.as_deref(), Some("Fix the export"));
+        // The spinner turns: the title stays, so nothing changed.
+        assert!(!t.apply("2;◑ Fix the export".as_bytes()));
+        assert!(!t.state.integrated, "a title is no shell integration");
+        // A blank title clears it.
+        assert!(t.apply(b"0;  "));
+        assert_eq!(t.state.title, None);
+        assert!(t.apply("0;✳ Plan".as_bytes()));
+        assert!(t.apply(b"133;C;src=terminescu"));
+        assert_eq!(t.state.title, None);
+        assert!(t.apply(b"0;vim"));
+        assert!(t.apply(b"133;D;0;src=terminescu"));
+        assert_eq!(t.state.title, None);
+        let long = format!("0;{}", "x".repeat(500));
+        assert!(t.apply(long.as_bytes()));
+        assert_eq!(
+            t.state.title.as_ref().map(|s| s.chars().count()),
+            Some(MAX_TITLE)
+        );
     }
 }

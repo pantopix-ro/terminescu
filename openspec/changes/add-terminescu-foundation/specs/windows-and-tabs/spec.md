@@ -45,6 +45,25 @@ resizable dividers. A side tab SHALL hold any mix of pane kinds.
 - **WHEN** the person presses `⌘D` in a terminal pane
 - **THEN** the tab shows two panes side by side, the new one running the login shell in the same cwd
 
+### Requirement: Tab names
+Each new tab SHALL get a random animal or bird name that no tab in any window has, saved
+with the tab; a number SHALL follow it only once every name is taken. A name typed by the
+person SHALL override it, and clearing that name SHALL bring it back. A side tab without its
+own name SHALL show its first tab's.
+
+#### Scenario: Random names
+- **WHEN** the person opens three tabs and drags one to another window
+- **THEN** each tab shows its own name, such as Otter, Heron and Wren, and no two tabs in any window share one
+
+### Requirement: Live tab subtitles
+Each tab SHALL show a live subtitle from its focused terminal: the path from home, then the
+running program's name, or `claude` and Claude's title while Claude runs there. A program's
+arguments SHALL never show.
+
+#### Scenario: Subtitle follows the terminal
+- **WHEN** `TOKEN=tok-example npm run dev` runs in `~/work/api`, then ends, and `claude` starts there with the title "◐ Fix PROJ-482"
+- **THEN** the subtitle reads `~/work/api · npm`, then `~/work/api`, then `~/work/api · claude · Fix PROJ-482`, without the spinner or the token
+
 ### Requirement: Drag tabs like a browser
 The person SHALL be able to drag a tab within its tab bar to reorder it, onto a sidebar gap to
 make a new side tab at that position, onto a side tab row to move it there, onto another

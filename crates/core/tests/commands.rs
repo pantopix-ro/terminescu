@@ -36,6 +36,7 @@ fn db() -> Db {
             id: tab.into(),
             title: None,
             layout: Layout::pane(pane),
+            name: None,
         }],
     };
     let workspace = Workspace {

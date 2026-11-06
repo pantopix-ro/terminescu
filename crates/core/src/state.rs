@@ -34,6 +34,44 @@ pub fn pick_icon(ws: &Workspace, tab_id: &str, also: &[Option<String>]) -> Strin
     pick_unused(&pool, tab_id, &used)
 }
 
+/// The animals and birds a new tab is named after (task 8.30). Short, plain words, so a name
+/// fits a tab and reads out loud.
+pub const NAMES: &[&str] = &[
+    "Otter", "Heron", "Lynx", "Wren", "Ibis", "Fox", "Badger", "Marten", "Stoat", "Hare", "Bison",
+    "Moose", "Elk", "Ibex", "Yak", "Llama", "Alpaca", "Tapir", "Okapi", "Panda", "Koala", "Lemur",
+    "Gecko", "Iguana", "Newt", "Toad", "Seal", "Walrus", "Orca", "Dolphin", "Narwhal", "Beaver",
+    "Mole", "Shrew", "Vole", "Hedgehog", "Puma", "Jaguar", "Ocelot", "Cheetah", "Zebra", "Gazelle",
+    "Impala", "Camel", "Dingo", "Coyote", "Wolf", "Bear", "Raccoon", "Ferret", "Mink", "Sloth",
+    "Wombat", "Quokka", "Meerkat", "Mongoose", "Gibbon", "Tiger", "Leopard", "Robin", "Finch",
+    "Lark", "Swift", "Crane", "Stork", "Egret", "Kestrel", "Falcon", "Osprey", "Owl", "Raven",
+    "Magpie", "Jay", "Puffin", "Gannet", "Tern", "Plover", "Kiwi", "Toucan", "Parrot", "Macaw",
+    "Pelican", "Condor", "Sparrow", "Starling", "Swallow", "Oriole", "Hoopoe", "Grouse", "Quail",
+    "Dove", "Curlew", "Snipe", "Avocet",
+];
+
+/// A new tab's name (task 8.30): an animal or bird no tab in any window has yet, picked from
+/// the tab id so it looks random but replays the same in tests. Names are unique across
+/// windows, so a tab that moves to another window never clashes there. Once every name is
+/// taken, a number follows the picked one: "Otter 2".
+pub fn pick_name(ws: &Workspace, tab_id: &str, also: &[Option<String>]) -> String {
+    let used: Vec<&str> = ws
+        .windows
+        .iter()
+        .flat_map(|w| &w.side_tabs)
+        .flat_map(|s| &s.tabs)
+        .filter_map(|t| t.name.as_deref())
+        .chain(also.iter().filter_map(|n| n.as_deref()))
+        .collect();
+    let name = pick_unused(NAMES, tab_id, &used);
+    if !used.contains(&name.as_str()) {
+        return name;
+    }
+    (2..)
+        .map(|n| format!("{name} {n}"))
+        .find(|n| !used.contains(&n.as_str()))
+        .unwrap_or(name)
+}
+
 /// The neon accents a sidebar row can take (task 8.25), as `--neon-*` tokens. No amber,
 /// orange or yellow: amber means "needs you".
 pub const NEONS: &[&str] = &[
@@ -62,8 +100,27 @@ pub fn pick_tab_neon(siblings: &[Tab], tab_id: &str) -> String {
 }
 
 /// Gives a neon to every side tab and tab saved before neons existed, as a new one would get,
-/// and an icon to every tab saved before tabs got one (task 8.29).
+/// an icon to every tab saved before tabs got one (task 8.29) and a name to every tab saved
+/// before tabs got one (task 8.30).
 pub fn fill_accents(ws: &mut Workspace) {
+    let unnamed: Vec<(usize, usize, usize)> = ws
+        .windows
+        .iter()
+        .enumerate()
+        .flat_map(|(w, win)| {
+            win.side_tabs.iter().enumerate().flat_map(move |(s, side)| {
+                side.tabs
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, t)| t.name.is_none())
+                    .map(move |(t, _)| (w, s, t))
+            })
+        })
+        .collect();
+    for (w, s, t) in unnamed {
+        let id = ws.windows[w].side_tabs[s].tabs[t].id.clone();
+        ws.windows[w].side_tabs[s].tabs[t].name = Some(pick_name(ws, &id, &[]));
+    }
     let bare: Vec<(usize, usize, usize)> = ws
         .windows
         .iter()
@@ -158,6 +215,9 @@ pub struct Tab {
     /// One of [`NEONS`] (task 8.26): the icon's colour and the tab's square in the sidebar.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub accent: Option<String>,
+    /// The animal or bird the tab is named after (task 8.30); `title` overrides it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -679,6 +739,8 @@ impl Core {
         let also: Vec<Option<String>> = others.iter().map(|t| t.icon.clone()).collect();
         let icon = Some(pick_icon(&self.ws, &id, &also));
         let accent = Some(pick_tab_neon(others, &id));
+        let names: Vec<Option<String>> = others.iter().map(|t| t.name.clone()).collect();
+        let name = Some(pick_name(&self.ws, &id, &names));
         Tab {
             id,
             title: None,
@@ -686,6 +748,7 @@ impl Core {
             status: None,
             icon,
             accent,
+            name,
         }
     }
 
@@ -1106,6 +1169,7 @@ impl Core {
                             Tab {
                                 icon: Some(pick_icon(ws, &id, &[])),
                                 accent: Some(pick_tab_neon(&side.tabs, &id)),
+                                name: Some(pick_name(ws, &id, &[])),
                                 id,
                                 title: None,
                                 layout: pane,
@@ -1214,6 +1278,7 @@ impl Core {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
 
     // Ids from `core()`: window id1, tab id2 with pane id3, side tab id4. Each new tab takes two
     // ids (tab, then pane), each new side tab one more after its tab.
@@ -1628,6 +1693,40 @@ mod tests {
         unique.sort();
         unique.dedup();
         assert_eq!(unique.len(), 5, "{neons:?}");
+    }
+
+    #[test]
+    fn tab_names_stay_unique_across_windows_and_number_once_the_list_runs_out() {
+        let mut c = core();
+        let side = c.workspace().windows[0].side_tabs[0].id.clone();
+        for _ in 0..NAMES.len() + 2 {
+            c.handle(Command::CreateTab {
+                side_tab_id: side.clone(),
+            })
+            .unwrap();
+        }
+        let names: Vec<String> = c.workspace().windows[0].side_tabs[0]
+            .tabs
+            .iter()
+            .map(|t| t.name.clone().unwrap())
+            .collect();
+        let unique: HashSet<&String> = names.iter().collect();
+        assert_eq!(unique.len(), names.len(), "no two tabs share a name");
+        assert!(
+            names[..NAMES.len()]
+                .iter()
+                .all(|n| NAMES.contains(&n.as_str()))
+        );
+        // Past the list, a number follows a name: "Otter 2".
+        let extra = &names[NAMES.len()..];
+        assert!(extra.iter().all(|n| n.ends_with(" 2") || n.ends_with(" 3")));
+
+        let mut ws = c.workspace().clone();
+        ws.windows[0].side_tabs[0].tabs[0].name = None;
+        let taken = ws.windows[0].side_tabs[0].tabs[1].name.clone();
+        fill_accents(&mut ws);
+        let filled = ws.windows[0].side_tabs[0].tabs[0].name.clone();
+        assert!(filled.is_some() && filled != taken);
     }
 
     #[test]

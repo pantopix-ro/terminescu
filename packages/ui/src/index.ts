@@ -36,6 +36,7 @@ export { ExtractDialog, type ExtractDialogProps } from "./ExtractDialog";
 export { MergeDialog, type MergeDialogProps } from "./MergeDialog";
 export { WEBGL_LIMIT, webglBudget } from "./webgl-budget";
 export { DOT, tabAgent, type Agents } from "./agents";
+export { MAX_PATH, paneSubtitle, shortPath, subtitlePane, tabSubtitles, type Labels } from "./subtitles";
 export { anchor, quoteOf, QUOTE_CONTEXT, type Quote } from "./anchor";
 export { EXTRACTION_RULES, insertText, parseTtl, suggestName, timeAgo, timeLeft, ttlText } from "./names";
 export { PromptLibrary, type PromptLibraryProps } from "./PromptLibrary";

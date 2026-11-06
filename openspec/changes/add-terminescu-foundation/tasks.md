@@ -495,6 +495,14 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
 - [x] 8.29 Tinted tabs with icons (owner request, 2026-11-05): a tab bar tab washes 12% of its neon
       into its background, the active one too, and always shows its icon; `fill_accents` gives
       tabs saved before task 8.20 a random icon at start. Verify: core test, `sidebar-neon.spec.ts` (3).
+- [x] 8.30 Tab names and subtitles (owner request, 2026-11-06): each new tab gets an animal or
+      bird name unique across windows (`tabs.name`, migration 0010; "Otter 2" once all 94 are
+      taken), shown when it has no title or document; `fill_accents` names saved tabs. The daemon
+      keeps the OSC 0/2 title without its spinner and clears it at each command's start and end;
+      the core sends `host://labels` (path from home, program name, Claude's title while Claude
+      runs) and the UI shows the focused terminal's subtitle in the tab bar, the one-tab row, the
+      group and the shell list. Verify: ptyd and core tests, `labels.test.ts`,
+      `subtitles.test.ts`, `tab-names.spec.ts` (3).
 - [x] 8.31 Wordmark (owner request, 2026-11-06): ESCU in amber instead of SCU, centred between the
       last traffic light (68 pt) and the sidebar border; the canvas boards' title bars match
       (canvas v47). Verify: `sidebar-chrome.spec.ts`.

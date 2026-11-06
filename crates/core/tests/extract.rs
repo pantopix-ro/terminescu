@@ -105,6 +105,7 @@ fn side_tab(db: &Db) -> String {
                     id: "t1".into(),
                     title: None,
                     layout: Layout::pane("p1"),
+                    name: None,
                 }],
             }],
         }],

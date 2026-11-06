@@ -287,6 +287,11 @@ pub struct ShellState {
     /// The running command's line, or the last one once it ended.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub command: Option<String>,
+    /// The window title the running program set (OSC 0 or 2), without a leading spinner or
+    /// status glyph. Cleared when a command starts or ends, so a shell theme's title never
+    /// outlives its prompt into the next program (task 8.30).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     /// True from a command's start until its end.
     #[serde(default)]
     pub running: bool,

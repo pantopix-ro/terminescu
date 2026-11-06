@@ -23,6 +23,7 @@ use terminescu_core::daemon::DaemonClient;
 use terminescu_core::db::{Db, DbAccess};
 use terminescu_core::hook_install;
 use terminescu_core::keys;
+use terminescu_core::labels::PaneLabel;
 use terminescu_core::launcher;
 use terminescu_core::merge;
 use terminescu_core::persist;
@@ -46,6 +47,8 @@ const AGENT_EVENT: &str = "host://agent";
 const CONTEXT_EVENT: &str = "host://context";
 /// Every tab's and side tab's shown status, whenever one changes (D15).
 const STATUS_EVENT: &str = "host://status";
+/// Each terminal pane's live label: path, running program, Claude's title (task 8.30).
+const LABEL_EVENT: &str = "host://labels";
 /// Saved statuses, rules or built-in looks changed; windows reload [`status_config`].
 const STATUS_CONFIG_EVENT: &str = "host://status-config";
 /// Saved commands changed; windows reload [`commands_list`].
@@ -1031,6 +1034,11 @@ fn host_statuses(state: State<'_, AppState>) -> BTreeMap<Id, Shown> {
     state.runtime.statuses()
 }
 
+#[tauri::command]
+fn host_labels(state: State<'_, AppState>) -> BTreeMap<Id, PaneLabel> {
+    state.runtime.labels()
+}
+
 #[tauri::command(async)]
 fn status_config(state: State<'_, AppState>) -> Result<StatusConfig, String> {
     status_store::config(&lock(&state.db)).map_err(|e| e.to_string())
@@ -1386,6 +1394,12 @@ fn start_runtime(
     runtime.on_status(Box::new(move |map| {
         if let Err(e) = handle.emit(STATUS_EVENT, map) {
             eprintln!("terminescu: status broadcast failed: {e}");
+        }
+    }));
+    let handle = app.clone();
+    runtime.on_labels(Box::new(move |map| {
+        if let Err(e) = handle.emit(LABEL_EVENT, map) {
+            eprintln!("terminescu: label broadcast failed: {e}");
         }
     }));
     let handle = app.clone();
@@ -1773,6 +1787,7 @@ fn main() {
             attention_settings,
             attention_set,
             host_statuses,
+            host_labels,
             status_config,
             status_save,
             status_update,

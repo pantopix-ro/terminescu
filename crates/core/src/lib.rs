@@ -13,6 +13,7 @@ pub mod extract;
 pub mod files;
 pub mod hook_install;
 pub mod keys;
+pub mod labels;
 pub mod launcher;
 pub mod layout;
 pub mod merge;
