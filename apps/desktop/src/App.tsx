@@ -580,6 +580,10 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       case "close":
         if (focused) closePane(focused);
         return;
+      case "pane_to_tab":
+        // A tab's only pane is already a tab.
+        if (!activeTab || !focused || activeTab.layout.type !== "split") return;
+        return paneToTab(focused, tabs.indexOf(activeTab) + 1);
       case "new_text":
         if (!activeSide) return;
         return void host.newText(activeSide.id).then((d) => revealDoc(d.id), setError);
@@ -1331,9 +1335,6 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
             })),
         )
       : []),
-    ...(activeTab && focused && activeTab.layout.type === "split" && panesOf(activeTab.layout).includes(focused)
-      ? [{ id: "pane:tab", label: "Move pane to a new tab", group: "Actions", run: () => paneToTab(focused, tabs.indexOf(activeTab) + 1) }]
-      : []),
     ...SORTS.map((m) => ({ id: `sort:${m}`, label: m === sort ? `${m} (now)` : m, group: "Sort side tabs", run: () => changeSort(m) })),
     ...sideTabs.map((s) => ({ id: `go:${s.id}`, label: sideTabName(s), group: "Go to side tab", run: () => setSideTabId(s.id) })),
     ...(activeSide
@@ -1517,7 +1518,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                   onResize={(splitId, sizes) => send({ type: "ResizeSplit", splitId, sizes })}
                   renderPane={(paneId, resume, slot, transcript) => (
                     <section
-                      className={`ao-tp${multi && paneId === focused ? " focused" : ""}`}
+                      className={`ao-tp${multi && paneId === focused ? " focused" : ""}${dock?.pane === paneId && dock.side !== "center" ? ` dock-target${dock.small ? " too-small" : ""}` : ""}`}
                       data-pane={paneId}
                       onPointerDown={() => focusIn(activeTab.id, paneId)}
                     >

@@ -39,7 +39,7 @@ async function at(page: Page, pane: string, fx: number, fy: number): Promise<Poi
 }
 
 /** Drags from an element to a point and waits for the preview's side before `release`. */
-async function drag(page: Page, from: string, to: Point, side: string | null, release: "drop" | "escape" = "drop", small = false) {
+async function drag(page: Page, from: string, to: Point, side: string | null, release: "drop" | "escape" = "drop", small = false, target?: string) {
   const box = (await page.locator(from).boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
@@ -49,6 +49,10 @@ async function drag(page: Page, from: string, to: Point, side: string | null, re
   if (side === null) await expect(page.locator(".dock-preview")).toHaveCount(0);
   else await expect(page.locator(".dock-preview")).toHaveAttribute("data-side", side);
   if (small) await expect(page.locator(".dock-preview")).toHaveClass(/\bsmall\b/);
+  if (side && side !== "center") await expect(page.locator(".app-pane .ao-tp.dock-target")).toHaveCount(1);
+  if (small) await expect(page.locator(".app-pane .ao-tp.dock-target")).toHaveClass(/too-small/);
+  if (target) await expect(page.locator(".app-pane .ao-tp.dock-target")).toHaveAttribute("data-pane", target);
+  if (side === "center") await expect(page.locator(".app-pane .ao-tp.dock-target")).toHaveCount(0);
   if (release === "escape") await page.keyboard.press("Escape");
   await page.mouse.up();
 }
@@ -124,14 +128,25 @@ test("a pane header dragged to the tab bar becomes a tab; the palette docks and 
   await drag(page, `.ao-tp[data-pane="${otherPane}"] .ao-tp-head`, { x: end.x + end.width + 20, y: end.y + end.height / 2 }, null);
   await expect.poll(() => tabIds(page)).toHaveLength(2);
   await expect.poll(() => shownPanes(page)).toEqual([otherPane]);
-  // The palette's "Move pane to a new tab" needs a split; dock again and undo by keyboard.
+  // ⌘⇧B moves the focused pane to a new tab; it needs a split, so dock again first.
   await page.keyboard.press("Meta+k");
   await page.keyboard.type("split down with tab");
   await page.keyboard.press("Enter");
   await expect.poll(() => shownPanes(page)).toHaveLength(2);
-  await page.keyboard.press("Meta+k");
-  await page.keyboard.type("move pane to a new tab");
-  await page.keyboard.press("Enter");
+  await page.keyboard.press("Meta+Shift+b");
   await expect.poll(() => tabIds(page)).toHaveLength(2);
   await expect.poll(() => shownPanes(page)).toHaveLength(1);
+});
+
+test("the pane that splits is outlined; ⌘⇧B on a lone pane does nothing", async ({ page }) => {
+  const { pane, second } = await twoTabs(page);
+  await page.keyboard.press("Meta+Shift+b");
+  await expect.poll(() => tabIds(page)).toHaveLength(2);
+  await page.keyboard.press("Meta+d");
+  await expect.poll(() => shownPanes(page)).toHaveLength(2);
+  const [, right] = await shownPanes(page);
+  // Over the left pane's bottom edge: only that pane is outlined, not the one beside it.
+  await drag(page, `.ao-tabs [data-tab="${second}"]`, await at(page, pane, 0.5, 0.95), "down", "escape", false, pane);
+  await expect(page.locator(".app-pane .ao-tp.dock-target")).toHaveCount(0);
+  expect(right).toBeTruthy();
 });

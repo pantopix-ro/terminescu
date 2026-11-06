@@ -103,6 +103,10 @@ that pane a tab.
 - **WHEN** the person drags a split pane's header to the end of the tab bar
 - **THEN** that pane becomes a new tab there, with its shell, and the other panes fill its space
 
+#### Scenario: Pane back to a tab by keyboard
+- **WHEN** the focused pane shares its tab and the person presses ⌘⇧B
+- **THEN** that pane becomes a new tab right after the current one; in a tab with one pane ⌘⇧B does nothing
+
 ### Requirement: Merge side tabs
 Dropping a side tab onto another SHALL move all its tabs into the target and merge the two
 contexts. When a variable name exists in both with different values the system SHALL ask to
