@@ -10,7 +10,7 @@ use crate::layout::Layout;
 use crate::state::{Id, SideTab, Tab, Window, Workspace};
 use crate::status::ManualStatus;
 use rusqlite::{OptionalExtension, params};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use terminescu_protocol::PaneId;
 
 const INSTANCE_KEY: &str = "ptyd_instance";
@@ -65,6 +65,21 @@ pub fn save(db: &Db, saved: &Saved) -> Result<()> {
         st.query_map(params![owner], |r| Ok((r.get(0)?, r.get(1)?)))?
             .collect::<rusqlite::Result<_>>()?
     };
+    // Each saved pane's tab, to see a docked tab's panes arrive in another tab (task 8.32).
+    let pane_tab: HashMap<String, String> = {
+        let mut st = tx.prepare("SELECT id, tab_id FROM panes WHERE owner_id = ?1")?;
+        st.query_map(params![owner], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<rusqlite::Result<_>>()?
+    };
+    let tab_ids: HashSet<&str> = saved
+        .workspace
+        .windows
+        .iter()
+        .flat_map(|w| &w.side_tabs)
+        .flat_map(|s| &s.tabs)
+        .map(|t| t.id.as_str())
+        .collect();
+    let mut docked: Vec<(String, &str, &str)> = Vec::new();
     let mut moved: Vec<(&str, &str, &str)> = Vec::new();
     let mut ids: [Vec<&str>; 4] = Default::default();
     for (wi, w) in saved.workspace.windows.iter().enumerate() {
@@ -102,6 +117,13 @@ pub fn save(db: &Db, saved: &Saved) -> Result<()> {
                 let terminals = t.layout.terminals();
                 let docs = t.layout.docs();
                 for p in t.layout.panes() {
+                    if let Some(old) = pane_tab.get(p.as_str())
+                        && *old != t.id
+                        && !tab_ids.contains(old.as_str())
+                        && !docked.iter().any(|(o, _, _)| o == old)
+                    {
+                        docked.push((old.clone(), &t.id, &s.id));
+                    }
                     let rec = saved.panes.get(p).cloned().unwrap_or_default();
                     let doc = docs.iter().find(|(pane, _)| *pane == p).map(|(_, d)| *d);
                     let kind = if terminals.contains(&p) {
@@ -126,6 +148,12 @@ pub fn save(db: &Db, saved: &Saved) -> Result<()> {
     }
     for (tab, from, to) in moved {
         follow(&tx, &owner, tab, from, to)?;
+    }
+    for (old, tab, side) in &docked {
+        if let Some(from) = was.get(old).filter(|from| *from != side) {
+            follow(&tx, &owner, old, from, side)?;
+        }
+        adopt(&tx, &owner, old, tab)?;
     }
     // Children first; cascades would cover it, but explicit deletes keep the order obvious.
     for (table, keep) in [
@@ -185,6 +213,19 @@ fn follow(
          WHERE owner_id = ?1 AND origin_tab_id = ?2 AND side_tab_id = ?3",
         params![owner, tab, from, to],
     )?;
+    Ok(())
+}
+
+/// A docked tab's context now belongs to the tab its panes joined (task 8.32).
+fn adopt(tx: &rusqlite::Transaction<'_>, owner: &str, old: &str, tab: &str) -> Result<()> {
+    for table in ["context_items", "pins", "context_files"] {
+        tx.execute(
+            &format!(
+                "UPDATE {table} SET origin_tab_id = ?3 WHERE owner_id = ?1 AND origin_tab_id = ?2"
+            ),
+            params![owner, old, tab],
+        )?;
+    }
     Ok(())
 }
 
@@ -487,5 +528,40 @@ mod tests {
             .query_row("SELECT count(*) FROM context_items", [], |r| r.get(0))
             .unwrap();
         assert_eq!(items, 0);
+    }
+
+    /// Task 8.32: a tab docked into another tab's pane takes its extracted context along.
+    #[test]
+    fn a_docked_tabs_context_follows_its_panes() {
+        let db = Db::open_in_memory().unwrap();
+        let mut saved = sample();
+        save(&db, &saved).unwrap();
+        let owner = db.local_owner().unwrap();
+        db.conn()
+            .execute(
+                "INSERT INTO context_items (id, owner_id, side_tab_id, kind, name, value, position, created_at, updated_at, source, origin_tab_id)
+                 VALUES ('c1', ?1, 's2', 'variable', 'branch', 'feature/x', 0, 0, 0, 'extracted', 't3')",
+                [&owner],
+            )
+            .unwrap();
+        // t3, the only tab of s2, docks right of p3 in t2; s2 closes.
+        let w = &mut saved.workspace.windows[0];
+        let t3 = w.side_tabs.remove(1).tabs.remove(0);
+        let t2 = &mut w.side_tabs[0].tabs[1];
+        t2.layout = t2
+            .layout
+            .split("p3", crate::layout::Dir::Row, t3.layout, "sp9".into())
+            .unwrap();
+        save(&db, &saved).unwrap();
+        let (side, origin): (String, String) = db
+            .conn()
+            .query_row(
+                "SELECT side_tab_id, origin_tab_id FROM context_items WHERE id = 'c1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((side.as_str(), origin.as_str()), ("s1", "t2"));
+        assert_eq!(load(&db).unwrap(), Some(saved));
     }
 }

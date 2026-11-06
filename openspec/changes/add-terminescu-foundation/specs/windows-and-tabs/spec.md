@@ -84,6 +84,25 @@ each drag SHALL have a palette equivalent.
 - **WHEN** the person drops a tab on the gap between two side tabs
 - **THEN** a new side tab with that tab appears at that position and the old side tab keeps its other tabs
 
+### Requirement: Dock a tab beside a pane
+A tab dragged over a pane of the shown tab SHALL preview the half it takes, picked by the
+triangle under the pointer, and on release SHALL split that pane 50/50 with the tab's panes,
+keeping their shells and context. The middle of the pane, the shown tab itself and a pane too
+small to halve SHALL change nothing. A split pane's header dragged to the tab bar SHALL make
+that pane a tab.
+
+#### Scenario: Drop on the right edge
+- **WHEN** the person drags the tab `acme/api` onto the right edge of the shown pane
+- **THEN** an amber preview covers the right half, and on release the pane and `acme/api`'s shell sit side by side and `acme/api` leaves the tab bar
+
+#### Scenario: Drop in the middle
+- **WHEN** the person releases the tab over the middle of a pane, or presses Esc first
+- **THEN** no pane splits and the tab stays where it was
+
+#### Scenario: Pane back to a tab
+- **WHEN** the person drags a split pane's header to the end of the tab bar
+- **THEN** that pane becomes a new tab there, with its shell, and the other panes fill its space
+
 ### Requirement: Merge side tabs
 Dropping a side tab onto another SHALL move all its tabs into the target and merge the two
 contexts. When a variable name exists in both with different values the system SHALL ask to

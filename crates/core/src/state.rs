@@ -220,6 +220,28 @@ pub struct Tab {
     pub name: Option<String>,
 }
 
+/// The side of a pane a dropped tab lands on (task 8.32).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DockSide {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
+impl DockSide {
+    /// The split direction, and whether the tab goes before the pane.
+    pub fn place(self) -> (Dir, bool) {
+        match self {
+            DockSide::Left => (Dir::Row, true),
+            DockSide::Right => (Dir::Row, false),
+            DockSide::Up => (Dir::Column, true),
+            DockSide::Down => (Dir::Column, false),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all_fields = "camelCase")]
 pub enum Command {
@@ -292,6 +314,19 @@ pub enum Command {
     SplitPane {
         pane_id: Id,
         dir: Dir,
+    },
+    /// A tab dropped on a side of a pane (task 8.32): its panes join the pane's tab on that
+    /// side, keeping their shells, and the dropped tab closes.
+    DockTab {
+        tab_id: Id,
+        pane_id: Id,
+        side: DockSide,
+    },
+    /// A pane dragged out to the tab bar (task 8.32): it leaves its tab and becomes a new tab
+    /// at `index` in the same side tab, keeping its shell.
+    PaneToTab {
+        pane_id: Id,
+        index: usize,
     },
     /// A read-only transcript of `session` beside `pane_id`, on the right (task 4.4).
     OpenTranscript {
@@ -431,6 +466,10 @@ pub enum CommandError {
     BadStatus(String),
     #[error("{0} is not a known icon")]
     BadIcon(String),
+    #[error("tab {0} cannot dock beside its own pane")]
+    DockOntoItself(Id),
+    #[error("pane {0} is its tab's only pane")]
+    OnlyPane(Id),
 }
 
 impl Workspace {
@@ -1132,6 +1171,80 @@ impl Core {
                             _ => CommandError::UnknownPane(pane_id),
                         })?;
                 vec![Patch::LayoutChanged { tab_id, layout }]
+            }
+            Command::DockTab {
+                tab_id,
+                pane_id,
+                side,
+            } => {
+                let (from, index) = ws
+                    .locate_tab(&tab_id)
+                    .ok_or(CommandError::UnknownTab(tab_id.clone()))?;
+                let moving = from.tabs[index].layout.clone();
+                let (into_side, into) = ws
+                    .locate_pane(&pane_id)
+                    .ok_or(CommandError::UnknownPane(pane_id.clone()))?;
+                if into.id == tab_id {
+                    return Err(CommandError::DockOntoItself(tab_id));
+                }
+                let (dir, before) = side.place();
+                let layout = into
+                    .layout
+                    .split_at(&pane_id, dir, before, moving, (self.new_id)())
+                    .map_err(|e| match e {
+                        LayoutError::TooSmall => CommandError::PaneTooSmall(pane_id.clone()),
+                        _ => CommandError::UnknownPane(pane_id.clone()),
+                    })?;
+                let closed = source_empties(&tab_id, Some(&into_side.id));
+                [
+                    Patch::LayoutChanged {
+                        tab_id: into.id.clone(),
+                        layout,
+                    },
+                    Patch::TabClosed { tab_id },
+                ]
+                .into_iter()
+                .chain(closed)
+                .collect()
+            }
+            Command::PaneToTab { pane_id, index } => {
+                let (side, tab) = ws
+                    .locate_pane(&pane_id)
+                    .ok_or(CommandError::UnknownPane(pane_id.clone()))?;
+                if index > side.tabs.len() {
+                    return Err(CommandError::IndexOutOfRange(index));
+                }
+                let pane = tab
+                    .layout
+                    .leaf(&pane_id)
+                    .cloned()
+                    .ok_or(CommandError::UnknownPane(pane_id.clone()))?;
+                let left = tab
+                    .layout
+                    .remove(&pane_id)
+                    .map_err(|_| CommandError::UnknownPane(pane_id.clone()))?
+                    .ok_or(CommandError::OnlyPane(pane_id.clone()))?;
+                let id = (self.new_id)();
+                let new = Tab {
+                    icon: Some(pick_icon(ws, &id, &[])),
+                    accent: Some(pick_tab_neon(&side.tabs, &id)),
+                    name: Some(pick_name(ws, &id, &[])),
+                    id,
+                    title: None,
+                    layout: pane,
+                    status: None,
+                };
+                vec![
+                    Patch::LayoutChanged {
+                        tab_id: tab.id.clone(),
+                        layout: left,
+                    },
+                    Patch::TabCreated {
+                        side_tab_id: side.id.clone(),
+                        index,
+                        tab: new,
+                    },
+                ]
             }
             Command::OpenText {
                 side_tab_id,
@@ -2076,6 +2189,238 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&err).unwrap(),
             r#"{"code":"UnknownTab","id":"t"}"#
+        );
+    }
+}
+
+#[cfg(test)]
+mod dock_tests {
+    use super::*;
+
+    fn core() -> Core {
+        let mut n = 0;
+        let mut c = Core::with_ids(
+            Workspace::default(),
+            Box::new(move || {
+                n += 1;
+                format!("id{n}")
+            }),
+        );
+        c.first_start();
+        c
+    }
+
+    fn first_side(c: &Core) -> &SideTab {
+        &c.workspace().windows[0].side_tabs[0]
+    }
+
+    /// A side tab with two one-pane tabs: (side, first tab, its pane, second tab, its pane).
+    fn two_tabs() -> (Core, Id, Id, Id, Id, Id) {
+        let mut c = core();
+        let side = first_side(&c).id.clone();
+        c.handle(Command::CreateTab {
+            side_tab_id: side.clone(),
+        })
+        .unwrap();
+        let s = first_side(&c);
+        let pane = |t: &Tab| t.layout.panes()[0].clone();
+        let (a, b) = (s.tabs[0].clone(), s.tabs[1].clone());
+        (c, side, a.id.clone(), pane(&a), b.id.clone(), pane(&b))
+    }
+
+    fn order(l: &Layout) -> (Option<Dir>, Vec<Id>) {
+        let dir = match l {
+            Layout::Split { dir, .. } => Some(*dir),
+            Layout::Pane { .. } => None,
+        };
+        (dir, l.panes().into_iter().cloned().collect())
+    }
+
+    #[test]
+    fn a_tab_docks_on_each_side_of_a_pane_and_closes() {
+        for (side, dir, first) in [
+            (DockSide::Left, Dir::Row, true),
+            (DockSide::Right, Dir::Row, false),
+            (DockSide::Up, Dir::Column, true),
+            (DockSide::Down, Dir::Column, false),
+        ] {
+            let (mut c, _, a, pa, b, pb) = two_tabs();
+            let batch = c
+                .handle(Command::DockTab {
+                    tab_id: b.clone(),
+                    pane_id: pa.clone(),
+                    side,
+                })
+                .unwrap();
+            assert!(
+                batch
+                    .patches
+                    .contains(&Patch::TabClosed { tab_id: b.clone() })
+            );
+            let s = first_side(&c);
+            assert_eq!(s.tabs.len(), 1, "{side:?}");
+            let want = if first {
+                vec![pb.clone(), pa.clone()]
+            } else {
+                vec![pa.clone(), pb.clone()]
+            };
+            assert_eq!(
+                order(&c.workspace().tab(&a).unwrap().layout),
+                (Some(dir), want)
+            );
+        }
+    }
+
+    #[test]
+    fn a_split_tab_docks_whole_and_merges_into_a_split_of_its_direction() {
+        let (mut c, _, a, pa, b, pb) = two_tabs();
+        c.handle(Command::SplitPane {
+            pane_id: pb.clone(),
+            dir: Dir::Row,
+        })
+        .unwrap();
+        let pb2 = c.workspace().tab(&b).unwrap().layout.panes()[1].clone();
+        c.handle(Command::DockTab {
+            tab_id: b,
+            pane_id: pa.clone(),
+            side: DockSide::Right,
+        })
+        .unwrap();
+        // Three columns, not a column holding a split.
+        let layout = &c.workspace().tab(&a).unwrap().layout;
+        assert_eq!(order(layout), (Some(Dir::Row), vec![pa, pb, pb2]));
+        let Layout::Split { sizes, .. } = layout else {
+            panic!("a split")
+        };
+        assert_eq!(
+            sizes.iter().map(|&s| u32::from(s)).sum::<u32>(),
+            u32::from(crate::layout::TOTAL)
+        );
+        assert_eq!(sizes[0], crate::layout::TOTAL - crate::layout::TOTAL / 2);
+    }
+
+    #[test]
+    fn docking_refuses_its_own_pane_and_a_pane_too_small() {
+        let (mut c, _, a, pa, _, _) = two_tabs();
+        assert_eq!(
+            c.handle(Command::DockTab {
+                tab_id: a.clone(),
+                pane_id: pa.clone(),
+                side: DockSide::Left,
+            }),
+            Err(CommandError::DockOntoItself(a.clone()))
+        );
+        // Split the first pane until it cannot halve again, then dock beside it.
+        let mut c2 = c;
+        let mut target = pa.clone();
+        loop {
+            match c2.handle(Command::SplitPane {
+                pane_id: target.clone(),
+                dir: Dir::Row,
+            }) {
+                Ok(_) => {
+                    let tab = c2.workspace().tab(&a).unwrap();
+                    target = tab.layout.panes().last().unwrap().to_string();
+                }
+                Err(CommandError::PaneTooSmall(_)) => break,
+                Err(e) => panic!("{e}"),
+            }
+        }
+        let other = first_side(&c2).tabs[1].id.clone();
+        assert_eq!(
+            c2.handle(Command::DockTab {
+                tab_id: other,
+                pane_id: target.clone(),
+                side: DockSide::Right,
+            }),
+            Err(CommandError::PaneTooSmall(target))
+        );
+    }
+
+    #[test]
+    fn the_only_tab_of_a_side_tab_docks_and_its_side_tab_closes() {
+        let mut c = core();
+        let w = c.workspace().windows[0].id.clone();
+        let pa = first_side(&c).tabs[0].layout.panes()[0].clone();
+        c.handle(Command::CreateSideTab {
+            window_id: w,
+            index: None,
+        })
+        .unwrap();
+        let other = c.workspace().windows[0].side_tabs[1].clone();
+        let b = c
+            .handle(Command::DockTab {
+                tab_id: other.tabs[0].id.clone(),
+                pane_id: pa,
+                side: DockSide::Down,
+            })
+            .unwrap();
+        assert!(b.patches.contains(&Patch::SideTabClosed {
+            side_tab_id: other.id
+        }));
+        assert_eq!(c.workspace().windows[0].side_tabs.len(), 1);
+        assert_eq!(first_side(&c).tabs[0].layout.terminals().len(), 2);
+    }
+
+    #[test]
+    fn a_pane_leaves_its_tab_for_a_new_tab_and_the_only_pane_stays() {
+        let (mut c, side, a, pa, b, _) = two_tabs();
+        assert_eq!(
+            c.handle(Command::PaneToTab {
+                pane_id: pa.clone(),
+                index: 0
+            }),
+            Err(CommandError::OnlyPane(pa.clone()))
+        );
+        c.handle(Command::SplitPane {
+            pane_id: pa.clone(),
+            dir: Dir::Column,
+        })
+        .unwrap();
+        let pa2 = c.workspace().tab(&a).unwrap().layout.panes()[1].clone();
+        c.handle(Command::PaneToTab {
+            pane_id: pa2.clone(),
+            index: 1,
+        })
+        .unwrap();
+        let s = c.workspace().side_tab(&side).unwrap();
+        assert_eq!(s.tabs.len(), 3);
+        assert_eq!(s.tabs[0].id, a);
+        assert_eq!(s.tabs[2].id, b);
+        let new = &s.tabs[1];
+        assert_eq!(new.layout, Layout::pane(pa2));
+        assert!(new.name.is_some() && new.icon.is_some() && new.accent.is_some());
+        assert_eq!(c.workspace().tab(&a).unwrap().layout, Layout::pane(pa));
+        assert_eq!(
+            c.handle(Command::PaneToTab {
+                pane_id: "nope".into(),
+                index: 0
+            }),
+            Err(CommandError::UnknownPane("nope".into()))
+        );
+    }
+
+    #[test]
+    fn dock_commands_read_as_the_ui_sends_them() {
+        let cmd: Command =
+            serde_json::from_str(r#"{"type":"DockTab","tabId":"t","paneId":"p","side":"up"}"#)
+                .unwrap();
+        assert_eq!(
+            cmd,
+            Command::DockTab {
+                tab_id: "t".into(),
+                pane_id: "p".into(),
+                side: DockSide::Up
+            }
+        );
+        let cmd: Command =
+            serde_json::from_str(r#"{"type":"PaneToTab","paneId":"p","index":2}"#).unwrap();
+        assert_eq!(
+            cmd,
+            Command::PaneToTab {
+                pane_id: "p".into(),
+                index: 2
+            }
         );
     }
 }
