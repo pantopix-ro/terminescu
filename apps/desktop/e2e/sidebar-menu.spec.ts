@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// Task 8.7 on the mock host: right-click menus on side tabs, their tabs and saved commands.
+// Tasks 8.7 and 8.34 on the mock host: a right-click opens the edit dialog of a side tab or
+// tab (name, icon, colour, status, actions); saved commands keep their menu.
 
 async function start(page: Page) {
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -16,55 +17,68 @@ const sideRow = (page: Page, i = 0) => page.locator(".ao-side .ao-st").nth(i);
 
 const item = (page: Page, name: string) => page.getByRole("menuitem", { name, exact: true });
 
-test("rename a side tab in place; a blank name goes back to the generated one", async ({ page }) => {
+const edit = (page: Page) => page.getByRole("dialog", { name: "Edit" });
+
+test("right-click renames a side tab in its edit dialog; Esc keeps the name, blank goes back", async ({ page }) => {
   await start(page);
   const generated = (await sideRow(page).locator(".t").textContent())!;
   await sideRow(page).click({ button: "right" });
-  await expect(page.getByRole("menu", { name: "Side tab" })).toBeVisible();
-  await item(page, "Rename…").click();
+  await expect(edit(page)).toBeVisible();
+  await expect(page.getByRole("menu")).toHaveCount(0);
   await page.getByLabel("Side tab name").fill("PROJ-482");
   await page.keyboard.press("Enter");
+  await expect(edit(page)).toBeHidden();
   await expect(sideRow(page).locator(".t")).toHaveText("PROJ-482");
   expect((await workspace(page)).windows[0].sideTabs[0].title).toBe("PROJ-482");
 
   // Esc keeps the name it had.
   await sideRow(page).click({ button: "right" });
-  await item(page, "Rename…").click();
+  await expect(page.getByLabel("Side tab name")).toHaveValue("PROJ-482");
   await page.getByLabel("Side tab name").fill("something else");
   await page.keyboard.press("Escape");
+  await expect(edit(page)).toBeHidden();
   await expect(sideRow(page).locator(".t")).toHaveText("PROJ-482");
 
   await sideRow(page).click({ button: "right" });
-  await item(page, "Rename…").click();
   await page.getByLabel("Side tab name").fill("   ");
   await page.keyboard.press("Enter");
   await expect(sideRow(page).locator(".t")).toHaveText(generated);
   expect((await workspace(page)).windows[0].sideTabs[0].title).toBeNull();
 });
 
-test("the keyboard opens the menu, walks it and runs an item; Esc closes it", async ({ page }) => {
+test("the keyboard opens the edit dialog; its actions run; Esc closes it", async ({ page }) => {
   await start(page);
   await sideRow(page).focus();
   await page.keyboard.press("Shift+F10");
-  const menu = page.getByRole("menu", { name: "Side tab" });
-  await expect(menu).toBeVisible();
-  await expect(item(page, "Rename…")).toBeFocused();
+  await expect(edit(page)).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(menu).toBeHidden();
-  await expect(sideRow(page)).toBeFocused();
+  await expect(edit(page)).toBeHidden();
 
-  // Down past "Change icon…" to "New tab", Enter: the side tab gets a second tab.
+  await sideRow(page).focus();
   await page.keyboard.press("Shift+F10");
-  await page.keyboard.press("ArrowDown");
-  await expect(item(page, "Change icon…")).toBeFocused();
-  await page.keyboard.press("ArrowDown");
-  await expect(item(page, "New tab")).toBeFocused();
-  await page.keyboard.press("Enter");
-  await expect(menu).toBeHidden();
-  expect((await workspace(page)).windows[0].sideTabs[0].tabs).toHaveLength(2);
+  await edit(page).getByRole("button", { name: "New tab", exact: true }).click();
+  await expect(edit(page)).toBeHidden();
+  await expect.poll(async () => (await workspace(page)).windows[0].sideTabs[0].tabs.length).toBe(2);
 });
 
-test("merge into opens a submenu of the other side tabs", async ({ page }) => {
+test("the row colour comes from the neons and the tab bar opens a tab's dialog", async ({ page }) => {
+  await start(page);
+  await sideRow(page).click({ button: "right" });
+  const colours = edit(page).getByRole("radiogroup", { name: "Row colour" });
+  await colours.getByRole("radio", { name: "lime" }).click();
+  await expect(colours.getByRole("radio", { name: "lime" })).toHaveAttribute("aria-checked", "true");
+  await expect.poll(async () => (await workspace(page)).windows[0].sideTabs[0].accent).toBe("lime");
+  await page.keyboard.press("Escape");
+
+  const tab = page.locator(".ao-tabs [role=tab]").first();
+  await tab.click({ button: "right" });
+  await expect(edit(page)).toContainText("tab ·");
+  await edit(page).getByRole("radiogroup", { name: "Tab colour" }).getByRole("radio", { name: "violet" }).click();
+  await expect.poll(async () => (await workspace(page)).windows[0].sideTabs[0].tabs[0].accent).toBe("violet");
+  await expect(tab).toHaveAttribute("style", /--neon-violet/);
+});
+
+test("merge into is a drop-down of the other side tabs", async ({ page }) => {
   await start(page);
   await page.getByRole("button", { name: "Add a side tab" }).click();
   await expect(page.locator(".ao-side .ao-st")).toHaveCount(2);
@@ -72,8 +86,7 @@ test("merge into opens a submenu of the other side tabs", async ({ page }) => {
   const [a, b] = ws.windows[0].sideTabs;
   await send(page, { type: "RenameSideTab", sideTabId: b.id, title: "PROJ-477" });
   await sideRow(page, 0).click({ button: "right" });
-  await item(page, "Merge into").hover();
-  await item(page, "PROJ-477").click();
+  await edit(page).getByLabel("Merge into").selectOption({ label: "PROJ-477" });
   // No clash, so it merges straight in and offers undo.
   await expect(page.locator(".ao-side .ao-st")).toHaveCount(1);
   await expect(page.locator(".toast")).toContainText("Merged");
@@ -89,7 +102,7 @@ test("move a side tab to a new window keeps its id; close asks first", async ({ 
   const second = (await workspace(page)).windows[0].sideTabs[1];
 
   await sideRow(page, 1).click({ button: "right" });
-  await item(page, "Move to new window").click();
+  await edit(page).getByRole("button", { name: "Move to new window" }).click();
   await expect(page.locator(".ao-side .ao-st")).toHaveCount(1);
   let ws = await workspace(page);
   expect(ws.windows).toHaveLength(2);
@@ -97,7 +110,7 @@ test("move a side tab to a new window keeps its id; close asks first", async ({ 
 
   // Close side tab asks, and Cancel keeps it.
   await sideRow(page, 0).click({ button: "right" });
-  await item(page, "Close side tab…").click();
+  await edit(page).getByRole("button", { name: "Close side tab…" }).click();
   const dialog = page.getByRole("alertdialog", { name: "Close side tab" });
   await expect(dialog).toContainText("its context goes with it");
   await dialog.getByRole("button", { name: "Cancel" }).click();
@@ -109,7 +122,7 @@ test("move a side tab to a new window keeps its id; close asks first", async ({ 
   expect(ws.windows).toHaveLength(1);
 });
 
-test("a tab under its side tab renames, moves and closes from its menu", async ({ page }) => {
+test("a tab under its side tab renames, moves and closes from its dialog", async ({ page }) => {
   await start(page);
   const side = (await workspace(page)).windows[0].sideTabs[0];
   await send(page, { type: "CreateTab", sideTabId: side.id });
@@ -118,26 +131,21 @@ test("a tab under its side tab renames, moves and closes from its menu", async (
   await expect(kids).toHaveCount(3);
 
   await kids.nth(0).click({ button: "right" });
-  await expect(page.getByRole("menu", { name: "Tab" })).toBeVisible();
-  await item(page, "Rename…").click();
+  await expect(edit(page)).toBeVisible();
   await page.getByLabel("Tab name").fill("dev server");
   await page.keyboard.press("Enter");
   await expect(kids.nth(0)).toContainText("dev server");
   expect((await workspace(page)).windows[0].sideTabs[0].tabs[0].title).toBe("dev server");
 
-  // Move to › New side tab, by keyboard from the submenu.
   await kids.nth(1).click({ button: "right" });
-  await item(page, "Move to").focus();
-  await page.keyboard.press("ArrowRight");
-  await expect(item(page, "New side tab")).toBeFocused();
-  await page.keyboard.press("Enter");
+  await edit(page).getByLabel("Move to").selectOption({ label: "New side tab" });
   await expect(page.locator(".ao-side .ao-st")).toHaveCount(2);
 
   // The view followed the moved tab; back to the first side tab, now with two tabs.
   await sideRow(page, 0).click();
   await expect(kids).toHaveCount(2);
   await kids.nth(1).click({ button: "right" });
-  await item(page, "Close tab").click();
+  await edit(page).getByRole("button", { name: "Close tab" }).click();
   const ws = await workspace(page);
   expect(ws.windows[0].sideTabs.flatMap((s: { tabs: unknown[] }) => s.tabs)).toHaveLength(2);
 });

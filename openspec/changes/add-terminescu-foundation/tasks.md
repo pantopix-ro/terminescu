@@ -517,6 +517,15 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       outline marks the pane that splits (red when too small, none in the middle); "Move Pane to
       New Tab" (`pane_to_tab`, ⌘⇧B, Shell menu, palette, Settings › Keys) makes the focused pane
       of a split tab a tab right after it. Verify: `dock.spec.ts` (9).
+- [x] 8.34 Right-click edits (owner request, 2026-11-06): a right-click (or Shift F10) on a side
+      tab, a sidebar tab or a tab bar tab opens the status editor, grown into an edit dialog: name,
+      icon, colour from the neons (`SetAccent`), status, then the old menu's actions (merge and
+      move as drop-downs). Esc keeps a typed name. The empty list and saved commands keep their
+      menus. Verify: core test, `sidebar-menu.spec.ts` (6), `icon-picker.spec.ts`.
+- [x] 8.35 Load test and frozen views (2026-11-06): `crates/ptyd/tests/load.rs` (ignored; ten
+      panes flood and redraw through the real daemon and core) found a view that overflowed with
+      nothing in flight froze for good, as no acknowledgement came to wake it; it now attaches
+      again at once. Verify: `views` unit test, the load test by hand.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

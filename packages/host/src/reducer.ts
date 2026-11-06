@@ -102,6 +102,13 @@ export function applyPatch(ws: Workspace, p: Patch): void {
       else delete target.icon;
       return;
     }
+    case "AccentSet": {
+      const all = sideTabs(ws);
+      const target = all.flatMap((s) => s.tabs).find((t) => t.id === p.id) ?? all.find((s) => s.id === p.id);
+      if (!target) throw new PatchError(`unknown tab ${p.id}`);
+      target.accent = p.accent;
+      return;
+    }
   }
 }
 

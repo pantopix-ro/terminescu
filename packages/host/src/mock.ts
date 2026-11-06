@@ -707,6 +707,12 @@ export function createMockHost(initial?: Workspace): MockHost {
         if (c.icon !== null && !(ICONS as readonly string[]).includes(c.icon)) return fail("BadIcon", c.icon);
         return [{ type: "IconSet", id: c.targetId, icon: c.icon }];
       }
+      case "SetAccent": {
+        const known = allSideTabs().some((s) => s.id === c.targetId || s.tabs.some((t) => t.id === c.targetId));
+        if (!known) return fail("UnknownTab", c.targetId);
+        if (!(NEONS as readonly string[]).includes(c.accent)) return fail("BadAccent", c.accent);
+        return [{ type: "AccentSet", id: c.targetId, accent: c.accent }];
+      }
       case "RestyleStatus": {
         const users = [...allSideTabs(), ...allSideTabs().flatMap((s) => s.tabs)].filter((x) => x.status?.statusId === c.statusId);
         return users.map((u) => ({ type: "StatusSet", id: u.id, status: c.status && { ...c.status, statusId: c.statusId } }));

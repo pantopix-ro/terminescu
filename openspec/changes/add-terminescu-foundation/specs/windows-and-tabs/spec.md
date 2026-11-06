@@ -118,25 +118,30 @@ without a dialog and offer undo for 10 s.
 - **THEN** the merge dialog lists `branch` as a clash and keeping both renames the source's to `branch_477`
 
 ### Requirement: Sidebar right-click menus
-A right click, Shift F10 or the menu key on a side tab, a tab listed under it or a saved command
-SHALL open an in-app menu of that element's actions. Arrow keys SHALL move through it, Enter
-SHALL run an item, and Esc SHALL close it.
+A right click, Shift F10 or the menu key on a side tab, or on a tab in the sidebar or the tab bar,
+SHALL open that element's edit dialog: name, icon, colour from the neons, status, and its other
+actions. On a saved command or the empty list it SHALL open an in-app menu, where arrow keys
+move, Enter runs an item and Esc closes it.
 
 #### Scenario: Rename a side tab
-- **WHEN** the person right-clicks a side tab, picks Rename and types `PROJ-482`
-- **THEN** the row shows `PROJ-482`, and a blank name goes back to its first tab's name
+- **WHEN** the person right-clicks a side tab, types `PROJ-482` as its name and presses Enter
+- **THEN** the row shows `PROJ-482`; Esc keeps the old name, and a blank name goes back to its first tab's name
+
+#### Scenario: Pick a row colour
+- **WHEN** the person right-clicks PROJ-482 and picks lime under Row colour
+- **THEN** the row's edge and icon turn lime at once and stay lime after a restart
 
 #### Scenario: Side tab actions
-- **WHEN** the person opens a side tab's menu
-- **THEN** it offers rename, change icon, new tab, edit status, merge into, move to new window and close, and close asks first since the context goes with it
+- **WHEN** the person opens a side tab's edit dialog
+- **THEN** it offers new tab, merge into, move to new window and close beside its status, and close asks first since the context goes with it
 
 #### Scenario: Move a side tab to a new window
 - **WHEN** the person picks "Move to new window" on PROJ-482
 - **THEN** a new window opens holding PROJ-482 with its tabs and its context
 
 #### Scenario: Tab and command actions
-- **WHEN** the person opens the menu of a tab under its side tab, or of a saved command
-- **THEN** a tab offers rename, change icon, edit status, move to and close; a command offers run, insert, restart when down, edit (keeping its scope), duplicate and delete
+- **WHEN** the person right-clicks a tab, or a saved command
+- **THEN** a tab's dialog offers its name, icon, colour, status, move to and close; a command's menu offers run, insert, restart when down, edit (keeping its scope), duplicate and delete
 
 ### Requirement: Layout persistence
 Windows, side tabs, tabs, splits, sizes and the active tab SHALL persist, each row with an

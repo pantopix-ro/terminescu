@@ -32,6 +32,8 @@ export interface TabBarProps {
   onRenameEnd?(): void;
   /** A double click on a tab's icon, at a window point: pick another (task 8.16). */
   onIconPick?(tabId: string, at: { x: number; y: number }): void;
+  /** A right-click on a tab: open its edit dialog (task 8.34). */
+  onEdit?(tabId: string): void;
 }
 
 function TabItem({
@@ -49,7 +51,8 @@ function TabItem({
   onRename,
   onRenameEnd,
   onIconPick,
-}: Pick<TabBarProps, "onRenameStart" | "onRename" | "onRenameEnd" | "onIconPick"> & {
+  onEdit,
+}: Pick<TabBarProps, "onRenameStart" | "onRename" | "onRenameEnd" | "onIconPick" | "onEdit"> & {
   renaming: boolean;
   tab: Tab;
   active: boolean;
@@ -80,6 +83,11 @@ function TabItem({
       className={`ao-tab${active ? " active" : ""}${tab.accent ? " neon" : ""}${isDragging ? " placeholder" : ""}${shown?.waiting || agent?.state === "waiting" || tabRequest(tab, docs) ? " wait" : ""}`}
       style={{ transform: CSS.Translate.toString(transform), transition, ...look, ...wash } as React.CSSProperties}
       onClick={onSelect}
+      onContextMenu={(e) => {
+        if (!onEdit) return;
+        e.preventDefault();
+        onEdit(tab.id);
+      }}
       onKeyDown={(e) => e.key === "Enter" && onSelect()}
     >
       {/* Every tab shows its icon in its neon (task 8.29); one saved without an icon shows the default. */}
@@ -182,7 +190,7 @@ function NewMenu({ onNew, onNewText }: { onNew(): void; onNewText(beside: boolea
   );
 }
 
-export function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNewText, agents = {}, statuses = {}, builtins = {}, docs = {}, subtitles = {}, renaming, onRenameStart, onRename, onRenameEnd, onIconPick }: TabBarProps) {
+export function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNewText, agents = {}, statuses = {}, builtins = {}, docs = {}, subtitles = {}, renaming, onRenameStart, onRename, onRenameEnd, onIconPick, onEdit }: TabBarProps) {
   return (
     <div className="ao-tabs" role="tablist" data-tauri-drag-region>
       <SortableContext items={tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
@@ -203,6 +211,7 @@ export function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNewText, ag
             onRename={onRename}
             onRenameEnd={onRenameEnd}
             onIconPick={onIconPick}
+            onEdit={onEdit}
           />
         ))}
       </SortableContext>

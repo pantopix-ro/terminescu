@@ -408,3 +408,14 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 .ao-tp-head .tp-close { cursor: default; }
 .ao-tp.dock-target { outline: 1px dashed var(--amber); outline-offset: -1px; }
 .ao-tp.dock-target.too-small { outline-color: var(--red); }
+
+/* Task 8.34: the edit dialog a right-click opens: name, icon and neon above the status. */
+.edit-ident { display: flex; gap: var(--space-3); align-items: flex-end; }
+.edit-ident .grow { flex: 1; min-width: 0; }
+.edit-icon { width: 34px; justify-content: center; }
+.neon-swatches { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.neon-swatch { width: 22px; height: 22px; padding: 0; cursor: pointer; background: color-mix(in srgb, var(--sw) 22%, var(--panel)); border: 2px solid var(--sw); }
+.neon-swatch.on { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--sw); }
+.neon-swatch:focus-visible { outline: 1px dashed var(--fg); outline-offset: 3px; }
+.edit-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.edit-select { width: auto; max-width: 220px; cursor: pointer; }

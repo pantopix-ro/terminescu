@@ -57,10 +57,10 @@ test("a tab's icon shows in the group and the tab bar; arrows and Enter pick, Es
   await expect(page.locator(".ao-tab").first().locator(".ao-i-link")).toHaveCount(1);
 });
 
-test("the right-click menu opens the icon list too", async ({ page }) => {
+test("the edit dialog opens the icon list too", async ({ page }) => {
   await start(page);
   await page.locator(".ao-st").first().click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Change icon…" }).click();
+  await page.getByRole("dialog", { name: "Edit" }).getByRole("button", { name: "Change icon" }).click();
   await page.getByRole("dialog", { name: /^Icon for / }).getByRole("button", { name: "Document" }).click();
   await expect(page.locator(".ao-st > .ao-i").first()).toHaveClass(/ao-i-doc/);
 });
