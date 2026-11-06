@@ -4,7 +4,7 @@
 import type { Host, PaneView } from "./host";
 import { ACTIONS, actionFor, bindingProblem, normalAccel, withBindings, type KeyBindings } from "./keys";
 import { PromptStore } from "./prompt-store";
-import { hasSplit, holdsWork, isSessionId, leaf, panesOf, removePane, resizeSplit, splitPane, terminalsOf } from "./layout";
+import { dockPlace, hasSplit, holdsWork, isSessionId, leaf, panesOf, removePane, resizeSplit, splitAt, splitPane, terminalsOf } from "./layout";
 import {
   ACCENTS,
   type DragEnd,
@@ -650,6 +650,30 @@ export function createMockHost(initial?: Workspace): MockHost {
         const tabId = id();
         const tab: Tab = { id: tabId, title: null, name: pickName(tabId), layout: { type: "pane", id: id(), doc: c.docId }, icon: pickIcon(tabId), accent: pickTabNeon(side.tabs, tabId) };
         return [{ type: "TabCreated", sideTabId: c.sideTabId, index: side.tabs.length, tab }];
+      }
+      case "DockTab": {
+        const from = holder(c.tabId);
+        const moving = from.tabs.find((t) => t.id === c.tabId)!;
+        const into = tabOfPane(c.paneId);
+        if (into.id === c.tabId) return fail("DockOntoItself", c.tabId);
+        const [dir, before] = dockPlace(c.side);
+        const layout = splitAt(into.layout, c.paneId, dir, before, structuredClone(moving.layout), id());
+        if (layout === "small") return fail("PaneTooSmall", c.paneId);
+        const intoSide = holder(into.id);
+        return [{ type: "LayoutChanged", tabId: into.id, layout: layout! }, { type: "TabClosed", tabId: c.tabId }, ...closesSource(c.tabId, intoSide.id)];
+      }
+      case "PaneToTab": {
+        const tab = tabOfPane(c.paneId);
+        const side = holder(tab.id);
+        inRange(c.index, side.tabs.length);
+        const left = removePane(tab.layout, c.paneId);
+        if (!left) return fail("OnlyPane", c.paneId);
+        const tabId = id();
+        const made: Tab = { id: tabId, title: null, name: pickName(tabId), layout: structuredClone(leaf(tab.layout, c.paneId)!), icon: pickIcon(tabId), accent: pickTabNeon(side.tabs, tabId) };
+        return [
+          { type: "LayoutChanged", tabId: tab.id, layout: left },
+          { type: "TabCreated", sideTabId: side.id, index: c.index, tab: made },
+        ];
       }
       case "ClosePane": {
         const tab = tabOfPane(c.paneId);

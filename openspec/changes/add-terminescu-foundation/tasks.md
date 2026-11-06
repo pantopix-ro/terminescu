@@ -506,6 +506,13 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
 - [x] 8.31 Wordmark (owner request, 2026-11-06): ESCU in amber instead of SCU, centred between the
       last traffic light (68 pt) and the sidebar border; the canvas boards' title bars match
       (canvas v47). Verify: `sidebar-chrome.spec.ts`.
+- [x] 8.32 Dock a tab beside a pane (owner request, 2026-11-06): a tab dropped on a pane's
+      left, right, top or bottom triangle splits that pane 50/50 and its panes take the half
+      shown by an amber preview (`DockTab`); the middle 30%, the shown tab and a pane too small
+      to halve (red preview) change nothing, and shells, context and pins follow. A pane header
+      dragged to the tab bar, or "Move pane to a new tab", makes it a tab (`PaneToTab`); the
+      palette adds "Split right/down with tab…" (canvas board). Verify: core and persist tests,
+      `dock.test.ts` (host, ui), `dock.spec.ts` (8).
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

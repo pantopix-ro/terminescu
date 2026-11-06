@@ -162,6 +162,15 @@ impl Layout {
     }
 
     /// The pane leaf with this id.
+    pub fn leaf(&self, pane: &str) -> Option<&Layout> {
+        match self {
+            Layout::Pane { id, .. } if id == pane => Some(self),
+            Layout::Pane { .. } => None,
+            Layout::Split { children, .. } => children.iter().find_map(|c| c.leaf(pane)),
+        }
+    }
+
+    /// The pane leaf with this id, to change.
     pub fn leaf_mut(&mut self, pane: &str) -> Option<&mut Layout> {
         match self {
             Layout::Pane { id, .. } if id == pane => Some(self),
@@ -191,15 +200,43 @@ impl Layout {
         new: Layout,
         split_id: Id,
     ) -> Result<Self, LayoutError> {
+        self.split_at(target, dir, false, new, split_id)
+    }
+
+    /// A copy with `new`, a pane or a whole tab's layout, beside `target`: before it (left or
+    /// up) or after it (right or down), taking half of its share (task 8.32). A split `new`
+    /// in the same direction as its new parent merges into it.
+    pub fn split_at(
+        &self,
+        target: &str,
+        dir: Dir,
+        before: bool,
+        new: Layout,
+        split_id: Id,
+    ) -> Result<Self, LayoutError> {
         let mut out = self.clone();
+        let nested = matches!(new, Layout::Split { .. });
         let mut new = Some(new);
         let mut too_small = false;
-        if !split_in(&mut out, target, dir, &mut new, &split_id, &mut too_small) {
+        let place = Place {
+            target,
+            dir,
+            before,
+            split_id: &split_id,
+        };
+        if !split_in(&mut out, &place, &mut new, &mut too_small) {
             return Err(if too_small {
                 LayoutError::TooSmall
             } else {
                 LayoutError::UnknownPane
             });
+        }
+        if nested {
+            out.normalize();
+            // Merged into its new parent, a docked tab's panes share half a pane.
+            if !out.shares_fit() {
+                return Err(LayoutError::TooSmall);
+            }
         }
         Ok(out)
     }
@@ -249,6 +286,16 @@ impl Layout {
         }
     }
 
+    /// Every share at least [`MIN_SIZE`].
+    fn shares_fit(&self) -> bool {
+        match self {
+            Layout::Pane { .. } => true,
+            Layout::Split {
+                children, sizes, ..
+            } => sizes.iter().all(|&s| s >= MIN_SIZE) && children.iter().all(Layout::shares_fit),
+        }
+    }
+
     /// Collapses splits of one child and merges a split into a parent of the same direction.
     fn normalize(&mut self) {
         let Layout::Split {
@@ -292,25 +339,46 @@ impl Layout {
     }
 }
 
+/// Where [`split_in`] puts the new layout.
+struct Place<'a> {
+    target: &'a str,
+    dir: Dir,
+    before: bool,
+    split_id: &'a str,
+}
+
 fn split_in(
     node: &mut Layout,
-    target: &str,
-    dir: Dir,
+    place: &Place<'_>,
     new: &mut Option<Layout>,
-    split_id: &str,
     too_small: &mut bool,
 ) -> bool {
+    let Place {
+        target,
+        dir,
+        before,
+        split_id,
+    } = *place;
     match node {
         Layout::Pane { id, .. } => {
             if id != target {
                 return false;
             }
             let old = std::mem::replace(node, Layout::pane(""));
+            let new = new.take().expect("placed once");
             *node = Layout::Split {
                 id: split_id.into(),
                 dir,
-                children: vec![old, new.take().expect("placed once")],
-                sizes: vec![TOTAL - TOTAL / 2, TOTAL / 2],
+                children: if before {
+                    vec![new, old]
+                } else {
+                    vec![old, new]
+                },
+                sizes: if before {
+                    vec![TOTAL / 2, TOTAL - TOTAL / 2]
+                } else {
+                    vec![TOTAL - TOTAL / 2, TOTAL / 2]
+                },
             };
             true
         }
@@ -332,13 +400,14 @@ fn split_in(
                 }
                 let half = sizes[i] / 2;
                 sizes[i] -= half;
-                sizes.insert(i + 1, half);
-                children.insert(i + 1, new.take().expect("placed once"));
+                let at = if before { i } else { i + 1 };
+                sizes.insert(at, half);
+                children.insert(at, new.take().expect("placed once"));
                 return true;
             }
             children
                 .iter_mut()
-                .any(|c| split_in(c, target, dir, new, split_id, too_small))
+                .any(|c| split_in(c, place, new, too_small))
         }
     }
 }

@@ -4,6 +4,7 @@ import {
   DragOverlay,
   PointerSensor,
   pointerWithin,
+  useDraggable,
   useSensor,
   useSensors,
   type CollisionDetection,
@@ -42,6 +43,9 @@ import {
   type Command,
   type DragPoint,
   type DragEnd,
+  type DockSide,
+  dockPlace,
+  splitAt,
   type Host,
   type Workspace,
   type WorkspaceStore,
@@ -71,6 +75,9 @@ import {
   TranscriptPane,
   type Agents,
   type Labels,
+  type Box,
+  dockBox,
+  dockZone,
   paneSubtitle,
   tabSubtitles,
   type Reveal,
@@ -171,8 +178,19 @@ function neighbor(from: string, ids: string[], dir: Dir): string | undefined {
   return best?.id;
 }
 
-/** Sidebar targets under the pointer win; otherwise the nearest tab in the bar. */
+/** Whether a window point is inside the first element matching `selector`. */
+function inside(selector: string, p: { x: number; y: number } | null): boolean {
+  const r = p && document.querySelector(selector)?.getBoundingClientRect();
+  return !!r && p.x >= r.left && p.x <= r.right && p.y >= r.top && p.y <= r.bottom;
+}
+
+/**
+ * Sidebar targets under the pointer win; otherwise the nearest tab in the bar. Over the panes a
+ * tab docks instead, and a pane dragged out finds its gap itself (task 8.32).
+ */
 const collide: CollisionDetection = (args) => {
+  if (String(args.active.id).startsWith("pane:")) return [];
+  if (inside(".app-pane", args.pointerCoordinates)) return [];
   const under = pointerWithin(args);
   // A side tab merges only into a row under the pointer.
   if (String(args.active.id).startsWith("side:")) return under.filter((c) => String(c.id).startsWith("into:"));
@@ -206,6 +224,46 @@ const selectable = new Set(["palette", "send_to_tab"]);
 /** Menu chords that a focused dialog field may use for itself. */
 const FIELD_CHORDS = new Set(["save", "save_as", "return_edit", "send_to_pane", "send_to_tab"]);
 const paletteActions = (actions: readonly ActionDef[]) => actions.filter((a) => !selectable.has(a.id) && !/^(tab|side)_\d$/.test(a.id));
+
+/** Where a tab dragged over the panes would land (task 8.32); `small` means it would not fit. */
+interface Dock {
+  pane: string;
+  side: DockSide | "center";
+  box: Box;
+  small: boolean;
+}
+const sameDock = (a: Dock | undefined, b: Dock | undefined) =>
+  a === b ||
+  (!!a && !!b && a.pane === b.pane && a.side === b.side && a.small === b.small && JSON.stringify(a.box) === JSON.stringify(b.box));
+
+/** Where a pane dragged to the tab bar becomes a tab: before the tab at `index`. */
+interface TabGap {
+  index: number;
+  left: number;
+  top: number;
+  height: number;
+}
+
+/** The gap in the tab bar nearest a window point, or undefined off the bar. */
+function tabGapAt(x: number, y: number): TabGap | undefined {
+  const bar = document.querySelector<HTMLElement>(".app-main .ao-tabs");
+  const r = bar?.getBoundingClientRect();
+  if (!bar || !r || x < r.left || x > r.right || y < r.top || y > r.bottom) return undefined;
+  const tabs = [...bar.querySelectorAll<HTMLElement>(":scope > [data-tab]")].map((el) => el.getBoundingClientRect());
+  const index = tabs.filter((t) => t.left + t.width / 2 < x).length;
+  const left = index < tabs.length ? tabs[index]!.left : (tabs.at(-1)?.right ?? r.left);
+  return { index, left, top: r.top, height: r.height };
+}
+
+/** A split pane's header; dragged to the tab bar, its pane becomes a tab (task 8.32). */
+function PaneHead({ paneId, children }: { paneId: string; children: React.ReactNode }) {
+  const { attributes, listeners, setNodeRef } = useDraggable({ id: `pane:${paneId}` });
+  return (
+    <div ref={setNodeRef} {...attributes} {...listeners} tabIndex={-1} className="ao-tp-head" title="Drag to the tab bar to make it a tab">
+      {children}
+    </div>
+  );
+}
 
 export function App({ windowId, host, workspace, terminals }: AppProps) {
   const ws = useStore(workspace.store, (s) => s.workspace);
@@ -1067,6 +1125,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const remoteRef = useRef<(p: DragPoint) => void>(() => {});
   remoteRef.current = (p: DragPoint) => {
     setRemote(null);
+    const docked = dockAt(p.tabId, p.x, p.y);
+    if (docked && docked.side !== "center" && !docked.small) return dockTab(p.tabId, docked.pane, docked.side);
     const target = remoteTarget(p.x, p.y);
     const cmd: Command | undefined =
       target?.kind === "end"
@@ -1105,13 +1165,103 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     return () => el?.classList.remove("remote-hot");
   }, [remote]);
 
+  // Task 8.32: a tab dragged over the shown panes docks on a side of the one under the pointer;
+  // a pane header dragged to the tab bar becomes a tab. Both follow the pointer while a drag
+  // lasts and change state only when the target changes.
+  const [dock, setDock] = useState<Dock>();
+  const dockRef = useRef(dock);
+  dockRef.current = dock;
+  const [tabGap, setTabGap] = useState<TabGap>();
+  const tabGapRef = useRef(tabGap);
+  tabGapRef.current = tabGap;
+  const dockAt = (tabId: string, x: number, y: number): Dock | undefined => {
+    // The tab on screen cannot dock into itself.
+    if (!activeTab || tabId === activeTab.id) return undefined;
+    const el = document
+      .elementsFromPoint(x, y)
+      .map((e) => e.closest<HTMLElement>(".app-pane .ao-tp[data-pane]"))
+      .find(Boolean);
+    const pane = el?.dataset.pane;
+    if (!el || !pane || !panesOf(activeTab.layout).includes(pane)) return undefined;
+    const r = el.getBoundingClientRect();
+    const box = { left: r.left, top: r.top, width: r.width, height: r.height };
+    const side = dockZone(box, x, y);
+    if (!side) return undefined;
+    if (side === "center") return { pane, side, box, small: false };
+    const moving = ws.windows.flatMap((w) => w.sideTabs.flatMap((s) => s.tabs)).find((t) => t.id === tabId);
+    if (!moving) return undefined;
+    const [dir, before] = dockPlace(side);
+    return { pane, side, box, small: splitAt(activeTab.layout, pane, dir, before, moving.layout, "preview") === "small" };
+  };
+  const dockAtRef = useRef(dockAt);
+  dockAtRef.current = dockAt;
+  useEffect(() => {
+    if (!dragging || dragging.startsWith("side:")) return;
+    const pane = dragging.startsWith("pane:");
+    const move = (e: PointerEvent) => {
+      if (pane) {
+        const g = tabGapAt(e.clientX, e.clientY);
+        setTabGap((p) => (JSON.stringify(p) === JSON.stringify(g) ? p : g));
+      } else {
+        const d = dockAtRef.current(dragging, e.clientX, e.clientY);
+        setDock((p) => (sameDock(p, d) ? p : d));
+      }
+    };
+    window.addEventListener("pointermove", move);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      setDock(undefined);
+      setTabGap(undefined);
+    };
+  }, [dragging]);
+  // A tab from another window docks the same way; the core sends where its cursor is.
+  useEffect(() => {
+    if (!remote) return;
+    const d = dockAtRef.current(remote.tabId, remote.x, remote.y);
+    setDock((p) => (sameDock(p, d) ? p : d));
+    return () => setDock(undefined);
+  }, [remote]);
+  /** Docks a tab beside a pane of the active tab and focuses the first pane it brought. */
+  const dockTab = (tabId: string, paneId: string, side: DockSide) => {
+    const moving = ws.windows.flatMap((w) => w.sideTabs.flatMap((s) => s.tabs)).find((t) => t.id === tabId);
+    const first = moving && panesOf(moving.layout)[0];
+    const into = activeTab?.id;
+    void send({ type: "DockTab", tabId, paneId, side }).then((ok) => {
+      if (ok && first && into) focusIn(into, first);
+      refocus();
+    });
+  };
+  /** A pane of the active tab becomes a tab at `index`, and that tab opens. */
+  const paneToTab = (paneId: string, index: number) => {
+    setFollow((w) => {
+      for (const side of sidesOf(w))
+        for (const t of side.tabs)
+          if (t.layout.type === "pane" && t.layout.id === paneId) {
+            selectTab(side.id, t.id);
+            focusIn(t.id, paneId);
+            refocus();
+            return true;
+          }
+      return false;
+    });
+    void send({ type: "PaneToTab", paneId, index });
+  };
+
   // The pending `dragBegin` of the tab being dragged; resolves to its token (task 8.1).
   const dragBegun = useRef<Promise<number | undefined> | undefined>(undefined);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const onDragEnd = ({ active, over }: DragEndEvent) => {
+    // Read before the drag's state goes.
+    const docked = dockRef.current;
+    const gap = tabGapRef.current;
     setDragging(undefined);
     const tabId = String(active.id);
     const at = over && String(over.id);
+    if (tabId.startsWith("pane:")) {
+      if (gap) paneToTab(tabId.slice(5), gap.index);
+      else refocus();
+      return;
+    }
     // A merge may open its dialog, which takes the focus; it gives it back when it closes.
     if (tabId.startsWith("side:") && at?.startsWith("into:")) return startMerge(tabId.slice(5), at.slice(5));
     if (tabId.startsWith("side:")) return refocus();
@@ -1125,8 +1275,10 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     );
     ended.then(
       (end) => {
-        if (end.kind === "local" || end.kind === "cancelled") dropHere(tabId, at);
-        else refocus();
+        if (end.kind !== "local" && end.kind !== "cancelled") refocus();
+        // The middle of a pane, or a pane too small to halve, cancels.
+        else if (docked) docked.side === "center" || docked.small ? refocus() : dockTab(tabId, docked.pane, docked.side);
+        else dropHere(tabId, at);
       },
       (e: unknown) => {
         report(e);
@@ -1166,6 +1318,22 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
             .map((s) => ({ id: `move:${s.id}`, label: sideTabName(s), group: "Move tab to…", run: () => moveTab(activeTab.id, { side: s.id }) })),
         ]
       : []),
+    // Task 8.32: the keyboard way to dock a tab beside the focused pane, and to undo it.
+    ...(activeTab && focused && panesOf(activeTab.layout).includes(focused)
+      ? (["right", "down"] as const).flatMap((side) =>
+          tabs
+            .filter((t) => t.id !== activeTab.id)
+            .map((t) => ({
+              id: `dock:${side}:${t.id}`,
+              label: tabName(t, docs),
+              group: side === "right" ? "Split right with tab…" : "Split down with tab…",
+              run: () => dockTab(t.id, focused, side),
+            })),
+        )
+      : []),
+    ...(activeTab && focused && activeTab.layout.type === "split" && panesOf(activeTab.layout).includes(focused)
+      ? [{ id: "pane:tab", label: "Move pane to a new tab", group: "Actions", run: () => paneToTab(focused, tabs.indexOf(activeTab) + 1) }]
+      : []),
     ...SORTS.map((m) => ({ id: `sort:${m}`, label: m === sort ? `${m} (now)` : m, group: "Sort side tabs", run: () => changeSort(m) })),
     ...sideTabs.map((s) => ({ id: `go:${s.id}`, label: sideTabName(s), group: "Go to side tab", run: () => setSideTabId(s.id) })),
     ...(activeSide
@@ -1176,6 +1344,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   ];
 
   const dragTab = dragging ? tabs.find((t) => t.id === dragging) : undefined;
+  const dragPane = dragging?.startsWith("pane:") ? dragging.slice(5) : undefined;
   const dragSideTab = dragging?.startsWith("side:") ? sideTabs.find((s) => s.id === dragging.slice(5)) : undefined;
   const multi = panes.length > 1;
 
@@ -1353,14 +1522,20 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                       onPointerDown={() => focusIn(activeTab.id, paneId)}
                     >
                       {multi && (
-                        <div className="ao-tp-head">
+                        <PaneHead paneId={paneId}>
                           <i className={`ao-i x1 ${transcript ? "ao-i-agent" : docOf(activeTab.layout, paneId) ? "ao-i-doc" : "ao-i-term"}`} />
                           <span>{transcript ? "transcript" : (docs[docOf(activeTab.layout, paneId) ?? ""]?.title ?? (docOf(activeTab.layout, paneId) ? "text" : (paneSubtitle(labels[paneId], !!agents[paneId]) ?? "shell")))}</span>
                           <span className="grow" />
-                          <button type="button" className="tp-close" aria-label="Close pane" onClick={() => closePane(paneId)}>
+                          <button
+                            type="button"
+                            className="tp-close"
+                            aria-label="Close pane"
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={() => closePane(paneId)}
+                          >
                             ×
                           </button>
-                        </div>
+                        </PaneHead>
                       )}
                       {resume && (
                         <div className="ao-bar-wait resume-bar" role="status">
@@ -1474,7 +1649,20 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               <span className="n">{sideTabName(dragSideTab, docs)}</span>
             </div>
           )}
+          {dragPane && (
+            <div className="ao-tab ghost">
+              <span className="n">{paneSubtitle(labels[dragPane], !!agents[dragPane]) ?? "shell"}</span>
+            </div>
+          )}
         </DragOverlay>
+        {dock && (
+          <div
+            className={`dock-preview${dock.side === "center" ? " center" : ""}${dock.small ? " small" : ""}`}
+            data-side={dock.side}
+            style={dock.side === "center" ? undefined : dockBox(dock.box, dock.side)}
+          />
+        )}
+        {tabGap && <div className="tab-gap" style={{ left: tabGap.left - 1, top: tabGap.top + 4, height: tabGap.height - 8 }} />}
       </DndContext>
       {/* Every pane of the window keeps its terminal; the active tab's panes show (D33). */}
       {sideTabs.flatMap((side) =>

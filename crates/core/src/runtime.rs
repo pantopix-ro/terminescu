@@ -1404,3 +1404,53 @@ mod session_id_tests {
         assert!(is_session_id(&"a".repeat(128)));
     }
 }
+
+#[cfg(test)]
+mod dock_effect_tests {
+    use super::{Effect, diff_effects};
+    use crate::state::{Command, Core, DockSide, Workspace};
+
+    /// Task 8.32: a docked tab's panes and a pane made a tab keep their shells; across side
+    /// tabs a pane only changes side tab.
+    #[test]
+    fn moving_panes_between_tabs_spawns_and_closes_nothing() {
+        let mut n = 0;
+        let mut c = Core::with_ids(
+            Workspace::default(),
+            Box::new(move || {
+                n += 1;
+                format!("id{n}")
+            }),
+        );
+        c.first_start();
+        let window = c.workspace().windows[0].id.clone();
+        c.handle(Command::CreateSideTab {
+            window_id: window,
+            index: None,
+        })
+        .unwrap();
+        let sides = c.workspace().windows[0].side_tabs.clone();
+        let pane = sides[0].tabs[0].layout.panes()[0].clone();
+        let before = c.workspace().terminal_sides();
+        c.handle(Command::DockTab {
+            tab_id: sides[1].tabs[0].id.clone(),
+            pane_id: pane,
+            side: DockSide::Right,
+        })
+        .unwrap();
+        let effects = diff_effects(&before, &c.workspace().terminal_sides(), None);
+        assert_eq!(effects.len(), 1);
+        assert!(
+            matches!(&effects[0], Effect::SideTab { side_tab, .. } if *side_tab == sides[0].id)
+        );
+
+        let moved = sides[1].tabs[0].layout.panes()[0].clone();
+        let before = c.workspace().terminal_sides();
+        c.handle(Command::PaneToTab {
+            pane_id: moved,
+            index: 1,
+        })
+        .unwrap();
+        assert!(diff_effects(&before, &c.workspace().terminal_sides(), None).is_empty());
+    }
+}

@@ -138,6 +138,9 @@ export interface Workspace {
   windows: Window[];
 }
 
+/** Where a tab dropped on a pane lands (task 8.32). */
+export type DockSide = "left" | "right" | "up" | "down";
+
 export type Command =
   | { type: "CreateSideTab"; windowId: Id; index?: number | null }
   | { type: "CreateTab"; sideTabId: Id }
@@ -154,6 +157,10 @@ export type Command =
   /** A new window holding the side tab, its tabs and its context (task 8.7). */
   | { type: "MoveSideTabToNewWindow"; sideTabId: Id }
   | { type: "SplitPane"; paneId: Id; dir: Dir }
+  /** A tab dropped on a side of a pane (task 8.32): its panes join that tab, and it closes. */
+  | { type: "DockTab"; tabId: Id; paneId: Id; side: DockSide }
+  /** A pane dragged to the tab bar (task 8.32): a new tab at `index` in its side tab. */
+  | { type: "PaneToTab"; paneId: Id; index: number }
   | { type: "OpenTranscript"; paneId: Id; session: string }
   /** A text pane editing `docId`: beside `beside` on the right, or in a new tab (D27). */
   | { type: "OpenText"; sideTabId: Id; docId: Id; beside?: Id | null }
@@ -204,7 +211,9 @@ export interface CommandError {
     | "PaneTooSmall"
     | "BadSession"
     | "BadStatus"
-    | "BadIcon";
+    | "BadIcon"
+    | "DockOntoItself"
+    | "OnlyPane";
   id: Id | number;
 }
 

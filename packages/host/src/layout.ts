@@ -1,7 +1,7 @@
 // The split tree, as in crates/core/src/layout.rs. The core plans every change; this copy serves
 // the mock host and the UI's lookups.
 
-import type { Dir, Id, Layout } from "./protocol";
+import type { Dir, DockSide, Id, Layout } from "./protocol";
 
 export const TOTAL = 1000;
 export const MIN_SIZE = 50;
@@ -51,13 +51,27 @@ export function splitPane(
   splitId: Id,
   extra: { transcript?: string; doc?: Id } = {},
 ): Layout | undefined | "small" {
-  const fresh: Layout = { type: "pane", id: added, ...extra };
+  return splitAt(l, target, dir, false, { type: "pane", id: added, ...extra }, splitId);
+}
+
+/** A dock side's split direction, and whether the tab goes before the pane. */
+export function dockPlace(side: DockSide): [Dir, boolean] {
+  return [side === "left" || side === "right" ? "row" : "column", side === "left" || side === "up"];
+}
+
+/**
+ * The tree with `added`, a pane or a whole tab's layout, before or after `target`, taking half
+ * its share, as `split_at` in layout.rs: a split `added` in the same direction merges into its
+ * new parent. Undefined when `target` is unknown, "small" when a share would end under MIN_SIZE.
+ */
+export function splitAt(l: Layout, target: Id, dir: Dir, before: boolean, added: Layout, splitId: Id): Layout | undefined | "small" {
   let small = false;
   const go = (node: Layout): Layout | undefined => {
     if (node.type === "pane") {
-      return node.id === target
-        ? { type: "split", id: splitId, dir, children: [node, fresh], sizes: [TOTAL - TOTAL / 2, TOTAL / 2] }
-        : undefined;
+      if (node.id !== target) return undefined;
+      return before
+        ? { type: "split", id: splitId, dir, children: [added, node], sizes: [TOTAL / 2, TOTAL - TOTAL / 2] }
+        : { type: "split", id: splitId, dir, children: [node, added], sizes: [TOTAL - TOTAL / 2, TOTAL / 2] };
     }
     const i = node.children.findIndex((c) => c.type === "pane" && c.id === target);
     if (i >= 0 && node.dir === dir) {
@@ -68,9 +82,10 @@ export function splitPane(
       const sizes = [...node.sizes];
       const half = Math.floor(sizes[i]! / 2);
       sizes[i]! -= half;
-      sizes.splice(i + 1, 0, half);
+      const at = before ? i : i + 1;
+      sizes.splice(at, 0, half);
       const children = [...node.children];
-      children.splice(i + 1, 0, fresh);
+      children.splice(at, 0, added);
       return { ...node, children, sizes };
     }
     for (let k = 0; k < node.children.length && !small; k++) {
@@ -83,8 +98,17 @@ export function splitPane(
     }
     return undefined;
   };
-  const out = go(structuredClone(l));
-  return small ? "small" : out;
+  let out = go(structuredClone(l));
+  if (small) return "small";
+  if (out && added.type === "split") {
+    out = normalize(out);
+    if (!sharesFit(out)) return "small";
+  }
+  return out;
+}
+
+function sharesFit(l: Layout): boolean {
+  return l.type === "pane" || (l.sizes.every((s) => s >= MIN_SIZE) && l.children.every(sharesFit));
 }
 
 /** The tree without `target`: null when it was the last pane, undefined when it is unknown. */

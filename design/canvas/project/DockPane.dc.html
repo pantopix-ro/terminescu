@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dock a tab beside a pane</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/agentorch/tokens.css">
+<link rel="stylesheet" href="ds/agentorch/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600&amp;family=Silkscreen&amp;display=swap">
+<style>
+body{margin:0;background:#111318}
+a{color:#539bf5}a:hover{color:#8bbcf8}
+@media (max-width: 900px){ .win{grid-template-columns:240px minmax(0,1fr) !important} }
+.zones{position:absolute;inset:0;pointer-events:none}
+.zones line{stroke:var(--line-strong);stroke-width:1;stroke-dasharray:4 6}
+.zones rect{fill:none;stroke:var(--line-strong);stroke-dasharray:4 6}
+.dock{position:absolute;top:0;bottom:0;right:0;width:50%;background:color-mix(in srgb,var(--amber) 14%,transparent);box-shadow:inset 0 0 0 2px var(--amber);display:flex;align-items:center;justify-content:center}
+.legend{display:grid;grid-template-columns:repeat(3,auto);gap:16px;align-items:start}
+.mini{position:relative;width:96px;height:64px;border:2px solid var(--line-strong);background:var(--panel)}
+.mini b{position:absolute;background:color-mix(in srgb,var(--amber) 22%,transparent);box-shadow:inset 0 0 0 1px var(--amber)}
+.mini.red b{background:color-mix(in srgb,var(--red) 18%,transparent);box-shadow:inset 0 0 0 1px var(--red)}
+</style>
+</helmet>
+<div style="width: 100%; min-height: 900px; display: flex; flex-direction: column; background: var(--bg); color: var(--fg); font-family: var(--font-mono); font-size: 13px; line-height: 20px">
+
+  <header style="display: flex; align-items: center; gap: 12px; height: 32px; padding: 0 12px; background: var(--panel-2); border-bottom: 2px solid var(--line-strong)">
+    <span aria-hidden="true" style="display: flex; gap: 6px"><i style="width: 10px; height: 10px; background: var(--faint)"></i><i style="width: 10px; height: 10px; background: var(--faint)"></i><i style="width: 10px; height: 10px; background: var(--faint)"></i></span>
+    <span class="ao-pixel" style="font-size: 8px; color: var(--fg); margin-left: 8px" aria-label="Terminescu">TERMIN<span style="color: var(--amber)">ESCU</span></span>
+    <span class="small ao-dim">dragging “Heron · ~/work/web” over the shown pane · Esc cancels</span>
+  </header>
+
+  <div class="win" style="flex: 1; display: grid; grid-template-columns: 272px minmax(0, 1fr); min-height: 0; position: relative">
+
+    <nav aria-label="Side tabs" style="display: flex; flex-direction: column; border-right: 2px solid var(--line-strong); background: var(--bg)">
+      <div style="display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-bottom: 2px solid var(--line-strong)"><span class="ao-pixel ao-dim">Side tabs</span></div>
+      <div class="ao-side" style="flex: 1">
+        <div class="ao-st active" style="--st-accent: var(--blue); --st-bg: var(--tint-blue)"><i class="ao-i ao-i-group"></i><span class="t">PROJ-482 audit export</span><span class="ao-stat need">Waiting</span><span class="m"><i class="ao-i x1 ao-i-chev"></i><span class="ao-strip"><i class="ao-cell wait"></i><i class="ao-cell"></i></span>2 tabs</span></div>
+        <div class="ao-st-kids" style="--st-accent: var(--blue); --st-bg: var(--tint-blue)">
+          <div class="ao-st-kid active"><span class="ao-dot need"></span><i class="ao-i x1 ao-i-agent"></i><span class="grow">Otter · plan</span><span>⌘1</span></div>
+          <div class="ao-st-kid"><span class="ao-dot idle"></span><i class="ao-i x1 ao-i-term"></i><span class="grow">Heron · ~/work/web</span><span>⌘2</span></div>
+        </div>
+        <div class="ao-st" style="--st-accent: var(--magenta); --st-bg: var(--tint-magenta)"><i class="ao-i ao-i-group"></i><span class="t">PROJ-477 rate limit</span><span class="ao-stat manual" style="--s-fg: var(--magenta); --s-edge: var(--magenta)">Review</span><span class="m"><i class="ao-i x1 ao-i-chevr"></i>2 tabs</span></div>
+        <div class="ao-st"><i class="ao-i ao-i-term"></i><span class="t">scratch</span><span></span><span class="m">zsh · ~</span></div>
+      </div>
+    </nav>
+
+    <main style="display: flex; flex-direction: column; min-width: 0; min-height: 0">
+      <div class="ao-tabs" role="tablist" aria-label="Tabs in PROJ-482">
+        <span role="tab" aria-selected="true" class="ao-tab active" style="--tab-accent: var(--blue)"><span class="ao-dot need"></span><i class="ao-i ao-i-agent"></i><span class="n">Otter · plan</span><span class="x"><i class="ao-i ao-i-cross"></i></span></span>
+        <span class="ao-tab placeholder" aria-hidden="true"><span class="n">Heron · ~/work/web</span></span>
+      </div>
+      <div style="flex: 1; position: relative; display: flex; min-height: 0">
+        <section class="ao-tp" aria-label="Claude session" style="flex: 1">
+          <div class="ao-tp-body ao-term" style="white-space: pre-wrap"><span class="p">❯</span> Write the OpenSpec plan for the pasted ticket. Repos: api, web.
+
+<span class="t">● Write</span> <span class="d">openspec/changes/add-audit-export/design.md</span>
+Published the plan: <span class="u">claude.ai/artifact/9f2c41…</span></div>
+        </section>
+        <svg class="zones" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          <line x1="0" y1="0" x2="35" y2="35" vector-effect="non-scaling-stroke"/><line x1="100" y1="0" x2="65" y2="35" vector-effect="non-scaling-stroke"/>
+          <line x1="0" y1="100" x2="35" y2="65" vector-effect="non-scaling-stroke"/><line x1="100" y1="100" x2="65" y2="65" vector-effect="non-scaling-stroke"/>
+          <rect x="35" y="35" width="30" height="30" vector-effect="non-scaling-stroke"/>
+        </svg>
+        <div class="dock"><span class="small" style="color: var(--amber)">Heron · ~/work/web goes here · the pane keeps the left half</span></div>
+        <span class="ao-tab ghost" style="position: absolute; right: 120px; top: 46%; transform: rotate(-2deg); z-index: 2"><i class="ao-i ao-i-drag"></i><span class="ao-dot idle"></span><span class="n">Heron · ~/work/web</span></span>
+      </div>
+      <div style="display: flex; gap: 32px; padding: 16px 20px; border-top: 2px solid var(--line-strong); background: var(--panel)">
+        <div class="legend">
+          <div><div class="mini"><b style="left:0;top:0;bottom:0;width:50%"></b></div><div class="small ao-dim">left triangle</div></div>
+          <div><div class="mini"><b style="left:0;right:0;bottom:0;height:50%"></b></div><div class="small ao-dim">bottom triangle</div></div>
+          <div><div class="mini red"><b style="right:0;top:0;bottom:0;width:50%"></b></div><div class="small ao-dim">too small: red, refused</div></div>
+        </div>
+        <div class="small ao-dim" style="max-width: 520px">The pane under the pointer splits 50/50. The middle 30% and the shown tab do nothing. Shells, context and pins follow the panes. Drag a split pane's header to the tab bar to make it a tab again; the palette offers “Split right with tab…”, “Split down with tab…” and “Move pane to a new tab”.</div>
+      </div>
+    </main>
+  </div>
+
+  <footer class="ao-status">
+    <span class="seg"><i class="ao-i ao-i-drag"></i>drop on a pane's edge: split it · in its middle: nothing · on the tab bar: reorder</span>
+    <span class="spacer"></span>
+    <span class="seg"><span class="ao-key">Esc</span> cancel</span>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>
