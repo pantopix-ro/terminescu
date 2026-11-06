@@ -47,6 +47,18 @@ impl View {
     }
 }
 
+/// What [`Views::output`] did with a piece of output.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Queued {
+    /// Nothing to send: no live view, or the view just went stale with bytes still in flight.
+    No,
+    /// The view has bytes ready to send.
+    Ready,
+    /// The view overflowed with nothing in flight, so no acknowledgement will come to wake
+    /// it: it attaches again now and the daemon's snapshot redraws it.
+    Reattach(Action),
+}
+
 /// What the runtime must tell the daemon after a hub call.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
@@ -155,21 +167,26 @@ impl Views {
         }
     }
 
-    /// Queues output. Returns true when the view has bytes ready to send.
-    pub fn output(&mut self, pane: &str, data: &[u8]) -> bool {
+    /// Queues output for a pane's view.
+    pub fn output(&mut self, pane: &str, data: &[u8]) -> Queued {
         let Some(v) = self.by_pane.get_mut(pane) else {
-            return false;
+            return Queued::No;
         };
         if v.state != ViewState::Live {
-            return false;
+            return Queued::No;
         }
         if v.in_flight() + (v.queue.len() + data.len()) as u64 > ACK_WINDOW {
             v.state = ViewState::Stale;
             v.queue = Vec::new();
-            return false;
+            // Output can outrun one batch a frame with nothing in flight; then no ack would
+            // ever come and the view would stay frozen.
+            if v.in_flight() == 0 {
+                return self.reattach(pane).map_or(Queued::No, Queued::Reattach);
+            }
+            return Queued::No;
         }
         v.queue.extend_from_slice(data);
-        true
+        Queued::Ready
     }
 
     /// Takes one batch from every view with queued output.
@@ -248,9 +265,9 @@ mod tests {
                 rows: 30
             }
         );
-        assert!(!views.output("t1", b"old"));
+        assert_eq!(views.output("t1", b"old"), Queued::No);
         views.attached("t1");
-        assert!(views.output("t1", b"new"));
+        assert_eq!(views.output("t1", b"new"), Queued::Ready);
         let batches = views.take_batches();
         assert_eq!(batches.len(), 1);
         assert_eq!(batches[0].2, b"new");
@@ -277,13 +294,13 @@ mod tests {
         views.attached("t1");
         let chunk = vec![b'x'; 200 * 1024];
         for _ in 0..4 {
-            assert!(views.output("t1", &chunk));
+            assert_eq!(views.output("t1", &chunk), Queued::Ready);
             sent(&mut views);
         }
         // 800 KB in flight; 300 KB more crosses the window.
-        assert!(!views.output("t1", &vec![b'y'; 300 * 1024]));
+        assert_eq!(views.output("t1", &vec![b'y'; 300 * 1024]), Queued::No);
         assert_eq!(views.state("t1"), Some(ViewState::Stale));
-        assert!(!views.output("t1", b"z"));
+        assert_eq!(views.output("t1", b"z"), Queued::No);
         assert!(sent(&mut views).is_empty());
         assert_eq!(views.ack(id, 400 * 1024), None);
         assert_eq!(
@@ -296,7 +313,30 @@ mod tests {
         );
         assert_eq!(views.state("t1"), Some(ViewState::Attaching));
         views.attached("t1");
-        assert!(views.output("t1", b"fresh"));
+        assert_eq!(views.output("t1", b"fresh"), Queued::Ready);
+    }
+
+    #[test]
+    fn overflowing_with_nothing_in_flight_reattaches_at_once() {
+        let mut views = Views::default();
+        let (s, _) = sink();
+        views.open("t1", 80, 24, s);
+        views.attached("t1");
+        // Output outruns the sender: the queue alone crosses the window, nothing was sent.
+        let chunk = vec![b'x'; 300 * 1024];
+        for _ in 0..3 {
+            assert_eq!(views.output("t1", &chunk), Queued::Ready);
+        }
+        assert_eq!(
+            views.output("t1", &chunk),
+            Queued::Reattach(Action::Attach {
+                pane: "t1".into(),
+                cols: 80,
+                rows: 24
+            })
+        );
+        assert_eq!(views.state("t1"), Some(ViewState::Attaching));
+        assert!(sent(&mut views).is_empty());
     }
 
     #[test]
