@@ -44,10 +44,37 @@ export const ANSI_SLOTS = [
   "brightBlue", "brightMagenta", "brightCyan", "brightWhite",
 ] as const satisfies readonly (keyof ITheme)[];
 
-/** SF Mono Regular (task 8.24): WebKit names the system's mono font `ui-monospace`. */
-export const terminalFont = {
-  fontFamily: 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace',
-  fontWeight: "normal",
-  fontSize: 13,
-  lineHeight: 18 / 13,
-} as const;
+/** SF Mono (task 8.24): WebKit names the system's mono font `ui-monospace`. */
+const SYSTEM_MONO = 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace';
+
+/** The font fields of the app settings that shape the terminal (task 8.36). */
+export interface TerminalFontSettings {
+  terminalFont: string;
+  terminalFontSize: number;
+  terminalLineHeight: number;
+  terminalLetterSpacing: number;
+  terminalFontWeight: number;
+}
+
+/** The xterm.js font options; the font in Settings › Terminal comes first, SF Mono after it. */
+export function terminalFontOptions(s: TerminalFontSettings) {
+  const weight = s.terminalFontWeight;
+  return {
+    fontFamily: s.terminalFont ? `"${s.terminalFont}", ${SYSTEM_MONO}` : SYSTEM_MONO,
+    fontSize: s.terminalFontSize,
+    lineHeight: s.terminalLineHeight / 100,
+    letterSpacing: s.terminalLetterSpacing,
+    fontWeight: weight,
+    fontWeightBold: Math.min(900, weight + 300),
+  };
+}
+export type TerminalFont = ReturnType<typeof terminalFontOptions>;
+
+/** The defaults: SF Mono Regular at 13px, line height 1.15. */
+export const terminalFont: TerminalFont = terminalFontOptions({
+  terminalFont: "",
+  terminalFontSize: 13,
+  terminalLineHeight: 115,
+  terminalLetterSpacing: 0,
+  terminalFontWeight: 400,
+});

@@ -14,6 +14,12 @@ import {
   MAX_TTL_SECS,
   ZOOM_STEPS,
   SIDEBAR_MAX,
+  FONT_FAMILY_MAX,
+  FONT_NAME,
+  FONT_SIZES,
+  LETTER_SPACINGS,
+  LINE_HEIGHTS,
+  TAB_FONT_SIZES,
   SIDEBAR_MIN,
   type AppSettings,
   TINTS,
@@ -1147,8 +1153,22 @@ export function createMockHost(initial?: Workspace): MockHost {
       if (ttl !== null && (!Number.isInteger(ttl) || ttl <= 0 || ttl > MAX_TTL_SECS)) throw new Error("a TTL runs from 1 second to 30 days");
       const zoom = next.zoomPercent;
       if (!Number.isInteger(zoom) || zoom < ZOOM_STEPS[0]! || zoom > ZOOM_STEPS.at(-1)!) throw new Error("the zoom runs from 50% to 200%");
+      const terminalFont = next.terminalFont.trim();
+      if (terminalFont.length > FONT_FAMILY_MAX || !FONT_NAME.test(terminalFont))
+        throw new Error("a terminal font name has letters, digits, spaces, dots, dashes and underscores, at most 64");
+      const within = (v: number, [lo, hi]: readonly [number, number]) => Number.isInteger(v) && v >= lo && v <= hi;
+      const w = next.terminalFontWeight;
+      if (
+        !within(next.terminalFontSize, FONT_SIZES) ||
+        !within(next.terminalLineHeight, LINE_HEIGHTS) ||
+        !within(next.terminalLetterSpacing, LETTER_SPACINGS) ||
+        !within(w, [100, 900]) ||
+        w % 100 !== 0 ||
+        !within(next.tabFontSize, TAB_FONT_SIZES)
+      )
+        throw new Error("a terminal setting is out of range");
       const sidebarWidth = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(next.sidebarWidth)));
-      settings = { ...next, sidebarWidth };
+      settings = { ...next, sidebarWidth, terminalFont };
       // The app zooms its webview natively; a browser has CSS zoom on the root.
       if (typeof document !== "undefined") document.documentElement.style.zoom = zoom === 100 ? "" : String(zoom / 100);
       settingsListeners.forEach((l) => l());

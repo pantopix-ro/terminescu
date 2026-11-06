@@ -526,6 +526,11 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       panes flood and redraw through the real daemon and core) found a view that overflowed with
       nothing in flight froze for good, as no acknowledgement came to wake it; it now attaches
       again at once. Verify: `views` unit test, the load test by hand.
+- [x] 8.36 Settings › Terminal (2026-11-06): font family, size, line height, letter spacing and
+      weight for every terminal, and the tab text size, saved with the app settings and applied
+      live (xterm.js re-measures, the pane refits, the shell gets its size). Default line height
+      drops from 1.38 to 1.15. A split pane's header tooltip shows its whole name. Verify:
+      `settings` Rust tests, `terminal-font.spec.ts`.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves
