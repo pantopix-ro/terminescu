@@ -25,7 +25,7 @@ use crate::persist::{PaneRecord, Saved};
 use crate::state::{Command, CommandError, Core, Id, PatchBatch, Snapshot, Workspace};
 use crate::status::{self, Engine, Look, PaneFacts, Rule, Shown, Until};
 use crate::transcript::Tail;
-use crate::views::{Action, Sink, ViewId, Views};
+use crate::views::{Action, Queued, Sink, ViewId, Views};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver};
@@ -1212,10 +1212,17 @@ impl Runtime {
             while let Ok(event) = rx.recv() {
                 match event {
                     DaemonEvent::Output { pane, data } => {
-                        if let Some(p) = self.pane_of_daemon(pane)
-                            && lock(&self.inner.views).output(&p, &data)
-                        {
-                            self.inner.queued.notify_one();
+                        if let Some(p) = self.pane_of_daemon(pane) {
+                            let queued = lock(&self.inner.views).output(&p, &data);
+                            match queued {
+                                Queued::No => {}
+                                Queued::Ready => self.inner.queued.notify_one(),
+                                Queued::Reattach(action) => {
+                                    if let Some(client) = self.daemon() {
+                                        self.act(&client, action);
+                                    }
+                                }
+                            }
                         }
                         let found = lock(&self.inner.scanners)
                             .entry(pane)
