@@ -1444,7 +1444,10 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                 refocus();
               }}
               onNew={() => act("new_side_tab")}
-              onMenu={(at, target) => setMenu({ ...at, target })}
+              // A row or tab opens its edit dialog (task 8.34); the empty list keeps its menu.
+              onMenu={(at, target) =>
+                target.kind === "list" ? setMenu({ ...at, target }) : editStatus(target.sideTabId, target.kind === "tab" ? target.tabId : undefined)
+              }
               renaming={renaming?.in === "list" ? renaming.id : undefined}
               onRenameStart={(id) => setRenaming({ id, in: "list" })}
               onRename={rename}
@@ -1496,6 +1499,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               onRenameStart={(id) => setRenaming({ id, in: "bar" })}
               onRename={rename}
               onIconPick={(id, at) => setPicking({ id, ...at })}
+              onEdit={(id) => activeSide && editStatus(activeSide.id, id)}
               onRenameEnd={() => {
                 setRenaming(undefined);
                 refocus();
@@ -1745,6 +1749,17 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
             setSheet("settings");
           }}
           onClose={closeSheet}
+          onRename={(id, title) =>
+            void send(id === activeSide.id ? { type: "RenameSideTab", sideTabId: id, title } : { type: "RenameTab", tabId: id, title })
+          }
+          onPickIcon={(id, at) => setPicking({ id, ...at })}
+          onAccent={(id, accent) => void send({ type: "SetAccent", targetId: id, accent })}
+          // The right-click menu's actions; name, icon and status are fields above them.
+          actions={(t) =>
+            menuItems(
+              t === "tab" && activeTab ? { kind: "tab", sideTabId: activeSide.id, tabId: activeTab.id } : { kind: "side", sideTabId: activeSide.id },
+            ).filter((e) => e === "-" || !["rename", "icon", "status"].includes(e.id))
+          }
         />
       )}
       {sheet === "insert" && (
@@ -1832,7 +1847,10 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               onPick={(icon) => void send({ type: "SetIcon", targetId: picking.id, icon })}
               onClose={() => {
                 setPicking(undefined);
-                refocus();
+                // Picked from the edit dialog: the keyboard goes back to it, not the terminal.
+                const dialog = sheet ? document.querySelector<HTMLElement>(".ao-frame[role=dialog]") : null;
+                if (dialog) dialog.focus();
+                else refocus();
               }}
             />
           );

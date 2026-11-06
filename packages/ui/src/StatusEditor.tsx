@@ -1,4 +1,5 @@
-import { MAX_LABEL, type Look, type ManualStatus, type SavedStatus, type Shown, type SideTab, type StatusConfig, type Tab } from "@terminescu/host";
+import { MAX_LABEL, NEONS, type Look, type ManualStatus, type Neon, type SavedStatus, type Shown, type SideTab, type StatusConfig, type Tab } from "@terminescu/host";
+import type { MenuEntry } from "./ContextMenu";
 import { useEffect, useRef, useState } from "react";
 import { StatusChip } from "./StatusChip";
 import { builtinLook, chipOf } from "./status";
@@ -21,6 +22,54 @@ export interface StatusEditorProps {
   /** Opens Settings › Statuses. */
   onSettings(): void;
   onClose(): void;
+  /** Task 8.34: the name, icon and neon of whatever the editor targets, edited in place. */
+  onRename?(id: string, title: string | null): void;
+  /** Opens the icon picker for `id` at a window point. */
+  onPickIcon?(id: string, at: { x: number; y: number }): void;
+  onAccent?(id: string, accent: Neon): void;
+  /** The target's other actions: merge, move, close. A submenu shows as a drop-down. */
+  actions?(target: "side" | "tab"): MenuEntry[];
+}
+
+/** One action of the right-click menu, as a button or, with a submenu, a drop-down. */
+function ActionControl({ entry, onDone }: { entry: Exclude<MenuEntry, "-">; onDone(): void }) {
+  if (entry.items) {
+    const choices = entry.items.filter((i): i is Exclude<MenuEntry, "-"> => i !== "-");
+    return (
+      <select
+        className="ao-input edit-select"
+        aria-label={entry.label}
+        value=""
+        disabled={entry.disabled || !choices.length}
+        onChange={(e) => {
+          const pick = choices.find((c) => c.id === e.target.value);
+          if (!pick?.run) return;
+          onDone();
+          pick.run();
+        }}
+      >
+        <option value="">{entry.label}…</option>
+        {choices.map((c) => (
+          <option key={c.id} value={c.id} disabled={c.disabled}>
+            {c.label}
+          </option>
+        ))}
+      </select>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className={`ao-btn ghost${entry.danger ? " danger" : ""}`}
+      disabled={entry.disabled}
+      onClick={() => {
+        onDone();
+        entry.run?.();
+      }}
+    >
+      {entry.label}
+    </button>
+  );
 }
 
 const EMPTY: ManualStatus = { label: "", accent: null, background: null };
@@ -36,11 +85,22 @@ export function StatusEditor(props: StatusEditorProps) {
   // Typed or recolored since the last load: a change from elsewhere then leaves the draft alone.
   const [dirty, setDirty] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  const [name, setName] = useState(owner.title ?? "");
+  const named = target === "side" ? props.sideName : (props.tabName ?? "");
   useEffect(() => {
     setDraft(owner.status ?? EMPTY);
     setDirty(false);
+    setName(owner.title ?? "");
     input.current?.focus();
   }, [owner.id]);
+  // Esc leaves the name as it was, even though the field loses focus on the way out.
+  const cancelled = useRef(false);
+  // A blank name goes back to the generated one.
+  const saveName = () => {
+    if (cancelled.current) return;
+    const next = name.trim() || null;
+    if (props.onRename && next !== (owner.title ?? null)) props.onRename(owner.id, next);
+  };
   const current = JSON.stringify(owner.status ?? null);
   useEffect(() => {
     if (!dirty) setDraft(owner.status ?? EMPTY);
@@ -63,6 +123,7 @@ export function StatusEditor(props: StatusEditorProps) {
     setDraft((d) => ({ label: d.label, accent: d.accent, background: d.background, ...patch }));
   };
   const done = () => {
+    saveName();
     const label = draft.label.trim();
     void props.onSet(owner.id, label ? { ...draft, label } : null);
     props.onClose();
@@ -94,6 +155,7 @@ export function StatusEditor(props: StatusEditorProps) {
         onKeyDown={(e) => {
           if (e.key === "Escape") {
             e.preventDefault();
+            cancelled.current = true;
             props.onClose();
           }
         }}
@@ -101,7 +163,7 @@ export function StatusEditor(props: StatusEditorProps) {
         <div className="ao-frame-head">
           <i className="ao-i ao-i-dot" />
           <span id="se-t" className="ao-pixel">
-            Status
+            {props.onRename ? "Edit" : "Status"}
           </span>
           <span className="grow" />
           <span className="small ao-dim">
@@ -119,8 +181,65 @@ export function StatusEditor(props: StatusEditorProps) {
               </button>
             )}
           </div>
+          {props.onRename && (
+            <div className="edit-ident">
+              <label className="ao-field grow">
+                <span className="ao-pixel ao-dim">Name</span>
+                <input
+                  className="ao-input"
+                  value={name}
+                  placeholder={named}
+                  aria-label={target === "side" ? "Side tab name" : "Tab name"}
+                  onChange={(e) => setName(e.target.value)}
+                  onBlur={saveName}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      done();
+                    }
+                  }}
+                />
+              </label>
+              {props.onPickIcon && (
+                <div className="ao-field">
+                  <span className="ao-pixel ao-dim">Icon</span>
+                  <button
+                    type="button"
+                    className="ao-btn ghost edit-icon"
+                    aria-label="Change icon"
+                    onClick={(e) => {
+                      const r = e.currentTarget.getBoundingClientRect();
+                      props.onPickIcon?.(owner.id, { x: r.left, y: r.bottom + 4 });
+                    }}
+                  >
+                    <i className={`ao-i ao-i-${owner.icon ?? (target === "tab" ? "term" : side.tabs.length > 1 ? "group" : (side.tabs[0]?.icon ?? "term"))}`} style={owner.accent ? { color: `var(--neon-${owner.accent})` } : undefined} />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          {props.onAccent && (
+            <div className="ao-field">
+              <span className="ao-pixel ao-dim">{target === "side" ? "Row colour" : "Tab colour"}</span>
+              <div className="neon-swatches" role="radiogroup" aria-label={target === "side" ? "Row colour" : "Tab colour"}>
+                {NEONS.map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    role="radio"
+                    aria-checked={owner.accent === n}
+                    aria-label={n}
+                    title={n}
+                    className={`neon-swatch${owner.accent === n ? " on" : ""}`}
+                    style={{ "--sw": `var(--neon-${n})` } as React.CSSProperties}
+                    onClick={() => props.onAccent?.(owner.id, n)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
           <label className="ao-field">
-            <span className="ao-pixel ao-dim">Label</span>
+            <span className="ao-pixel ao-dim">Status label</span>
             <input
               ref={input}
               className="ao-input"
@@ -192,6 +311,18 @@ export function StatusEditor(props: StatusEditorProps) {
             <Swatches kind="background" value={draft.background} onChange={(background) => edit({ background })} />
           </div>
           <div className="small ao-dim">Amber stays reserved: a session waiting on you shows its amber marker over any status you set.</div>
+          {props.actions && (
+            <div className="ao-field">
+              <span className="ao-pixel ao-dim">{target === "side" ? "Side tab" : "Tab"}</span>
+              <div className="edit-actions">
+                {props.actions(target)
+                  .filter((a): a is Exclude<MenuEntry, "-"> => a !== "-")
+                  .map((a) => (
+                    <ActionControl key={a.id} entry={a} onDone={props.onClose} />
+                  ))}
+              </div>
+            </div>
+          )}
         </div>
         <div className="ao-frame-foot">
           <button type="button" className="ao-btn ghost" onClick={resetAll}>

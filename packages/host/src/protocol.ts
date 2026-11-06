@@ -170,6 +170,7 @@ export type Command =
   | { type: "DismissResume"; paneId: Id }
   | { type: "SetStatus"; targetId: Id; status: ManualStatus | null }
   | { type: "SetIcon"; targetId: Id; icon: Icon | null }
+  | { type: "SetAccent"; targetId: Id; accent: Neon }
   | { type: "RestyleStatus"; statusId: Id; status: ManualStatus | null };
 
 export type Patch =
@@ -186,7 +187,8 @@ export type Patch =
   | { type: "TabRenamed"; tabId: Id; title: string | null }
   | { type: "LayoutChanged"; tabId: Id; layout: Layout }
   | { type: "StatusSet"; id: Id; status: ManualStatus | null }
-  | { type: "IconSet"; id: Id; icon: Icon | null };
+  | { type: "IconSet"; id: Id; icon: Icon | null }
+  | { type: "AccentSet"; id: Id; accent: Neon };
 
 export interface PatchBatch {
   rev: number;
@@ -212,6 +214,7 @@ export interface CommandError {
     | "BadSession"
     | "BadStatus"
     | "BadIcon"
+    | "BadAccent"
     | "DockOntoItself"
     | "OnlyPane";
   id: Id | number;

@@ -288,6 +288,11 @@ pub enum Command {
         target_id: Id,
         icon: Option<String>,
     },
+    /// A side tab's or tab's neon from [`NEONS`], picked in the edit dialog (task 8.34).
+    SetAccent {
+        target_id: Id,
+        accent: String,
+    },
     /// Closes a side tab with every tab in it; its context goes with it (task 8.7).
     CloseSideTab {
         side_tab_id: Id,
@@ -415,6 +420,10 @@ pub enum Patch {
         id: Id,
         icon: Option<String>,
     },
+    AccentSet {
+        id: Id,
+        accent: String,
+    },
     /// The tab's whole split tree after a split, close, resize or resume change.
     LayoutChanged {
         tab_id: Id,
@@ -466,6 +475,8 @@ pub enum CommandError {
     BadStatus(String),
     #[error("{0} is not a known icon")]
     BadIcon(String),
+    #[error("{0} is not a known colour")]
+    BadAccent(String),
     #[error("tab {0} cannot dock beside its own pane")]
     DockOntoItself(Id),
     #[error("pane {0} is its tab's only pane")]
@@ -676,6 +687,15 @@ pub fn apply(ws: &mut Workspace, patch: &Patch) -> Result<(), CommandError> {
                 ws.side_tab_mut(id)
                     .ok_or_else(|| CommandError::UnknownTab(id.clone()))?
                     .icon = icon.clone();
+            }
+        }
+        Patch::AccentSet { id, accent } => {
+            if let Some(tab) = ws.tab_mut(id) {
+                tab.accent = Some(accent.clone());
+            } else {
+                ws.side_tab_mut(id)
+                    .ok_or_else(|| CommandError::UnknownTab(id.clone()))?
+                    .accent = Some(accent.clone());
             }
         }
         Patch::LayoutChanged { tab_id, layout } => {
@@ -1115,6 +1135,18 @@ impl Core {
                 vec![Patch::IconSet {
                     id: target_id,
                     icon,
+                }]
+            }
+            Command::SetAccent { target_id, accent } => {
+                if ws.tab(&target_id).is_none() && ws.side_tab(&target_id).is_none() {
+                    return Err(CommandError::UnknownTab(target_id));
+                }
+                if !NEONS.contains(&accent.as_str()) {
+                    return Err(CommandError::BadAccent(accent));
+                }
+                vec![Patch::AccentSet {
+                    id: target_id,
+                    accent,
                 }]
             }
             Command::CloseSideTab { side_tab_id } => {
@@ -1862,6 +1894,36 @@ mod tests {
         assert!(s.accent.is_some());
         assert_eq!(s.tabs[1].accent, kept);
         assert!(s.tabs[0].accent.is_some() && s.tabs[0].accent != kept);
+    }
+
+    #[test]
+    fn a_colour_comes_from_the_neons() {
+        let mut c = core();
+        let side = c.workspace().windows[0].side_tabs[0].id.clone();
+        for (id, neon) in [(side.as_str(), NEONS[0]), ("id2", NEONS[1])] {
+            c.handle(Command::SetAccent {
+                target_id: id.into(),
+                accent: neon.into(),
+            })
+            .unwrap();
+        }
+        let s = c.workspace().side_tab(&side).unwrap();
+        assert_eq!(s.accent.as_deref(), Some(NEONS[0]));
+        assert_eq!(s.tabs[0].accent.as_deref(), Some(NEONS[1]));
+        assert_eq!(
+            c.handle(Command::SetAccent {
+                target_id: side.clone(),
+                accent: "amber".into(),
+            }),
+            Err(CommandError::BadAccent("amber".into()))
+        );
+        assert_eq!(
+            c.handle(Command::SetAccent {
+                target_id: "nope".into(),
+                accent: NEONS[0].into(),
+            }),
+            Err(CommandError::UnknownTab("nope".into()))
+        );
     }
 
     #[test]
