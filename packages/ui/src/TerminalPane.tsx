@@ -182,6 +182,11 @@ export function TerminalPane({ paneId, visible, focused, onFocus, open, openUrl,
         ...startFont,
         theme: themeFor(tintNow.current),
         scrollback: 10_000,
+        // As Terminal.app's Basic profile: a blinking bar, bold without bright colours, and
+        // Option as Meta, so Option+Enter sends Esc+Return (a newline in Claude Code).
+        cursorStyle: "bar",
+        cursorBlink: true,
+        drawBoldTextInBrightColors: false,
         macOptionIsMeta: true,
         linkHandler: { activate },
       });

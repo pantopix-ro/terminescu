@@ -27,22 +27,27 @@ test("font, size, line height, weight and tab text apply live and reset", async 
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");
   await page.locator(".term-pane").first().click();
-  expect(await option(page, "lineHeight")).toBe(1.15);
+  // The defaults match Terminal.app's Basic profile.
+  expect(await option(page, "lineHeight")).toBe(1);
+  expect(await option(page, "fontSize")).toBe(11);
+  expect(await option(page, "cursorStyle")).toBe("bar");
+  expect(await option(page, "cursorBlink")).toBe(true);
+  expect(await option(page, "drawBoldTextInBrightColors")).toBe(false);
   const rows = await page.evaluate(() => [...(window as any).__terminescu.terminals.values()][0].rows as number);
 
   const dialog = await openTerminalSettings(page);
-  await dialog.getByRole("slider", { name: "Line height" }).fill("100");
-  await expect.poll(() => option(page, "lineHeight")).toBe(1);
-  await expect(dialog.locator(".set-out")).toHaveText("1.00");
-  // Tighter lines fit more rows, and the shell hears the new size.
-  await expect.poll(() => page.evaluate(() => [...(window as any).__terminescu.terminals.values()][0].rows as number)).toBeGreaterThan(rows);
+  await dialog.getByRole("slider", { name: "Line height" }).fill("150");
+  await expect.poll(() => option(page, "lineHeight")).toBe(1.5);
+  await expect(dialog.locator(".set-out")).toHaveText("1.50");
+  // Looser lines fit fewer rows, and the shell hears the new size.
+  await expect.poll(() => page.evaluate(() => [...(window as any).__terminescu.terminals.values()][0].rows as number)).toBeLessThan(rows);
 
-  await dialog.getByRole("spinbutton", { name: "Font size" }).fill("11");
-  await expect.poll(() => option(page, "fontSize")).toBe(11);
+  await dialog.getByRole("spinbutton", { name: "Font size" }).fill("14");
+  await expect.poll(() => option(page, "fontSize")).toBe(14);
   // A value out of range is not saved and comes back on blur.
   await dialog.getByRole("spinbutton", { name: "Font size" }).fill("40");
   await dialog.getByRole("spinbutton", { name: "Font size" }).blur();
-  await expect(dialog.getByRole("spinbutton", { name: "Font size" })).toHaveValue("11");
+  await expect(dialog.getByRole("spinbutton", { name: "Font size" })).toHaveValue("14");
 
   const font = dialog.getByRole("combobox", { name: "Terminal font" });
   await font.fill("Menlo");
@@ -62,15 +67,15 @@ test("font, size, line height, weight and tab text apply live and reset", async 
 
   expect(await mock(page, "settings")).toMatchObject({
     terminalFont: "Menlo",
-    terminalFontSize: 11,
-    terminalLineHeight: 100,
+    terminalFontSize: 14,
+    terminalLineHeight: 150,
     terminalFontWeight: 500,
     tabFontSize: 10,
   });
 
   await dialog.getByRole("button", { name: "Reset to defaults" }).click();
-  await expect.poll(() => option(page, "lineHeight")).toBe(1.15);
-  await expect.poll(() => option(page, "fontSize")).toBe(13);
+  await expect.poll(() => option(page, "lineHeight")).toBe(1);
+  await expect.poll(() => option(page, "fontSize")).toBe(11);
   await expect.poll(() => tab.evaluate((el) => getComputedStyle(el).fontSize)).toBe("12px");
 });
 
@@ -84,4 +89,15 @@ test("a split pane's header names the pane in its tooltip", async ({ page }) => 
   const name = (await heads.first().locator(".tp-name").textContent()) ?? "";
   expect(name.length).toBeGreaterThan(0);
   await expect(heads.first()).toHaveAttribute("title", `${name}\nDrag to the tab bar to make it a tab`);
+});
+
+test("Option+Enter sends Esc+Return, a newline in Claude Code", async ({ page }) => {
+  await page.goto("/");
+  await page.locator(".term-pane").first().click();
+  const pane = await page.evaluate(() => [...(window as any).__terminescu.terminals.keys()][0] as string);
+  const inputs = () => page.evaluate((id) => (window as any).__terminescu.host.inputs.get(id) ?? "", pane);
+  await page.keyboard.press("Alt+Enter");
+  await expect.poll(inputs).toContain("\x1b\r");
+  await page.keyboard.press("Enter");
+  await expect.poll(inputs).toMatch(/\x1b\r\r$/);
 });
