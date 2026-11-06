@@ -29,6 +29,18 @@ export interface Tab {
   icon?: Icon;
   /** A neon given when the tab is made (task 8.26): its icon and its square in the sidebar. */
   accent?: Neon;
+  /** A random animal or bird, unique across windows (task 8.30); `title` overrides it. */
+  name?: string;
+}
+
+/** A terminal pane's live label (task 8.30): where it is and what runs in it. */
+export interface PaneLabel {
+  /** The working directory, `~`-relative under home. */
+  path?: string;
+  /** The running program's name, never its arguments. */
+  program?: string;
+  /** Claude's terminal title, without its spinner, while Claude runs. */
+  title?: string;
 }
 
 export interface SideTab {

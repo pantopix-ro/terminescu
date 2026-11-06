@@ -1,6 +1,7 @@
 import type { KeyBindings } from "./keys";
 import type {
   AgentUpdate,
+  PaneLabel,
   DragEnd,
   DragPoint,
   AttentionSettings,
@@ -156,6 +157,10 @@ export interface Host {
   statuses(): Promise<Record<Id, Shown>>;
   /** The whole map again whenever a status changes. Resolves with a function that removes the listener. */
   onStatuses(listener: (statuses: Record<Id, Shown>) => void): Promise<() => void>;
+  /** Every terminal pane's live label, by pane id (task 8.30). */
+  labels(): Promise<Record<Id, PaneLabel>>;
+  /** The whole map again whenever a label changes. Resolves with a function that removes the listener. */
+  onLabels(listener: (labels: Record<Id, PaneLabel>) => void): Promise<() => void>;
   /** Saved statuses, rules and built-in looks, for the editor and Settings › Statuses. */
   statusConfig(): Promise<StatusConfig>;
   /** The config changed in some window. Resolves with a function that removes the listener. */

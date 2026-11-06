@@ -70,6 +70,7 @@ fn db_at(path: &std::path::Path) -> Db {
                     id: "t1".into(),
                     title: None,
                     layout: Layout::pane("p1"),
+                    name: None,
                 }],
             }],
         }],

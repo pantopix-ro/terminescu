@@ -42,7 +42,9 @@ test("a command edited in Settings changes in the sidebar, and a global one cann
   await mock(page, "createCommand", { sideTabId: null, name: "status", body: "git status", target: "focused", launcher: false });
   const dialog = await openSettings(page, "Commands");
   const row = dialog.locator('.cmd-edit[data-command="checks"]');
-  await expect(row.locator(".cmd-scope")).toHaveText("shell");
+  // A side tab is named after its first tab's animal (task 8.30).
+  const first = await page.evaluate(() => (window as any).__terminescu.host.workspace().windows[0].sideTabs[0].tabs[0].name);
+  await expect(row.locator(".cmd-scope")).toHaveText(first);
   await expect(dialog.locator('.cmd-edit[data-command="status"]').getByLabel("launcher")).toBeDisabled();
   await row.getByLabel("checks command").fill("gh pr checks --watch");
   await row.getByRole("button", { name: "Save" }).click();

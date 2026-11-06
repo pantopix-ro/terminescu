@@ -20,6 +20,7 @@ fn tab(id: &str, pane: &str) -> Tab {
         id: id.into(),
         title: None,
         layout: Layout::pane(pane),
+        name: None,
     }
 }
 

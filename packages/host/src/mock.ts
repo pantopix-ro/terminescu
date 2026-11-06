@@ -50,9 +50,11 @@ import {
   type SideTab,
   type Snapshot,
   type StatusConfig,
+  type PaneLabel,
   type Tab,
   type Workspace,
 } from "./protocol";
+import { MOCK_HOME, NAMES, paneLabel, titleOf } from "./labels";
 import { applyBatch } from "./reducer";
 import { applyLaunchers, computeStatuses, type PaneDynamic, type PaneFacts } from "./status";
 
@@ -78,6 +80,10 @@ export interface MockHost extends Host {
   chimes(): number;
   /** Plays the core's part for hook events: sets or clears a pane's agent. */
   setAgent(pane: string, agent: AgentView | null): void;
+  /** Plays OSC 7 in a pane: its working directory, as the shell reports it (task 8.30). */
+  setCwd(pane: string, cwd: string): void;
+  /** Plays OSC 0/2 in a pane: the terminal title, spinner and all; null clears it. */
+  setTitle(pane: string, title: string | null): void;
   /** Appends entries to a session's fake transcript. */
   appendTranscript(session: string, entries: Entry[]): void;
   /** Where the next tab drag lands, as the core would say from the cursor; once. */
@@ -377,8 +383,26 @@ export function createMockHost(initial?: Workspace): MockHost {
   };
   let shown: Record<Id, Shown> = {};
   const statusListeners = new Set<(s: Record<Id, Shown>) => void>();
+  // Labels (task 8.30): the cwd and title per pane, and the last label map sent.
+  const cwds = new Map<string, string>();
+  const titles = new Map<string, string>();
+  let labels: Record<Id, PaneLabel> = {};
+  const labelListeners = new Set<(l: Record<Id, PaneLabel>) => void>();
+  const relabel = () => {
+    const next: Record<Id, PaneLabel> = {};
+    for (const s of allSideTabs())
+      for (const t of s.tabs)
+        for (const p of terminalsOf(t.layout)) {
+          const sh = shellFacts.get(p);
+          next[p] = paneLabel(cwds.get(p) ?? MOCK_HOME, sh?.running ? sh.command : undefined, titles.get(p), agents.has(p));
+        }
+    if (JSON.stringify(next) === JSON.stringify(labels)) return;
+    labels = next;
+    for (const l of labelListeners) l(structuredClone(next));
+  };
   const configListeners = new Set<() => void>();
   const recompute = () => {
+    relabel();
     const facts = new Map<string, PaneFacts>();
     for (const [p, a] of agents) facts.set(p, { agent: a.state });
     for (const [p, sh] of shellFacts) facts.set(p, { ...facts.get(p), shell: sh });
@@ -451,9 +475,19 @@ export function createMockHost(initial?: Workspace): MockHost {
   function pickTabNeon(siblings: Tab[], tabId: string): Neon {
     return pickUnused(NEONS, tabId, () => siblings.map((t) => t.accent), true);
   }
+  /** A name no tab in any window has yet, as `pick_name` in state.rs; "Otter 2" once all are taken. */
+  function pickName(tabId: string): string {
+    const used = new Set<string | undefined>();
+    try {
+      for (const s of allSideTabs()) for (const t of s.tabs) used.add(t.name);
+    } catch {}
+    const name = pickUnused(NAMES, tabId, () => [...used], true);
+    if (!used.has(name)) return name;
+    for (let n = 2; ; n++) if (!used.has(`${name} ${n}`)) return `${name} ${n}`;
+  }
   function newTab(siblings: Tab[] = []): Tab {
     const tabId = id();
-    return { id: tabId, title: null, layout: { type: "pane", id: id() }, icon: pickIcon(tabId), accent: pickTabNeon(siblings, tabId) };
+    return { id: tabId, title: null, name: pickName(tabId), layout: { type: "pane", id: id() }, icon: pickIcon(tabId), accent: pickTabNeon(siblings, tabId) };
   }
   function newSideTab(): SideTab {
     const tab = newTab();
@@ -614,7 +648,7 @@ export function createMockHost(initial?: Workspace): MockHost {
           return [{ type: "LayoutChanged", tabId: tab.id, layout: layout! }];
         }
         const tabId = id();
-        const tab: Tab = { id: tabId, title: null, layout: { type: "pane", id: id(), doc: c.docId }, icon: pickIcon(tabId), accent: pickTabNeon(side.tabs, tabId) };
+        const tab: Tab = { id: tabId, title: null, name: pickName(tabId), layout: { type: "pane", id: id(), doc: c.docId }, icon: pickIcon(tabId), accent: pickTabNeon(side.tabs, tabId) };
         return [{ type: "TabCreated", sideTabId: c.sideTabId, index: side.tabs.length, tab }];
       }
       case "ClosePane": {
@@ -861,6 +895,8 @@ export function createMockHost(initial?: Workspace): MockHost {
       // A rule status holds until its command runs again.
       const matching = config.rules.filter((r) => r.kind === "exitCode" && glob(r.pattern, command));
       for (const r of matching) dynamic.delete(dynKey(pane, r.id));
+      // A command starting or ending clears the title, as `133;C` and `133;D` do in the daemon.
+      titles.delete(pane);
       shellFacts.set(pane, { running: exit === null, lastExit: exit, command });
       if (exit !== null && exit !== 0) {
         for (const r of matching.filter((r) => r.enabled)) {
@@ -873,6 +909,25 @@ export function createMockHost(initial?: Workspace): MockHost {
       if (look) dynamic.set(dynKey(pane, "cli"), { pane, look: checked(look), source: "cli", order: ++order });
       else dynamic.delete(dynKey(pane, "cli"));
       recompute();
+    },
+    setCwd(pane, cwd) {
+      cwds.set(pane, cwd);
+      relabel();
+    },
+    setTitle(pane, title) {
+      // As the daemon does: no spinner, and a blank title clears it.
+      const clean = title === null ? undefined : titleOf(title);
+      if (clean === undefined) titles.delete(pane);
+      else titles.set(pane, clean);
+      relabel();
+    },
+    async labels() {
+      relabel();
+      return structuredClone(labels);
+    },
+    async onLabels(listener) {
+      labelListeners.add(listener);
+      return () => labelListeners.delete(listener);
     },
     async statuses() {
       recompute();

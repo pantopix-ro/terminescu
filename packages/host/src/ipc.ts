@@ -26,6 +26,7 @@ import type {
   PromptVersion,
   Rule,
   SavedStatus,
+  PaneLabel,
   Shown,
   Snapshot,
   StatusConfig,
@@ -44,6 +45,7 @@ export const COMMANDS_EVENT = "host://commands";
 export const SETTINGS_EVENT = "host://settings";
 export const KEYS_EVENT = "host://keys";
 export const STATUS_EVENT = "host://status";
+export const LABEL_EVENT = "host://labels";
 export const STATUS_CONFIG_EVENT = "host://status-config";
 /** The core sends these to one window: the one holding the pane, for `⌘⇧A` and the chime. */
 export const REVEAL_EVENT = "host://reveal-pane";
@@ -135,6 +137,8 @@ export function createIpcHost(): Host {
     onPrompts: (listener) => listen(PROMPTS_EVENT, () => listener()),
     statuses: () => invoke<Record<Id, Shown>>("host_statuses"),
     onStatuses: (listener) => listen<Record<Id, Shown>>(STATUS_EVENT, (e) => listener(e.payload)),
+    labels: () => invoke<Record<Id, PaneLabel>>("host_labels"),
+    onLabels: (listener) => listen<Record<Id, PaneLabel>>(LABEL_EVENT, (e) => listener(e.payload)),
     statusConfig: () => invoke<StatusConfig>("status_config"),
     onStatusConfig: (listener) => listen(STATUS_CONFIG_EVENT, () => listener()),
     saveStatus: (sideTab, look) => invoke<SavedStatus>("status_save", { sideTab, look }),

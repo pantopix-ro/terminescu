@@ -26,6 +26,7 @@ fn db() -> Db {
                     id: "t1".into(),
                     title: None,
                     layout: Layout::pane("p1"),
+                    name: None,
                 }],
             }],
         }],

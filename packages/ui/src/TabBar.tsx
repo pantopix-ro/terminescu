@@ -5,7 +5,7 @@ import { tabAgent, type Agents } from "./agents";
 import { StatusChip } from "./StatusChip";
 import { chipOf, rowStyle, type Builtins } from "./status";
 import { useEffect, useRef, useState } from "react";
-import { KidIcon, pickAt, RenameInput, tabDirty, tabName, tabRequest, type DocMarks } from "./SideTabList";
+import { KidIcon, pickAt, RenameInput, tabDirty, tabName, tabRequest, withSub, type DocMarks } from "./SideTabList";
 
 export interface TabBarProps {
   tabs: Tab[];
@@ -22,6 +22,8 @@ export interface TabBarProps {
   builtins?: Builtins;
   /** Text panes' documents: their title names the tab, unsaved edits show a dot (D27). */
   docs?: DocMarks;
+  /** Each tab's live subtitle by tab id: path, then program or Claude's title (task 8.30). */
+  subtitles?: Readonly<Record<string, string>>;
   /** The tab whose name is being edited in place; a double click on a name starts it. */
   renaming?: string;
   onRenameStart?(tabId: string): void;
@@ -39,6 +41,7 @@ function TabItem({
   shown,
   builtins,
   docs,
+  sub,
   onSelect,
   onClose,
   renaming,
@@ -54,6 +57,7 @@ function TabItem({
   shown: Shown | undefined;
   builtins: Builtins;
   docs: DocMarks;
+  sub: string | undefined;
   onSelect(): void;
   onClose(): void;
 }) {
@@ -98,7 +102,7 @@ function TabItem({
       ) : (
         <span
           className="n"
-          title="Double-click to rename"
+          title={`${withSub(tabName(tab, docs), sub)}\nDouble-click to rename`}
           onDoubleClick={(e) => {
             e.stopPropagation();
             onRenameStart?.(tab.id);
@@ -107,6 +111,7 @@ function TabItem({
           {tabName(tab, docs)}
         </span>
       )}
+      {!renaming && sub && <span className="tab-sub">{sub}</span>}
       {tabDirty(tab, docs) && <span className="tab-dirty" title="Unsaved changes" aria-label="Unsaved changes" />}
       {shown?.look && <StatusChip chip={chipOf(shown, builtins)} />}
       <button
@@ -177,7 +182,7 @@ function NewMenu({ onNew, onNewText }: { onNew(): void; onNewText(beside: boolea
   );
 }
 
-export function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNewText, agents = {}, statuses = {}, builtins = {}, docs = {}, renaming, onRenameStart, onRename, onRenameEnd, onIconPick }: TabBarProps) {
+export function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNewText, agents = {}, statuses = {}, builtins = {}, docs = {}, subtitles = {}, renaming, onRenameStart, onRename, onRenameEnd, onIconPick }: TabBarProps) {
   return (
     <div className="ao-tabs" role="tablist" data-tauri-drag-region>
       <SortableContext items={tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
@@ -190,6 +195,7 @@ export function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNewText, ag
             shown={statuses[t.id]}
             builtins={builtins}
             docs={docs}
+            sub={subtitles[t.id]}
             onSelect={() => onSelect(t.id)}
             onClose={() => onClose(t.id)}
             renaming={renaming === t.id}

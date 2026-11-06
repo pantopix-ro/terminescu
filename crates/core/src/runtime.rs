@@ -53,6 +53,8 @@ pub type Emit = Box<dyn Fn(&PatchBatch) + Send + Sync>;
 pub type AgentSink = Box<dyn Fn(&AgentUpdate) + Send + Sync>;
 /// Every tab's and side tab's status, sent whenever one changes (D15).
 pub type StatusSink = Box<dyn Fn(&BTreeMap<Id, Shown>) + Send + Sync>;
+/// Every terminal pane's label parts, sent whenever one changes (task 8.30).
+pub type LabelSink = Box<dyn Fn(&BTreeMap<Id, crate::labels::PaneLabel>) + Send + Sync>;
 /// Hears which side tab's daemon variables changed (D21).
 pub type ContextSink = Box<dyn Fn(&str) + Send + Sync>;
 /// Where extraction matches go: side tab, the tab they came from, the matches (D13).
@@ -137,6 +139,8 @@ struct StatusState {
     last: BTreeMap<Id, Shown>,
     /// Per pane with a Claude session: its state and since when, for idle rules.
     seen: HashMap<Id, (AgentState, i64)>,
+    /// The pane labels last sent (task 8.30).
+    labels: BTreeMap<Id, crate::labels::PaneLabel>,
 }
 
 struct Inner {
@@ -159,6 +163,7 @@ struct Inner {
     status_dirty: Mutex<bool>,
     status_wake: Condvar,
     status_sink: Mutex<Option<StatusSink>>,
+    label_sink: Mutex<Option<LabelSink>>,
     /// Launcher side tabs and the tab of each of their commands (D24).
     launchers: Mutex<HashMap<Id, Vec<Option<Id>>>>,
     /// Panes that got a fresh shell at start, most likely after a reboot; launchers rerun there.
@@ -296,6 +301,7 @@ impl Runtime {
                 status_dirty: Mutex::new(true),
                 status_wake: Condvar::new(),
                 status_sink: Mutex::default(),
+                label_sink: Mutex::default(),
                 launchers: Mutex::default(),
                 respawned: Mutex::new(spawn.iter().map(|(p, _, _)| p.clone()).collect()),
                 context_sink: Mutex::default(),
@@ -997,6 +1003,17 @@ impl Runtime {
         self.mark_status();
     }
 
+    /// Where the UI gets pane label changes; the current ones come from [`Runtime::labels`].
+    pub fn on_labels(&self, sink: LabelSink) {
+        *lock(&self.inner.label_sink) = Some(sink);
+    }
+
+    /// Every terminal pane's label now (task 8.30).
+    pub fn labels(&self) -> BTreeMap<Id, crate::labels::PaneLabel> {
+        self.compute_statuses();
+        lock(&self.inner.status).labels.clone()
+    }
+
     /// Where the UI gets status changes; the current ones come from [`Runtime::statuses`].
     pub fn on_status(&self, sink: StatusSink) {
         *lock(&self.inner.status_sink) = Some(sink);
@@ -1055,6 +1072,13 @@ impl Runtime {
         let shells = lock(&self.inner.shells).clone();
         let now = crate::now_ms();
         let terminals: Vec<Id> = ws.terminal_sides().into_iter().map(|(p, _)| p).collect();
+        // Read before the status lock: no path takes `panes` under `status`.
+        let home = std::env::var("HOME").ok();
+        let saved: HashMap<Id, String> = lock(&self.inner.panes)
+            .meta
+            .iter()
+            .filter_map(|(p, r)| Some((p.clone(), r.cwd.clone()?)))
+            .collect();
         let mut st = lock(&self.inner.status);
         let mut idle: HashMap<Id, Option<i64>> = HashMap::new();
         for pane in &terminals {
@@ -1084,6 +1108,32 @@ impl Runtime {
                 )
             })
             .collect();
+        let labels: BTreeMap<Id, crate::labels::PaneLabel> = terminals
+            .iter()
+            .map(|p| {
+                let sh = shells.get(p);
+                let cwd = sh
+                    .and_then(|s| s.cwd.as_deref())
+                    .or(saved.get(p).map(String::as_str));
+                (
+                    p.clone(),
+                    crate::labels::label(
+                        cwd,
+                        sh.is_some_and(|s| s.running),
+                        sh.and_then(|s| s.command.as_deref()),
+                        sh.and_then(|s| s.title.as_deref()),
+                        agents.contains_key(p),
+                        home.as_deref(),
+                    ),
+                )
+            })
+            .collect();
+        if labels != st.labels {
+            st.labels = labels.clone();
+            if let Some(sink) = lock(&self.inner.label_sink).as_ref() {
+                sink(&labels);
+            }
+        }
         let mut map = status::compute(&ws, &facts, &st.engine);
         status::apply_launchers(&mut map, &lock(&self.inner.launchers));
         if map != st.last {

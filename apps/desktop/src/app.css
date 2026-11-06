@@ -386,3 +386,15 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 .px-pick-item.active { color: var(--fg); box-shadow: inset 2px 0 0 0 var(--fg); }
 /* Task 8.29: a tab's neon washes into its background, the active one too. */
 .ao-tab.neon.active:not(.placeholder) { background: var(--tab-bg); }
+
+/* Task 8.30: a tab's live subtitle (path, then program or Claude's title), dim after its name.
+   It gives way first, so the name keeps its room. */
+.ao-tab .tab-sub, .ao-st-kid .kid-sub, .ao-st .st-sub { color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ao-tab .n { flex: 0 1 auto; }
+.ao-tab .tab-sub { flex: 0 100 auto; font-size: 11px; }
+.ao-st-kid .kid-sub { margin-left: 6px; font-size: 11px; }
+.ao-st .st-sub { font-size: 11px; }
+.px-pick-item { height: auto; min-height: 26px; padding-block: 3px; }
+.px-pick-text { display: flex; flex-direction: column; line-height: 1.25; }
+.px-pick-name, .px-pick-sub { overflow: hidden; text-overflow: ellipsis; }
+.px-pick-sub { color: var(--faint); font-size: 11px; }

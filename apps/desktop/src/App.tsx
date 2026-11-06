@@ -70,6 +70,9 @@ import {
   quoteOf,
   TranscriptPane,
   type Agents,
+  type Labels,
+  paneSubtitle,
+  tabSubtitles,
   type Reveal,
   DROP_END,
   focusPane,
@@ -582,6 +585,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   };
   // Claude sessions by pane, from hook events in the core (D34).
   const [agents, setAgents] = useState<Agents>({});
+  // Each terminal pane's path, program and Claude title, for the tabs' subtitles (task 8.30).
+  const [labels, setLabels] = useState<Labels>({});
+  const subtitles = useMemo(() => tabSubtitles(sideTabs.flatMap((s) => s.tabs), focusByTab, labels, agents), [sideTabs, focusByTab, labels, agents]);
   useEffect(() => {
     let off: (() => void) | undefined;
     let gone = false;
@@ -619,6 +625,14 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       .then(keep);
     void host.onStatusConfig(loadConfig).then(keep);
     void host.statuses().then((m) => !gone && !heard && setStatuses(m));
+    let heardLabels = false;
+    void host
+      .onLabels((m) => {
+        heardLabels = true;
+        if (!gone) setLabels(m);
+      })
+      .then(keep);
+    void host.labels().then((m) => !gone && !heardLabels && setLabels(m));
     loadConfig();
     return () => {
       gone = true;
@@ -1244,6 +1258,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               statuses={statuses}
               builtins={statusConfig.builtins}
               docs={docs}
+              subtitles={subtitles}
               sort={sort}
               activeId={activeSide?.id}
               activeTabId={activeTab?.id}
@@ -1306,6 +1321,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               statuses={statuses}
               builtins={statusConfig.builtins}
               docs={docs}
+              subtitles={subtitles}
               renaming={renaming?.in === "bar" ? renaming.id : undefined}
               onRenameStart={(id) => setRenaming({ id, in: "bar" })}
               onRename={rename}
@@ -1339,7 +1355,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                       {multi && (
                         <div className="ao-tp-head">
                           <i className={`ao-i x1 ${transcript ? "ao-i-agent" : docOf(activeTab.layout, paneId) ? "ao-i-doc" : "ao-i-term"}`} />
-                          <span>{transcript ? "transcript" : (docs[docOf(activeTab.layout, paneId) ?? ""]?.title ?? (docOf(activeTab.layout, paneId) ? "text" : "shell"))}</span>
+                          <span>{transcript ? "transcript" : (docs[docOf(activeTab.layout, paneId) ?? ""]?.title ?? (docOf(activeTab.layout, paneId) ? "text" : (paneSubtitle(labels[paneId], !!agents[paneId]) ?? "shell")))}</span>
                           <span className="grow" />
                           <button type="button" className="tp-close" aria-label="Close pane" onClick={() => closePane(paneId)}>
                             ×

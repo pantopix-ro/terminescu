@@ -30,6 +30,8 @@ export interface SideTabListProps {
   sort?: SortMode;
   /** Text panes' documents, for tab names. */
   docs?: DocMarks;
+  /** Each tab's live subtitle by tab id: path, then program or Claude's title (task 8.30). */
+  subtitles?: Readonly<Record<string, string>>;
   /** A right click, Shift F10 or the menu key on a row (task 8.7), or a right click under the rows, at a window point. */
   onMenu?(at: { x: number; y: number }, target: MenuTarget): void;
   /** The side tab or tab id whose name is being edited in place. */
@@ -135,8 +137,11 @@ export type DocMarks = Readonly<Record<string, { title: string; dirty: boolean; 
 
 const docsOf = (t: Tab): string[] => panesOf(t.layout).flatMap((p) => leaf(t.layout, p)?.doc ?? []);
 
-/** A tab's name: its own title, else the title of its first document, else "shell". */
-export const tabName = (t: Tab, docs: DocMarks = {}) => t.title ?? docsOf(t).map((d) => docs[d]?.title).find(Boolean) ?? "shell";
+/** A tab's name: its own title, else its first document's title, else its animal (task 8.30), else "shell". */
+export const tabName = (t: Tab, docs: DocMarks = {}) => t.title ?? docsOf(t).map((d) => docs[d]?.title).find(Boolean) ?? t.name ?? "shell";
+
+/** A name with its live subtitle, for a tooltip: `Otter · ~/work/api · npm`. */
+export const withSub = (name: string, sub: string | undefined) => (sub ? `${name} · ${sub}` : name);
 
 /** A tab holds a document with unsaved edits. */
 export const tabDirty = (t: Tab, docs: DocMarks = {}) => docsOf(t).some((d) => docs[d]?.dirty);
@@ -185,6 +190,7 @@ function Row(props: {
   statuses: Readonly<Record<string, Shown>>;
   builtins: Builtins;
   docs: DocMarks;
+  subtitles: Readonly<Record<string, string>>;
   onSelect(): void;
   onSelectTab(tabId: string): void;
   onToggle(): void;
@@ -317,7 +323,8 @@ function Row(props: {
               <i key={t.id} className="ao-cell" data-cell={t.id} style={t.accent && { background: `var(--neon-${t.accent})` }} />
             ))}
           </span>
-          <span className="grow" />
+          {/* A one-tab row shows its tab's live subtitle here; a group's tabs show theirs below (task 8.30). */}
+          <span className="grow st-sub">{!group && side.tabs[0] && props.subtitles[side.tabs[0].id]}</span>
           {/* The status sits under the name, so the name has the row's width (task 8.28). */}
           <ChipButton
             chip={chip}
@@ -368,7 +375,7 @@ function Row(props: {
                 <span
                   className="grow"
                   title="Double-click to rename"
-                  onMouseEnter={(e) => (e.currentTarget.title = tips.expand(e.currentTarget, tabName(t, docs)) ? "" : "Double-click to rename")}
+                  onMouseEnter={(e) => (e.currentTarget.title = tips.expand(e.currentTarget, withSub(tabName(t, docs), props.subtitles[t.id])) ? "" : "Double-click to rename")}
                   onMouseLeave={tips.hide}
                   onDoubleClick={(e) => {
                     e.stopPropagation();
@@ -376,7 +383,8 @@ function Row(props: {
                     props.onRenameStart?.(t.id);
                   }}
                 >
-                  {tabName(t, docs)}
+                  <span className="kid-n">{tabName(t, docs)}</span>
+                  {props.subtitles[t.id] && <span className="kid-sub">{props.subtitles[t.id]}</span>}
                 </span>
               )}
               {statuses[t.id]?.look && (
@@ -429,6 +437,7 @@ export function SideTabList({
   builtins = {},
   sort = "manual",
   docs = {},
+  subtitles = {},
   onMenu,
   renaming,
   onRename,
@@ -468,6 +477,7 @@ export function SideTabList({
               statuses={statuses}
               builtins={builtins}
               docs={docs}
+              subtitles={subtitles}
               onSelect={() => onSelect(s.id)}
               onSelectTab={(t) => onSelectTab(s.id, t)}
               onToggle={() => setExpanded((m) => ({ ...m, [s.id]: !m[s.id] }))}
@@ -526,7 +536,10 @@ export function SideTabList({
               }}
             >
               <KidIcon agent={tabAgent(t, agents)} icon={t.icon} accent={t.accent} />
-              <span className="grow">{tabName(t, docs)}</span>
+              <span className="grow px-pick-text">
+                <span className="px-pick-name">{tabName(t, docs)}</span>
+                {subtitles[t.id] && <span className="px-pick-sub">{subtitles[t.id]}</span>}
+              </span>
               {statuses[t.id]?.look && <StatusChip chip={chipOf(statuses[t.id], builtins)} />}
             </button>
           ))}

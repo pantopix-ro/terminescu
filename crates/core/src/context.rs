@@ -455,6 +455,7 @@ mod tests {
                         id: "t1".into(),
                         title: None,
                         layout: crate::layout::Layout::pane("p1"),
+                        name: None,
                     }],
                 }],
             }],

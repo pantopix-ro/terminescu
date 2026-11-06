@@ -39,7 +39,7 @@ test("a double click on a tab's name in an open group renames it; Escape keeps t
   await start(page);
   const side = (await workspace(page)).windows[0].sideTabs[0];
   await mock(page, "send", { type: "CreateTab", sideTabId: side.id });
-  const kid = page.locator(".ao-st-kid .grow").last();
+  const kid = page.locator(".ao-st-kid .kid-n").last();
   await kid.dblclick();
   const input = page.getByLabel("Tab name");
   await input.fill("discarded");
@@ -48,5 +48,5 @@ test("a double click on a tab's name in an open group renames it; Escape keeps t
   await kid.dblclick();
   await page.getByLabel("Tab name").fill("k9s");
   await page.getByLabel("Tab name").press("Enter");
-  await expect(page.locator(".ao-st-kid .grow").last()).toHaveText("k9s");
+  await expect(page.locator(".ao-st-kid .kid-n").last()).toHaveText("k9s");
 });

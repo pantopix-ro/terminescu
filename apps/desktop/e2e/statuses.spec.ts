@@ -63,7 +63,10 @@ async function sortBy(page: Page, mode: string) {
 
 test("sorting by background groups tints, by name inside each", async ({ page }) => {
   await open(page);
-  const windowId = await page.evaluate(() => (window as any).__terminescu.host.workspace().windows[0].id);
+  const first = await page.evaluate(() => (window as any).__terminescu.host.workspace().windows[0]);
+  const windowId = first.id;
+  // The first tab has an animal's name (task 8.30); "shell" keeps the expected order readable.
+  await mock(page, "send", { type: "RenameTab", tabId: first.sideTabs[0].tabs[0].id, title: "shell" });
   const rows = [
     ["zeta", "red"],
     ["alpha", "blue"],
