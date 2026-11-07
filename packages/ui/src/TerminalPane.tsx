@@ -15,6 +15,7 @@ import { findEmails, type TerminalLink } from "./links";
 import { webglBudget } from "./webgl-budget";
 import { colors } from "./generated/colors";
 import { pasteRisk } from "./paste";
+import { terminalKeyText } from "./terminal-keys";
 import { attachPromptMarks, type PromptMarks } from "./prompt-marks";
 import type { Rows } from "./find-all";
 import { terminalBehaviour, terminalBehaviourOptions, terminalFont, themeFor, type TerminalBehaviourSettings, type TerminalFont } from "./xterm-theme";
@@ -162,6 +163,13 @@ const MATCHES: ISearchOptions["decorations"] = {
 
 const buffers = new Map<string, Terminal>();
 /** The history and screen of `paneId`'s terminal for find in all panes (task 8.46). */
+/** `⌘A` in a terminal: selects its whole buffer, history included. False when no terminal. */
+export function selectAllIn(paneId: string): boolean {
+  const term = buffers.get(paneId);
+  term?.selectAll();
+  return !!term;
+}
+
 export function terminalRows(paneId: string): Rows | undefined {
   const term = buffers.get(paneId);
   if (!term) return undefined;
@@ -417,6 +425,15 @@ export function TerminalPane({
         const meta = behaviourNow.current.optionAsMeta;
         if (e.type === "keydown" && e.key === "Alt" && (meta === "left" || meta === "right")) {
           term.options.macOptionIsMeta = e.code === (meta === "left" ? "AltLeft" : "AltRight");
+        }
+        // The macOS editing chords: word moves, line start and end, delete to the line's start.
+        const text = terminalKeyText(e);
+        if (text !== undefined) {
+          if (e.type === "keydown") {
+            e.preventDefault();
+            term.input(text, true);
+          }
+          return false;
         }
         return !e.metaKey;
       });

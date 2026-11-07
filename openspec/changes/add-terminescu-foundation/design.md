@@ -163,11 +163,15 @@ offered as an accent so it keeps that meaning. People sort their work with accen
 backgrounds. Stepped motion, off under reduced motion; the chime is off by default.
 ### D17. Plain keys go to the pane; app actions are `⌘` chords
 Shells and Claude don't read `⌘` on macOS, so every app action is a `⌘` chord and the
-terminal keeps every other key: `⌘K` palette, `⌘T` tab, `⌘N` side tab, `⌘D` and `⌘⇧D` split,
+terminal keeps every other key: `⌘P` palette, `⌘K` clear, `⌘T` tab, `⌘N` side tab, `⌘D` and `⌘⇧D` split,
 `⌘W` close, `⌘1`-`⌘9` tab, `⌃⌘1`-`⌃⌘9` side tab, `⌘I` insert, `⌘E` extract, `⌘⇧P` pin,
 `⌘⇧S` status editor, `⌘⇧A` jump to the oldest waiting session, `⌥⌘T` text tab, `⌘O` open
 file, `⌘⇧L` transcript pane beside a Claude pane. The app's chord wins in every pane kind, text panes included: `⌘D` splits, `⌘I`
-inserts, `⌘K` opens the palette, `⌘E` extracts, and CodeMirror's select-next moves to `⌃⌘G`.
+inserts, `⌘P` opens the palette, `⌘E` extracts, and CodeMirror's select-next moves to `⌃⌘G`.
+The chords macOS terminals share keep their meaning (task 8.52): `⌘K` clears to the prompt as
+in Terminal.app and iTerm2, `⌘A` selects the terminal's whole buffer, and the terminal sends
+`⌥←`/`⌥→` as Esc b/f and `⌘←`/`⌘→`/`⌘⌫` as ^A/^E/^U. Rejected: `⌘K` for the palette, which
+clashed with clearing in every other macOS terminal.
 Every shortcut is editable in Settings › Keys in v1, which flags conflicts. Rejected: the first draft's
 Esc Esc plus single letters, which made the person leave the terminal before every action.
 

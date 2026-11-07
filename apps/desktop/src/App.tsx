@@ -101,6 +101,7 @@ import {
   TextPane,
   terminalSelection,
   clearTerminal,
+  selectAllIn,
   promptAction,
   textPane,
   type ContextMode,
@@ -240,7 +241,7 @@ const selectable = new Set(["palette", "send_to_tab"]);
 /** Menu chords that a focused dialog field may use for itself. */
 const FIELD_CHORDS = new Set(["save", "save_as", "return_edit", "send_to_pane", "send_to_tab"]);
 /** Menu chords a focused text pane keeps for its editor: its own search and line jumps. */
-const TEXT_CHORDS = new Set(["find", "find_next", "find_previous", "prompt_previous", "prompt_next"]);
+const TEXT_CHORDS = new Set(["find", "find_next", "find_previous", "prompt_previous", "prompt_next", "select_all"]);
 const paletteActions = (actions: readonly ActionDef[]) => actions.filter((a) => !selectable.has(a.id) && !/^(tab|side)_\d$/.test(a.id));
 
 /** Where a tab dragged over the panes would land (task 8.32); `small` means it would not fit. */
@@ -595,12 +596,17 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     return true;
   };
 
-  // A text field outside the panes and the find bar keeps ⌘↑ and ⌘↓ as caret moves, and ⌘F
-  // and ⌘G do nothing there: the menu takes the chords, so the caret moves here.
+  // A text field outside the panes keeps ⌘A and, outside the find bar, ⌘↑ and ⌘↓ as caret
+  // moves, while ⌘F and ⌘G do nothing there: the menu takes the chords, so they act here.
   const keepForField = (id: string) => {
     const el = document.activeElement;
     if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) return false;
-    if (el.closest(".text-pane, .find-bar, .term-pane")) return false;
+    if (el.closest(".text-pane, .term-pane")) return false;
+    if (id === "select_all") {
+      el.select();
+      return true;
+    }
+    if (el.closest(".find-bar")) return false;
     if (id === "prompt_previous" || id === "prompt_next") {
       const at = id === "prompt_previous" ? 0 : el.value.length;
       try {
@@ -715,6 +721,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       case "prompt_next":
       case "select_output":
         if (focused) promptAction(focused, id === "select_output" ? "output" : id === "prompt_previous" ? "previous" : "next");
+        return;
+      case "select_all":
+        if (focused) selectAllIn(focused);
         return;
       case "clear_to_start":
       case "clear_scrollback":

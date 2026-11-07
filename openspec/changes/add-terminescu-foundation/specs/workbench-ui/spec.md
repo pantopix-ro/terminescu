@@ -15,7 +15,7 @@ same tokens. Amber SHALL mean needs you, focus and drop targets only.
 - **THEN** it draws in SF Mono Regular, the system's mono font, at 13 px
 
 ### Requirement: Keyboard model
-Plain keys SHALL always go to the focused pane. App actions SHALL be `⌘` chords: `⌘K`, `⌘T`,
+Plain keys SHALL always go to the focused pane. App actions SHALL be `⌘` chords: `⌘P`, `⌘K`, `⌘T`,
 `⌘N`, `⌘D`, `⌘⇧D`, `⌘W`, `⌘1`-`⌘9`, `⌃⌘1`-`⌃⌘9`, `⌘I`, `⌘E`, `⌘⇧P`, `⌘⇧S`, `⌘⇧A`, `⌘\`,
 `⌥⌘T`, `⌘O`. Each SHALL be a native menu item, so the chord wins over the webview and over the
 text editor. Every shortcut SHALL be editable in Settings › Keys, which SHALL flag conflicts.
@@ -25,12 +25,21 @@ text editor. Every shortcut SHALL be editable in Settings › Keys, which SHALL 
 - **THEN** the tab splits and the editor does not select the next match
 
 #### Scenario: Rebind a shortcut
-- **WHEN** the person binds "Open file" to `⌘P` in Settings › Keys
-- **THEN** `⌘P` opens the file search and `⌘O` does nothing; binding `⌘T` to it as well shows a conflict
+- **WHEN** the person binds "Open file" to `⌘⇧E` in Settings › Keys
+- **THEN** `⌘⇧E` opens the file search and `⌘O` does nothing; binding `⌘T` to it as well shows a conflict
 
 #### Scenario: Letter typed in a terminal
 - **WHEN** the focused pane is a terminal and the person types `c`
 - **THEN** the shell receives `c` and no app action runs
+
+### Requirement: macOS terminal chords
+The chords macOS terminals share SHALL keep their meaning: `⌘K` SHALL clear to the prompt line,
+`⌘A` SHALL select the focused terminal's whole buffer, and a terminal SHALL send `⌥←` and `⌥→`
+as Esc b and Esc f, and `⌘←`, `⌘→` and `⌘⌫` as ^A, ^E and ^U.
+
+#### Scenario: Terminal editing chords
+- **WHEN** the person presses `⌥←`, then `⌘→`, then `⌘K` in a terminal
+- **THEN** the shell receives Esc b and ^E, and the terminal clears to its prompt line
 
 ### Requirement: Title strip
 The sidebar SHALL start with a strip that holds the macOS traffic lights and the TERMINESCU

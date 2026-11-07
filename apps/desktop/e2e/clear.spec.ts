@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// Task 8.44 on the mock host: ⌘⇧K clears to the prompt line, ⌥⌘K drops the history and keeps
+// Task 8.44 on the mock host: ⌘K clears to the prompt line, ⌥⌘K drops the history and keeps
 // the screen; both ask the daemon to clear its copy.
 
 async function start(page: Page) {
@@ -34,9 +34,9 @@ test("⌥⌘K drops the history and keeps the screen", async ({ page }) => {
   expect(await clears(page)).toEqual([`${pane} history`]);
 });
 
-test("⌘⇧K clears to the prompt line", async ({ page }) => {
+test("⌘K clears to the prompt line", async ({ page }) => {
   const pane = await start(page);
-  await page.keyboard.press("Meta+Shift+K");
+  await page.keyboard.press("Meta+K");
   await expect.poll(async () => (await buffer(page, pane)).base).toBe(0);
   expect((await buffer(page, pane)).top).not.toMatch(/^build line/);
   expect(await clears(page)).toEqual([`${pane} to start`]);

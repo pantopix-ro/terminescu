@@ -117,7 +117,7 @@ test("a pane too small to halve shows red and refuses the drop", async ({ page }
 
 test("a pane header dragged to the tab bar becomes a tab; the palette docks and undocks", async ({ page }) => {
   const { pane, second, otherPane } = await twoTabs(page);
-  await page.keyboard.press("Meta+k");
+  await page.keyboard.press("Meta+p");
   await page.keyboard.type("split right with tab");
   await page.keyboard.press("Enter");
   await expect.poll(() => tabIds(page)).toHaveLength(1);
@@ -129,7 +129,7 @@ test("a pane header dragged to the tab bar becomes a tab; the palette docks and 
   await expect.poll(() => tabIds(page)).toHaveLength(2);
   await expect.poll(() => shownPanes(page)).toEqual([otherPane]);
   // ⌘⇧B moves the focused pane to a new tab; it needs a split, so dock again first.
-  await page.keyboard.press("Meta+k");
+  await page.keyboard.press("Meta+p");
   await page.keyboard.type("split down with tab");
   await page.keyboard.press("Enter");
   await expect.poll(() => shownPanes(page)).toHaveLength(2);

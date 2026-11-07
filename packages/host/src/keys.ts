@@ -167,7 +167,6 @@ export const RESERVED: readonly { accel: string; label: string }[] = [
   { accel: "Cmd+X", label: "Cut" },
   { accel: "Cmd+C", label: "Copy" },
   { accel: "Cmd+V", label: "Paste" },
-  { accel: "Cmd+A", label: "Select All" },
   { accel: "Cmd+Tab", label: "the app switcher" },
   { accel: "Cmd+Space", label: "Spotlight" },
 ];
