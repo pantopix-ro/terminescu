@@ -392,6 +392,7 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
    It gives way first, so the name keeps its room. */
 .ao-tab .tab-sub, .ao-st-kid .kid-sub, .ao-st .st-sub { color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .ao-tab .n { flex: 0 1 auto; }
+.ask-mark { flex: none; margin-right: 4px; color: var(--amber); }
 .ao-tab .tab-sub { flex: 0 100 auto; font-size: 11px; }
 .ao-st-kid .kid-sub { margin-left: 6px; font-size: 11px; }
 .ao-st .st-sub { font-size: 11px; }

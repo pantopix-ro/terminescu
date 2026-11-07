@@ -38,7 +38,13 @@ test("icons blink while a command runs and bounce while Claude waits", async ({ 
   await host(page, "setAgent", pane, { session: "s-1", state: "waiting", lastMessage: null });
   await expect(tabIcon).toHaveClass(/act-wait/);
   await expect(rowIcon).toHaveClass(/act-wait/);
+  // Claude's ✳ comes before the tab name while it waits, and goes when it works again.
+  const ask = page.locator(`.ao-tab[data-tab="${tab.id}"] .ask-mark`);
+  await expect(ask).toHaveText("✳");
+  await expect(page.locator(`.ao-tab[data-tab="${tab.id}"] .n`)).not.toContainText("✳");
   await expect(tabIcon).toHaveCSS("animation-name", "act-blink, act-bounce");
+  await host(page, "setAgent", pane, { session: "s-1", state: "running", lastMessage: null });
+  await expect(ask).toHaveCount(0);
 });
 
 test("reduced motion keeps the icons still", async ({ page }) => {

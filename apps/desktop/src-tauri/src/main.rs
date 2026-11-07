@@ -788,8 +788,8 @@ fn watch_commands(app: AppHandle, runtime: Runtime, db: Arc<Mutex<Db>>) {
 }
 
 /// Feeds agent updates into [`Attention`] off the runtime's locks: the badge follows the count,
-/// and a pane that starts waiting posts a notification while no window has focus, and the chime
-/// when it is on. The notification names the side tab and tab and plays no sound.
+/// and a pane that starts waiting bounces the dock icon, posts a notification while no window
+/// has focus, and the chime when it is on. The notification names the side tab and tab and plays no sound.
 fn watch_attention(
     app: AppHandle,
     runtime: Runtime,
@@ -817,6 +817,13 @@ fn watch_attention(
             let settings = attention::settings(&lock(&db)).unwrap_or_default();
             let windows = app.webview_windows();
             let focused = windows.values().any(|w| w.is_focused().unwrap_or(false));
+            // The dock icon bounces once; macOS ignores it while the app is in front.
+            if let Some(w) = windows.get(place.window.as_str())
+                && let Err(e) =
+                    w.request_user_attention(Some(tauri::UserAttentionType::Informational))
+            {
+                eprintln!("terminescu: dock bounce not requested: {e}");
+            }
             if settings.notify && !focused {
                 let shown = app
                     .notification()
