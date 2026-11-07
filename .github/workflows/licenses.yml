@@ -1,0 +1,20 @@
+# add-public-release task 2.1 (D8): every crate the app ships has an allowed license.
+name: Licenses
+
+on:
+  pull_request:
+  push:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+jobs:
+  cargo-deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install cargo-deny
+        run: cargo install --locked cargo-deny@0.20.2
+      - name: Check licenses
+        run: cargo deny check licenses

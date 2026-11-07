@@ -213,3 +213,12 @@ pnpm tokens                   # after editing design/system/build_tokens.py
 ```
 
 `pnpm --filter @terminescu/desktop dev` serves the UI alone in a browser on a mock `Host`.
+
+## License
+
+Terminescu is made by [PANTOPIX RO](https://pantopix.ro) and ships under the
+[Functional Source License 1.1, Apache 2.0 future license](LICENSE.md) (FSL-1.1-ALv2). You may
+read, run, change and share the code for any purpose except a product that competes with
+Terminescu. Each release becomes Apache 2.0 two years after it ships. The FSL is not an OSI
+open source license. Contributions need a signed CLA: see [CONTRIBUTING.md](CONTRIBUTING.md).
+Terminescu works with Claude Code and is not affiliated with Anthropic.

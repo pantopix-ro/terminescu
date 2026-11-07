@@ -12,6 +12,8 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "tokens": "pnpm --filter @terminescu/ui tokens",
+    "credits": "node scripts/credits.mjs",
+    "licenses:check": "cargo deny check licenses",
     "check:rust": "cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace"
   },
   "devDependencies": {
