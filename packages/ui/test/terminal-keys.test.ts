@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DEFAULT_SETTINGS } from "@terminescu/host";
 import { terminalKeyText, type KeyLike } from "../src/terminal-keys";
 
 const key = (k: string, mods: Partial<KeyLike> = {}): KeyLike => ({ key: k, metaKey: false, altKey: false, ctrlKey: false, shiftKey: false, ...mods });
@@ -20,5 +21,17 @@ describe("terminalKeyText", () => {
     expect(terminalKeyText(key("ArrowLeft", { altKey: true, shiftKey: true }))).toBeUndefined();
     expect(terminalKeyText(key("Backspace", { altKey: true }))).toBeUndefined();
     expect(terminalKeyText(key("k", { metaKey: true }))).toBeUndefined();
+  });
+  it("sends nothing for ⇧↵ until a new line chord is set, then Esc CR", () => {
+    expect(terminalKeyText(key("Enter", { shiftKey: true }))).toBeUndefined();
+    const keys = { ...DEFAULT_SETTINGS.terminalKeys, newline: "Shift+Enter" };
+    expect(terminalKeyText(key("Enter", { shiftKey: true }), keys)).toBe("\x1b\r");
+    expect(terminalKeyText(key("Enter"), keys)).toBeUndefined();
+  });
+  it("follows rebound and turned-off chords, reading letters from the physical key", () => {
+    const keys = { ...DEFAULT_SETTINGS.terminalKeys, deleteLine: "", wordLeft: "Ctrl+Alt+B" };
+    expect(terminalKeyText(key("Backspace", { metaKey: true }), keys)).toBeUndefined();
+    expect(terminalKeyText(key("ArrowLeft", { altKey: true }), keys)).toBeUndefined();
+    expect(terminalKeyText(key("∫", { code: "KeyB", altKey: true, ctrlKey: true }), keys)).toBe("\x1bb");
   });
 });

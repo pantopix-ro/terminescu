@@ -1,4 +1,4 @@
-import type { Tint } from "@terminescu/host";
+import { DEFAULT_SETTINGS, type TerminalKeys, type Tint } from "@terminescu/host";
 import type { ITheme } from "@xterm/xterm";
 import { colors } from "./generated/colors";
 
@@ -168,6 +168,8 @@ export interface TerminalBehaviourSettings {
   copyOnSelect: boolean;
   pasteWarning: boolean;
   raiseContrast: boolean;
+  /** Chords the pane turns into shell editing keys (task 8.53). */
+  terminalKeys: TerminalKeys;
 }
 
 /** The xterm.js options among them; the rest the pane handles itself. */
@@ -192,6 +194,7 @@ export const terminalBehaviour: TerminalBehaviourSettings = {
   copyOnSelect: false,
   pasteWarning: true,
   raiseContrast: false,
+  terminalKeys: DEFAULT_SETTINGS.terminalKeys,
 };
 
 /** The defaults match Terminal.app's Basic profile: SF Mono Regular 11, line spacing 1.0. */

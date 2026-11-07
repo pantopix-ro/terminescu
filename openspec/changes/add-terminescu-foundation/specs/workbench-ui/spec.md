@@ -41,6 +41,16 @@ as Esc b and Esc f, and `⌘←`, `⌘→` and `⌘⌫` as ^A, ^E and ^U.
 - **WHEN** the person presses `⌥←`, then `⌘→`, then `⌘K` in a terminal
 - **THEN** the shell receives Esc b and ^E, and the terminal clears to its prompt line
 
+### Requirement: Editable terminal chords
+Settings › Keys SHALL list the terminal's editing chords, and each SHALL be rebound, turned off
+or reset there. A new line chord that sends Esc CR SHALL be offered, off by default. A terminal
+chord SHALL need `⌘`, `⌥` or `⌃`, or `⇧` with a named key, and SHALL NOT take a chord that an
+app shortcut, macOS or another terminal chord has.
+
+#### Scenario: Shift+Enter as a new line
+- **WHEN** the person sets the new line chord to `⇧↵` and presses it in a terminal
+- **THEN** the shell receives Esc CR, and `⌘P` was refused as the Command Palette's chord
+
 ### Requirement: Title strip
 The sidebar SHALL start with a strip that holds the macOS traffic lights and the TERMINESCU
 wordmark, with no header row under it. The strip and the tab bar SHALL have the same height, and

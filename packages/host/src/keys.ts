@@ -28,6 +28,8 @@ const KEY_NAMES: Record<string, string> = {
   up: "ArrowUp",
   down: "ArrowDown",
   enter: "Enter",
+  backspace: "Backspace",
+  delete: "Delete",
 };
 
 interface Chord {
@@ -68,6 +70,8 @@ const CODE_NAMES: Record<string, string> = {
   ArrowUp: "Up",
   ArrowDown: "Down",
   Enter: "Enter",
+  Backspace: "Backspace",
+  Delete: "Delete",
 };
 
 /** The key a chord ends on, from the physical key so ⌥ and ⇧ don't change it. */
@@ -126,7 +130,7 @@ export function chordEvent(accel: string): KeyboardEventInit {
 /** How a chord reads in the UI: ⌃⌥⇧⌘ then the key. */
 export function chordLabel(accel: string): string {
   const c = parseAccel(accel);
-  const key = { "\\": "\\", ArrowLeft: "←", ArrowRight: "→", ArrowUp: "↑", ArrowDown: "↓", Enter: "↵" }[c.key] ?? c.key.toUpperCase();
+  const key = { "\\": "\\", ArrowLeft: "←", ArrowRight: "→", ArrowUp: "↑", ArrowDown: "↓", Enter: "↵", Backspace: "⌫", Delete: "⌦" }[c.key] ?? c.key.toUpperCase();
   return `${c.ctrl ? "⌃" : ""}${c.alt ? "⌥" : ""}${c.shift ? "⇧" : ""}${c.meta ? "⌘" : ""}${key}`;
 }
 
@@ -192,4 +196,13 @@ export function conflicts(actions: readonly ActionDef[]): Set<string> {
   const by = new Map<string, string[]>();
   for (const a of actions) by.set(normalAccel(a.accel), [...(by.get(normalAccel(a.accel)) ?? []), a.id]);
   return new Set([...by.values()].filter((ids) => ids.length > 1).flat());
+}
+
+/** A chord for a terminal key (task 8.53): a modifier and a key, Shift alone only with a named key. */
+export function terminalChordProblem(accel: string): string | undefined {
+  const c = parseAccel(accel);
+  const key = c.key.toLowerCase();
+  if (!key || ["cmd", "ctrl", "alt", "shift"].includes(key)) return "A shortcut needs a key besides the modifiers.";
+  if (!c.meta && !c.ctrl && !c.alt && (!c.shift || c.key.length === 1)) return "A terminal chord needs ⌘, ⌥ or ⌃, or ⇧ with a key such as ↵.";
+  return undefined;
 }

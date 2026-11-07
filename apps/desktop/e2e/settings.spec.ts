@@ -115,3 +115,33 @@ test("Keys: rebind New Side Tab to ⌘J, refuse ⌘T as a clash, reset", async (
   await expect(again.getByRole("button", { name: "Shortcut for New Side Tab" })).toHaveText("⌘N");
   await expect.poll(() => mock(page, "keyBindings")).toEqual({});
 });
+
+// Task 8.53: the terminal's editing chords are editable; ⇧↵ as the new line chord sends Esc CR.
+test("Keys: set ⇧↵ as the terminal's new line, refuse ⌘P, turn ⌘⌫ off", async ({ page }) => {
+  await start(page);
+  const pane = await page.evaluate(() => document.querySelector<HTMLElement>(".term-pane")!.dataset.pane!);
+  const inputs = () => page.evaluate((p) => ((window as any).__terminescu.host.inputs.get(p) ?? "") as string, pane);
+  const dialog = await openSettings(page, "Keys");
+  const newline = dialog.getByRole("button", { name: "Shortcut for New line without running (Claude)" });
+  await expect(newline).toHaveText("off");
+  await newline.click();
+  await page.keyboard.press("Meta+P");
+  await expect(dialog.getByRole("alert")).toHaveText(/^⌘P is already Command Palette/);
+  await page.keyboard.press("Shift+Enter");
+  await expect(newline).toHaveText("⇧↵");
+  await dialog.getByRole("button", { name: "Turn off Delete to line start" }).click();
+  await expect(dialog.getByRole("button", { name: "Shortcut for Delete to line start" })).toHaveText("off");
+  await expect.poll(async () => (await mock(page, "settings")).terminalKeys).toMatchObject({ newline: "Shift+Enter", deleteLine: "" });
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+
+  await page.locator(".term-pane").first().click();
+  const before = (await inputs()).length;
+  await page.keyboard.press("Meta+Backspace");
+  await page.keyboard.press("Shift+Enter");
+  await expect.poll(async () => (await inputs()).slice(before)).toBe("\x1b\r");
+
+  const again = await openSettings(page, "Keys");
+  await again.getByRole("button", { name: "Reset Delete to line start" }).click();
+  await expect(again.getByRole("button", { name: "Shortcut for Delete to line start" })).toHaveText("⌘⌫");
+});

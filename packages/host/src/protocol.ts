@@ -516,7 +516,29 @@ export interface AppSettings {
   terminalColors: ImportedColors | null;
   /** 30 to 100; below 100 the desktop shows through the terminals' background. */
   terminalOpacity: number;
+  /** Chords a focused terminal turns into shell editing keys (task 8.53); "" is off. */
+  terminalKeys: TerminalKeys;
 }
+
+/** As `TerminalKeys` in settings.rs. */
+export interface TerminalKeys {
+  wordLeft: string;
+  wordRight: string;
+  lineStart: string;
+  lineEnd: string;
+  deleteLine: string;
+  newline: string;
+}
+
+/** Each terminal key: its label in Settings › Keys and the bytes the shell reads. */
+export const TERMINAL_KEYS: readonly { id: keyof TerminalKeys; label: string; text: string }[] = [
+  { id: "wordLeft", label: "Back one word", text: "\x1bb" },
+  { id: "wordRight", label: "Forward one word", text: "\x1bf" },
+  { id: "lineStart", label: "Start of line", text: "\x01" },
+  { id: "lineEnd", label: "End of line", text: "\x05" },
+  { id: "deleteLine", label: "Delete to line start", text: "\x15" },
+  { id: "newline", label: "New line without running (Claude)", text: "\x1b\r" },
+];
 
 export type TerminalTheme = "terminescu" | "basic" | "solarizedDark" | "solarizedLight" | "imported";
 export const TERMINAL_THEMES: readonly TerminalTheme[] = ["terminescu", "basic", "solarizedDark", "solarizedLight", "imported"];
@@ -593,6 +615,14 @@ export const DEFAULT_SETTINGS: AppSettings = {
   terminalTheme: "terminescu",
   terminalColors: null,
   terminalOpacity: 100,
+  terminalKeys: {
+    wordLeft: "Alt+Left",
+    wordRight: "Alt+Right",
+    lineStart: "Cmd+Left",
+    lineEnd: "Cmd+Right",
+    deleteLine: "Cmd+Backspace",
+    newline: "",
+  },
 };
 
 /** The steps `⌘+` and `⌘-` walk, in percent. Same as `ZOOM_STEPS` in settings.rs. */

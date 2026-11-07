@@ -132,6 +132,53 @@ pub struct Settings {
     pub terminal_colors: Option<crate::term_import::Colors>,
     /// Below 100 the desktop shows through the terminals' background.
     pub terminal_opacity: u8,
+    /// The chords the terminal turns into shell editing keys (task 8.53).
+    pub terminal_keys: TerminalKeys,
+}
+
+/// Chords such as "Alt+Left" that a focused terminal turns into the bytes a shell reads; an
+/// empty chord is off. They are checked against the app's chords in the UI, which knows them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct TerminalKeys {
+    /// Back one word (ESC b).
+    pub word_left: String,
+    /// Forward one word (ESC f).
+    pub word_right: String,
+    /// To the line's start (Ctrl-A).
+    pub line_start: String,
+    /// To the line's end (Ctrl-E).
+    pub line_end: String,
+    /// Deletes to the line's start (Ctrl-U).
+    pub delete_line: String,
+    /// A new line without running the input (ESC CR), as Option+Enter in Claude; off by default.
+    pub newline: String,
+}
+
+impl Default for TerminalKeys {
+    fn default() -> Self {
+        Self {
+            word_left: "Alt+Left".into(),
+            word_right: "Alt+Right".into(),
+            line_start: "Cmd+Left".into(),
+            line_end: "Cmd+Right".into(),
+            delete_line: "Cmd+Backspace".into(),
+            newline: String::new(),
+        }
+    }
+}
+
+impl TerminalKeys {
+    fn all_mut(&mut self) -> [&mut String; 6] {
+        [
+            &mut self.word_left,
+            &mut self.word_right,
+            &mut self.line_start,
+            &mut self.line_end,
+            &mut self.delete_line,
+            &mut self.newline,
+        ]
+    }
 }
 
 impl Default for Settings {
@@ -160,6 +207,7 @@ impl Default for Settings {
             terminal_theme: TerminalTheme::Terminescu,
             terminal_colors: None,
             terminal_opacity: OPACITY,
+            terminal_keys: TerminalKeys::default(),
         }
     }
 }
@@ -184,6 +232,10 @@ pub enum SettingsError {
         "imported colours are #rrggbb values with 16 ANSI colours; import a theme before choosing Imported"
     )]
     BadColors,
+    #[error(
+        "a terminal chord has a modifier and one key (Shift alone only with a named key such as Enter), and no two terminal chords are the same"
+    )]
+    BadTerminalKeys,
     #[error(transparent)]
     Db(#[from] crate::db::DbError),
 }
@@ -223,6 +275,24 @@ pub fn set(db: &Db, mut s: Settings) -> std::result::Result<Settings, SettingsEr
         || (s.terminal_theme == TerminalTheme::Imported && s.terminal_colors.is_none())
     {
         return Err(SettingsError::BadColors);
+    }
+    let mut seen = Vec::new();
+    for chord in s.terminal_keys.all_mut() {
+        let c = chord.trim().to_string();
+        if c.is_empty() {
+            chord.clear();
+            continue;
+        }
+        let parts: Vec<&str> = c.split('+').map(str::trim).collect();
+        let n = crate::keys::normal(&c);
+        let key = n.rsplit('+').next().unwrap_or("");
+        // Shift with a letter is typing, so a Shift-only chord needs a named key such as Enter.
+        let has_mod = parts.len() > 1 && !(n.starts_with("shift+") && key.chars().count() == 1);
+        if !has_mod || key.is_empty() || c.len() > 40 || seen.contains(&n) {
+            return Err(SettingsError::BadTerminalKeys);
+        }
+        seen.push(n);
+        *chord = c;
     }
     s.sidebar_width = s.sidebar_width.clamp(SIDEBAR_MIN, SIDEBAR_MAX);
     write(db, KEY, &s)?;

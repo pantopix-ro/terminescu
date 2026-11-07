@@ -2,7 +2,7 @@
 // plans commands like crates/core/src/state.rs, with readable ids (m1, m2, ...).
 
 import type { Host, PaneView } from "./host";
-import { ACTIONS, actionFor, bindingProblem, normalAccel, withBindings, type KeyBindings } from "./keys";
+import { ACTIONS, actionFor, bindingProblem, normalAccel, terminalChordProblem, withBindings, type KeyBindings } from "./keys";
 import { PromptStore } from "./prompt-store";
 import { dockPlace, hasSplit, holdsWork, isSessionId, leaf, panesOf, removePane, resizeSplit, splitAt, splitPane, terminalsOf } from "./layout";
 import {
@@ -1222,8 +1222,19 @@ export function createMockHost(initial?: Workspace): MockHost {
         (theme === "imported" && !c)
       )
         throw new Error("imported colours are #rrggbb values with 16 ANSI colours; import a theme before choosing Imported");
+      // As settings.rs (task 8.53).
+      const tk = { ...DEFAULT_SETTINGS.terminalKeys, ...next.terminalKeys };
+      const seen = new Set<string>();
+      for (const id of Object.keys(tk) as (keyof typeof tk)[]) {
+        tk[id] = tk[id].trim();
+        if (!tk[id]) continue;
+        const n = normalAccel(tk[id]);
+        if (terminalChordProblem(tk[id]) || seen.has(n))
+          throw new Error("a terminal chord has a modifier and one key (Shift alone only with a named key such as Enter), and no two terminal chords are the same");
+        seen.add(n);
+      }
       const sidebarWidth = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(next.sidebarWidth)));
-      settings = { ...next, sidebarWidth, terminalFont, terminalOpacity: opacity, terminalTheme: theme, terminalColors: c };
+      settings = { ...next, sidebarWidth, terminalFont, terminalOpacity: opacity, terminalTheme: theme, terminalColors: c, terminalKeys: tk };
       // The app zooms its webview natively; a browser has CSS zoom on the root.
       if (typeof document !== "undefined") document.documentElement.style.zoom = zoom === 100 ? "" : String(zoom / 100);
       settingsListeners.forEach((l) => l());
