@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -p . && vite build",
+    "build": "node ../../scripts/credits.mjs && tsc -p . && vite build",
+    "credits": "node ../../scripts/credits.mjs",
     "preview": "vite preview",
     "typecheck": "tsc -p .",
     "sidecars": "node ../../scripts/sidecars.mjs",
