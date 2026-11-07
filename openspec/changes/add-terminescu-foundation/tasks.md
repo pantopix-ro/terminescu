@@ -604,7 +604,8 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       bottom line and opens into its pane. A one-tab sidebar row wears its tab's neon, and each
       tab under a group wears its own. The selected row, or in an open group the selected tab
       under it, reaches the panes with no border between them, a stronger wash and an outline
-      on its other sides; the group's header and other rows keep their gap. Verify:
+      on its other sides, drawn in the group's neon; the group's header and other rows keep
+      their gap. Verify:
       `sidebar-highlight.spec.ts`, `sidebar-neon.spec.ts`.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new

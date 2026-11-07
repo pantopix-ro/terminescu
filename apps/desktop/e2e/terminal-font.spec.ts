@@ -38,7 +38,7 @@ test("font, size, line height, weight and tab text apply live and reset", async 
   const dialog = await openTerminalSettings(page);
   await dialog.getByRole("slider", { name: "Line height" }).fill("150");
   await expect.poll(() => option(page, "lineHeight")).toBe(1.5);
-  await expect(dialog.locator(".set-out")).toHaveText("1.50");
+  await expect(dialog.locator(".set-out").first()).toHaveText("1.50");
   // Looser lines fit fewer rows, and the shell hears the new size.
   await expect.poll(() => page.evaluate(() => [...(window as any).__terminescu.terminals.values()][0].rows as number)).toBeLessThan(rows);
 
