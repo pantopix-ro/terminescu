@@ -50,3 +50,17 @@ test("reduced motion keeps the icons still", async ({ page }) => {
   await expect(icon).toHaveClass(/act-busy/);
   await expect(icon).toHaveCSS("animation-name", "none");
 });
+
+test("a group row keeps its icon still while its shells blink", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+  await page.locator(".term-pane").first().click();
+  await page.getByRole("button", { name: "New tab", exact: true }).click();
+  await expect(page.locator(".ao-st-kid")).toHaveCount(2);
+  const side = (await workspace(page)).windows[0].sideTabs[0];
+  const tab = side.tabs[0];
+  await host(page, "runCommand", tab.layout.id, "npm run dev", null);
+  await expect(page.locator(`.ao-st-kid[data-kid="${tab.id}"] .ao-i`).first()).toHaveClass(/act-busy/);
+  await expect(page.locator(`.ao-tab[data-tab="${tab.id}"] .ao-i`).first()).toHaveClass(/act-busy/);
+  await expect(page.locator(`.ao-st[data-side="${side.id}"] > .ao-i`)).not.toHaveClass(/act-/);
+});

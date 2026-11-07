@@ -38,16 +38,5 @@ export function tabActivities(tabs: Iterable<Tab>, labels: Labels, agents: Agent
   return out;
 }
 
-/** A side tab row takes its most urgent tab. */
-export function rowActivity(tabs: readonly Tab[], activities: Activities): Activity | undefined {
-  let out: Activity | undefined;
-  for (const t of tabs) {
-    const a = activities[t.id];
-    if (a === "wait") return a;
-    out ??= a;
-  }
-  return out;
-}
-
 /** The icon class for an activity: `act-busy` blinks, `act-wait` blinks and bounces. */
 export const actClass = (a: Activity | undefined) => (a ? ` act-${a}` : "");
