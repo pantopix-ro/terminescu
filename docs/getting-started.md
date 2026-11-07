@@ -77,7 +77,7 @@ bundle, which builds faster, use `pnpm build --debug`. The debug bundle goes to
 3. Eject the disk image.
 4. Open Terminescu from `Applications` or from Spotlight.
 
-The app is not signed and not notarized (task group 9). A `.dmg` that you build on your own
+The app is not signed and not notarized (add-public-release). A `.dmg` that you build on your own
 Mac does not get the quarantine flag, so macOS opens it with no warning.
 
 If you copy the `.dmg` to a different Mac, macOS blocks the first start. Do one of these on
@@ -93,8 +93,9 @@ On each start the app does these steps:
 
 1. It copies the daemon and the CLI to `~/Library/Application Support/Terminescu/bin`. The
    copies stay at the same path when you update the app.
-2. It adds `terminescu hook` to the hooks in `~/.claude/settings.json`. It keeps all your
-   other settings. If `CLAUDE_CONFIG_DIR` is set, it uses that folder.
+2. It adds `terminescu hook` to the hooks in `~/.claude/settings.json`, once you said yes on
+   the first-run screen or in Settings › Shell. An entry already there counts as yes. It keeps
+   all your other settings. If `CLAUDE_CONFIG_DIR` is set, it uses that folder.
 3. It starts `terminescu-ptyd`, which keeps your shells. The daemon continues to run when you
    quit the app, so your shells stay alive.
 4. It opens the database `~/Library/Application Support/ro.pxro.terminescu/terminescu.sqlite`.
