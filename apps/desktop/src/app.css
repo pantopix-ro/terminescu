@@ -467,3 +467,24 @@ html[data-scheme] .pane-slot:has(> .term-pane[data-tint="red"]) { background: co
 .link-tip { animation: link-tip-in 120ms steps(2); }
 @keyframes link-tip-in { from { transform: translateY(4px); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .link-tip { animation: none; } }
+
+/* Task 8.51: the active tab covers the bar's bottom line and opens into its pane. The line is
+   an inset shadow, so tabs paint over it; the others stand 2px above it. */
+.app-main .ao-tabs { border-bottom: 0; box-shadow: inset 0 -2px 0 0 var(--line-strong); }
+.app-main .ao-tab { margin-bottom: 2px; }
+.app-main .ao-tab.active { margin-bottom: 0; }
+/* The selected row reaches the panes like a tab: no border between them, a stronger wash and
+   an outline on its other three sides. In an open group that row is the active tab under it;
+   the group's header and other rows keep their gap and outline. The sidebar's right line is
+   drawn over the rows, the selected row over it. */
+.app-side { border-right: 0; }
+.app-side::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 2px; background: var(--line-strong); z-index: 3; pointer-events: none; }
+.app-side .ao-side { padding-right: 0; }
+.app-side .side-list > * { margin-right: var(--space-2); }
+.app-side .side-list > .side-item.active:not(:has(.ao-st-kids)) { margin-right: 0; position: relative; z-index: 4; }
+.app-side .side-item.active:not(:has(.ao-st-kids)) .ao-st.active { box-shadow: inset 4px 0 0 0 var(--st-accent), inset 0 2px 0 0 var(--fg), inset 0 -2px 0 0 var(--fg); background: color-mix(in srgb, var(--st-accent) 10%, var(--st-bg)); padding-right: calc(2 * var(--space-2)); }
+/* Each tab under a group wears its own colour; the active one is lit and reaches the panes. */
+.app-side .ao-st-kids { padding-left: 4px; }
+.app-side .ao-st-kid { background: var(--kid-bg, transparent); }
+.app-side .ao-st-kid + .ao-st-kid { box-shadow: inset 0 1px 0 0 color-mix(in srgb, var(--bg) 60%, transparent); }
+.app-side .ao-st-kid.active { margin-right: calc(-1 * var(--space-2)); padding-right: calc(2 * var(--space-2)); position: relative; z-index: 4; background: color-mix(in srgb, var(--fg) 12%, var(--kid-bg, var(--panel))); box-shadow: inset 2px 0 0 0 var(--fg), inset 0 2px 0 0 var(--fg), inset 0 -2px 0 0 var(--fg); }

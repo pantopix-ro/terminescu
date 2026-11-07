@@ -224,7 +224,10 @@ function Row(props: {
   // background (the Wash board); the status keeps its chip.
   const look = rowStyle(shown?.look, "st");
   const ground = look["--st-bg"] ?? (active ? "var(--panel-2)" : "var(--panel)");
-  const neon = side.accent && `var(--neon-${side.accent})`;
+  // A row with one tab wears that tab's neon, so it matches the tab bar (task 8.51); a group
+  // keeps its own and each tab under it wears its own.
+  const accent = (!group && side.tabs[0]?.accent) || side.accent;
+  const neon = accent && `var(--neon-${accent})`;
   const style = {
     ...look,
     "--st-bg": neon ? `color-mix(in srgb, ${neon} 12%, ${ground})` : ground,
@@ -341,6 +344,7 @@ function Row(props: {
               role="button"
               tabIndex={-1}
               className={`ao-st-kid${active && t.id === props.activeTabId ? " active" : ""}`}
+              style={kidStyle(t, statuses[t.id])}
               data-kid={t.id}
               onClick={() => props.onSelectTab(t.id)}
               onContextMenu={(e) => {
@@ -407,6 +411,13 @@ function Row(props: {
  * The sidebar: one row per side tab. A side tab with more than one tab is a group and lists its
  * tabs under the row; the active group stays open, a chevron opens the others (D3).
  */
+/** A tab's row under its group (task 8.51): its own status background, washed with its neon. */
+function kidStyle(t: Tab, shown: Shown | undefined): React.CSSProperties {
+  const ground = rowStyle(shown?.look, "st")["--st-bg"] ?? "var(--panel)";
+  const bg = t.accent ? `color-mix(in srgb, var(--neon-${t.accent}) 12%, ${ground})` : ground;
+  return { "--kid-bg": bg } as React.CSSProperties;
+}
+
 /** A tab's icon: the one picked, else Claude's or a terminal's; Claude's state dot stays either way. */
 export function KidIcon({ agent, icon, accent, onDoubleClick }: { agent: AgentView | undefined; icon?: Icon; accent?: Neon; onDoubleClick?(e: MouseEvent): void }) {
   return (
@@ -463,7 +474,7 @@ export function SideTabList({
     <nav className={`ao-side${collapsed ? " collapsed" : ""}`} aria-label="Side tabs">
       <div className="side-list" onScroll={hideAll}>
         {sideTabs.map((s, i) => (
-          <div key={s.id} className="side-item">
+          <div key={s.id} className={`side-item${s.id === activeId ? " active" : ""}`}>
             <Gap index={i} dragging={dragging && !draggingSide && sort === "manual"} />
             <Row
               side={s}
