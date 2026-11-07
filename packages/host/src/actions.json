@@ -80,6 +80,12 @@
    "accel": "Cmd+Shift+B"
   },
   {
+   "id": "maximize_pane",
+   "label": "Maximize Pane",
+   "menu": "Shell",
+   "accel": "Cmd+Shift+M"
+  },
+  {
    "id": "open_transcript",
    "label": "Open Transcript",
    "menu": "Shell",
