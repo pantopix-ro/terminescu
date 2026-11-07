@@ -6,6 +6,8 @@ export { ContextPanel, HOVER_MS, type ContextMode, type ContextPanelProps } from
 export { focusPane, paneEvent } from "./pane-registry";
 export { Palette, type PaletteItem, type PaletteProps } from "./Palette";
 export { FileFinder, type FileFinderProps } from "./FileFinder";
+export { FindAllSheet, type FindAllSheetProps } from "./FindAllSheet";
+export { type FindHit } from "./find-all";
 export { MAX_SHOWN, rankFiles } from "./files";
 export { findPaths, type FoundPath } from "./paths";
 export {

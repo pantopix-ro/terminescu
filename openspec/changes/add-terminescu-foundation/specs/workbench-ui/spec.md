@@ -187,6 +187,12 @@ that is not installed SHALL fall back to SF Mono.
 - **THEN** the view scrolls to the third and then the second command's prompt, the scrollbar
   shows the second prompt's mark in red, and the second command's output is selected
 
+#### Scenario: Find in all panes
+- **WHEN** an error scrolled off in another tab's terminal and the person presses `⌘⇧F` and
+  types `deploy`
+- **THEN** the sheet lists each matching line under its "Side › Tab", and picking one shows
+  that tab with the line selected
+
 #### Scenario: Pane header tooltip
 - **WHEN** the person hovers a split pane's header whose name is cut off
 - **THEN** a tooltip shows the whole name
