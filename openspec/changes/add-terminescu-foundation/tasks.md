@@ -538,6 +538,11 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
 - [x] 8.48 Tab tooltips (2026-11-07): hovering a tab in the tab bar shows the sidebar's pixel
       tooltip under it, with the whole name, the path and program, and a set status. It
       replaces the plain title. Verify: `tab-names.spec.ts`.
+- [x] 8.38 Find in pane (2026-11-07): `⌘F` opens a find bar over the focused terminal with
+      case, word and regex toggles and an "n of m" count; `⌘G`, `⌘⇧G`, `↵` and `⇧↵` step, the
+      scrollbar marks the matches, Esc closes and refocuses. In a text pane the chords stay
+      the editor's search. Find, Find Next and Find Previous sit in the Edit menu.
+      Verify: `find.spec.ts`.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

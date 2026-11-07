@@ -157,6 +157,11 @@ that is not installed SHALL fall back to SF Mono.
 - **WHEN** the person rests the pointer on a tab in the tab bar
 - **THEN** the sidebar's pixel tooltip shows under it with the whole name, the path and program
 
+#### Scenario: Find in a terminal
+- **WHEN** the person presses `⌘F` in a terminal, types `deploy` and presses `⌘G`
+- **THEN** a find bar shows the match count, the next match is selected and the scrollbar marks
+  every match; Esc closes the bar and the terminal takes the keys again
+
 #### Scenario: Pane header tooltip
 - **WHEN** the person hovers a split pane's header whose name is cut off
 - **THEN** a tooltip shows the whole name

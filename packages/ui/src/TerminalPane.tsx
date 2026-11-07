@@ -1,4 +1,5 @@
 import { FitAddon } from "@xterm/addon-fit";
+import { SearchAddon, type ISearchOptions } from "@xterm/addon-search";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal, type IBufferLine } from "@xterm/xterm";
@@ -10,6 +11,7 @@ import { EXTRACT_EVENT, INSERT_EVENT, PIN_EVENT, type InsertDetail } from "./eve
 import { pasteBytes } from "./insert";
 import { findPaths } from "./paths";
 import { webglBudget } from "./webgl-budget";
+import { colors } from "./generated/colors";
 import { terminalFont, themeFor, type TerminalFont } from "./xterm-theme";
 
 export interface TerminalPaneProps {
@@ -59,6 +61,7 @@ function cellOf(line: IBufferLine, offset: number): number {
 interface Live {
   term: Terminal;
   fit: FitAddon;
+  search: SearchAddon;
   view?: PaneView;
   /** Bytes written before the view existed, acknowledged once it does. */
   early: number;
@@ -106,6 +109,34 @@ function dropWebgl(live: Live, el: HTMLElement) {
 }
 
 const selections = new Map<string, () => string>();
+
+/** What the find bar asks of a pane's terminal (task 8.38). */
+export interface FindOptions {
+  caseSensitive: boolean;
+  wholeWord: boolean;
+  regex: boolean;
+}
+export interface FindResults {
+  /** The active match, from 0; -1 when there is none or past the highlight limit. */
+  index: number;
+  count: number;
+}
+interface Finder {
+  find(query: string, opts: FindOptions, back: boolean, incremental: boolean): boolean;
+  clear(): void;
+  listen(cb: (r: FindResults) => void): () => void;
+}
+const finders = new Map<string, Finder>();
+/** The find bar's handle on a pane's terminal; none before the terminal exists. */
+export const finderOf = (paneId: string): Finder | undefined => finders.get(paneId);
+
+// Matches use the selection's blue and the active one amber; the scrollbar shows both.
+const MATCHES: ISearchOptions["decorations"] = {
+  matchBackground: colors.selection,
+  matchOverviewRuler: colors.selection,
+  activeMatchBackground: colors.amber,
+  activeMatchColorOverviewRuler: colors.amber,
+};
 
 /** The selected text of the terminal on `paneId`, empty when it has none. */
 export function terminalSelection(paneId: string): string {
@@ -189,9 +220,13 @@ export function TerminalPane({ paneId, visible, focused, onFocus, open, openUrl,
         drawBoldTextInBrightColors: false,
         macOptionIsMeta: true,
         linkHandler: { activate },
+        // Search highlights and markers are decorations, still a proposed API in xterm.js 6.
+        allowProposedApi: true,
       });
       const fit = new FitAddon();
       term.loadAddon(fit);
+      const search = new SearchAddon({ highlightLimit: 2000 });
+      term.loadAddon(search);
       term.loadAddon(new WebLinksAddon(activate));
       // File paths underline on hover like links and open on `⌘`-click (D27).
       term.registerLinkProvider({
@@ -213,8 +248,34 @@ export function TerminalPane({ paneId, visible, focused, onFocus, open, openUrl,
       term.attachCustomKeyEventHandler((e) => !e.metaKey);
       term.open(el);
       el.dataset.renderer = "dom";
-      const l: Live = { term, fit, early: 0, glLost: false };
+      const l: Live = { term, fit, search, early: 0, glLost: false };
       live.current = l;
+      // addon-search 0.16.0 stores the new options before it compares them, so a changed toggle
+      // would keep the old highlights: clearing drops its cached term and forces a new pass.
+      let lastOpts = "";
+      finders.set(paneId, {
+        find: (query, opts, back, incremental) => {
+          if (!query) {
+            search.clearDecorations();
+            lastOpts = "";
+            return false;
+          }
+          const key = JSON.stringify(opts);
+          if (key !== lastOpts) search.clearDecorations();
+          lastOpts = key;
+          const o: ISearchOptions = { ...opts, incremental, decorations: MATCHES };
+          return back ? search.findPrevious(query, o) : search.findNext(query, o);
+        },
+        clear: () => {
+          search.clearDecorations();
+          lastOpts = "";
+          term.clearSelection();
+        },
+        listen: (cb) => {
+          const d = search.onDidChangeResults((r) => cb({ index: r.resultIndex, count: r.resultCount }));
+          return () => d.dispose();
+        },
+      });
       if (el.clientWidth > 0) fit.fit();
       observer = new ResizeObserver(() => {
         cancelAnimationFrame(frame);
@@ -246,6 +307,7 @@ export function TerminalPane({ paneId, visible, focused, onFocus, open, openUrl,
 
     return () => {
       if (selections.get(paneId) === selected) selections.delete(paneId);
+      finders.delete(paneId);
       disposed = true;
       cancelAnimationFrame(frame);
       observer?.disconnect();

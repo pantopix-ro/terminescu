@@ -87,6 +87,8 @@ import {
   FileFinder,
   SideTabList,
   sideTabName,
+  SearchBar,
+  type SearchBarHandle,
   SplitView,
   TabBar,
   tabName,
@@ -224,6 +226,8 @@ function remoteTarget(
 const selectable = new Set(["palette", "send_to_tab"]);
 /** Menu chords that a focused dialog field may use for itself. */
 const FIELD_CHORDS = new Set(["save", "save_as", "return_edit", "send_to_pane", "send_to_tab"]);
+/** Menu chords a focused text pane keeps for its editor: its own search and line jumps. */
+const TEXT_CHORDS = new Set(["find", "find_next", "find_previous"]);
 const paletteActions = (actions: readonly ActionDef[]) => actions.filter((a) => !selectable.has(a.id) && !/^(tab|side)_\d$/.test(a.id));
 
 /** Where a tab dragged over the panes would land (task 8.32); `small` means it would not fit. */
@@ -306,6 +310,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const noteDoc = (d: DocView) => setDocs((m) => ({ ...m, [d.id]: d }));
   // `⌘O`: open while `finder` is set; `list` arrives after (D27).
   const [finder, setFinder] = useState<{ list?: FileList }>();
+  // The terminal pane whose find bar is open (task 8.38); one per window.
+  const [findPane, setFindPane] = useState<string>();
+  const searchBar = useRef<SearchBarHandle>(null);
 
   const send = (c: Command): Promise<boolean> =>
     host.send(c).then(
@@ -553,8 +560,19 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     return true;
   };
 
+  // ⌘F and ⌘G belong to the editor in a text pane: they go back to it as passToField does.
+  const passToText = (id: string) => {
+    const el = document.activeElement;
+    if (!(el instanceof HTMLElement) || !el.closest(".text-pane")) return false;
+    const accel = withBindings(ACTIONS, keyBindings).find((a) => a.id === id)?.accel;
+    if (!accel) return false;
+    el.dispatchEvent(new KeyboardEvent("keydown", chordEvent(accel)));
+    return true;
+  };
+
   const act = (id: string) => {
     if (FIELD_CHORDS.has(id) && passToField(id)) return;
+    if (TEXT_CHORDS.has(id) && passToText(id)) return;
     const nth = /^(tab|side)_(\d)$/.exec(id);
     if (nth) {
       const list = nth[1] === "tab" ? tabs : shownSides;
@@ -636,6 +654,15 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           (pane) => pane ?? setNotice("No session is waiting."),
           (e: unknown) => setError(String(e)),
         );
+      case "find":
+        if (!focused || !activeTab || !terminalsOf(activeTab.layout).includes(focused)) return;
+        if (findPane === focused) searchBar.current?.focus();
+        else setFindPane(focused);
+        return;
+      case "find_next":
+      case "find_previous":
+        if (findPane && findPane === focused) searchBar.current?.next(id === "find_previous");
+        return;
       case "focus_left":
       case "focus_right":
       case "focus_up":
@@ -1572,6 +1599,16 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                         </div>
                       )}
                       <div className="ao-tp-body">
+                        {findPane === paneId && (
+                          <SearchBar
+                            ref={searchBar}
+                            paneId={paneId}
+                            onClose={() => {
+                              setFindPane(undefined);
+                              refocus();
+                            }}
+                          />
+                        )}
                         {transcript ? (
                           <TranscriptPane
                             paneId={paneId}
