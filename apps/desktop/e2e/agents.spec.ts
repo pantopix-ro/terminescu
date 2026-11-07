@@ -5,7 +5,7 @@ import { expect, test } from "@playwright/test";
 
 test("a waiting Claude session turns its tab and side tab amber until it runs again", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto("/");
+  await page.goto("/?top-tabs");
   const pane = await page.locator(".app-pane .ao-tp").first().getAttribute("data-pane");
   const set = (state: string | null) =>
     page.evaluate(

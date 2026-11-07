@@ -5,7 +5,7 @@ import { expect, test } from "@playwright/test";
 
 test("a Finder drop on a terminal types the quoted paths, a drop on the tab bar opens them", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto("/");
+  await page.goto("/?top-tabs");
   const term = page.locator(".term-pane").first();
   await expect(term).toBeVisible();
   const pane = (await term.getAttribute("data-pane"))!;

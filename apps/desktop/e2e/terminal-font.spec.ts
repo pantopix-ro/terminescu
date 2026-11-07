@@ -25,7 +25,7 @@ async function openTerminalSettings(page: Page) {
 
 test("font, size, line height, weight and tab text apply live and reset", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto("/");
+  await page.goto("/?top-tabs");
   await page.locator(".term-pane").first().click();
   // The defaults match Terminal.app's Basic profile.
   expect(await option(page, "lineHeight")).toBe(1);
@@ -81,7 +81,7 @@ test("font, size, line height, weight and tab text apply live and reset", async 
 
 test("a split pane's header names the pane in its tooltip", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto("/");
+  await page.goto("/?top-tabs");
   await page.locator(".term-pane").first().click();
   await page.keyboard.press("Meta+d");
   const heads = page.locator(".ao-tp-head");
@@ -92,7 +92,7 @@ test("a split pane's header names the pane in its tooltip", async ({ page }) => 
 });
 
 test("Option+Enter sends Esc+Return, a newline in Claude Code", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/?top-tabs");
   await page.locator(".term-pane").first().click();
   const pane = await page.evaluate(() => [...(window as any).__terminescu.terminals.keys()][0] as string);
   const inputs = () => page.evaluate((id) => (window as any).__terminescu.host.inputs.get(id) ?? "", pane);

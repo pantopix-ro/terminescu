@@ -523,6 +523,8 @@ export interface AppSettings {
   hook: HookConsent;
   /** The first-run screen was seen to its end (D6). */
   firstRunDone: boolean;
+  /** Tabs also show in the top bar; off, they show only in the sidebar (task 8.58). */
+  topTabs: boolean;
 }
 
 export type HookConsent = "unasked" | "on" | "off";
@@ -649,6 +651,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   hook: "unasked",
   firstRunDone: false,
+  topTabs: false,
 };
 
 /** The steps `⌘+` and `⌘-` walk, in percent. Same as `ZOOM_STEPS` in settings.rs. */

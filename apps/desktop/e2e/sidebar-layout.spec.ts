@@ -8,7 +8,7 @@ const settings = (page: Page) => page.evaluate(() => (window as any).__terminesc
 
 async function start(page: Page) {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto("/");
+  await page.goto("/?top-tabs");
   await page.locator(".term-pane").first().click();
 }
 
@@ -122,4 +122,34 @@ test("a row puts its status under the name and lists its shells on hover, one cl
   await page.waitForTimeout(400);
   // A row with one shell needs no list while the sidebar is open.
   await expect(pick).toHaveCount(0);
+});
+
+// Task 8.57 and 8.58: tabs show only in the sidebar until Settings turns the top bar on, and a
+// group stays open or closed as the person leaves it.
+test("tabs live in the sidebar by default and groups stay as left", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+  await page.locator(".term-pane").first().click();
+  await page.getByRole("button", { name: "New tab", exact: true }).click();
+  await expect(page.locator(".ao-tabs .ao-tab")).toHaveCount(0);
+  await expect(page.locator(".ao-st-kid")).toHaveCount(2);
+
+  // Another row keeps this group open; the chevron closes it, and it stays closed when it is
+  // selected again.
+  await page.getByRole("button", { name: "Add a side tab", exact: true }).click();
+  await expect(page.locator(".ao-st-kid")).toHaveCount(2);
+  await page.getByLabel("Collapse side tab").click();
+  await expect(page.locator(".ao-st-kid")).toHaveCount(0);
+  await page.locator(".ao-st").first().click();
+  await expect(page.locator(".ao-st").first()).toHaveClass(/active/);
+  await expect(page.locator(".ao-st-kid")).toHaveCount(0);
+  await page.getByLabel("Expand side tab").click();
+  await expect(page.locator(".ao-st-kid")).toHaveCount(2);
+
+  // Settings › Terminal › Show tabs in the top bar brings them back.
+  await page.evaluate(async () => {
+    const h = (window as any).__terminescu.host;
+    await h.setSettings({ ...(await h.settings()), topTabs: true });
+  });
+  await expect(page.locator(".ao-tabs .ao-tab")).toHaveCount(2);
 });

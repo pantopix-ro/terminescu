@@ -5,7 +5,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 async function start(page: Page) {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto("/");
+  await page.goto("/?top-tabs");
   await expect(page.locator(".term-pane")).toHaveCount(1);
 }
 

@@ -19,7 +19,7 @@ const atEdge = (page: Page, l: Locator) =>
 
 test("the active tab covers the tab bar's bottom line", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto("/");
+  await page.goto("/?top-tabs");
   await page.locator(".term-pane").first().click();
   await page.getByRole("button", { name: "New tab", exact: true }).click();
   const bar = await box(page.locator(".app-main .ao-tabs"));
@@ -31,7 +31,7 @@ test("the active tab covers the tab bar's bottom line", async ({ page }) => {
 
 test("a selected one-tab row reaches the panes, the others keep a gap", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto("/");
+  await page.goto("/?top-tabs");
   await page.locator(".term-pane").first().click();
   await page.getByRole("button", { name: "Add a side tab" }).click();
   const rows = page.locator(".ao-st");
@@ -49,7 +49,7 @@ test("a selected one-tab row reaches the panes, the others keep a gap", async ({
 
 test("in a group only the selected tab reaches the panes, and each tab wears its colour", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto("/");
+  await page.goto("/?top-tabs");
   await page.locator(".term-pane").first().click();
   for (let i = 0; i < 2; i++) await page.getByRole("button", { name: "New tab", exact: true }).click();
   const kids = page.locator(".ao-st-kid");
@@ -73,7 +73,7 @@ test("in a group only the selected tab reaches the panes, and each tab wears its
 
 test("a selected row's status and chord stay in line with the other rows", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto("/");
+  await page.goto("/?top-tabs");
   await page.locator(".term-pane").first().click();
   await page.getByRole("button", { name: "Add a side tab" }).click();
   for (let i = 0; i < 2; i++) await page.getByRole("button", { name: "New tab", exact: true }).click();

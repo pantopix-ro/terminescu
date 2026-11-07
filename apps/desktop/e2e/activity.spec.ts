@@ -9,7 +9,7 @@ const workspace = (page: Page) => page.evaluate(() => (window as any).__termines
 
 test("icons blink while a command runs and bounce while Claude waits", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto("/");
+  await page.goto("/?top-tabs");
   await page.locator(".term-pane").first().click();
   const side = (await workspace(page)).windows[0].sideTabs[0];
   const tab = side.tabs[0];
@@ -49,7 +49,7 @@ test("icons blink while a command runs and bounce while Claude waits", async ({ 
 
 test("reduced motion keeps the icons still", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/");
+  await page.goto("/?top-tabs");
   await page.locator(".term-pane").first().click();
   const tab = (await workspace(page)).windows[0].sideTabs[0].tabs[0];
   await host(page, "runCommand", tab.layout.id, "npm test", null);
@@ -60,7 +60,7 @@ test("reduced motion keeps the icons still", async ({ page }) => {
 
 test("a group row keeps its icon still while its shells blink", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto("/");
+  await page.goto("/?top-tabs");
   await page.locator(".term-pane").first().click();
   await page.getByRole("button", { name: "New tab", exact: true }).click();
   await expect(page.locator(".ao-st-kid")).toHaveCount(2);
@@ -74,7 +74,7 @@ test("a group row keeps its icon still while its shells blink", async ({ page })
   const cell = page.locator(`.ao-cell[data-cell="${tab.id}"]`);
   await expect(cell).not.toHaveClass(/act-/);
   // Closed, the running tab's square blinks and the others stay still.
-  await page.getByRole("button", { name: "Add a side tab", exact: true }).click();
+  await page.getByLabel("Collapse side tab").click();
   await expect(page.locator(".ao-st-kid")).toHaveCount(0);
   await expect(cell).toHaveClass(/act-busy/);
   await expect(cell).toHaveCSS("animation-name", "act-blink");

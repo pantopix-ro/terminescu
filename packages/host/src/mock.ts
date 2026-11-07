@@ -312,7 +312,9 @@ export function createMockHost(initial?: Workspace): MockHost {
   const waitingSince = new Map<string, number>();
   let waitClock = 0;
   let attention: AttentionSettings = { notify: true, chime: false, commandNotify: true, commandSecs: 30 };
-  let settings: AppSettings = { ...DEFAULT_SETTINGS, ...(freshMac ? {} : { hook: "on" as const, firstRunDone: true }) };
+  // `?top-tabs` puts the tabs back in the top bar, where most specs find them (task 8.58).
+  const topTabs = typeof location !== "undefined" && new URLSearchParams(location.search).has("top-tabs");
+  let settings: AppSettings = { ...DEFAULT_SETTINGS, topTabs, ...(freshMac ? {} : { hook: "on" as const, firstRunDone: true }) };
   const settingsListeners = new Set<() => void>();
   let keyBindings: KeyBindings = {};
   // As the app menu while Settings › Keys records: no action chords.
