@@ -49,7 +49,7 @@ async function checkVisible(page: Page) {
   const shown = all.find((p) => !p.hidden)!;
   expect(shown.renderer, "the visible pane takes WebGL").toBe("webgl");
   expect(all.filter((p) => p.hidden && p.renderer === "webgl"), "hidden panes give WebGL back").toEqual([]);
-  const box = await page.locator(`.term-pane[data-pane="${shown.paneId}"] canvas`).first().boundingBox();
+  const box = await page.locator(`.term-pane[data-pane="${shown.paneId}"] .xterm-screen canvas`).first().boundingBox();
   expect(box?.width ?? 0).toBeGreaterThan(100);
 }
 

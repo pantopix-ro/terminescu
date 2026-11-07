@@ -482,9 +482,11 @@ html[data-scheme] .pane-slot:has(> .term-pane[data-tint="red"]) { background: co
 .app-side .ao-side { padding-right: 0; }
 .app-side .side-list > * { margin-right: var(--space-2); }
 .app-side .side-list > .side-item.active:not(:has(.ao-st-kids)) { margin-right: 0; position: relative; z-index: 4; }
-.app-side .side-item.active:not(:has(.ao-st-kids)) .ao-st.active { box-shadow: inset 4px 0 0 0 var(--st-accent), inset 0 2px 0 0 var(--fg), inset 0 -2px 0 0 var(--fg); background: color-mix(in srgb, var(--st-accent) 10%, var(--st-bg)); padding-right: calc(2 * var(--space-2)); }
+.app-side .side-item.active:not(:has(.ao-st-kids)) .ao-st.active:not(.drop-into):not(.remote-hot) { box-shadow: inset 4px 0 0 0 var(--st-accent), inset 0 2px 0 0 var(--st-accent), inset 0 -2px 0 0 var(--st-accent); background: color-mix(in srgb, var(--st-accent) 10%, var(--st-bg)); padding-right: calc(2 * var(--space-2)); }
 /* Each tab under a group wears its own colour; the active one is lit and reaches the panes. */
 .app-side .ao-st-kids { padding-left: 4px; }
 .app-side .ao-st-kid { background: var(--kid-bg, transparent); }
 .app-side .ao-st-kid + .ao-st-kid { box-shadow: inset 0 1px 0 0 color-mix(in srgb, var(--bg) 60%, transparent); }
-.app-side .ao-st-kid.active { margin-right: calc(-1 * var(--space-2)); padding-right: calc(2 * var(--space-2)); position: relative; z-index: 4; background: color-mix(in srgb, var(--fg) 12%, var(--kid-bg, var(--panel))); box-shadow: inset 2px 0 0 0 var(--fg), inset 0 2px 0 0 var(--fg), inset 0 -2px 0 0 var(--fg); }
+.app-side .ao-st-kid.active { margin-right: calc(-1 * var(--space-2)); padding-right: calc(2 * var(--space-2)); position: relative; z-index: 4; background: color-mix(in srgb, var(--fg) 12%, var(--kid-bg, var(--panel))); box-shadow: inset 2px 0 0 0 var(--st-accent, var(--fg)), inset 0 2px 0 0 var(--st-accent, var(--fg)), inset 0 -2px 0 0 var(--st-accent, var(--fg)); }
+/* The group's header outlines in its own neon too, not white; a drop target keeps its amber. */
+.app-side .ao-st.active:not(.drop-into):not(.remote-hot) { box-shadow: inset 4px 0 0 0 var(--st-accent), inset 0 0 0 2px var(--st-accent); }
