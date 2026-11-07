@@ -414,6 +414,26 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       return !!added;
     });
   };
+  // The sidebar's + ▾ › Text (task 8.59): a new side tab that holds an untitled text. The side
+  // tab starts with a shell, which closes once the text is in.
+  const newTextSide = () => {
+    const before = new Set(sideTabs.map((s) => s.id));
+    setFollow((w) => {
+      const added = sidesOf(w).find((s) => !before.has(s.id));
+      if (!added) return false;
+      setSideTabId(added.id);
+      const shells = added.tabs.map((t) => t.id);
+      void host.newText(added.id).then(
+        (d) => {
+          revealDoc(d.id);
+          for (const tabId of shells) void send({ type: "CloseTab", tabId });
+        },
+        (e: unknown) => setError(String(e)),
+      );
+      return true;
+    });
+    void send({ type: "CreateSideTab", windowId });
+  };
   const followTab = (tabId: string) => {
     setFollow((w) => {
       const side = sidesOf(w).find((s) => s.tabs.some((t) => t.id === tabId));
@@ -422,7 +442,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     });
   };
   const followNewTab = (sideId: string) => {
-    const before = new Set(tabs.map((t) => t.id));
+    const before = new Set(sideTabs.flatMap((sd) => sd.tabs).map((t) => t.id));
     setFollow((w) => {
       const added = sidesOf(w)
         .find((s) => s.id === sideId)
@@ -1765,6 +1785,11 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                 refocus();
               }}
               onNew={() => act("new_side_tab")}
+              onNewText={newTextSide}
+              onNewTab={(sideId) => {
+                followNewTab(sideId);
+                void send({ type: "CreateTab", sideTabId: sideId });
+              }}
               // A row or tab opens its edit dialog (task 8.34); the empty list keeps its menu.
               onMenu={(at, target) =>
                 target.kind === "list" ? setMenu({ ...at, target }) : editStatus(target.sideTabId, target.kind === "tab" ? target.tabId : undefined)
@@ -1807,8 +1832,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               onRestart={(id) => (activeSide ? host.restartLauncher(activeSide.id, id) : Promise.resolve())}
             />
           </aside>
-          <main className="app-main">
-            <TabBar
+          <main className={`app-main${appSettings.topTabs ? "" : " bare"}`}>
+            {appSettings.topTabs && <TabBar
               tabs={appSettings.topTabs ? tabs : []}
               activeId={activeTab?.id}
               agents={agents}
@@ -1835,7 +1860,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               onNewText={(beside) =>
                 activeSide && void host.newText(activeSide.id, beside ? (focused ?? null) : null).then((d) => revealDoc(d.id), (e: unknown) => setError(String(e)))
               }
-            />
+            />}
             <section className="app-pane">
               {activeTab && (
                 <SplitView

@@ -130,7 +130,7 @@ test("tabs live in the sidebar by default and groups stay as left", async ({ pag
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");
   await page.locator(".term-pane").first().click();
-  await page.getByRole("button", { name: "New tab", exact: true }).click();
+  await page.keyboard.press("Meta+t");
   await expect(page.locator(".ao-tabs .ao-tab")).toHaveCount(0);
   await expect(page.locator(".ao-st-kid")).toHaveCount(2);
 
@@ -152,4 +152,48 @@ test("tabs live in the sidebar by default and groups stay as left", async ({ pag
     await h.setSettings({ ...(await h.settings()), topTabs: true });
   });
   await expect(page.locator(".ao-tabs .ao-tab")).toHaveCount(2);
+});
+
+// Task 8.59: with no tabs on top there is no top bar; the sidebar's + ▾ makes a text side tab,
+// a group's small + adds a tab to it, and the sidebar toggle sits on the sidebar's line.
+test("the sidebar makes text side tabs and group tabs, and the toggle sits on its line", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+  await page.locator(".term-pane").first().click();
+  await expect(page.locator(".ao-tabs")).toHaveCount(0);
+  const pane = await page.locator(".app-pane").boundingBox();
+  expect(pane!.y).toBeLessThan(2);
+
+  // + ▾ › Text: a new row holding only an untitled text.
+  await page.locator(".side-fill").hover();
+  await page.getByRole("button", { name: "Choose side tab kind" }).click();
+  await page.getByRole("menuitem", { name: /Text/ }).click();
+  await expect(page.locator(".ao-st")).toHaveCount(2);
+  await expect(page.locator(".ao-st").last()).toHaveClass(/active/);
+  await expect(page.locator(".app-pane .text-pane")).toHaveCount(1);
+  await expect(page.locator(".app-pane .term-pane:not(:has(.text-pane))")).toHaveCount(0);
+  await expect.poll(async () => (await page.evaluate(() => (window as any).__terminescu.host.workspace())).windows[0].sideTabs[1].tabs.length).toBe(1);
+
+  // The first row becomes a group; its small + adds a third tab there.
+  await page.locator(".ao-st").first().click();
+  await page.keyboard.press("Meta+t");
+  await expect(page.locator(".ao-st-kid")).toHaveCount(2);
+  await page.locator(".ao-st-kids").hover();
+  await page.getByRole("button", { name: /^New tab in / }).click();
+  await expect(page.locator(".ao-st-kid")).toHaveCount(3);
+  await expect(page.locator(".ao-st-kid").last()).toHaveClass(/active/);
+
+  // A row under the mouse gets the amber line; the others do not.
+  await page.locator(".ao-st").last().hover();
+  await expect.poll(() => page.locator(".ao-st").last().evaluate((el) => getComputedStyle(el, "::before").boxShadow)).toContain("2px");
+  expect(await page.locator(".ao-st").first().evaluate((el) => getComputedStyle(el, "::before").content)).toBe("none");
+  await page.locator(".ao-st-kid").first().hover();
+  await expect.poll(() => page.locator(".ao-st-kid").first().evaluate((el) => getComputedStyle(el, "::before").boxShadow)).toContain("2px");
+
+  // The toggle shows on hover, centred on the sidebar's right line, by the wordmark.
+  await page.locator(".app-side").hover();
+  const side = (await page.locator(".app-side").boundingBox())!;
+  const toggle = (await page.getByRole("button", { name: "Collapse sidebar" }).boundingBox())!;
+  expect(Math.abs(toggle.x + toggle.width / 2 - (side.x + side.width - 1))).toBeLessThanOrEqual(1);
+  expect(toggle.y).toBeLessThan(34);
 });
