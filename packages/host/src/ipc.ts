@@ -72,6 +72,7 @@ export function createIpcHost(): Host {
         input: (data, binary = false) => void invoke("pane_input", { view, data, binary }).catch(ignore),
         resize: (c, r) => void invoke("pane_resize", { view, cols: c, rows: r }).catch(ignore),
         ack: (bytes) => void invoke("pane_ack", { view, bytes }).catch(ignore),
+        clear: (keepScreen) => void invoke("pane_clear", { view, keepScreen }).catch(ignore),
         close: () => void invoke("pane_close", { view }).catch(ignore),
       };
       return pane;

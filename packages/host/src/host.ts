@@ -47,6 +47,11 @@ export interface PaneView {
   resize(cols: number, rows: number): void;
   /** Reports bytes xterm.js has written, so the core keeps sending. */
   ack(bytes: number): void;
+  /**
+   * The terminal cleared its history (`keepScreen`) or cleared to its prompt line: the daemon
+   * does the same to its copy, so a reattach does not bring the lines back (task 8.44).
+   */
+  clear(keepScreen: boolean): void;
   close(): void;
 }
 

@@ -176,6 +176,11 @@ that is not installed SHALL fall back to SF Mono.
 - **WHEN** a tab has two panes and the person presses `⌘⇧M`
 - **THEN** only the focused pane shows, filling the tab, and `⌘⇧M` again brings both back
 
+#### Scenario: Clear the history
+- **WHEN** a terminal holds 200 lines of build output and the person presses `⌥⌘K`
+- **THEN** the history is gone, the screen keeps its lines, and a reattach after a restart
+  shows no history either
+
 #### Scenario: Pane header tooltip
 - **WHEN** the person hovers a split pane's header whose name is cut off
 - **THEN** a tooltip shows the whole name

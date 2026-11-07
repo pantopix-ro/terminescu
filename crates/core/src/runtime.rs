@@ -472,6 +472,15 @@ impl Runtime {
         }
     }
 
+    /// The view's terminal cleared itself; the daemon's copy follows, so a reattach matches
+    /// (task 8.44). An older daemon without the feature keeps its lines.
+    pub fn view_clear(&self, view: ViewId, keep_screen: bool) {
+        let pane = lock(&self.inner.views).pane_of(view);
+        if let (Some(d), Some(client)) = (pane.and_then(|p| self.daemon_of(&p)), self.daemon()) {
+            client.clear(d, keep_screen);
+        }
+    }
+
     /// Keys and pastes from the window, as bytes for the pty.
     pub fn view_input(&self, view: ViewId, data: Vec<u8>) {
         let pane = lock(&self.inner.views).pane_of(view);

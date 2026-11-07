@@ -98,6 +98,7 @@ import {
   TerminalPane,
   TextPane,
   terminalSelection,
+  clearTerminal,
   textPane,
   type ContextMode,
   type PaletteItem,
@@ -673,6 +674,10 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         if (!focused || !activeTab || !terminalsOf(activeTab.layout).includes(focused)) return;
         if (findPane === focused) searchBar.current?.focus();
         else setFindPane(focused);
+        return;
+      case "clear_to_start":
+      case "clear_scrollback":
+        if (focused) clearTerminal(focused, id === "clear_scrollback");
         return;
       case "find_next":
       case "find_previous":

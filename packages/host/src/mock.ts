@@ -91,6 +91,8 @@ export interface MockHost extends Host {
   chimes(): number;
   /** How many times the dock icon was asked to bounce. */
   bounces(): number;
+  /** Clears the panes asked of the daemon, as `pane history` or `pane to start`. */
+  readonly clears: string[];
   /** Plays the core's part for hook events: sets or clears a pane's agent. */
   setAgent(pane: string, agent: AgentView | null): void;
   /** Plays OSC 7 in a pane: its working directory, as the shell reports it (task 8.30). */
@@ -265,6 +267,7 @@ export function createMockHost(initial?: Workspace): MockHost {
   const keyListeners = new Set<() => void>();
   let chimes = 0;
   let bounces = 0;
+  const clears: string[] = [];
   const revealListeners = new Set<(pane: Id) => void>();
   let savedCommands: SavedCommand[] = [];
   const commandListeners = new Set<() => void>();
@@ -916,6 +919,9 @@ export function createMockHost(initial?: Workspace): MockHost {
           shell.resize(c, r);
         },
         ack: () => {},
+        clear: (keepScreen) => {
+          clears.push(`${paneId} ${keepScreen ? "history" : "to start"}`);
+        },
         close: () => {
           open = false;
         },
@@ -1227,6 +1233,7 @@ export function createMockHost(initial?: Workspace): MockHost {
     },
     chimes: () => chimes,
     bounces: () => bounces,
+    clears,
     appendTranscript(session, entries) {
       const list = transcripts.get(session) ?? [];
       // Offsets stand in for byte positions: one per entry.
