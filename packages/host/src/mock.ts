@@ -87,6 +87,8 @@ export interface MockHost extends Host {
   workspace(): Workspace;
   /** Links the UI asked to open. */
   readonly openedUrls: string[];
+  /** Edit actions the context menu sent, with the focused element's class (task 8.55). */
+  readonly editCommands: { action: string; focus: string }[];
   /** Whether Claude Code's settings would hold the hook (add-public-release D5). */
   readonly claudeHook: () => boolean;
   /** Each uninstall, with its delete-data answer; and whether the app quit. */
@@ -242,6 +244,7 @@ export function createMockHost(initial?: Workspace): MockHost {
   const batches: PatchBatch[] = [];
   const shells = new Map<string, MockShell>();
   const openedUrls: string[] = [];
+  const editCommands: { action: string; focus: string }[] = [];
   const uninstalls: boolean[] = [];
   let quits = 0;
   const actionListeners = new Set<(action: string) => void>();
@@ -800,6 +803,7 @@ export function createMockHost(initial?: Workspace): MockHost {
   const host: MockHost = {
     batches,
     openedUrls,
+    editCommands,
     claudeHook: () => claudeHook,
     uninstalls,
     quits: () => quits,
@@ -1478,6 +1482,10 @@ export function createMockHost(initial?: Workspace): MockHost {
     },
     async appQuit() {
       quits++;
+    },
+    async editCommand(action) {
+      const el = document.activeElement;
+      editCommands.push({ action, focus: el instanceof HTMLElement ? el.className : "" });
     },
     async checkUpdates() {
       return pendingUpdate;

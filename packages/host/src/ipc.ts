@@ -159,6 +159,7 @@ export function createIpcHost(): Host {
     feedbackOpen: (route, includeLog) => invoke("feedback_open", { route, includeLog }),
     uninstallHelpers: (deleteData) => invoke("uninstall_helpers", { deleteData }),
     appQuit: () => invoke("app_quit"),
+    editCommand: (action) => invoke("edit_command", { action }),
     checkUpdates: () => invoke<string | null>("update_check"),
     updateRestart: () => invoke("update_restart"),
     onUpdate: (listener) => listen<string>(UPDATE_EVENT, (e) => listener(e.payload)),

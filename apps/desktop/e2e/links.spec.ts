@@ -88,11 +88,12 @@ test("a right click shows the apps for the link's kind", async ({ page }) => {
   await page.getByRole("menu", { name: "Email address" }).getByRole("menuitem", { name: "Compose in Mail" }).click();
   await expect.poll(() => opened(page)).toContain("mailto:ops@example.com");
 
-  // Off a link, a right click opens no link menu.
+  // Off a link, a right click opens the terminal's menu (task 8.55), not a link menu.
   const blank = await cell(page, pane, 6, 30);
   await page.mouse.move(blank.x, blank.y);
   await page.mouse.click(blank.x, blank.y, { button: "right" });
-  await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect(page.getByRole("menu")).toHaveCount(1);
+  await expect(page.getByRole("menu", { name: "Terminal" })).toBeVisible();
 });
 
 test("a double click or a drag inside a link selects text and copies no link", async ({ page }) => {

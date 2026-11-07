@@ -47,6 +47,7 @@ import {
   type DockSide,
   dockPlace,
   splitAt,
+  type EditAction,
   type Host,
   type Workspace,
   type WorkspaceStore,
@@ -1222,6 +1223,30 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   // the apps that fit the link's kind.
   const [linkTip, setLinkTip] = useState<{ text: string; x: number; y: number; key: number }>();
   const [linkMenu, setLinkMenu] = useState<{ link: TerminalLink; sideId: string; paneId: string; x: number; y: number }>();
+  // Every other right click opens the pixel menu with the items macOS would show there (task
+  // 8.55): a terminal's, an editor's or a field's. The Edit items go down the responder chain,
+  // as the Edit menu's do, after the element right-clicked takes the focus back.
+  const [editMenu, setEditMenu] = useState<{ kind: "term" | "text" | "field" | "selection"; el: HTMLElement; x: number; y: number; selected?: string }>();
+  useEffect(() => {
+    const onMenu = (e: MouseEvent) => {
+      if (e.defaultPrevented) return;
+      e.preventDefault();
+      const t = e.target instanceof Element ? e.target : null;
+      const field = t?.closest<HTMLElement>("input:not([type=checkbox]):not([type=radio]):not([type=range]), textarea:not(.xterm-helper-textarea), [contenteditable=true]:not(.cm-content)");
+      // A text pane sits in a pane element too, so the editor is looked for first.
+      const text = t?.closest<HTMLElement>(".text-pane")?.querySelector<HTMLElement>(".cm-content");
+      const term = t?.closest<HTMLElement>(".term-pane[data-pane]")?.querySelector<HTMLElement>("textarea.xterm-helper-textarea");
+      const el = field ?? text ?? term;
+      // Selected text elsewhere, as in a transcript pane: only Copy, as macOS offers.
+      const selected = window.getSelection()?.toString();
+      if (!el && selected && t instanceof HTMLElement) return setEditMenu({ kind: "selection", el: t, x: e.clientX, y: e.clientY, selected });
+      if (!el) return;
+      el.focus();
+      setEditMenu({ kind: field ? "field" : text ? "text" : "term", el, x: e.clientX, y: e.clientY });
+    };
+    document.addEventListener("contextmenu", onMenu);
+    return () => document.removeEventListener("contextmenu", onMenu);
+  }, []);
   useEffect(() => {
     if (!linkTip) return;
     const t = setTimeout(() => setLinkTip(undefined), 1600);
@@ -1269,6 +1294,50 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     setStatusFor(tab ? "tab" : "side");
     setSheet("status");
   };
+  const editItems = (m: NonNullable<typeof editMenu>): MenuEntry[] => {
+    const bound = withBindings(ACTIONS, keyBindings);
+    const hint = (id: string) => {
+      const accel = bound.find((a) => a.id === id)?.accel;
+      return accel ? chordLabel(accel) : undefined;
+    };
+    // The menu closes first; the element takes the focus back before the action runs.
+    const back = (run: () => void) => () =>
+      setTimeout(() => {
+        m.el.focus();
+        run();
+      });
+    const edit = (action: EditAction, label: string, chord: string): MenuEntry => ({
+      id: action,
+      label,
+      hint: chord,
+      run: back(() => void host.editCommand(action).catch((e: unknown) => setError(String(e)))),
+    });
+    const action = (id: string, label: string, danger?: boolean): MenuEntry => ({ id, label, hint: hint(id), danger, run: back(() => act(id)) });
+    if (m.kind === "selection") {
+      const copy = () => void (navigator.clipboard?.writeText(m.selected ?? "") ?? Promise.reject(new Error("no clipboard"))).catch(() => setError("Could not copy the selection."));
+      return [{ id: "copy", label: "Copy", hint: "⌘C", run: copy }];
+    }
+    const clip = [edit("copy", "Copy", "⌘C"), edit("paste", "Paste", "⌘V")];
+    if (m.kind === "field") return [edit("cut", "Cut", "⌘X"), ...clip, action("select_all", "Select All")];
+    if (m.kind === "text") {
+      return [edit("undo", "Undo", "⌘Z"), edit("redo", "Redo", "⇧⌘Z"), "-", edit("cut", "Cut", "⌘X"), ...clip, action("select_all", "Select All"), "-", action("find", "Find…")];
+    }
+    return [
+      ...clip,
+      action("select_all", "Select All"),
+      "-",
+      action("find", "Find…"),
+      action("clear_to_start", "Clear to Start"),
+      "-",
+      action("split_right", "Split Right"),
+      action("split_down", "Split Down"),
+      action("maximize_pane", "Maximize Pane"),
+      action("pane_to_tab", "Move Pane to New Tab"),
+      "-",
+      action("close", "Close Pane", true),
+    ];
+  };
+
   const menuItems = (target: MenuTarget): MenuEntry[] => {
     if (target.kind === "list") {
       return [
@@ -2318,6 +2387,19 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           onClose={() => {
             setLinkMenu(undefined);
             refocus();
+          }}
+        />
+      )}
+      {editMenu && (
+        <ContextMenu
+          x={editMenu.x}
+          y={editMenu.y}
+          label={{ term: "Terminal", text: "Text", field: "Field", selection: "Selection" }[editMenu.kind]}
+          items={editItems(editMenu)}
+          onClose={() => {
+            const el = editMenu.el;
+            setEditMenu(undefined);
+            setTimeout(() => el.focus());
           }}
         />
       )}
