@@ -458,7 +458,13 @@ export function isVariableName(name: string): boolean {
 export interface AttentionSettings {
   notify: boolean;
   chime: boolean;
+  /** A command that ran `commandSecs` or longer posts a notification when it ends (task 8.40). */
+  commandNotify: boolean;
+  commandSecs: number;
 }
+
+/** The threshold's range in seconds. Same as `COMMAND_SECS` in attention.rs. */
+export const COMMAND_SECS = [5, 3600] as const;
 
 /** Longest TTL a variable default may hold: 30 days. Same as `MAX_TTL_SECS` in settings.rs. */
 export const MAX_TTL_SECS = 30 * 86_400;

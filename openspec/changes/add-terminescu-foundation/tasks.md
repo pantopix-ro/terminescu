@@ -564,6 +564,12 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       as shell-quoted, space-joined paths with a trailing space and no Enter; dropped anywhere
       else, the tab bar first, they open in text tabs as before. Verify: `file-drop.spec.ts`,
       `insert.test.ts`.
+- [x] 8.40 Long command notification (2026-11-07): the runtime times each command from its
+      OSC 133 start to its end; one that ran at least the threshold posts "Side › Tab" with
+      "`cargo build` finished in 4m 12s" or "failed with exit 1 after …" while no window has
+      focus. A pane running Claude is left to the waiting notification. Settings ›
+      Notifications: on by default, 30 seconds (5 to 3,600). Verify: `command_tests`,
+      `attention.rs` tests, `settings.spec.ts`.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

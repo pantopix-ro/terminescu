@@ -11,20 +11,37 @@ use std::collections::BTreeMap;
 const SETTINGS_KEY: &str = "attention.settings";
 
 /// Settings › Notifications: the notification is on and the chime off until the person says
-/// otherwise.
+/// otherwise. A command that runs `command_secs` or longer posts one when it ends (task 8.42).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
     pub notify: bool,
     pub chime: bool,
+    pub command_notify: bool,
+    pub command_secs: u32,
 }
+
+/// The shortest and longest run that may count as long, in seconds.
+pub const COMMAND_SECS: std::ops::RangeInclusive<u32> = 5..=3600;
 
 impl Default for Settings {
     fn default() -> Self {
         Self {
             notify: true,
             chime: false,
+            command_notify: true,
+            command_secs: 30,
         }
+    }
+}
+
+/// How long a command ran, for its notification: `45s`, `4m 12s`, `1h 3m`.
+pub fn run_time(ms: u64) -> String {
+    let s = ms / 1000;
+    match s {
+        0..60 => format!("{s}s"),
+        60..3600 => format!("{}m {}s", s / 60, s % 60),
+        _ => format!("{}h {}m", s / 3600, s % 3600 / 60),
     }
 }
 
@@ -32,7 +49,10 @@ pub fn settings(db: &Db) -> crate::db::Result<Settings> {
     Ok(crate::settings::read(db, SETTINGS_KEY)?.unwrap_or_default())
 }
 
-pub fn set_settings(db: &Db, s: Settings) -> crate::db::Result<()> {
+pub fn set_settings(db: &Db, mut s: Settings) -> crate::db::Result<()> {
+    s.command_secs = s
+        .command_secs
+        .clamp(*COMMAND_SECS.start(), *COMMAND_SECS.end());
     crate::settings::write(db, SETTINGS_KEY, &s)
 }
 
@@ -156,14 +176,37 @@ mod tests {
             settings(&db).unwrap(),
             Settings {
                 notify: true,
-                chime: false
+                chime: false,
+                command_notify: true,
+                command_secs: 30,
             }
         );
         let s = Settings {
             notify: false,
             chime: true,
+            command_notify: false,
+            command_secs: 120,
         };
         set_settings(&db, s).unwrap();
         assert_eq!(settings(&db).unwrap(), s);
+        // A threshold out of range is brought into it; an old value without the fields reads.
+        set_settings(
+            &db,
+            Settings {
+                command_secs: 1,
+                ..s
+            },
+        )
+        .unwrap();
+        assert_eq!(settings(&db).unwrap().command_secs, 5);
+        let old: Settings = serde_json::from_str(r#"{"notify":true,"chime":true}"#).unwrap();
+        assert_eq!((old.command_notify, old.command_secs), (true, 30));
+    }
+
+    #[test]
+    fn run_times_read_as_seconds_minutes_and_hours() {
+        assert_eq!(run_time(45_400), "45s");
+        assert_eq!(run_time(252_000), "4m 12s");
+        assert_eq!(run_time(3_780_000), "1h 3m");
     }
 }

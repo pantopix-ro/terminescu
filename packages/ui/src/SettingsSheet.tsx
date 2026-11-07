@@ -15,6 +15,7 @@ import {
   LINE_HEIGHTS,
   MAX_TTL_SECS,
   SCROLLBACKS,
+  COMMAND_SECS,
   TAB_FONT_SIZES,
   VAR_MODES,
   type AppSettings,
@@ -652,6 +653,19 @@ function NotificationSettings({ host, onError }: SettingsSheetProps) {
         <span className="small ao-dim grow">a short tone in the window that holds the session</span>
       </label>
       <p className="small ao-dim">The dock badge and the amber marker always show.</p>
+      <h3 className="ao-pixel ao-dim">When a long command ends</h3>
+      <label className="srow">
+        <input type="checkbox" checked={attention.commandNotify} onChange={(e) => save({ commandNotify: e.target.checked })} />
+        <span>macOS notification</span>
+        <span className="small ao-dim grow">while Terminescu is in the background, with the command, its time and a failed exit</span>
+      </label>
+      <div className="srow">
+        <span>Long means</span>
+        <NumberField label="Long command seconds" value={attention.commandSecs} range={COMMAND_SECS} onSave={(v) => save({ commandSecs: v })} />
+        <span className="small ao-dim grow">
+          seconds or more, {COMMAND_SECS[0]} to {COMMAND_SECS[1]}; panes running Claude use the waiting notification
+        </span>
+      </div>
     </section>
   );
 }
