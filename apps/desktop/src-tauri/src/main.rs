@@ -1274,6 +1274,12 @@ fn pane_resize(state: State<'_, AppState>, view: ViewId, cols: u16, rows: u16) {
     state.runtime.view_resize(view, cols, rows);
 }
 
+/// The terminal cleared its history or cleared to its prompt (task 8.44).
+#[tauri::command]
+fn pane_clear(state: State<'_, AppState>, view: ViewId, keep_screen: bool) {
+    state.runtime.view_clear(view, keep_screen);
+}
+
 /// Keys and pastes. xterm.js binary data carries one byte per character.
 #[tauri::command]
 fn pane_input(state: State<'_, AppState>, view: ViewId, data: String, binary: bool) {
@@ -1897,6 +1903,7 @@ fn main() {
             pane_ack,
             pane_resize,
             pane_input,
+            pane_clear,
             open_url,
             bounce_dock,
             docs::doc_new,

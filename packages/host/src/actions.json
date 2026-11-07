@@ -296,6 +296,18 @@
    "accel": "Ctrl+Cmd+9"
   },
   {
+   "id": "clear_to_start",
+   "label": "Clear to Start",
+   "menu": "Edit",
+   "accel": "Cmd+Shift+K"
+  },
+  {
+   "id": "clear_scrollback",
+   "label": "Clear Scrollback",
+   "menu": "Edit",
+   "accel": "Cmd+Alt+K"
+  },
+  {
    "id": "find",
    "label": "Find…",
    "menu": "Edit",

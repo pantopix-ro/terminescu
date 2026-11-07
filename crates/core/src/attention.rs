@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 const SETTINGS_KEY: &str = "attention.settings";
 
 /// Settings › Notifications: the notification is on and the chime off until the person says
-/// otherwise. A command that runs `command_secs` or longer posts one when it ends (task 8.42).
+/// otherwise. A command that runs `command_secs` or longer posts one when it ends (task 8.40).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {

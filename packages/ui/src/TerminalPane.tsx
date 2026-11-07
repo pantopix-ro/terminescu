@@ -146,6 +146,18 @@ const MATCHES: ISearchOptions["decorations"] = {
   activeMatchColorOverviewRuler: colors.amber,
 };
 
+const clearers = new Map<string, (keepScreen: boolean) => void>();
+/**
+ * Clears the terminal on `paneId` (task 8.44): `keepScreen` drops the history only (ED3), else
+ * the prompt line becomes the first line and the history goes too. The daemon clears its copy,
+ * so a reattach shows the same; an older daemon keeps its lines. False when no terminal is there.
+ */
+export function clearTerminal(paneId: string, keepScreen: boolean): boolean {
+  const clear = clearers.get(paneId);
+  clear?.(keepScreen);
+  return !!clear;
+}
+
 /** The selected text of the terminal on `paneId`, empty when it has none. */
 export function terminalSelection(paneId: string): string {
   return selections.get(paneId)?.() ?? "";
@@ -367,12 +379,18 @@ export function TerminalPane({
       term.onData((d) => view.input(d));
       term.onBinary((d) => view.input(d, true));
       term.onResize(({ cols, rows }) => view.resize(cols, rows));
+      clearers.set(paneId, (keepScreen) => {
+        if (keepScreen) term.write("\x1b[3J");
+        else term.clear();
+        view.clear(keepScreen);
+      });
       setReady(true);
     })();
 
     return () => {
       if (selections.get(paneId) === selected) selections.delete(paneId);
       finders.delete(paneId);
+      clearers.delete(paneId);
       disposed = true;
       cancelAnimationFrame(frame);
       observer?.disconnect();

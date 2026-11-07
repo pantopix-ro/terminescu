@@ -570,6 +570,10 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       focus. A pane running Claude is left to the waiting notification. Settings ›
       Notifications: on by default, 30 seconds (5 to 3,600). Verify: `command_tests`,
       `attention.rs` tests, `settings.spec.ts`.
+- [x] 8.44 Clear a terminal (2026-11-07): Edit › Clear to Start `⌘⇧K` makes the prompt line
+      the first line and drops the history; Clear Scrollback `⌥⌘K` drops the history and keeps
+      the screen. The daemon clears its copy (`Control::Clear`), so a reattach shows the same; an
+      older daemon keeps its lines. Verify: `clear.spec.ts`, ptyd clear tests.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves
