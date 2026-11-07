@@ -92,3 +92,17 @@ pub fn update_restart(app: AppHandle) -> Result<(), String> {
         .map_err(|e| format!("update {} not installed: {e}", update.version))?;
     app.restart()
 }
+
+#[cfg(test)]
+mod tests {
+    /// The plugin reads `plugins.updater` at launch and refuses to start without it. The key
+    /// and feed stay empty there: `fetch` sets both on its own updater.
+    #[test]
+    fn tauri_conf_has_an_updater_block_the_plugin_accepts() {
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let block = conf["plugins"]["updater"].clone();
+        let parsed: tauri_plugin_updater::Config = serde_json::from_value(block).unwrap();
+        assert!(parsed.pubkey.is_empty() && parsed.endpoints.is_empty());
+    }
+}
