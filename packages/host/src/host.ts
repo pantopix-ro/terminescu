@@ -181,6 +181,8 @@ export interface Host {
   setBuiltin(auto: Auto, look: Look | null): Promise<void>;
   /** Opens an http(s) link in the default browser. */
   openUrl(url: string): Promise<void>;
+  /** Bounces the dock icon once, for a terminal's bell while the app is in the background. */
+  bounceDock(): Promise<void>;
   /** `⌥⌘T`: an Untitled text pane beside `beside`, or in a new tab of the side tab (D27). */
   newText(sideTabId: Id, beside?: Id | null): Promise<DocView>;
   /**

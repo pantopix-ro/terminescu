@@ -1,5 +1,7 @@
 export { colors, type ColorToken } from "./generated/colors";
-export { ANSI_SLOTS, terminalFont, terminalFontOptions, xtermTheme, type TerminalFont } from "./xterm-theme";
+export { ANSI_SLOTS, terminalBehaviour, terminalFont, terminalFontOptions, xtermTheme, type TerminalBehaviourSettings, type TerminalFont } from "./xterm-theme";
+export { PasteDialog, type PasteDialogProps } from "./PasteDialog";
+export { pasteRisk } from "./paste";
 export { ContextPanel, HOVER_MS, type ContextMode, type ContextPanelProps } from "./ContextPanel";
 export { focusPane, paneEvent } from "./pane-registry";
 export { Palette, type PaletteItem, type PaletteProps } from "./Palette";

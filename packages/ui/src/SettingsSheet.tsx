@@ -14,10 +14,14 @@ import {
   LETTER_SPACINGS,
   LINE_HEIGHTS,
   MAX_TTL_SECS,
+  SCROLLBACKS,
   TAB_FONT_SIZES,
   VAR_MODES,
   type AppSettings,
   type AttentionSettings,
+  type Bell,
+  type CursorStyle,
+  type OptionMeta,
   type CommandTarget,
   type Host,
   type Id,
@@ -414,6 +418,57 @@ function TerminalSettings({ host, onError }: SettingsSheetProps) {
       >
         {PREVIEW}
       </pre>
+      <h3 className="ao-pixel ao-dim">Terminal behaviour</h3>
+      <div className="srow">
+        <span>Cursor</span>
+        <select className="ao-input" aria-label="Cursor" value={settings.terminalCursor} onChange={(e) => save({ terminalCursor: e.target.value as CursorStyle })}>
+          <option value="bar">Bar</option>
+          <option value="block">Block</option>
+          <option value="underline">Underline</option>
+        </select>
+        <label className="small">
+          <input type="checkbox" checked={settings.terminalCursorBlink} onChange={(e) => save({ terminalCursorBlink: e.target.checked })} /> blink
+        </label>
+        <span className="small ao-dim grow">an unfocused terminal shows an outline</span>
+      </div>
+      <div className="srow">
+        <span>History</span>
+        <NumberField label="History lines" value={settings.terminalScrollback} range={SCROLLBACKS} onSave={(v) => save({ terminalScrollback: v })} />
+        <span className="small ao-dim grow">lines, {SCROLLBACKS[0].toLocaleString("en-US")} to {SCROLLBACKS[1].toLocaleString("en-US")}; a reattach brings back what new shells keep</span>
+      </div>
+      <div className="srow">
+        <span>Option as Meta</span>
+        <select className="ao-input" aria-label="Option as Meta" value={settings.optionAsMeta} onChange={(e) => save({ optionAsMeta: e.target.value as OptionMeta })}>
+          <option value="both">Both Option keys</option>
+          <option value="left">Left Option only</option>
+          <option value="right">Right Option only</option>
+          <option value="off">Off</option>
+        </select>
+        <span className="small ao-dim grow">Meta sends Esc first, so ⌥↵ is a newline in Claude Code; the other key types ∑ or é</span>
+      </div>
+      <div className="srow">
+        <span>Bell</span>
+        <select className="ao-input" aria-label="Bell" value={settings.bell} onChange={(e) => save({ bell: e.target.value as Bell })}>
+          <option value="off">Off</option>
+          <option value="visual">Flash</option>
+          <option value="sound">Sound</option>
+        </select>
+        <span className="small ao-dim grow">flash and sound also bounce the dock icon while Terminescu is in the background</span>
+      </div>
+      <label className="srow">
+        <input type="checkbox" checked={settings.copyOnSelect} onChange={(e) => save({ copyOnSelect: e.target.checked })} />
+        <span>Copy on select</span>
+      </label>
+      <label className="srow">
+        <input type="checkbox" checked={settings.pasteWarning} onChange={(e) => save({ pasteWarning: e.target.checked })} />
+        <span>Ask before a risky paste</span>
+        <span className="small ao-dim grow">over 5,000 characters, a sudo line, or a pipe into a shell</span>
+      </label>
+      <label className="srow">
+        <input type="checkbox" checked={settings.raiseContrast} onChange={(e) => save({ raiseContrast: e.target.checked })} />
+        <span>Raise low contrast</span>
+        <span className="small ao-dim grow">text too close to its background is drawn lighter or darker</span>
+      </label>
       <h3 className="ao-pixel ao-dim">Tabs</h3>
       <div className="srow">
         <span>Tab text</span>
@@ -432,6 +487,14 @@ function TerminalSettings({ host, onError }: SettingsSheetProps) {
               terminalLetterSpacing: DEFAULT_SETTINGS.terminalLetterSpacing,
               terminalFontWeight: DEFAULT_SETTINGS.terminalFontWeight,
               tabFontSize: DEFAULT_SETTINGS.tabFontSize,
+              terminalCursor: DEFAULT_SETTINGS.terminalCursor,
+              terminalCursorBlink: DEFAULT_SETTINGS.terminalCursorBlink,
+              terminalScrollback: DEFAULT_SETTINGS.terminalScrollback,
+              optionAsMeta: DEFAULT_SETTINGS.optionAsMeta,
+              bell: DEFAULT_SETTINGS.bell,
+              copyOnSelect: DEFAULT_SETTINGS.copyOnSelect,
+              pasteWarning: DEFAULT_SETTINGS.pasteWarning,
+              raiseContrast: DEFAULT_SETTINGS.raiseContrast,
             })
           }
         >

@@ -20,6 +20,10 @@ import {
   LETTER_SPACINGS,
   LINE_HEIGHTS,
   TAB_FONT_SIZES,
+  SCROLLBACKS,
+  CURSOR_STYLES,
+  OPTION_METAS,
+  BELLS,
   SIDEBAR_MIN,
   type AppSettings,
   TINTS,
@@ -84,6 +88,8 @@ export interface MockHost extends Host {
   readonly inputs: Map<string, string>;
   /** How many times the chime was asked for. */
   chimes(): number;
+  /** How many times the dock icon was asked to bounce. */
+  bounces(): number;
   /** Plays the core's part for hook events: sets or clears a pane's agent. */
   setAgent(pane: string, agent: AgentView | null): void;
   /** Plays OSC 7 in a pane: its working directory, as the shell reports it (task 8.30). */
@@ -257,6 +263,7 @@ export function createMockHost(initial?: Workspace): MockHost {
   let recording = false;
   const keyListeners = new Set<() => void>();
   let chimes = 0;
+  let bounces = 0;
   const revealListeners = new Set<(pane: Id) => void>();
   let savedCommands: SavedCommand[] = [];
   const commandListeners = new Set<() => void>();
@@ -1164,7 +1171,11 @@ export function createMockHost(initial?: Workspace): MockHost {
         !within(next.terminalLetterSpacing, LETTER_SPACINGS) ||
         !within(w, [100, 900]) ||
         w % 100 !== 0 ||
-        !within(next.tabFontSize, TAB_FONT_SIZES)
+        !within(next.tabFontSize, TAB_FONT_SIZES) ||
+        !within(next.terminalScrollback, SCROLLBACKS) ||
+        !CURSOR_STYLES.includes(next.terminalCursor) ||
+        !OPTION_METAS.includes(next.optionAsMeta) ||
+        !BELLS.includes(next.bell)
       )
         throw new Error("a terminal setting is out of range");
       const sidebarWidth = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(next.sidebarWidth)));
@@ -1212,6 +1223,7 @@ export function createMockHost(initial?: Workspace): MockHost {
       attention = { ...settings };
     },
     chimes: () => chimes,
+    bounces: () => bounces,
     appendTranscript(session, entries) {
       const list = transcripts.get(session) ?? [];
       // Offsets stand in for byte positions: one per entry.
@@ -1346,6 +1358,9 @@ export function createMockHost(initial?: Workspace): MockHost {
     },
     async openUrl(url) {
       openedUrls.push(url);
+    },
+    async bounceDock() {
+      bounces++;
     },
     files,
     dialogAnswers,

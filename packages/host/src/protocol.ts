@@ -489,7 +489,31 @@ export interface AppSettings {
   terminalFontWeight: number;
   /** The tab bar's text size in CSS pixels; a subtitle is one pixel smaller. */
   tabFontSize: number;
+  /** The cursor's shape and blink (task 8.42); an unfocused terminal shows an outline. */
+  terminalCursor: CursorStyle;
+  terminalCursorBlink: boolean;
+  /** Lines of history: open terminals take it at once, new shells' daemon copies too. */
+  terminalScrollback: number;
+  /** Which Option key sends Esc before the key, as Meta. */
+  optionAsMeta: OptionMeta;
+  /** The bell; visual and sound also bounce the dock icon in the background. */
+  bell: Bell;
+  /** Selecting text in a terminal copies it. */
+  copyOnSelect: boolean;
+  /** A long paste, a `sudo` line or a pipe into a shell asks first. */
+  pasteWarning: boolean;
+  /** Text too close to its background is drawn with more contrast. */
+  raiseContrast: boolean;
 }
+
+export type CursorStyle = "bar" | "block" | "underline";
+export const CURSOR_STYLES: readonly CursorStyle[] = ["bar", "block", "underline"];
+export type OptionMeta = "both" | "left" | "right" | "off";
+export const OPTION_METAS: readonly OptionMeta[] = ["both", "left", "right", "off"];
+export type Bell = "off" | "visual" | "sound";
+export const BELLS: readonly Bell[] = ["off", "visual", "sound"];
+/** Lines of history a terminal keeps. Same as `SCROLLBACKS` in settings.rs. */
+export const SCROLLBACKS = [1_000, 50_000] as const;
 
 /** Ranges Settings › Terminal allows. Same as settings.rs. */
 export const FONT_SIZES = [9, 24] as const;
@@ -518,6 +542,14 @@ export const DEFAULT_SETTINGS: AppSettings = {
   terminalLetterSpacing: 0,
   terminalFontWeight: 400,
   tabFontSize: 12,
+  terminalCursor: "bar",
+  terminalCursorBlink: true,
+  terminalScrollback: 10_000,
+  optionAsMeta: "both",
+  bell: "off",
+  copyOnSelect: false,
+  pasteWarning: true,
+  raiseContrast: false,
 };
 
 /** The steps `⌘+` and `⌘-` walk, in percent. Same as `ZOOM_STEPS` in settings.rs. */
