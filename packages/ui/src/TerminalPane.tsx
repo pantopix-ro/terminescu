@@ -15,6 +15,7 @@ import { webglBudget } from "./webgl-budget";
 import { colors } from "./generated/colors";
 import { pasteRisk } from "./paste";
 import { attachPromptMarks, type PromptMarks } from "./prompt-marks";
+import type { Rows } from "./find-all";
 import { terminalBehaviour, terminalBehaviourOptions, terminalFont, themeFor, type TerminalBehaviourSettings, type TerminalFont } from "./xterm-theme";
 
 export interface TerminalPaneProps {
@@ -146,6 +147,22 @@ const MATCHES: ISearchOptions["decorations"] = {
   activeMatchBackground: colors.amber,
   activeMatchColorOverviewRuler: colors.amber,
 };
+
+const buffers = new Map<string, Terminal>();
+/** The history and screen of `paneId`'s terminal for find in all panes (task 8.46). */
+export function terminalRows(paneId: string): Rows | undefined {
+  const term = buffers.get(paneId);
+  if (!term) return undefined;
+  // The normal buffer: a full-screen program's alternate screen has no history worth finding.
+  const b = term.buffer.normal;
+  return {
+    length: b.length,
+    row: (i) => {
+      const line = b.getLine(i);
+      return line && { text: line.translateToString(true), wrapped: line.isWrapped };
+    },
+  };
+}
 
 const promptMarks = new Map<string, PromptMarks>();
 /**
@@ -340,6 +357,7 @@ export function TerminalPane({
       term.open(el);
       el.dataset.renderer = "dom";
       promptMarks.set(paneId, attachPromptMarks(term, { tick: colors.dim, failed: colors.red }));
+      buffers.set(paneId, term);
       const l: Live = { term, fit, search, early: 0, glLost: false };
       live.current = l;
       // addon-search 0.16.0 stores the new options before it compares them, so a changed toggle
@@ -408,6 +426,7 @@ export function TerminalPane({
       clearers.delete(paneId);
       promptMarks.get(paneId)?.dispose();
       promptMarks.delete(paneId);
+      if (buffers.get(paneId) === live.current?.term) buffers.delete(paneId);
       disposed = true;
       cancelAnimationFrame(frame);
       observer?.disconnect();

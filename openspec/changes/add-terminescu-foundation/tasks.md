@@ -581,6 +581,10 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       Output `⌘⇧O` selects the output of the prompt jumped to or of the last finished command.
       The scrollbar's ruler gets a width, which the find bar's match marks needed too. Verify:
       `prompt-marks.test.ts`, `prompt-marks.spec.ts`, ptyd mark tests.
+- [x] 8.46 Find in all panes (2026-11-07): Edit › Find in All Panes `⌘⇧F` searches every
+      terminal of the window, history included, case-insensitive, one hit per line (wrapped rows
+      joined), up to 200, grouped by "Side › Tab". A hit selects its tab, focuses the pane and
+      selects the line. Verify: `find-all.test.ts`, `find-all.spec.ts`.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

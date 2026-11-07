@@ -88,6 +88,8 @@ import {
   focusPane,
   Palette,
   FileFinder,
+  FindAllSheet,
+  type FindHit,
   SideTabList,
   sideTabName,
   SearchBar,
@@ -321,6 +323,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const noteDoc = (d: DocView) => setDocs((m) => ({ ...m, [d.id]: d }));
   // `⌘O`: open while `finder` is set; `list` arrives after (D27).
   const [finder, setFinder] = useState<{ list?: FileList }>();
+  const [findingAll, setFindingAll] = useState(false);
   // The terminal pane whose find bar is open (task 8.38); one per window.
   const [findPane, setFindPane] = useState<string>();
   const searchBar = useRef<SearchBarHandle>(null);
@@ -675,6 +678,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         if (!focused || !activeTab || !terminalsOf(activeTab.layout).includes(focused)) return;
         if (findPane === focused) searchBar.current?.focus();
         else setFindPane(focused);
+        return;
+      case "find_all":
+        setFindingAll(true);
         return;
       case "prompt_previous":
       case "prompt_next":
@@ -1035,6 +1041,18 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       return true;
     };
     if (!show(workspace.store.getState().workspace)) setFollow(show);
+  };
+  // Find in all panes (task 8.46): every terminal in the window, labelled as its notification.
+  const allTerminals = sideTabs.flatMap((sd) =>
+    sd.tabs.flatMap((t) => {
+      const list = terminalsOf(t.layout);
+      return list.map((paneId, i) => ({ paneId, label: `${sideTabName(sd)} › ${tabName(t)}${list.length > 1 ? ` · pane ${i + 1}` : ""}` }));
+    }),
+  );
+  const pickFound = (hit: FindHit) => {
+    setFindingAll(false);
+    revealPane(hit.paneId);
+    setTimeout(() => paneEvent(hit.paneId, new CustomEvent(REVEAL_ROWS_EVENT, { detail: hit.rows })));
   };
   const revealRef = useRef(revealPane);
   revealRef.current = revealPane;
@@ -2118,6 +2136,16 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
             Undo
           </button>
         </div>
+      )}
+      {findingAll && (
+        <FindAllSheet
+          panes={allTerminals}
+          onPick={pickFound}
+          onClose={() => {
+            setFindingAll(false);
+            refocus();
+          }}
+        />
       )}
       {finder && (
         <FileFinder
