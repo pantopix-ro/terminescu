@@ -506,3 +506,4 @@ html[data-scheme] .pane-slot:has(> .term-pane[data-tint="red"]) { background: co
 .license-group summary { cursor: pointer; padding: 2px 0; }
 .license-group .paste-preview { max-height: 240px; }
 .privacy-points li + li { margin-top: var(--space-1); }
+.update-bar { position: absolute; left: var(--space-4); right: var(--space-4); bottom: var(--space-4); z-index: 4; }

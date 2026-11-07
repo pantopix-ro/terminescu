@@ -197,6 +197,12 @@ export interface Host {
   uninstallHelpers(deleteData: boolean): Promise<void>;
   /** Quits the app. */
   appQuit(): Promise<void>;
+  /** Checks the release feed now: the verified newer version, or null when up to date (D4). */
+  checkUpdates(): Promise<string | null>;
+  /** Installs the verified update and restarts into it; the shells stay in the daemon. */
+  updateRestart(): Promise<void>;
+  /** A background check found and verified a newer version. */
+  onUpdate(listener: (version: string) => void): Promise<() => void>;
   /**
    * A path link's menu (task 8.49): `reveal` shows it in Finder, else its default app opens it.
    * Resolved against the pane's folder; programs and scripts are refused.

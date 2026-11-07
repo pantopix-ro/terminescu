@@ -6,6 +6,7 @@ mod crashlog;
 mod docs;
 mod drag;
 mod public;
+mod updates;
 
 use serde::Deserialize;
 use std::collections::{BTreeMap, HashMap};
@@ -1868,6 +1869,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all(&dir)?;
     let db = Db::open(dir.join("terminescu.sqlite"))?;
     db.local_owner()?;
+    updates::start(app.handle());
     if let Err(e) = prompts::import_seeds(&db, prompts::SEEDS) {
         eprintln!("terminescu: seed prompts not imported: {e}");
     }
@@ -1924,6 +1926,8 @@ fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(updates::Pending::default())
         .menu(|app| build_menu(app, &keys::Bindings::new(), true))
         .on_menu_event(|app, event| send_action(app, event.id().as_ref()))
         .on_page_load(|webview, payload| {
@@ -1940,6 +1944,8 @@ fn main() {
             public::feedback_open,
             public::uninstall_helpers,
             public::app_quit,
+            updates::update_check,
+            updates::update_restart,
             host_snapshot,
             host_agents,
             transcript_read,

@@ -10,9 +10,9 @@ It doesn't orchestrate Claude. You start every session yourself by typing `claud
 shell, and Terminescu never starts a turn on its own.
 
 > Status: P1 and P2 are built (task groups 1 to 8), including text tabs, cross-window drag,
-> side tab merge, sidebar right-click menus and zoom. Signing, notarization and auto-update
-> (group 9) wait for an Apple developer account. To run or install the app, read
-> [Getting started](docs/getting-started.md).
+> side tab merge, sidebar right-click menus and zoom. Releases ship as an unsigned DMG with
+> signed auto-updates; notarization waits for an Apple developer account. To build from
+> source, read [Getting started](docs/getting-started.md).
 >
 > How it grew: the spikes came first, then the skeleton (tasks 1.1 to 1.4):
 > an app window with side tabs and tabs over the core's command and patch protocol, the
@@ -195,6 +195,22 @@ statuses.
 ## Requirements (target)
 
 macOS 14 or later, Rust stable, Node 24, pnpm, and Claude Code with a logged-in `claude`.
+
+## Install
+
+Terminescu needs macOS 14 or later on Apple silicon.
+
+1. Download the `.dmg` from the newest [release](https://github.com/pantopix/terminescu/releases).
+2. Open it and drag Terminescu to Applications.
+3. Double-click Terminescu. macOS says it "could not verify" the app, because this build is
+   not notarized by Apple yet. Close the warning.
+4. Open System Settings › Privacy & Security. Under Security, click **Open Anyway** next to
+   Terminescu, then confirm.
+
+You do this once. Later versions arrive through Terminescu › Check for Updates, and each one
+is checked against the project's update key before it installs. On the first launch,
+Terminescu asks before it adds its hook to Claude Code's settings. Help › Uninstall Terminescu
+Helpers removes the hook and the helpers again.
 
 ## Build and run
 

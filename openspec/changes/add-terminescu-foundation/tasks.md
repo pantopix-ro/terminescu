@@ -638,8 +638,7 @@ prose branch names need a `/`, and a one-line text with a tab goes in bracketed.
 
 ## 9. Reach (P3)
 
-- [ ] 9.1 Code signing, notarization, DMG build in CI. Verify: a downloaded DMG opens without a
-      Gatekeeper warning.
-- [ ] 9.2 Auto-update through the Tauri updater. Verify: an older build updates itself.
+- [x] 9.1 Code signing, notarization, DMG build in CI. Dropped (moved to add-public-release).
+- [x] 9.2 Auto-update through the Tauri updater. Dropped (moved to add-public-release).
 
 The remote view of the Mac (D22) is a later change, `add-remote-view`.

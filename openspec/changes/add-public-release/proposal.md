@@ -66,16 +66,19 @@ condition on top of it. Archive the foundation first, then fold `setup`'s consen
 ## Impact
 
 - `apps/desktop/src-tauri`:
-  - `tauri.conf.json`: DMG target, updater endpoints and public key, entitlements.
-  - `main.rs`: Help menu and About window; the hook install moves behind consent.
-  - New `tauri-plugin-updater` and `tauri-plugin-process`. Both must be at least two weeks
-    old.
-- `crates/core`: `hook_install::uninstall`, a `hook` setting with its consent state, and the
-  binaries cleanup in `launcher`.
+  - `tauri.release.conf.json`: DMG target, updater artifacts, ad-hoc signing; entitlements
+    come with the notarized releases.
+  - `main.rs`, `public.rs`, `updates.rs`: Help menu, About, the update check; the hook
+    install moves behind consent.
+  - New `tauri-plugin-updater`, at least two weeks old. The updater's public key is built
+    in from a repository variable.
+- `crates/core`: `hook_install::uninstall`, a `hook` setting with its consent state,
+  `feedback` links and the helpers cleanup in `uninstall`.
 - `packages/ui`: the About, Licenses, Privacy, Feedback and first-run sheets; the hook toggle
   in Settings › Shell.
-- New repository files: `LICENSE` (FSL), `PRIVACY.md`, `CONTRIBUTING.md` (CLA),
-  `THIRD_PARTY_LICENSES` (generated), and `.github/workflows/release.yml`.
+- New repository files: `LICENSE.md` (FSL), `PRIVACY.md`, `CONTRIBUTING.md`, `CLA.md`,
+  `deny.toml`, `about.toml`, `docs/releasing.md`, and `.github/workflows/` `licenses.yml`
+  and `release.yml`. The credits file `licenses.json` is generated at build time.
 - Secrets: the Apple certificate, notarization credentials and the updater private key live
   in GitHub repository secrets and never in the repository.
 - Foundation tasks 9.1 and 9.2 get ticked "Dropped (moved to add-public-release)".

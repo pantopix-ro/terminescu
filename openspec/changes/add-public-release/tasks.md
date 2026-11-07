@@ -5,7 +5,7 @@
 - [x] 1.1 Add `LICENSE.md` (FSL-1.1-ALv2 from fsl.software, licensor PANTOPIX RO), a license
       section in the README, `CONTRIBUTING.md` and `CLA.md` (D1); Cargo `license` is the SPDX
       id. Verify: `head -1 LICENSE.md` names FSL 1.1 ALv2, `grep PANTOPIX LICENSE.md`.
-- [ ] 1.2 Add `PUBLIC_REPO` in `crates/protocol` (assumed `pantopix/terminescu`) and use it for
+- [x] 1.2 Add `PUBLIC_REPO` in `crates/protocol` (assumed `pantopix/terminescu`) and use it for
       every GitHub link (D4, D7). Verify: `grep -rn 'github.com/' crates apps packages` shows
       only `PUBLIC_REPO`.
 - [ ] 1.3 Scan the whole git history for real names, paths, tokens and emails before the repo
@@ -64,11 +64,12 @@
 
 ## 6. Updates
 
-- [ ] 6.1 Add `tauri-plugin-updater` and `tauri-plugin-process` (versions at least two weeks
-      old), the public key and the endpoint in `tauri.conf.json`, the 24 h check, Check for
-      Updates in the app menu and the "Restart to update" prompt (D4). Verify: a local feed
-      served from `target/` updates 0.1.0 to 0.1.1, and a tampered signature is refused
-      (manual, steps in docs/releasing.md).
+- [ ] 6.1 Add `tauri-plugin-updater` 2.14.0 (at least two weeks old; `AppHandle::restart`
+      replaces `tauri-plugin-process`), the public key from `TERMINESCU_UPDATER_PUBKEY` at build
+      time and the endpoint from `update_feed()`, the 24 h check, Check for Updates in the app
+      menu and the "Restart to update" prompt (D4). Verify: `updates.spec.ts`; a test feed
+      updates 0.1.0 to 0.1.1, and a tampered signature is refused (manual, steps in
+      docs/releasing.md, waits for the update key).
 
 ## 7. Release pipeline
 
@@ -83,7 +84,7 @@
 - [ ] 7.3 First release v0.2.0, unsigned. Verify: download it on a second Mac account, use
       Open Anyway once, and the app starts; the next launch shows no warning; an update to
       v0.2.1 installs from the feed.
-- [ ] 7.4 Tick foundation tasks 9.1 and 9.2 "Dropped (moved to add-public-release)". Verify:
+- [x] 7.4 Tick foundation tasks 9.1 and 9.2 "Dropped (moved to add-public-release)". Verify:
       `openspec validate add-terminescu-foundation --strict`.
 
 ## Later: notarized releases (after the Apple account)

@@ -1,0 +1,10 @@
+{
+  "bundle": {
+    "targets": ["app", "dmg"],
+    "createUpdaterArtifacts": true,
+    "externalBin": ["binaries/terminescu-ptyd", "binaries/terminescu"],
+    "macOS": {
+      "signingIdentity": "-"
+    }
+  }
+}
