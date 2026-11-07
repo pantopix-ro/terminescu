@@ -55,6 +55,42 @@ pub type AgentSink = Box<dyn Fn(&AgentUpdate) + Send + Sync>;
 pub type StatusSink = Box<dyn Fn(&BTreeMap<Id, Shown>) + Send + Sync>;
 /// Every terminal pane's label parts, sent whenever one changes (task 8.30).
 pub type LabelSink = Box<dyn Fn(&BTreeMap<Id, crate::labels::PaneLabel>) + Send + Sync>;
+/// Hears every command that ended after the runtime saw it start (task 8.40).
+pub type CommandSink = Box<dyn Fn(CommandEnd) + Send + Sync>;
+
+/// Records a start edge's time and turns an end edge into a [`CommandEnd`]. A run whose start
+/// was not seen (it began before a restart, or both edges came in one read) has no length.
+fn command_edges(
+    starts: &mut HashMap<Id, std::time::Instant>,
+    now: std::time::Instant,
+    pane: &str,
+    prev: Option<&ShellState>,
+    next: &ShellState,
+) -> Option<CommandEnd> {
+    let prev = prev?;
+    let started_at = (next.ended > prev.ended)
+        .then(|| starts.remove(pane))
+        .flatten();
+    if next.started > prev.started && next.running {
+        starts.insert(pane.into(), now);
+    }
+    let ms = now.saturating_duration_since(started_at?).as_millis() as u64;
+    Some(CommandEnd {
+        pane: pane.into(),
+        command: next.command.clone(),
+        exit: next.last_exit,
+        ms,
+    })
+}
+
+/// A command a pane's shell integration reported from start to end.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommandEnd {
+    pub pane: Id,
+    pub command: Option<String>,
+    pub exit: Option<i32>,
+    pub ms: u64,
+}
 /// Hears which side tab's daemon variables changed (D21).
 pub type ContextSink = Box<dyn Fn(&str) + Send + Sync>;
 /// Where extraction matches go: side tab, the tab they came from, the matches (D13).
@@ -164,6 +200,9 @@ struct Inner {
     status_wake: Condvar,
     status_sink: Mutex<Option<StatusSink>>,
     label_sink: Mutex<Option<LabelSink>>,
+    command_sink: Mutex<Option<CommandSink>>,
+    /// When each pane's running command started, as the runtime saw the start edge.
+    command_starts: Mutex<HashMap<Id, std::time::Instant>>,
     /// Launcher side tabs and the tab of each of their commands (D24).
     launchers: Mutex<HashMap<Id, Vec<Option<Id>>>>,
     /// Panes that got a fresh shell at start, most likely after a reboot; launchers rerun there.
@@ -304,6 +343,8 @@ impl Runtime {
                 status_wake: Condvar::new(),
                 status_sink: Mutex::default(),
                 label_sink: Mutex::default(),
+                command_sink: Mutex::default(),
+                command_starts: Mutex::default(),
                 launchers: Mutex::default(),
                 respawned: Mutex::new(spawn.iter().map(|(p, _, _)| p.clone()).collect()),
                 context_sink: Mutex::default(),
@@ -941,7 +982,7 @@ impl Runtime {
     /// A pane's shell state from a daemon push or the poll. A stale poll result, with lower
     /// run counters than a push already seen, is ignored.
     fn shell_changed(&self, pane: &str, next: ShellState) {
-        {
+        let ended = {
             // `shells` stays held while the engine sees the edge, so a push and a poll for the
             // same pane reach it in the order they were stored.
             let mut shells = lock(&self.inner.shells);
@@ -955,8 +996,25 @@ impl Runtime {
             lock(&self.inner.status)
                 .engine
                 .shell(pane, prev.as_ref(), &next);
+            self.command_edges(pane, prev.as_ref(), &next)
+        };
+        if let Some(end) = ended
+            && let Some(sink) = lock(&self.inner.command_sink).as_ref()
+        {
+            sink(end);
         }
         self.mark_status();
+    }
+
+    /// Times a command from the start edge to the end edge (see [`command_edges`]).
+    fn command_edges(
+        &self,
+        pane: &str,
+        prev: Option<&ShellState>,
+        next: &ShellState,
+    ) -> Option<CommandEnd> {
+        let mut starts = lock(&self.inner.command_starts);
+        command_edges(&mut starts, std::time::Instant::now(), pane, prev, next)
     }
 
     /// A pane got a new shell: its run counters start over, and statuses waiting for the old
@@ -964,6 +1022,7 @@ impl Runtime {
     fn shell_restarted(&self, pane: &str) {
         let mut shells = lock(&self.inner.shells);
         shells.remove(pane);
+        lock(&self.inner.command_starts).remove(pane);
         lock(&self.inner.status).engine.shell_restarted(pane);
     }
 
@@ -1008,6 +1067,11 @@ impl Runtime {
     }
 
     /// Where the UI gets pane label changes; the current ones come from [`Runtime::labels`].
+    /// Where a timed command's end goes (task 8.40).
+    pub fn on_command_end(&self, sink: CommandSink) {
+        *lock(&self.inner.command_sink) = Some(sink);
+    }
+
     pub fn on_labels(&self, sink: LabelSink) {
         *lock(&self.inner.label_sink) = Some(sink);
     }
@@ -1468,5 +1532,89 @@ mod dock_effect_tests {
         })
         .unwrap();
         assert!(diff_effects(&before, &c.workspace().terminal_sides(), None).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod command_tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    fn state(started: u64, ended: u64, running: bool, exit: Option<i32>) -> ShellState {
+        ShellState {
+            integrated: true,
+            command: Some("cargo build".into()),
+            running,
+            last_exit: exit,
+            started,
+            ended,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_run_is_timed_from_its_start_edge_to_its_end_edge() {
+        let mut starts = HashMap::new();
+        let t0 = Instant::now();
+        let idle = state(0, 0, false, None);
+        let running = state(1, 0, true, None);
+        assert_eq!(
+            command_edges(&mut starts, t0, "p", Some(&idle), &running),
+            None
+        );
+        let done = state(1, 1, false, Some(2));
+        let end = command_edges(
+            &mut starts,
+            t0 + Duration::from_secs(42),
+            "p",
+            Some(&running),
+            &done,
+        )
+        .unwrap();
+        assert_eq!(
+            (end.ms, end.exit, end.command.as_deref()),
+            (42_000, Some(2), Some("cargo build"))
+        );
+        assert!(starts.is_empty());
+    }
+
+    #[test]
+    fn a_run_whose_start_was_not_seen_has_no_length() {
+        let mut starts = HashMap::new();
+        let t0 = Instant::now();
+        // The first read after a restart, and both edges in one read.
+        assert_eq!(
+            command_edges(&mut starts, t0, "p", None, &state(1, 0, true, None)),
+            None
+        );
+        let both = state(1, 1, false, Some(0));
+        assert_eq!(
+            command_edges(&mut starts, t0, "p", Some(&state(0, 0, false, None)), &both),
+            None
+        );
+    }
+
+    #[test]
+    fn an_end_and_the_next_start_in_one_read_time_both() {
+        let mut starts = HashMap::new();
+        let t0 = Instant::now();
+        command_edges(
+            &mut starts,
+            t0,
+            "p",
+            Some(&state(0, 0, false, None)),
+            &state(1, 0, true, None),
+        );
+        let next = state(2, 1, true, Some(0));
+        let end = command_edges(
+            &mut starts,
+            t0 + Duration::from_secs(5),
+            "p",
+            Some(&state(1, 0, true, None)),
+            &next,
+        )
+        .unwrap();
+        assert_eq!(end.ms, 5_000);
+        assert!(starts.contains_key("p"));
     }
 }

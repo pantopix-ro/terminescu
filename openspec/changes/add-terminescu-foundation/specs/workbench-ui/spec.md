@@ -70,6 +70,11 @@ has waited longest.
 - **WHEN** a Claude session starts waiting while another app is in front
 - **THEN** a notification names the side tab and tab, the dock badge reads 1, and no sound plays
 
+#### Scenario: A long build ends in the background
+- **WHEN** `cargo build` runs for 4 minutes in a shell tab and fails while another app is in front
+- **THEN** a notification names the side tab and tab and says `cargo build` failed with exit 101
+  after 4m 0s
+
 ### Requirement: Collapsible context panel
 `⌘\` SHALL cycle the context panel between pinned and auto-hide. When auto-hidden, hovering a
 6px edge at the right of the window for 150 ms SHALL slide the panel in as an overlay over the

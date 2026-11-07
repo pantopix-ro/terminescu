@@ -710,6 +710,67 @@ fn set_badge(app: &AppHandle, count: usize) {
     }
 }
 
+/// Posts a notification when a command that ran at least the threshold ends while no window has
+/// focus (task 8.40). A pane where Claude runs is left to the waiting notification.
+fn watch_commands(app: AppHandle, runtime: Runtime, db: Arc<Mutex<Db>>) {
+    use tauri_plugin_notification::NotificationExt;
+    let (tx, ends) = std::sync::mpsc::channel::<terminescu_core::runtime::CommandEnd>();
+    runtime.on_command_end(Box::new(move |end| {
+        let _ = tx.send(end);
+    }));
+    std::thread::spawn(move || {
+        for end in ends {
+            let settings = attention::settings(&lock(&db)).unwrap_or_default();
+            if !settings.command_notify || end.ms < u64::from(settings.command_secs) * 1000 {
+                continue;
+            }
+            let focused = app
+                .webview_windows()
+                .values()
+                .any(|w| w.is_focused().unwrap_or(false));
+            let claude = runtime
+                .agents()
+                .iter()
+                .any(|a| a.pane == end.pane && a.agent.is_some());
+            if focused || claude {
+                continue;
+            }
+            let ws = runtime.snapshot().workspace;
+            let Some(place) = attention::place_of(&ws, &end.pane) else {
+                continue;
+            };
+            let what = end
+                .command
+                .as_deref()
+                .map(str::trim)
+                .filter(|c| !c.is_empty())
+                .map(|c| {
+                    let short: String = c.chars().take(60).collect();
+                    if short.len() < c.len() {
+                        format!("`{short}…`")
+                    } else {
+                        format!("`{c}`")
+                    }
+                })
+                .unwrap_or_else(|| "A command".into());
+            let took = attention::run_time(end.ms);
+            let body = match end.exit {
+                Some(code) if code != 0 => format!("{what} failed with exit {code} after {took}"),
+                _ => format!("{what} finished in {took}"),
+            };
+            let shown = app
+                .notification()
+                .builder()
+                .title(format!("{} › {}", place.side_name, place.tab_name))
+                .body(body)
+                .show();
+            if let Err(e) = shown {
+                eprintln!("terminescu: notification not posted: {e}");
+            }
+        }
+    });
+}
+
 /// Feeds agent updates into [`Attention`] off the runtime's locks: the badge follows the count,
 /// and a pane that starts waiting posts a notification while no window has focus, and the chime
 /// when it is on. The notification names the side tab and tab and plays no sound.
@@ -1722,6 +1783,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         attention.clone(),
         updates,
     );
+    watch_commands(app.handle().clone(), runtime.clone(), db.clone());
     {
         refresh_launchers(&lock(&db), &runtime);
         rerun_launchers(&db, &runtime);

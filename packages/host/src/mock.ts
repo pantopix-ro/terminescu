@@ -21,6 +21,7 @@ import {
   LINE_HEIGHTS,
   TAB_FONT_SIZES,
   SCROLLBACKS,
+  COMMAND_SECS,
   CURSOR_STYLES,
   OPTION_METAS,
   BELLS,
@@ -255,7 +256,7 @@ export function createMockHost(initial?: Workspace): MockHost {
   // Waiting panes and when they started, as crates/core/src/attention.rs keeps them.
   const waitingSince = new Map<string, number>();
   let waitClock = 0;
-  let attention: AttentionSettings = { notify: true, chime: false };
+  let attention: AttentionSettings = { notify: true, chime: false, commandNotify: true, commandSecs: 30 };
   let settings: AppSettings = { ...DEFAULT_SETTINGS };
   const settingsListeners = new Set<() => void>();
   let keyBindings: KeyBindings = {};
@@ -1220,7 +1221,9 @@ export function createMockHost(initial?: Workspace): MockHost {
       return { ...attention };
     },
     async setAttentionSettings(settings) {
-      attention = { ...settings };
+      // As attention.rs: a threshold out of range comes into it, a missing field takes its default.
+      const secs = Number.isFinite(settings.commandSecs) ? Math.round(settings.commandSecs) : 30;
+      attention = { ...settings, commandNotify: settings.commandNotify ?? true, commandSecs: Math.min(COMMAND_SECS[1], Math.max(COMMAND_SECS[0], secs)) };
     },
     chimes: () => chimes,
     bounces: () => bounces,

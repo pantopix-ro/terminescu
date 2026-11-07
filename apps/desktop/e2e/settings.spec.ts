@@ -78,9 +78,13 @@ test("the default storage mode and TTL carry into Extract", async ({ page }) => 
 test("notification and chime toggles save the attention settings", async ({ page }) => {
   await start(page);
   const dialog = await openSettings(page, "Notifications");
-  await expect(dialog.getByRole("checkbox", { name: "macOS notification" })).toBeChecked();
+  await expect(dialog.getByRole("checkbox", { name: "macOS notification" }).first()).toBeChecked();
   await dialog.getByRole("checkbox", { name: "Chime" }).check();
-  await expect.poll(() => mock(page, "attentionSettings")).toEqual({ notify: true, chime: true });
+  await expect.poll(() => mock(page, "attentionSettings")).toEqual({ notify: true, chime: true, commandNotify: true, commandSecs: 30 });
+  // Task 8.40: the long command notification and its threshold.
+  await dialog.getByLabel("Long command seconds").fill("90");
+  await dialog.getByRole("checkbox", { name: "macOS notification" }).nth(1).uncheck();
+  await expect.poll(() => mock(page, "attentionSettings")).toEqual({ notify: true, chime: true, commandNotify: false, commandSecs: 90 });
 });
 
 test("Keys: rebind New Side Tab to ⌘J, refuse ⌘T as a clash, reset", async ({ page }) => {
