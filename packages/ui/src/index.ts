@@ -56,6 +56,8 @@ export { EXTRACT_EVENT, PIN_EVENT, TranscriptPane, type Reveal, type TextEntry }
 export { StatusChip } from "./StatusChip";
 export { StatusEditor, type StatusEditorProps } from "./StatusEditor";
 export { StatusesSection, type StatusesSectionProps } from "./StatusSettings";
+export { AboutSheet, FeedbackSheet, FirstRunSheet, LicensesSheet, PrivacySheet, UninstallSheet } from "./AppSheets";
+export { NOT_AFFILIATED, PRIVACY_POINTS } from "./privacy";
 export { SETTINGS_SECTIONS, SettingsSheet, type SettingsSection, type SettingsSheetProps } from "./SettingsSheet";
 export { Swatches } from "./Swatches";
 export { BUILTIN_LOOKS, builtinLook, chipOf, chipStyle, rowStyle, SORTS, sortSideTabs, type Builtins, type Chip, type SortMode } from "./status";

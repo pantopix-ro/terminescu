@@ -16,7 +16,7 @@ a Licenses button, and the line "Works with Claude Code. Not affiliated with Ant
 - **THEN** the window shows the running version and build and "Made by PANTOPIX RO", and clicking pantopix.ro opens it in the default browser
 
 ### Requirement: License and credits
-The repository and the app SHALL carry the FSL-1.1-Apache-2.0 license text. Help › Licenses
+The repository and the app SHALL carry the FSL-1.1-ALv2 license text. Help › Licenses
 SHALL list every third-party Rust crate and npm package shipped in the app with its license
 and the notices its license requires. The list SHALL be generated at build time from the
 locked dependencies, and a release SHALL fail when a shipped dependency has a license outside

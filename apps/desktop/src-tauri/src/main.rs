@@ -5,6 +5,7 @@
 mod crashlog;
 mod docs;
 mod drag;
+mod public;
 
 use serde::Deserialize;
 use std::collections::{BTreeMap, HashMap};
@@ -543,12 +544,32 @@ fn settings_get(state: State<'_, AppState>) -> Result<settings::Settings, String
     settings::get(&lock(&state.db)).map_err(|e| e.to_string())
 }
 
+/// Adds or removes the Claude Code hook for a new answer; `Unasked` leaves the file alone.
+fn apply_hook(consent: settings::HookConsent) -> Result<(), String> {
+    let file = hook_install::user_settings();
+    let done = match consent {
+        settings::HookConsent::On => {
+            hook_install::install(&file, &paths::bin_dir().join("terminescu"))
+        }
+        settings::HookConsent::Off => hook_install::uninstall(&file),
+        settings::HookConsent::Unasked => return Ok(()),
+    };
+    done.map(|_| ()).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn settings_set(
     app: AppHandle,
     state: State<'_, AppState>,
     settings: settings::Settings,
 ) -> Result<settings::Settings, String> {
+    let before = settings::get(&lock(&state.db))
+        .map_err(|e| e.to_string())?
+        .hook;
+    // The hook toggle (D5): Claude Code's settings change first, so a failed edit saves nothing.
+    if settings.hook != before {
+        apply_hook(settings.hook)?;
+    }
     let saved = settings::set(&lock(&state.db), settings).map_err(|e| e.to_string())?;
     state.runtime.set_editor(saved.editor);
     state.runtime.set_scrollback(saved.terminal_scrollback);
@@ -1354,6 +1375,28 @@ fn sidecar(name: &str) -> std::io::Result<PathBuf> {
     Ok(path)
 }
 
+/// Installs the hook when the person agreed; an entry already in Claude Code's settings counts
+/// as consent and ends the first run, as on a Mac that had Terminescu before consent (D5, D6).
+fn hook_at_launch(db: &Arc<Mutex<Db>>, cli: &Path) {
+    let db = lock(db);
+    let Ok(mut s) = settings::get(&db) else {
+        return;
+    };
+    let (now, done) = hook_install::at_launch(&hook_install::user_settings(), cli, s.hook);
+    match done {
+        Ok(true) => eprintln!("terminescu: Claude Code hooks installed"),
+        Ok(false) => {}
+        Err(e) => eprintln!("terminescu: Claude Code hooks not installed: {e}"),
+    }
+    if now != s.hook {
+        s.hook = now;
+        s.first_run_done = true;
+        if let Err(e) = settings::set(&db, s) {
+            eprintln!("terminescu: hook consent not saved: {e}");
+        }
+    }
+}
+
 /// Installs the daemon and CLI copies (D32, D36) and starts the runtime on the daemon, from the
 /// saved layout when there is one (task 3.3). Returns the runtime and its window ids.
 #[allow(clippy::type_complexity)]
@@ -1367,12 +1410,9 @@ fn start_runtime(
     let bin = paths::bin_dir();
     let daemon = launcher::install(&sidecar("terminescu-ptyd")?, &bin)?;
     match launcher::install_cli(&sidecar("terminescu")?, &bin) {
-        // Claude Code runs the hook from the copy, whose path survives updates (D36).
-        Ok(cli) => match hook_install::install(&hook_install::user_settings(), &cli) {
-            Ok(true) => eprintln!("terminescu: Claude Code hooks installed"),
-            Ok(false) => {}
-            Err(e) => eprintln!("terminescu: Claude Code hooks not installed: {e}"),
-        },
+        // Claude Code runs the hook from the copy, whose path survives updates (D36), and only
+        // once the person agreed (add-public-release D5).
+        Ok(cli) => hook_at_launch(&db, &cli),
         Err(e) => eprintln!("terminescu: CLI copy failed: {e}"),
     }
     let run = paths::run_paths();
@@ -1729,7 +1769,16 @@ fn build_menu(
                 "Terminescu",
                 true,
                 &[
-                    &PredefinedMenuItem::about(app, None, None)?,
+                    // The app's own About (add-public-release D7): it shows the maker, the
+                    // build and the license, which the standard panel cannot.
+                    &MenuItem::with_id(app, public::ABOUT, "About Terminescu", true, None::<&str>)?,
+                    &MenuItem::with_id(
+                        app,
+                        public::CHECK_UPDATES,
+                        "Check for Updates…",
+                        true,
+                        None::<&str>,
+                    )?,
                     &PredefinedMenuItem::separator(app)?,
                     &PredefinedMenuItem::services(app, None)?,
                     &PredefinedMenuItem::separator(app)?,
@@ -1779,6 +1828,23 @@ fn build_menu(
             menu.append(&sub)?;
         }
     }
+    let item = |id: &str, label: &str| MenuItem::with_id(app, id, label, true, None::<&str>);
+    let help = Submenu::with_items(
+        app,
+        "Help",
+        true,
+        &[
+            &item(public::FEEDBACK_EMAIL, "Send Feedback…")?,
+            &item(public::FEEDBACK_ISSUE, "Report an Issue…")?,
+            &PredefinedMenuItem::separator(app)?,
+            &item(public::PRIVACY, "Privacy")?,
+            &item(public::LICENSES, "Licenses")?,
+            &PredefinedMenuItem::separator(app)?,
+            &item(public::UNINSTALL, "Uninstall Terminescu Helpers…")?,
+        ],
+    )?;
+    help.set_as_help_menu_for_nsapp()?;
+    menu.append(&help)?;
     Ok(menu)
 }
 
@@ -1870,6 +1936,10 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            public::app_info,
+            public::feedback_open,
+            public::uninstall_helpers,
+            public::app_quit,
             host_snapshot,
             host_agents,
             transcript_read,

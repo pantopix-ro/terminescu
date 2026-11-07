@@ -10,6 +10,7 @@ use std::ops::RangeInclusive;
 pub mod client;
 pub mod core;
 pub mod paths;
+pub mod public;
 
 /// The protocol version this build speaks natively.
 pub const PROTOCOL_VERSION: u32 = 1;

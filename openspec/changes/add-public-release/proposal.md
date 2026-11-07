@@ -10,7 +10,7 @@ stranger's machine.
 
 ## What Changes
 
-- **License.** The repository ships under FSL-1.1-Apache-2.0 (the Functional Source License).
+- **License.** The repository ships under FSL-1.1-ALv2 (the Functional Source License).
   The code is public. Nobody may offer a competing product built from it, and each release
   turns Apache 2.0 two years after it ships. Outside contributions need a signed CLA, so the
   license can change later.

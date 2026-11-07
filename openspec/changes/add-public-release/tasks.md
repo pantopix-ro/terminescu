@@ -2,9 +2,9 @@
 
 ## 1. Repository and license
 
-- [ ] 1.1 Add `LICENSE` (FSL-1.1-Apache-2.0, licensor PANTOPIX RO), a license line in the
-      README, and `CONTRIBUTING.md` with the CLA (D1). Verify: `head -3 LICENSE` names FSL-1.1
-      and PANTOPIX RO.
+- [x] 1.1 Add `LICENSE.md` (FSL-1.1-ALv2 from fsl.software, licensor PANTOPIX RO), a license
+      section in the README, `CONTRIBUTING.md` and `CLA.md` (D1); Cargo `license` is the SPDX
+      id. Verify: `head -1 LICENSE.md` names FSL 1.1 ALv2, `grep PANTOPIX LICENSE.md`.
 - [ ] 1.2 Add `PUBLIC_REPO` in `crates/protocol` (assumed `pantopix/terminescu`) and use it for
       every GitHub link (D4, D7). Verify: `grep -rn 'github.com/' crates apps packages` shows
       only `PUBLIC_REPO`.
@@ -18,34 +18,39 @@
 ## 2. Credits and license checks
 
 - [ ] 2.1 `about.toml` and `deny.toml` with the allowed licenses. `cargo deny check licenses`
-      runs in CI (D8). Verify: CI job green; adding a GPL-only test crate fails it.
-- [ ] 2.2 Generate `THIRD_PARTY_LICENSES.md` from `cargo about` and pnpm, bundle it as a
-      resource (D8). Verify: `pnpm credits` writes the file, and it lists xterm, codemirror,
-      tauri and alacritty_terminal.
+      runs in CI (`.github/workflows/licenses.yml`, D8). Verify: CI job green; adding a
+      GPL-only test crate fails it. Local `cargo deny check licenses` says "licenses ok"; the
+      job runs once the repo is on GitHub.
+- [x] 2.2 Generate `apps/desktop/public/licenses.json` from `cargo about` and pnpm on every
+      build (`scripts/credits.mjs`, gitignored: notices carry authors' addresses), shown under
+      Help › Licenses (D8). Verify: `pnpm credits` writes the file, and it lists xterm,
+      codemirror, tauri and alacritty_terminal.
 
 ## 3. Hook consent and first run
 
-- [ ] 3.1 Core: `Settings.hook` (`unasked`/`on`/`off`) and `firstRunDone`, plus
+- [x] 3.1 Core: `Settings.hook` (`unasked`/`on`/`off`) and `firstRunDone`, plus
       `hook_install::present` and `hook_install::uninstall` (D5). Verify: core tests
-      `hook_uninstall_keeps_other_hooks`, `unasked_with_entry_becomes_on`.
-- [ ] 3.2 `main.rs`: install the hook only when `on`, and resolve `unasked` at launch (D5).
-      Verify: a launch with `hook: "off"` leaves a fixture settings file byte-identical (test
-      `hook_off_leaves_settings`).
-- [ ] 3.3 UI: the first-run sheet (helpers list, hook switch, "Not now", Privacy link) and the
+      `hook_uninstall_keeps_other_hooks`, `unasked_with_entry_becomes_on`, `uninstall_drops_a_hooks_object_it_emptied…`.
+- [x] 3.2 `main.rs`: install the hook only when `on`, and resolve `unasked` at launch (D5).
+      Verify: a launch with `hook: "off"` leaves a fixture settings file byte-identical (core test
+      `hook_off_leaves_settings` on `hook_install::at_launch`); the toggle goes through `settings_set`.
+- [x] 3.3 UI: the first-run sheet (helpers list, hook switch, "Not now", Privacy link) and the
       hook toggle in Settings › Shell; a Claude pane says "hook is off" with a button (D6).
-      Verify: `first-run.spec.ts` (shows once, Not now keeps the mock settings unchanged, the
-      toggle adds and removes).
+      Verify: `first-run.spec.ts` (shows once, Not now adds no hook, the toggle adds and
+      removes, the Claude pane bar turns it on).
 
 ## 4. Help menu, About, privacy and feedback
 
-- [ ] 4.1 `actions.json` Help menu and custom `about` action; `main.rs` builds them (D7).
-      Verify: `keys.test.ts` covers the new ids with no chord; manual check of the menu.
-- [ ] 4.2 About sheet: version and build, "Made by PANTOPIX RO" link, license, Licenses
+- [x] 4.1 Help menu and a custom About item, built in `main.rs` from `public.rs` ids. They have
+      no chord, so they stay out of `actions.json` and Settings › Keys (D7). Verify: Rust test
+      `menu_only_ids_never_clash_with_an_action`; manual check of the menu.
+- [x] 4.2 About sheet: version and build, "Made by PANTOPIX RO" link, license, Licenses
       button, the not-affiliated line. Verify: `about.spec.ts` reads the mock version and
       checks `host.openedUrls` gets `https://pantopix.ro`.
-- [ ] 4.3 Licenses and Privacy sheets, plus `PRIVACY.md` with the same facts. Verify:
-      `about.spec.ts` finds "xterm" in Licenses and "update check" in Privacy.
-- [ ] 4.4 Feedback dialog with "Include app.log" off by default. The `mailto:` link to
+- [x] 4.3 Licenses and Privacy sheets, plus `PRIVACY.md` with the same facts. Verify:
+      `about.spec.ts` finds "xterm" in Licenses and "update check" in Privacy; ui test
+      `privacy.test.ts` keeps `PRIVACY.md` and the sheet word for word.
+- [x] 4.4 Feedback dialog with "Include app.log" off by default. The `mailto:` link to
       salut@pantopix.com has the subject prefix `[Terminescu]`; the issue link uses
       `PUBLIC_REPO`. Both carry the versions, and the log is revealed in Finder only when the
       box is ticked (D7). Verify: Rust test `feedback_links_carry_versions`, and
@@ -53,7 +58,7 @@
 
 ## 5. Uninstall
 
-- [ ] 5.1 Help › Uninstall Terminescu Helpers, in the order of D9: confirm, hook, daemon,
+- [x] 5.1 Help › Uninstall Terminescu Helpers, in the order of D9: confirm, hook, daemon,
       `bin/` and `run/`, data opt-in, quit. Verify: core test `uninstall_removes_helpers_keeps_db`
       on a temp `TERMINESCU_HOME`; `uninstall.spec.ts` for the dialog.
 

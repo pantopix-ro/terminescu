@@ -114,6 +114,12 @@ import {
   StatusLine,
   SettingsSheet,
   type SettingsSection,
+  AboutSheet,
+  FeedbackSheet,
+  FirstRunSheet,
+  LicensesSheet,
+  PrivacySheet,
+  UninstallSheet,
   CommandsSection,
   playChime,
   type SortMode,
@@ -327,7 +333,20 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   // A side tab merge waiting on the clash dialog, and the last merge's undo toast (D5).
   const [merging, setMerging] = useState<{ from: SideTab; into: SideTab; clashes: MergeClash[] }>();
   const [mergeToast, setMergeToast] = useState<{ undoId: string; text: string }>();
-  const [sheet, setSheet] = useState<"status" | "settings" | "prompts" | "insert" | "save-prompt">();
+  const [sheet, setSheet] = useState<
+    | "status"
+    | "settings"
+    | "prompts"
+    | "insert"
+    | "save-prompt"
+    | "first-run"
+    | "about"
+    | "licenses"
+    | "privacy"
+    | "feedback-email"
+    | "feedback-issue"
+    | "uninstall"
+  >();
   const [toSave, setToSave] = useState("");
   const [libraryKey, setLibraryKey] = useState<string>();
   // Text panes' documents as their panes last reported them: titles and unsaved edits (D27).
@@ -696,6 +715,16 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         return;
       case "settings":
         return setSheet((s) => (s === "settings" ? undefined : "settings"));
+      // The Help menu and About (add-public-release D7, D9): chordless, so not in actions.json.
+      case "about":
+      case "licenses":
+      case "privacy":
+      case "uninstall":
+        return setSheet(id as "about" | "licenses" | "privacy" | "uninstall");
+      case "feedback_email":
+        return setSheet("feedback-email");
+      case "feedback_issue":
+        return setSheet("feedback-issue");
       case "insert":
         if (!focused || !activeTab || transcriptOf(activeTab.layout, focused)) return setError("Focus a terminal pane to insert.");
         return setSheet((s) => (s === "insert" ? undefined : "insert"));
@@ -911,7 +940,15 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   useEffect(() => {
     let gone = false;
     let off: (() => void) | undefined;
-    const load = () => void host.settings().then((s) => !gone && setAppSettings(s), () => undefined);
+    let asked = false;
+    const load = () =>
+      void host.settings().then((s) => {
+        if (gone) return;
+        setAppSettings(s);
+        // The first-run screen opens once, from the stored settings, never from the defaults.
+        if (!asked && !s.firstRunDone) setSheet("first-run");
+        asked = true;
+      }, () => undefined);
     load();
     void host.onSettings(load).then((o) => (gone ? o() : (off = o)));
     return () => {
@@ -1751,6 +1788,19 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                           </button>
                         </PaneHead>
                       )}
+                      {appSettings.hook === "off" && labels[paneId]?.program === "claude" && (
+                        <div className="ao-bar-wait resume-bar hook-off-bar" role="status">
+                          <span className="w">Claude hook is off</span>
+                          <span className="grow small ao-dim">no Claude status or transcript for this session</span>
+                          <button
+                            type="button"
+                            className="ao-btn primary"
+                            onClick={() => void host.setSettings({ ...appSettings, hook: "on" }).catch((e: unknown) => setError(String(e)))}
+                          >
+                            Turn on
+                          </button>
+                        </div>
+                      )}
                       {resume && (
                         <div className="ao-bar-wait resume-bar" role="status">
                           <span className="w">Claude session {resume}</span>
@@ -2043,6 +2093,16 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           }}
         />
       )}
+      {sheet === "first-run" && (
+        <FirstRunSheet host={host} onError={setError} onClose={closeSheet} onPrivacy={() => setSheet("privacy")} />
+      )}
+      {sheet === "about" && <AboutSheet host={host} onError={setError} onClose={closeSheet} onLicenses={() => setSheet("licenses")} />}
+      {sheet === "licenses" && <LicensesSheet onClose={closeSheet} />}
+      {sheet === "privacy" && <PrivacySheet onClose={appSettings.firstRunDone ? closeSheet : () => setSheet("first-run")} />}
+      {(sheet === "feedback-email" || sheet === "feedback-issue") && (
+        <FeedbackSheet key={sheet} host={host} route={sheet === "feedback-email" ? "email" : "issue"} onError={setError} onClose={closeSheet} />
+      )}
+      {sheet === "uninstall" && <UninstallSheet host={host} onError={setError} onClose={closeSheet} />}
       {sheet === "settings" && (
         <SettingsSheet
           section={settingsSection}

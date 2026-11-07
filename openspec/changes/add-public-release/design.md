@@ -31,7 +31,7 @@ See proposal.md › Why. The state this design builds on:
 
 ## Decisions
 
-### D1. FSL-1.1-Apache-2.0, CLA for contributions
+### D1. FSL-1.1-ALv2, CLA for contributions
 `LICENSE` holds the FSL text with "Apache 2.0" as the future license and "PANTOPIX RO" as the
 licensor. `CONTRIBUTING.md` asks for the CLA through the CLA Assistant GitHub app.
 Rejected:
@@ -103,15 +103,16 @@ field.
 
 Rejected: a separate `consent` table. One more table for one value.
 
-### D6. First run is "no support folder yet"
-The check runs before `launcher::install` creates the folder. A `firstRunDone` setting
-records the end of the screen, so a support folder restored from Time Machine without the
-setting shows the screen once more.
-
-The screen is a sheet in the first window: Terminescu, the helpers list, a hook switch (on by
-default, with "Not now"), and a link to Privacy.
-
-Rejected: a separate window. It would race the first window's focus and its menu state.
+### D6. First run is "hook unasked and first run not done"
+The screen shows while `hook` is `unasked` and `firstRunDone` is false; finishing it, either
+way, sets `firstRunDone`. A Mac whose Claude Code settings already hold the hook resolves to
+`on` at launch and marks the first run done, so the owner never sees it. The screen is a
+sheet in the first window: Terminescu, the helpers list, a hook switch (on by default, with
+"Not now"), and a link to Privacy. The toggle in Settings › Shell changes `hook`, and
+`settings_set` edits Claude Code's settings before it saves, so a failed edit saves nothing.
+Rejected: keying the screen on a missing support folder. The launch creates the folder before
+the window opens, and a crash mid-screen would skip it for good. Also rejected: a separate
+window, which races the first window's focus and its menu state.
 
 ### D7. Help menu and About as app sheets
 `actions.json` gains a `Help` menu:

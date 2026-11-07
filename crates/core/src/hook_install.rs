@@ -66,6 +66,46 @@ fn is_ours(command: &str) -> bool {
 
 /// Rewrites `settings` in place; returns true when anything changed.
 pub fn apply(settings: &mut Map<String, Value>, command: &str) -> Result<bool, &'static str> {
+    rewrite(settings, Some(command))
+}
+
+/// Drops every Terminescu entry and the groups and events left empty by it, and nothing else
+/// (add-public-release D5); returns true when anything changed.
+pub fn remove(settings: &mut Map<String, Value>) -> Result<bool, &'static str> {
+    if !settings.contains_key("hooks") {
+        return Ok(false);
+    }
+    let changed = rewrite(settings, None)?;
+    if matches!(settings.get("hooks"), Some(Value::Object(h)) if h.is_empty()) {
+        settings.remove("hooks");
+    }
+    Ok(changed)
+}
+
+/// Whether `settings` hold any Terminescu hook entry.
+pub fn has_ours(settings: &Map<String, Value>) -> bool {
+    let Some(Value::Object(hooks)) = settings.get("hooks") else {
+        return false;
+    };
+    hooks
+        .values()
+        .filter_map(Value::as_array)
+        .flatten()
+        .any(|group| {
+            group
+                .get("hooks")
+                .and_then(Value::as_array)
+                .is_some_and(|list| {
+                    list.iter().any(|h| {
+                        h.get("command")
+                            .and_then(Value::as_str)
+                            .is_some_and(is_ours)
+                    })
+                })
+        })
+}
+
+fn rewrite(settings: &mut Map<String, Value>, command: Option<&str>) -> Result<bool, &'static str> {
     let before = Value::Object(settings.clone());
     let hooks = settings
         .entry("hooks")
@@ -92,6 +132,9 @@ pub fn apply(settings: &mut Map<String, Value>, command: &str) -> Result<bool, &
         });
     }
     hooks.retain(|_, groups| !matches!(groups, Value::Array(g) if g.is_empty()));
+    let Some(command) = command else {
+        return Ok(!same_order(&before, settings));
+    };
     for event in EVENTS {
         let groups = hooks
             .entry(event.to_string())
@@ -114,21 +157,62 @@ fn same_order(before: &Value, after: &Map<String, Value>) -> bool {
 /// Installs the hook into the settings file at `path`, creating it when missing. The write goes
 /// through a temporary file and a rename, so Claude never reads half a file.
 pub fn install(path: &Path, cli: &Path) -> Result<bool, InstallError> {
+    let command = command_for(cli);
+    edit(path, |s| apply(s, &command))
+}
+
+/// The launch step (add-public-release D5): resolves the answer, where an entry already in the
+/// file counts as consent, and installs the hook only for `On`. Returns the resolved answer.
+pub fn at_launch(
+    path: &Path,
+    cli: &Path,
+    consent: crate::settings::HookConsent,
+) -> (crate::settings::HookConsent, Result<bool, InstallError>) {
+    let now = consent.at_launch(present(path));
+    let done = if now == crate::settings::HookConsent::On {
+        install(path, cli)
+    } else {
+        Ok(false)
+    };
+    (now, done)
+}
+
+/// Removes every Terminescu entry from the settings file at `path` and leaves the rest as it
+/// was; a missing file stays missing.
+pub fn uninstall(path: &Path) -> Result<bool, InstallError> {
+    if std::fs::symlink_metadata(path).is_err() {
+        return Ok(false);
+    }
+    edit(path, remove)
+}
+
+/// Whether the settings file at `path` holds a Terminescu entry; an unreadable file holds none.
+pub fn present(path: &Path) -> bool {
+    read(path).is_ok_and(|s| has_ours(&s))
+}
+
+fn read(path: &Path) -> Result<Map<String, Value>, InstallError> {
+    match std::fs::read(path) {
+        Ok(bytes) if bytes.iter().all(u8::is_ascii_whitespace) => Ok(Map::new()),
+        Ok(bytes) => match serde_json::from_slice::<Value>(&bytes) {
+            Ok(Value::Object(m)) => Ok(m),
+            Ok(_) => Err(InstallError::Shape(path.into(), "a non-object top level")),
+            Err(e) => Err(InstallError::NotJson(path.into(), e)),
+        },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Map::new()),
+        Err(e) => Err(e.into()),
+    }
+}
+
+fn edit(
+    path: &Path,
+    change: impl FnOnce(&mut Map<String, Value>) -> Result<bool, &'static str>,
+) -> Result<bool, InstallError> {
     // A settings file linked from a dotfiles folder: write the real file, keep the link.
     let real = std::fs::canonicalize(path).ok();
     let path = real.as_deref().unwrap_or(path);
-    let mut settings = match std::fs::read(path) {
-        Ok(bytes) if bytes.iter().all(u8::is_ascii_whitespace) => Map::new(),
-        Ok(bytes) => match serde_json::from_slice::<Value>(&bytes) {
-            Ok(Value::Object(m)) => m,
-            Ok(_) => return Err(InstallError::Shape(path.into(), "a non-object top level")),
-            Err(e) => return Err(InstallError::NotJson(path.into(), e)),
-        },
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Map::new(),
-        Err(e) => return Err(e.into()),
-    };
-    let changed = apply(&mut settings, &command_for(cli))
-        .map_err(|what| InstallError::Shape(path.into(), what))?;
+    let mut settings = read(path)?;
+    let changed = change(&mut settings).map_err(|what| InstallError::Shape(path.into(), what))?;
     if !changed {
         return Ok(false);
     }
@@ -252,5 +336,65 @@ mod tests {
         assert!(!is_ours("/usr/local/bin/terminescu status done"));
         assert!(!is_ours("my-terminescu hook"));
         assert!(!is_ours("say hook"));
+    }
+
+    #[test]
+    fn hook_uninstall_keeps_other_hooks() {
+        let path = temp();
+        let theirs = json!({
+            "model": "opus",
+            "hooks": {
+                "Stop": [{ "hooks": [{ "type": "command", "command": "say done" }] }]
+            }
+        });
+        std::fs::write(&path, serde_json::to_string_pretty(&theirs).unwrap()).unwrap();
+        install(&path, Path::new(CLI)).unwrap();
+        assert!(present(&path));
+        assert!(uninstall(&path).unwrap());
+        assert!(!present(&path));
+        let v: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(v, theirs, "only Terminescu's entries go");
+        assert!(!uninstall(&path).unwrap(), "a second run changes nothing");
+    }
+
+    #[test]
+    fn uninstall_drops_a_hooks_object_it_emptied_and_leaves_a_missing_file_missing() {
+        let path = temp();
+        std::fs::write(&path, r#"{"model":"opus"}"#).unwrap();
+        install(&path, Path::new(CLI)).unwrap();
+        uninstall(&path).unwrap();
+        let v: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(v, json!({ "model": "opus" }));
+
+        let gone = temp().with_file_name("absent.json");
+        assert!(!uninstall(&gone).unwrap());
+        assert!(!gone.exists());
+        assert!(!present(&gone));
+    }
+
+    #[test]
+    fn hook_off_leaves_settings() {
+        use crate::settings::HookConsent;
+        let path = temp();
+        install(&path, Path::new("/old/place/terminescu")).unwrap();
+        let before = std::fs::read(&path).unwrap();
+        let (now, done) = at_launch(&path, Path::new(CLI), HookConsent::Off);
+        assert_eq!(now, HookConsent::Off);
+        assert!(!done.unwrap());
+        assert_eq!(std::fs::read(&path).unwrap(), before, "byte for byte");
+
+        let fresh = temp();
+        std::fs::write(&fresh, "{}\n").unwrap();
+        let (now, _) = at_launch(&fresh, Path::new(CLI), HookConsent::Unasked);
+        assert_eq!(now, HookConsent::Unasked);
+        assert_eq!(
+            std::fs::read_to_string(&fresh).unwrap(),
+            "{}\n",
+            "no consent, no edit"
+        );
+
+        let (now, done) = at_launch(&path, Path::new(CLI), HookConsent::Unasked);
+        assert_eq!(now, HookConsent::On, "an existing entry counts as consent");
+        assert!(done.unwrap(), "the entry moves to the current CLI");
     }
 }
