@@ -135,6 +135,11 @@ pub struct Grid<T> {
 
     /// Maximum number of lines in history.
     max_scroll_limit: usize,
+
+    // Terminescu patch: see VENDORED.md.
+    /// Rows that scrolled off the top of the screen into history since the grid was created,
+    /// including those the history limit already dropped.
+    scrolled_rows: u64,
 }
 
 impl<T: GridCell + Default + PartialEq> Grid<T> {
@@ -147,7 +152,16 @@ impl<T: GridCell + Default + PartialEq> Grid<T> {
             cursor: Cursor::default(),
             lines,
             columns,
+            scrolled_rows: 0,
         }
+    }
+
+    // Terminescu patch: read-only counter for anchoring marks to rows. See VENDORED.md.
+
+    /// Rows that scrolled off the top of the screen into history so far. The row at screen line
+    /// `l` has the absolute number `scrolled_rows() + l`, which stays put while the grid scrolls.
+    pub fn scrolled_rows(&self) -> u64 {
+        self.scrolled_rows
     }
 
     /// Update the size of the scrollback history.
@@ -272,6 +286,7 @@ impl<T: GridCell + Default + PartialEq> Grid<T> {
         if region.start == 0 {
             // Create scrollback for the new lines.
             self.increase_scroll_limit(positions);
+            self.scrolled_rows += positions as u64;
 
             // Swap the lines fixed at the top to their target positions after rotation.
             //

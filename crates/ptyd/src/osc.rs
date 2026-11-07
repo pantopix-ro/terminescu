@@ -38,7 +38,14 @@ pub struct OscScanner {
 impl OscScanner {
     /// Calls `found` with the payload of every OSC that ends in `bytes`.
     pub fn feed(&mut self, bytes: &[u8], mut found: impl FnMut(&[u8])) {
-        for &b in bytes {
+        self.feed_at(bytes, |payload, _| found(payload));
+    }
+
+    /// Like [`feed`](Self::feed), and also passes the offset in `bytes` just past the
+    /// terminator. A sequence that began in an earlier chunk ends in this one, so the offset
+    /// always lies in `bytes`.
+    pub fn feed_at(&mut self, bytes: &[u8], mut found: impl FnMut(&[u8], usize)) {
+        for (i, &b) in bytes.iter().enumerate() {
             self.state = match (self.state, b) {
                 (State::Ground, 0x1b) => State::Esc,
                 (State::Ground, _) => State::Ground,
@@ -51,7 +58,7 @@ impl OscScanner {
                 (State::Esc, _) => State::Ground,
                 (State::Osc | State::OscEsc, 0x07) | (State::OscEsc, b'\\') => {
                     if !self.overflow {
-                        found(&self.payload);
+                        found(&self.payload, i + 1);
                     }
                     State::Ground
                 }
@@ -256,6 +263,16 @@ mod tests {
         ]
         .concat();
         assert_eq!(scan(&[&long]), ["133;C"], "an overlong payload is dropped");
+    }
+
+    #[test]
+    fn reports_where_each_sequence_ends() {
+        let mut s = OscScanner::default();
+        let mut ends = Vec::new();
+        s.feed_at(b"a\x1b]133;A\x07b\x1b]7;x\x1b", |_, end| ends.push(end));
+        s.feed_at(b"\\cd\x1b]1", |_, end| ends.push(end));
+        s.feed_at(b"33;C\x07", |_, end| ends.push(end));
+        assert_eq!(ends, [9, 1, 5]);
     }
 
     #[test]

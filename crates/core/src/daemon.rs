@@ -13,8 +13,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use terminescu_protocol::client::{Client, ClientError};
 use terminescu_protocol::{
-    Control, FEATURE_SHELL, FEATURE_VAR_MOVE, FEATURE_VARS, Frame, PaneId, PaneInfo, ShellState,
-    SpawnSpec, Var, VarMode, decode, encode,
+    Control, FEATURE_CLEAR, FEATURE_SHELL, FEATURE_VAR_MOVE, FEATURE_VARS, Frame, PaneId, PaneInfo,
+    ShellState, SpawnSpec, Var, VarMode, decode, encode,
 };
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
@@ -75,6 +75,8 @@ pub struct DaemonClient {
     pub side_vars: bool,
     /// The daemon moves variables between side tabs (`FEATURE_VAR_MOVE`).
     pub var_move: bool,
+    /// The daemon clears its copy of a pane's history on request (`FEATURE_CLEAR`).
+    pub clear: bool,
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -88,13 +90,14 @@ impl DaemonClient {
         let client = Client::connect_with(
             socket,
             concat!("terminescu-core ", env!("CARGO_PKG_VERSION")),
-            &[FEATURE_SHELL, FEATURE_VARS, FEATURE_VAR_MOVE],
+            &[FEATURE_SHELL, FEATURE_VARS, FEATURE_VAR_MOVE, FEATURE_CLEAR],
         )?;
         let version = client.version;
         let instance = client.instance.clone();
         let pushes_shell = client.features.iter().any(|f| f == FEATURE_SHELL);
         let side_vars = client.features.iter().any(|f| f == FEATURE_VARS);
         let var_move = client.features.iter().any(|f| f == FEATURE_VAR_MOVE);
+        let clear = client.features.iter().any(|f| f == FEATURE_CLEAR);
         let (stream, leftover) = client.into_parts();
         stream.set_read_timeout(None)?;
         let reader = stream.try_clone()?;
@@ -112,6 +115,7 @@ impl DaemonClient {
             pushes_shell,
             side_vars,
             var_move,
+            clear,
         })
     }
 
@@ -161,6 +165,16 @@ impl DaemonClient {
 
     pub fn resize(&self, pane: PaneId, cols: u16, rows: u16) -> io::Result<()> {
         self.send(&Frame::Control(Control::Resize { pane, cols, rows }))
+    }
+
+    /// Clears the daemon's copy of the pane's history (and, without `keep_screen`, moves the
+    /// cursor's row to the top) so a reattach does not bring it back. Returns false, sending
+    /// nothing, when the daemon is too old to know the request or the send failed.
+    pub fn clear(&self, pane: PaneId, keep_screen: bool) -> bool {
+        self.clear
+            && self
+                .send(&Frame::Control(Control::Clear { pane, keep_screen }))
+                .is_ok()
     }
 
     pub fn input(&self, pane: PaneId, data: Vec<u8>) -> io::Result<()> {
