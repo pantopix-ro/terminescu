@@ -8,6 +8,9 @@ describe("findEmails", () => {
     expect(findEmails("to mailto:ops+alerts@acme.example.org now")).toEqual([{ text: "ops+alerts@acme.example.org", start: 10, end: 37 }]);
     expect(findEmails("https://user@example.com/x")).toEqual([]);
     expect(findEmails("git@github")).toEqual([]);
+    // Package versions and git remotes are no addresses.
+    expect(findEmails("added react@18.3.1 and pnpm@9.1.0")).toEqual([]);
+    expect(findEmails("clone git@github.com:acme/api.git")).toEqual([]);
   });
 });
 

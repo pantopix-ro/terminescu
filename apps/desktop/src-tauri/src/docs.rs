@@ -409,35 +409,74 @@ pub fn doc_open_path(
     doc_open_file(state, side_tab, full.display().to_string(), beside)
 }
 
-/// Extensions macOS runs or installs on `open`, which a link must never start (task 8.49).
-const LAUNCHES: [&str; 14] = [
+/// Extensions macOS runs, installs, mounts or follows on `open`, which a link must never start
+/// (task 8.49). Checked on the link's own name and on what it resolves to.
+const LAUNCHES: &[&str] = &[
     "app",
     "command",
     "tool",
     "sh",
     "zsh",
     "bash",
+    "csh",
+    "ksh",
+    "fish",
     "terminal",
     "pkg",
     "mpkg",
     "workflow",
+    "action",
     "scpt",
+    "scptd",
     "applescript",
     "jar",
     "prefpane",
+    "fileloc",
+    "webloc",
+    "inetloc",
+    "url",
+    "dmg",
+    "iso",
+    "sparseimage",
+    "sparsebundle",
+    "bundle",
+    "plugin",
+    "osax",
+    "saver",
+    "kext",
+    "xpc",
+    "appex",
+    "service",
+    "mobileconfig",
+    "py",
+    "pl",
+    "rb",
 ];
 
-/// Whether opening `path` with its default app would run something: a bundle or script by its
-/// extension, or a file with an execute bit.
-fn opens_a_program(path: &Path) -> bool {
-    let ext = path
-        .extension()
-        .map(|e| e.to_string_lossy().to_ascii_lowercase());
-    if ext.is_some_and(|e| LAUNCHES.contains(&e.as_str())) {
-        return true;
-    }
+fn launches(path: &Path) -> bool {
+    path.extension()
+        .map(|e| e.to_string_lossy().to_ascii_lowercase())
+        .is_some_and(|e| LAUNCHES.contains(&e.as_str()))
+}
+
+/// The real path to hand to `open` when opening `path` with its default app runs nothing: a
+/// plain folder, or a regular file with no execute bit and no program's extension. Symlinks
+/// are followed first, so a link named `notes.txt` to an app is refused, and the resolved
+/// path is what `open` gets.
+fn safe_to_open(path: &Path) -> Option<PathBuf> {
     use std::os::unix::fs::PermissionsExt;
-    std::fs::metadata(path).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+    let real = std::fs::canonicalize(path).ok()?;
+    if launches(path) || launches(&real) {
+        return None;
+    }
+    let meta = std::fs::metadata(&real).ok()?;
+    let ok = if meta.is_dir() {
+        // A folder with an extension is a bundle.
+        real.extension().is_none()
+    } else {
+        meta.is_file() && meta.permissions().mode() & 0o111 == 0
+    };
+    ok.then_some(real)
 }
 
 /// A path link's right-click menu (task 8.49): Reveal in Finder (`open -R`) or Open with the
@@ -456,18 +495,25 @@ pub fn path_open(
     if !full.exists() {
         return Err(format!("No file {}", full.display()));
     }
-    if !reveal && opens_a_program(&full) {
-        return Err(format!(
-            "{} is a program or script; Reveal in Finder shows it instead",
-            full.display()
-        ));
-    }
-    // `full` is absolute, so it never reads as an `open` option.
+    let target = if reveal {
+        full
+    } else {
+        safe_to_open(&full).ok_or_else(|| {
+            format!(
+                "{} is a program, script or bundle; Reveal in Finder shows it instead",
+                full.display()
+            )
+        })?
+    };
+    // `target` is absolute, so it never reads as an `open` option.
     let mut cmd = std::process::Command::new("/usr/bin/open");
     if reveal {
         cmd.arg("-R");
     }
-    cmd.arg(&full).spawn().map(drop).map_err(|e| e.to_string())
+    cmd.arg(&target)
+        .spawn()
+        .map(drop)
+        .map_err(|e| e.to_string())
 }
 
 /// A document with its text, when a pane mounts or a window takes over a tab.
@@ -638,19 +684,37 @@ fn walk(root: &Path) -> Vec<String> {
 mod tests {
     #[test]
     fn a_link_never_opens_a_program() {
-        use super::opens_a_program;
+        use super::safe_to_open;
+        use std::os::unix::fs::{PermissionsExt, symlink};
         let dir = std::env::temp_dir().join(format!("terminescu-open-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("Tool.app")).unwrap();
+        std::fs::create_dir_all(dir.join("notes")).unwrap();
         let notes = dir.join("notes.md");
         std::fs::write(&notes, "x").unwrap();
         let script = dir.join("build");
         std::fs::write(&script, "#!/bin/sh").unwrap();
-        use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
-        assert!(!opens_a_program(&notes));
-        assert!(opens_a_program(&script));
-        assert!(opens_a_program(Path::new("/Applications/Calculator.app")));
-        assert!(opens_a_program(Path::new("/tmp/run.COMMAND")));
+        std::fs::write(dir.join("run.COMMAND"), "x").unwrap();
+        std::fs::write(dir.join("site.webloc"), "x").unwrap();
+        symlink(dir.join("Tool.app"), dir.join("readme.txt")).unwrap();
+        symlink(dir.join("run.COMMAND"), dir.join("log.txt")).unwrap();
+        symlink(&notes, dir.join("todo.txt")).unwrap();
+        let real = std::fs::canonicalize(&notes).unwrap();
+        assert_eq!(safe_to_open(&notes), Some(real.clone()));
+        assert_eq!(safe_to_open(&dir.join("todo.txt")), Some(real));
+        assert!(safe_to_open(&dir.join("notes")).is_some());
+        for bad in [
+            "build",
+            "Tool.app",
+            "run.COMMAND",
+            "site.webloc",
+            "readme.txt",
+            "log.txt",
+            "gone.md",
+        ] {
+            assert_eq!(safe_to_open(&dir.join(bad)), None, "{bad}");
+        }
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

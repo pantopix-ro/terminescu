@@ -32,6 +32,32 @@ pub enum ImportError {
     NotRecognised,
     #[error("the iTerm2 colour preset is incomplete: \"{0}\" is missing or unreadable")]
     Incomplete(String),
+    #[error("{0} is not a file of at most 4 MB")]
+    TooBig(String),
+}
+
+/// The largest preferences file or preset read; real ones are a few KB.
+const MAX_FILE: u64 = 4 * 1024 * 1024;
+
+/// Reads a regular file of at most `MAX_FILE` bytes, so a FIFO, a device or a huge file
+/// picked in the dialog cannot hang or exhaust the app.
+fn read_small(path: &Path) -> Result<Vec<u8>, ImportError> {
+    use std::io::Read;
+    let shown = || path.display().to_string();
+    // Checked before opening: opening a FIFO for reading waits for a writer.
+    let meta = std::fs::metadata(path).map_err(|e| ImportError::Io(shown(), e))?;
+    if !meta.is_file() || meta.len() > MAX_FILE {
+        return Err(ImportError::TooBig(shown()));
+    }
+    let file = std::fs::File::open(path).map_err(|e| ImportError::Io(shown(), e))?;
+    let mut bytes = Vec::new();
+    file.take(MAX_FILE + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| ImportError::Io(shown(), e))?;
+    if bytes.len() as u64 > MAX_FILE {
+        return Err(ImportError::TooBig(shown()));
+    }
+    Ok(bytes)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -100,7 +126,7 @@ pub fn terminal_app_default() -> Result<Profile, ImportError> {
         .filter(|h| !h.is_empty())
         .ok_or(ImportError::NoHome)?;
     let path = Path::new(&home).join("Library/Preferences/com.apple.Terminal.plist");
-    let bytes = std::fs::read(&path).map_err(|e| ImportError::Io(path.display().to_string(), e))?;
+    let bytes = read_small(&path)?;
     terminal_app_profile_from(&bytes)
 }
 
@@ -125,7 +151,7 @@ pub fn terminal_app_profile_from(plist_bytes: &[u8]) -> Result<Profile, ImportEr
 /// Import a `.terminal` profile or an `.itermcolors` preset. The extension is a hint; the
 /// content decides when it is missing or wrong.
 pub fn import_file(path: &Path) -> Result<Profile, ImportError> {
-    let bytes = std::fs::read(path).map_err(|e| ImportError::Io(path.display().to_string(), e))?;
+    let bytes = read_small(path)?;
     let root = parse_plist(&bytes)?;
     let dict = root.as_dictionary().ok_or(ImportError::NotRecognised)?;
     let stem = path
@@ -203,7 +229,7 @@ fn profile_from_window_settings(d: &Dictionary, fallback_name: &str) -> Profile 
             .to_string(),
         colors: Some(colors),
         font_family: font.as_ref().and_then(|(f, _)| family_from_postscript(f)),
-        font_size: font.map(|(_, s)| s).filter(|s| *s > 0.0),
+        font_size: font.map(|(_, s)| s).filter(|s| s.is_finite() && *s > 0.0),
         background_opacity: background.map(|c| c.opacity_percent()),
         cursor,
         cursor_blink: d.get("CursorBlink").and_then(Value::as_boolean),
@@ -678,6 +704,12 @@ mod tests {
             import_file(Path::new("/nonexistent/none.terminal")),
             Err(ImportError::Io(..))
         ));
+        assert!(matches!(
+            import_file(&std::env::temp_dir()),
+            Err(ImportError::TooBig(_))
+        ));
+        let big = write_temp("big.terminal", &vec![b' '; (MAX_FILE + 1) as usize]);
+        assert!(matches!(import_file(&big), Err(ImportError::TooBig(_))));
         let msg = ImportError::NotRecognised.to_string();
         assert!(msg.contains("Terminal.app profile"));
     }

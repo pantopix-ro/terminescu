@@ -312,6 +312,12 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const [maxByTab, setMaxByTab] = useState<Record<string, string>>({});
   const maxPane = activeTab && panes.length > 1 && panes.includes(maxByTab[activeTab.id]!) ? maxByTab[activeTab.id] : undefined;
   const restore = (tabId: string) => setMaxByTab((m) => (tabId in m ? Object.fromEntries(Object.entries(m).filter(([t]) => t !== tabId)) : m));
+  // A maximized pane that left its tab, or a tab down to one pane, forgets it, so a pane added
+  // later by any route shows beside the others.
+  const staleMax = activeTab && activeTab.id in maxByTab && !maxPane ? activeTab.id : undefined;
+  useEffect(() => {
+    if (staleMax) restore(staleMax);
+  }, [staleMax]);
 
   const [error, setError] = useState<string>();
   const [palette, setPalette] = useState(false);
@@ -589,9 +595,27 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     return true;
   };
 
+  // A text field outside the panes and the find bar keeps ⌘↑ and ⌘↓ as caret moves, and ⌘F
+  // and ⌘G do nothing there: the menu takes the chords, so the caret moves here.
+  const keepForField = (id: string) => {
+    const el = document.activeElement;
+    if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) return false;
+    if (el.closest(".text-pane, .find-bar, .term-pane")) return false;
+    if (id === "prompt_previous" || id === "prompt_next") {
+      const at = id === "prompt_previous" ? 0 : el.value.length;
+      try {
+        el.setSelectionRange(at, at);
+      } catch {
+        // number and range inputs have no caret
+      }
+    }
+    return true;
+  };
+
   const act = (id: string) => {
     if (FIELD_CHORDS.has(id) && passToField(id)) return;
     if (TEXT_CHORDS.has(id) && passToText(id)) return;
+    if (TEXT_CHORDS.has(id) && keepForField(id)) return;
     const nth = /^(tab|side)_(\d)$/.exec(id);
     if (nth) {
       const list = nth[1] === "tab" ? tabs : shownSides;

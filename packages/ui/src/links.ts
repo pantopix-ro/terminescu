@@ -5,8 +5,9 @@ export interface TerminalLink {
   text: string;
 }
 
-// A plain address; `mailto:` before it stays out of the link.
-const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/g;
+// A plain address with a letters-only top-level domain, so `react@18.3.1` is no address;
+// `mailto:` before it stays out of the link.
+const EMAIL = /[A-Za-z0-9._%+-]+@(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}(?![A-Za-z0-9-])/g;
 
 /** Email addresses in one line of terminal text, with their string offsets (end exclusive). */
 export function findEmails(line: string): { text: string; start: number; end: number }[] {
@@ -15,6 +16,8 @@ export function findEmails(line: string): { text: string; start: number; end: nu
     const before = line[m.index - 1];
     // Part of a URL (`https://user@host`) or a path is the other providers' link.
     if (before === "/" || (before === ":" && !line.slice(0, m.index).endsWith("mailto:"))) continue;
+    // `git@github.com:org/repo.git` is a git remote, not an address.
+    if (line[m.index + m[0].length] === ":") continue;
     let text = m[0].replace(/[.-]+$/, "");
     if (text.startsWith(".") || !text.includes("@")) continue;
     out.push({ text, start: m.index, end: m.index + text.length });
