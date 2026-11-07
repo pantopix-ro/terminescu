@@ -181,6 +181,12 @@ that is not installed SHALL fall back to SF Mono.
 - **THEN** the history is gone, the screen keeps its lines, and a reattach after a restart
   shows no history either
 
+#### Scenario: Jump to the last prompt
+- **WHEN** three commands have run in a terminal, the second failed, and the person presses `⌘↑`
+  twice and then `⌘⇧O`
+- **THEN** the view scrolls to the third and then the second command's prompt, the scrollbar
+  shows the second prompt's mark in red, and the second command's output is selected
+
 #### Scenario: Pane header tooltip
 - **WHEN** the person hovers a split pane's header whose name is cut off
 - **THEN** a tooltip shows the whole name

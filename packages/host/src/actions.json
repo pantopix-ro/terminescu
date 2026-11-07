@@ -296,6 +296,24 @@
    "accel": "Ctrl+Cmd+9"
   },
   {
+   "id": "prompt_previous",
+   "label": "Previous Prompt",
+   "menu": "Edit",
+   "accel": "Cmd+Up"
+  },
+  {
+   "id": "prompt_next",
+   "label": "Next Prompt",
+   "menu": "Edit",
+   "accel": "Cmd+Down"
+  },
+  {
+   "id": "select_output",
+   "label": "Select Command Output",
+   "menu": "Edit",
+   "accel": "Cmd+Shift+O"
+  },
+  {
    "id": "clear_to_start",
    "label": "Clear to Start",
    "menu": "Edit",

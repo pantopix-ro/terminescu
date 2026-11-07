@@ -99,6 +99,7 @@ import {
   TextPane,
   terminalSelection,
   clearTerminal,
+  promptAction,
   textPane,
   type ContextMode,
   type PaletteItem,
@@ -232,7 +233,7 @@ const selectable = new Set(["palette", "send_to_tab"]);
 /** Menu chords that a focused dialog field may use for itself. */
 const FIELD_CHORDS = new Set(["save", "save_as", "return_edit", "send_to_pane", "send_to_tab"]);
 /** Menu chords a focused text pane keeps for its editor: its own search and line jumps. */
-const TEXT_CHORDS = new Set(["find", "find_next", "find_previous"]);
+const TEXT_CHORDS = new Set(["find", "find_next", "find_previous", "prompt_previous", "prompt_next"]);
 const paletteActions = (actions: readonly ActionDef[]) => actions.filter((a) => !selectable.has(a.id) && !/^(tab|side)_\d$/.test(a.id));
 
 /** Where a tab dragged over the panes would land (task 8.32); `small` means it would not fit. */
@@ -674,6 +675,11 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         if (!focused || !activeTab || !terminalsOf(activeTab.layout).includes(focused)) return;
         if (findPane === focused) searchBar.current?.focus();
         else setFindPane(focused);
+        return;
+      case "prompt_previous":
+      case "prompt_next":
+      case "select_output":
+        if (focused) promptAction(focused, id === "select_output" ? "output" : id === "prompt_previous" ? "previous" : "next");
         return;
       case "clear_to_start":
       case "clear_scrollback":
