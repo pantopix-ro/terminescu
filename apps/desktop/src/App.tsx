@@ -1809,7 +1809,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           </aside>
           <main className="app-main">
             <TabBar
-              tabs={tabs}
+              tabs={appSettings.topTabs ? tabs : []}
               activeId={activeTab?.id}
               agents={agents}
               statuses={statuses}

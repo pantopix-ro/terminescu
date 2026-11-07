@@ -587,6 +587,11 @@ function TerminalSettings({ host, onError }: SettingsSheetProps) {
         <span className="small ao-dim grow">text too close to its background is drawn lighter or darker</span>
       </label>
       <h3 className="ao-pixel ao-dim">Tabs</h3>
+      <label className="srow">
+        <input type="checkbox" checked={settings.topTabs} onChange={(e) => save({ topTabs: e.target.checked })} />
+        <span>Show tabs in the top bar</span>
+        <span className="small ao-dim grow">tabs always show in the sidebar</span>
+      </label>
       <div className="srow">
         <span>Tab text</span>
         <NumberField label="Tab text size" value={settings.tabFontSize} range={TAB_FONT_SIZES} onSave={(v) => save({ tabFontSize: v })} />

@@ -222,7 +222,8 @@ function Row(props: {
   });
   const drag = useDraggable({ id: dragSide(side.id) });
   const group = side.tabs.length > 1;
-  const open = group && (active || expanded) && !collapsed;
+  // A group stays open or closed as the person left it; it starts open (task 8.57).
+  const open = group && expanded && !collapsed;
   // A status background tints the row; otherwise the active row takes the raised panel. The
   // row's own neon (task 8.25) paints the edge and the icon and washes 12% into that
   // background (the Wash board); the status keeps its chip.
@@ -308,7 +309,7 @@ function Row(props: {
           </span>
         )}
         <span className="side-trail">
-        {group && !active && (
+        {group && (
           <button
             type="button"
             className="side-chev"
@@ -416,7 +417,8 @@ function Row(props: {
 
 /**
  * The sidebar: one row per side tab. A side tab with more than one tab is a group and lists its
- * tabs under the row; the active group stays open, a chevron opens the others (D3).
+ * tabs under the row. Each group starts open, and its chevron opens or closes it; switching
+ * rows never closes one (D3, task 8.57).
  */
 /** A tab's row under its group (task 8.51): its own status background, washed with its neon. */
 function kidStyle(t: Tab, shown: Shown | undefined): React.CSSProperties {
@@ -497,7 +499,7 @@ export function SideTabList({
               side={s}
               index={i}
               active={s.id === activeId}
-              expanded={!!expanded[s.id]}
+              expanded={expanded[s.id] ?? true}
               activeTabId={activeTabId}
               dragging={dragging}
               draggingSide={draggingSide}
@@ -509,7 +511,7 @@ export function SideTabList({
               activity={activity}
               onSelect={() => onSelect(s.id)}
               onSelectTab={(t) => onSelectTab(s.id, t)}
-              onToggle={() => setExpanded((m) => ({ ...m, [s.id]: !m[s.id] }))}
+              onToggle={() => setExpanded((m) => ({ ...m, [s.id]: !(m[s.id] ?? true) }))}
               onMenu={onMenu}
               renaming={renaming}
               onRename={onRename}

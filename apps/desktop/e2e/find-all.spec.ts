@@ -13,7 +13,7 @@ const write = (page: Page, pane: string, text: string) =>
 
 test("⌘⇧F finds in all panes and a hit shows the line in its tab", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto("/");
+  await page.goto("/?top-tabs");
   await page.locator(".term-pane").first().click();
   await expect.poll(() => focusedPane(page)).not.toBeNull();
   const first = await focusedPane(page);

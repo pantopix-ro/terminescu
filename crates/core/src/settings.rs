@@ -138,6 +138,8 @@ pub struct Settings {
     pub hook: HookConsent,
     /// The first-run screen was seen to its end (D6).
     pub first_run_done: bool,
+    /// Tabs also show in the top bar; off, they show only in the sidebar (task 8.58).
+    pub top_tabs: bool,
 }
 
 /// The person's answer about the Claude Code hook. `Unasked` turns into `On` when Claude
@@ -235,6 +237,7 @@ impl Default for Settings {
             terminal_keys: TerminalKeys::default(),
             hook: HookConsent::Unasked,
             first_run_done: false,
+            top_tabs: false,
         }
     }
 }

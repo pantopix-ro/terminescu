@@ -645,6 +645,13 @@ buffers once per sheet.
       name gets Claude Code's ✳ in front, in the tab bar and the sidebar shell list, and the
       dock icon bounces once (macOS skips it while the app is in front). Verify:
       `activity.spec.ts`; the bounce by hand.
+- [x] 8.57 Groups stay as left (owner request 2026-11-07): a group in the sidebar starts open
+      and only its chevron opens or closes it; selecting another row no longer folds it, and
+      the active group has a chevron too. Verify: `sidebar-layout.spec.ts`, `windows.spec.ts`.
+- [x] 8.58 Tabs in the sidebar only (owner request 2026-11-07): the setting `topTabs`, off by
+      default, puts the tabs in the top bar too (Settings › Terminal › Tabs); the bar keeps its
+      `+`, its menu and the split hint. The mock's `?top-tabs` turns it on for the specs that
+      use the top bar. Verify: `sidebar-layout.spec.ts`; core default `top_tabs: false`.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

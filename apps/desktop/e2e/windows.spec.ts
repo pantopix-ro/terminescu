@@ -6,7 +6,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 async function start(page: Page) {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto("/");
+  await page.goto("/?top-tabs");
   await expect.poll(() => firstLine(page)).toMatch(/^mock \S+ \$ $/);
   await page.locator(".term-pane").first().click();
 }
@@ -123,7 +123,9 @@ test("⌘T, ⌘N, ⌘1-⌘9 and ⌃⌘1-⌃⌘9 select; a side tab with tabs lis
   await page.keyboard.press("Meta+n");
   await expect(page.locator(".ao-st")).toHaveCount(2);
   await expect(page.locator(".ao-st").last()).toHaveClass(/active/);
-  // The other group folds to its row; the chevron opens it again.
+  // The other group stays open (task 8.57); its chevron closes it and opens it again.
+  await expect(page.locator(".ao-st-kid")).toHaveCount(3);
+  await page.getByLabel("Collapse side tab").click();
   await expect(page.locator(".ao-st-kid")).toHaveCount(0);
   await page.getByLabel("Expand side tab").click();
   await expect(page.locator(".ao-st-kid")).toHaveCount(3);

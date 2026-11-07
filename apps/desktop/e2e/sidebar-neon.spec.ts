@@ -6,7 +6,7 @@ const workspace = (page: Page) => page.evaluate(() => (window as any).__termines
 
 test("new side tabs open with different neon edges", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto("/");
+  await page.goto("/?top-tabs");
   await page.locator(".term-pane").first().click();
   for (let i = 0; i < 3; i++) await page.getByRole("button", { name: "Add a side tab" }).click();
   await expect(page.locator(".ao-st")).toHaveCount(4);
@@ -55,7 +55,7 @@ test("new side tabs open with different neon edges", async ({ page }) => {
 // Task 8.26: each tab has its own neon on its icon and on its square under the row's name.
 test("a side tab's tabs show their neons on their icons and squares", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto("/");
+  await page.goto("/?top-tabs");
   await page.locator(".term-pane").first().click();
   for (let i = 0; i < 2; i++) await page.getByRole("button", { name: "New tab", exact: true }).click();
   const side = (await workspace(page)).windows[0].sideTabs[0];
@@ -79,7 +79,7 @@ test("a side tab's tabs show their neons on their icons and squares", async ({ p
 // Task 8.29: each tab in the tab bar washes its neon into its background and shows its own icon.
 test("tabs in the tab bar take a 12% wash of their neon and each has an icon", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto("/");
+  await page.goto("/?top-tabs");
   await page.locator(".term-pane").first().click();
   for (let i = 0; i < 2; i++) await page.getByRole("button", { name: "New tab", exact: true }).click();
   const tabs: { id: string; accent: string; icon: string }[] = (await workspace(page)).windows[0].sideTabs[0].tabs;
