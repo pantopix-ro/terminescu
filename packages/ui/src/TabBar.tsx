@@ -6,6 +6,7 @@ import { tabAgent, type Agents } from "./agents";
 import { StatusChip } from "./StatusChip";
 import { chipOf, rowStyle, type Builtins } from "./status";
 import { useEffect, useRef, useState } from "react";
+import { NewMenu } from "./NewMenu";
 import { Tip, useTip } from "./Tip";
 import { AskMark, KidIcon, pickAt, RenameInput, tabDirty, tabName, tabRequest, type DocMarks } from "./SideTabList";
 
@@ -159,56 +160,6 @@ function TabItem({
 }
 
 /** The active side tab's tabs, across the top like browser tabs. Drag one to reorder it. */
-/** `+ ▾`: a terminal tab or a text tab. */
-function NewMenu({ onNew, onNewText }: { onNew(): void; onNewText(beside: boolean): void }) {
-  const [open, setOpen] = useState(false);
-  const box = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: PointerEvent) => !box.current?.contains(e.target as Node) && setOpen(false);
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("pointerdown", away);
-    document.addEventListener("keydown", esc);
-    return () => {
-      document.removeEventListener("pointerdown", away);
-      document.removeEventListener("keydown", esc);
-    };
-  }, [open]);
-  return (
-    <span ref={box} className="tab-new-menu">
-      <button type="button" className="ao-tab-new more" aria-label="Choose tab kind" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        ▾
-      </button>
-      {open && (
-        <div role="menu" className="tab-menu ao-frame">
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              onNew();
-            }}
-          >
-            <span className="grow">Terminal</span>
-            <span className="small ao-dim">⌘T</span>
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            title="Hold ⌥ to split the focused pane"
-            onClick={(e) => {
-              setOpen(false);
-              onNewText(e.altKey);
-            }}
-          >
-            <span className="grow">Text</span>
-            <span className="small ao-dim">⌥⌘T</span>
-          </button>
-        </div>
-      )}
-    </span>
-  );
-}
 
 export function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNewText, agents = {}, statuses = {}, builtins = {}, docs = {}, subtitles = {}, activity = {}, renaming, onRenameStart, onRename, onRenameEnd, onIconPick, onEdit }: TabBarProps) {
   const tips = useTip();

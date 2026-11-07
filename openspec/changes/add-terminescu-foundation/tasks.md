@@ -652,6 +652,11 @@ buffers once per sheet.
       default, puts the tabs in the top bar too (Settings › Terminal › Tabs); the bar keeps its
       `+`, its menu and the split hint. The mock's `?top-tabs` turns it on for the specs that
       use the top bar. Verify: `sidebar-layout.spec.ts`; core default `top_tabs: false`.
+- [x] 8.59 Sidebar controls (owner request 2026-11-07): with `topTabs` off the main pane has no
+      top bar. The sidebar's `+` gets a `▾` with Terminal (⌘N) and Text, a new side tab that
+      holds an untitled text; a small `+` on a group's bottom line adds a tab to that group.
+      The sidebar toggle sits on the sidebar's right line by the wordmark, and a row or group
+      tab under the mouse gets the amber line. Verify: `sidebar-layout.spec.ts`.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

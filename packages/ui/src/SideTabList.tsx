@@ -5,6 +5,7 @@ import { actClass, type Activities, type Activity } from "./activity";
 import { DOT, tabAgent, type Agents } from "./agents";
 import { StatusChip } from "./StatusChip";
 import { chipOf, rowStyle, type Builtins, type Chip, type SortMode } from "./status";
+import { NewMenu } from "./NewMenu";
 import { ShellPicker, usePicker } from "./ShellPicker";
 import { Tip, useTip } from "./Tip";
 
@@ -18,6 +19,10 @@ export interface SideTabListProps {
   onSelect(sideTabId: string): void;
   onSelectTab(sideTabId: string, tabId: string): void;
   onNew(): void;
+  /** The + menu's Text: a new side tab that holds an untitled text (task 8.59). */
+  onNewText?(): void;
+  /** The small + under a group's last tab: a new tab in that group (task 8.59). */
+  onNewTab?(sideTabId: string): void;
   /** A tab is being dragged: show the drop targets (task 3.2). */
   dragging: boolean;
   /** The side tab being dragged onto another to merge (D5); rows become the only targets. */
@@ -198,6 +203,7 @@ function Row(props: {
   onSelect(): void;
   onSelectTab(tabId: string): void;
   onToggle(): void;
+  onNewTab?(sideTabId: string): void;
   onMenu?(at: { x: number; y: number }, target: MenuTarget): void;
   renaming?: string;
   onRename?(id: string, title: string | null): void;
@@ -409,6 +415,20 @@ function Row(props: {
               {active && <span>{tabChord(i, side.tabs.length)}</span>}
             </div>
           ))}
+          {props.onNewTab && (
+            <button
+              type="button"
+              className="kid-add"
+              aria-label={`New tab in ${name}`}
+              title="New tab in this group"
+              onClick={(e) => {
+                e.stopPropagation();
+                props.onNewTab!(side.id);
+              }}
+            >
+              <i className="ao-i ao-i-plus" />
+            </button>
+          )}
         </div>
       )}
     </>
@@ -459,6 +479,8 @@ export function SideTabList({
   onSelect,
   onSelectTab,
   onNew,
+  onNewText,
+  onNewTab,
   dragging,
   draggingSide,
   agents = {},
@@ -511,6 +533,7 @@ export function SideTabList({
               activity={activity}
               onSelect={() => onSelect(s.id)}
               onSelectTab={(t) => onSelectTab(s.id, t)}
+              onNewTab={onNewTab}
               onToggle={() => setExpanded((m) => ({ ...m, [s.id]: !(m[s.id] ?? true) }))}
               onMenu={onMenu}
               renaming={renaming}
@@ -541,6 +564,9 @@ export function SideTabList({
             <button type="button" className="side-add" aria-label="Add a side tab" title="New side tab (⌘N)" onClick={onNew}>
               <i className="ao-i ao-i-plus" />
             </button>
+            {onNewText && (
+              <NewMenu onNew={onNew} onNewText={() => onNewText()} hints={["⌘N"]} textTitle="A new side tab with an untitled text" className="side-add more" label="Choose side tab kind" />
+            )}
           </div>
         )}
       </div>

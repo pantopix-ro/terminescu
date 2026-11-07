@@ -31,10 +31,10 @@ async function panes(page: Page): Promise<PaneState[]> {
 
 /** Opens a window with two side tabs of five tabs each. */
 async function openWindow(page: Page) {
-  await page.goto("/");
-  for (let i = 0; i < 4; i++) await page.getByLabel("New tab").click();
+  await page.goto("/?top-tabs");
+  for (let i = 0; i < 4; i++) await page.getByLabel("New tab", { exact: true }).click();
   await page.getByRole("button", { name: "Add a side tab" }).click();
-  for (let i = 0; i < 4; i++) await page.getByLabel("New tab").click();
+  for (let i = 0; i < 4; i++) await page.getByLabel("New tab", { exact: true }).click();
   await expect(page.locator(".term-pane")).toHaveCount(10);
 }
 
