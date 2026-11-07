@@ -897,9 +897,10 @@ impl Runtime {
             let next = agent::on_hook(old, event);
             let after = next.as_ref().map(Agent::view);
             if let Some(a) = next {
-                // Only a waiting session needs its transcript read; a denial fires no hook.
+                // A working or waiting session needs its transcript read: a denial and an
+                // interrupt fire no hook.
                 let tail = match (a.state, &a.transcript) {
-                    (AgentState::Waiting, Some(path)) => match old_tail {
+                    (AgentState::Waiting | AgentState::Running, Some(path)) => match old_tail {
                         Some(t) if t.path() == path => Some(t),
                         _ => Some(Tail::from_end(path)),
                     },
@@ -920,8 +921,8 @@ impl Runtime {
         }
     }
 
-    /// Reads the transcripts of waiting sessions: a denied prompt or a finished turn ends
-    /// Waiting (D34).
+    /// Reads the transcripts of working and waiting sessions: a denied prompt, an interrupt or
+    /// a finished turn ends them (D34).
     fn tail_agents(self) {
         while !self.inner.stopped.load(Ordering::SeqCst) {
             std::thread::sleep(TAIL_POLL);

@@ -22,6 +22,7 @@ describe("activity", () => {
     expect(paneActivity("p", labels, { p: agent("waiting") })).toBe("wait");
     expect(paneActivity("p", labels, { p: agent("idle") })).toBeUndefined();
     expect(paneActivity("p", labels, { p: agent("done") })).toBeUndefined();
+    expect(paneActivity("p", labels, {})).toBeUndefined();
   });
 
   it("a tab takes the most urgent pane", () => {

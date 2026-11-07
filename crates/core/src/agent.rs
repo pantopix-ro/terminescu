@@ -126,10 +126,15 @@ pub fn on_hook(agent: Option<Agent>, event: &Value) -> Option<Agent> {
     Some(a)
 }
 
-/// A transcript line read while the agent waits. A denied prompt fires no hook, so the denial
-/// or the end of the turn in the transcript ends Waiting. Returns whether the state changed.
+/// A transcript line read while the agent works or waits. A denied prompt and an interrupt fire
+/// no hook, so the transcript ends Waiting and Running. Returns whether the state changed.
 pub fn on_entry(agent: &mut Agent, entry: &Entry) -> bool {
-    if agent.state == AgentState::Waiting && entry.kind.ends_waiting() {
+    let ends = match agent.state {
+        AgentState::Waiting => entry.kind.ends_waiting(),
+        AgentState::Running => entry.kind.ends_running(),
+        _ => false,
+    };
+    if ends {
         agent.state = AgentState::Done;
         return true;
     }
@@ -184,5 +189,19 @@ mod tests {
             ev("PostToolUse", json!({})),
         ];
         assert_eq!(run(&events), Some(AgentState::Done));
+    }
+
+    #[test]
+    fn an_interrupt_in_the_transcript_ends_running() {
+        let line = br#"{"type":"user","uuid":"u-1","message":{"role":"user","content":[{"type":"text","text":"[Request interrupted by user]"}]}}"#;
+        let entries = crate::transcript::parse_line(line, 0);
+        let mut a = on_hook(None, &ev("UserPromptSubmit", json!({}))).unwrap();
+        assert_eq!(a.state, AgentState::Running);
+        assert!(entries.iter().any(|e| on_entry(&mut a, e)));
+        assert_eq!(a.state, AgentState::Done);
+        // At its prompt the same line changes nothing.
+        let mut idle = on_hook(None, &ev("SessionStart", json!({}))).unwrap();
+        assert!(!entries.iter().any(|e| on_entry(&mut idle, e)));
+        assert_eq!(idle.state, AgentState::Idle);
     }
 }
