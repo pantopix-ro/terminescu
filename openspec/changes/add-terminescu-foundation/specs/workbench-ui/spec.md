@@ -153,6 +153,10 @@ that is not installed SHALL fall back to SF Mono.
 - **WHEN** the person sets Tab text to 10
 - **THEN** every tab name shows at 10 px and its subtitle at 9 px
 
+#### Scenario: Tab tooltip
+- **WHEN** the person rests the pointer on a tab in the tab bar
+- **THEN** the sidebar's pixel tooltip shows under it with the whole name, the path and program
+
 #### Scenario: Pane header tooltip
 - **WHEN** the person hovers a split pane's header whose name is cut off
 - **THEN** a tooltip shows the whole name

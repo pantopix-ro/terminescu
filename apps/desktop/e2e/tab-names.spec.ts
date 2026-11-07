@@ -57,7 +57,15 @@ test("the subtitle keeps the path and follows the program and Claude's title", a
   await expect(sub).toHaveText("~/work/api · claude");
   await host(page, "setTitle", pane, "◐ Fix PROJ-482");
   await expect(sub).toHaveText("~/work/api · claude · Fix PROJ-482");
-  await expect(page.locator(`.ao-tab[data-tab="${tab.id}"] .n`)).toHaveAttribute("title", new RegExp(`^${tab.name} · ~/work/api · claude · Fix PROJ-482`));
+  // Hovering the tab shows the sidebar's tooltip under it: the whole name, then the subtitle (task 8.48).
+  await page.locator(`.ao-tab[data-tab="${tab.id}"]`).hover();
+  const tip = page.getByRole("tooltip");
+  await expect(tip.locator(".px-tip-name")).toHaveText(tab.name);
+  await expect(tip.locator(".px-tip-sub")).toHaveText("~/work/api · claude · Fix PROJ-482");
+  const [t, b] = await Promise.all([tip.boundingBox(), page.locator(`.ao-tab[data-tab="${tab.id}"]`).boundingBox()]);
+  expect(t!.y).toBeGreaterThan(b!.y + b!.height - 1);
+  await page.mouse.move(600, 500);
+  await expect(tip).toHaveCount(0);
 
   // Claude ends: the title goes with its command.
   await host(page, "setAgent", pane, null);
