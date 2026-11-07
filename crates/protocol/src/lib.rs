@@ -66,6 +66,14 @@ pub enum Control {
         cols: u16,
         rows: u16,
     },
+    /// Clears the daemon's copy of the pane's history so a later attach does not bring it back;
+    /// the attached terminals clear themselves. With `keep_screen` the screen stays and only the
+    /// history goes; without it the cursor's row becomes the first row (Terminal.app's "Clear to
+    /// Start"). Needs `FEATURE_CLEAR`; no answer.
+    Clear {
+        pane: PaneId,
+        keep_screen: bool,
+    },
     /// Hang up the pane's shell and forget the pane.
     Close {
         pane: PaneId,
@@ -209,6 +217,10 @@ pub struct SpawnSpec {
     pub env: Vec<(String, String)>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub side_tab: Option<String>,
+    /// Lines of history to keep, 1,000 to 50,000; the daemon clamps it. The daemon's default of
+    /// 10,000 when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scrollback: Option<u32>,
 }
 
 /// The `Hello` feature for [`Control::Shell`] pushes.
@@ -217,6 +229,9 @@ pub const FEATURE_SHELL: &str = "shell";
 pub const FEATURE_VARS: &str = "vars";
 /// The `Hello` feature for [`Control::SideVarsMove`].
 pub const FEATURE_VAR_MOVE: &str = "var_move";
+
+/// The `Hello` feature for [`Control::Clear`].
+pub const FEATURE_CLEAR: &str = "clear";
 
 /// One variable of a [`Control::SideVarsMove`]: `from` on the source becomes `to` on the target.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -474,6 +489,37 @@ mod tests {
                 from: "branch".into(),
                 to: "branch_477".into(),
             }],
+        }));
+    }
+
+    #[test]
+    fn clear_roundtrips() {
+        for keep_screen in [true, false] {
+            roundtrip(Frame::Control(Control::Clear {
+                pane: 3,
+                keep_screen,
+            }));
+        }
+        assert_eq!(
+            serde_json::to_string(&Control::Clear {
+                pane: 3,
+                keep_screen: true
+            })
+            .unwrap(),
+            r#"{"op":"clear","pane":3,"keep_screen":true}"#
+        );
+    }
+
+    #[test]
+    fn spawn_scrollback_roundtrips() {
+        roundtrip(Frame::Control(Control::Spawn {
+            req: 2,
+            spec: SpawnSpec {
+                cols: 80,
+                rows: 24,
+                scrollback: Some(25_000),
+                ..Default::default()
+            },
         }));
     }
 

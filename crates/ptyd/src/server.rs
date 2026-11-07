@@ -21,8 +21,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 use terminescu_protocol::paths::{CORE_SOCKET_ENV, PANE_ID_ENV, PTYD_SOCKET_ENV, peer_uid};
 use terminescu_protocol::{
-    Control, FEATURE_SHELL, FEATURE_VAR_MOVE, FEATURE_VARS, Frame, PROTOCOL_VERSION, PaneId,
-    PaneInfo, ShellState, SpawnSpec, decode, encode, is_var_name, negotiate,
+    Control, FEATURE_CLEAR, FEATURE_SHELL, FEATURE_VAR_MOVE, FEATURE_VARS, Frame, PROTOCOL_VERSION,
+    PaneId, PaneInfo, ShellState, SpawnSpec, decode, encode, is_var_name, negotiate,
 };
 
 /// Frames a client may have queued before it counts as stuck.
@@ -176,6 +176,12 @@ impl Shared {
     fn spawn(self: &Arc<Self>, spec: SpawnSpec) -> io::Result<PaneId> {
         let id = self.next_pane.fetch_add(1, Ordering::Relaxed);
         let (cols, rows) = (spec.cols.max(2), spec.rows.max(1));
+        let scrollback = spec.scrollback.map_or(crate::screen::SCROLLBACK, |n| {
+            (n as usize).clamp(
+                *crate::screen::SCROLLBACK_RANGE.start(),
+                *crate::screen::SCROLLBACK_RANGE.end(),
+            )
+        });
         let pair = native_pty_system()
             .openpty(PtySize {
                 rows,
@@ -237,7 +243,7 @@ impl Shared {
             id,
             pid: child.process_id(),
             state: Mutex::new(PaneState {
-                screen: Screen::new(cols, rows),
+                screen: Screen::new(cols, rows, scrollback),
                 subscribers: Vec::new(),
                 side_tab: spec.side_tab,
                 exited: None,
@@ -457,7 +463,7 @@ fn serve_client(shared: Arc<Shared>, mut stream: UnixStream) {
                         features: features
                             .iter()
                             .filter(|f| {
-                                [FEATURE_SHELL, FEATURE_VARS, FEATURE_VAR_MOVE]
+                                [FEATURE_SHELL, FEATURE_VARS, FEATURE_VAR_MOVE, FEATURE_CLEAR]
                                     .contains(&f.as_str())
                             })
                             .cloned()
@@ -557,6 +563,12 @@ fn handle(shared: &Arc<Shared>, client: u64, tx: &SyncSender<Vec<u8>>, frame: Fr
                         pixel_width: 0,
                         pixel_height: 0,
                     });
+                }
+            }
+            Control::Clear { pane, keep_screen } => {
+                // Only the model: the terminals clear themselves, and the shell never hears of it.
+                if let Some(p) = shared.pane(pane) {
+                    lock(&p.state).screen.clear(keep_screen);
                 }
             }
             Control::Close { pane } => {

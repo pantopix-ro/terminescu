@@ -5,9 +5,14 @@
 //! screens, cursor and pending wrap, saved cursor, scroll region, modes, kitty keyboard stacks,
 //! cursor style, palette changes, charsets, pen and hyperlinks.
 //!
+//! Prompt marks come back as the OSC 133 sequences the shell sent, written just before the
+//! row they mark, so a terminal that registers markers from OSC 133 rebuilds them (D9).
+//!
 //! Not restored: tab stops and the window title. Shells rarely change the first, and the
 //! core tracks the second from OSC events.
 
+use crate::osc::MARK;
+use crate::screen::{Mark, MarkKind};
 use alacritty_terminal::grid::{Cursor, Dimensions, Grid};
 use alacritty_terminal::index::{Column, Line};
 use alacritty_terminal::term::cell::{Cell, Flags};
@@ -15,6 +20,7 @@ use alacritty_terminal::term::{Term, TermMode};
 use alacritty_terminal::vte::ansi::{
     CharsetIndex, Color, CursorShape, CursorStyle, KeyboardModes, NamedColor, StandardCharset,
 };
+use std::collections::VecDeque;
 use std::fmt::Write;
 
 /// Flags that change how a cell looks; the rest describe layout.
@@ -186,11 +192,47 @@ fn is_blank(cell: &Cell) -> bool {
         && cell.extra.is_none()
 }
 
+/// The prompt marks to replay while writing a grid, and the absolute number of its oldest row.
+struct Marks<'a> {
+    list: &'a VecDeque<Mark>,
+    first: i64,
+}
+
+/// Writes the OSC 133 sequences for the marks of one row and clears the list. A prompt first
+/// closes the previous prompt's command with its exit code.
+fn marks_at(w: &mut Writer, here: &mut Vec<&Mark>, pending_exit: &mut Option<i32>) {
+    for m in here.drain(..) {
+        w.plain();
+        match m.kind {
+            MarkKind::Prompt => {
+                if let Some(code) = pending_exit.take() {
+                    let _ = write!(w.out, "\x1b]133;D;{code};{MARK}\x07");
+                }
+                let _ = write!(w.out, "\x1b]133;A;{MARK}\x07");
+                *pending_exit = m.exit;
+            }
+            MarkKind::Output => {
+                let _ = write!(w.out, "\x1b]133;C;{MARK}\x07");
+            }
+        }
+    }
+}
+
 /// Writes every row of `grid`, history first, from the top-left corner of a cleared screen.
-fn rows(w: &mut Writer, grid: &Grid<Cell>) {
+/// With `marks`, writes each marked row's OSC 133 before its cells.
+fn rows(w: &mut Writer, grid: &Grid<Cell>, marks: Option<Marks>) {
     let cols = grid.columns();
     let top = -(grid.history_size() as i32);
     let bottom = grid.screen_lines() as i32 - 1;
+    // Marks are in the order they were set; a reflow can leave two rows out of order.
+    let mut marks_sorted: Vec<&Mark> = marks
+        .as_ref()
+        .map_or_else(Vec::new, |m| m.list.iter().collect());
+    marks_sorted.sort_by_key(|m| m.row);
+    let mut next = marks_sorted.iter().peekable();
+    // The exit of the last prompt, written as OSC 133;D once its command's rows are done.
+    let mut pending_exit: Option<i32> = None;
+    let mut continues = false;
     for line in top..=bottom {
         let row = &grid[Line(line)];
         let wrapped = row[Column(cols - 1)].flags.contains(Flags::WRAPLINE);
@@ -203,6 +245,18 @@ fn rows(w: &mut Writer, grid: &Grid<Cell>) {
                 .find(|&c| !is_blank(&row[Column(c)]))
                 .map_or(0, |c| c + 1)
         };
+        let abs = marks.as_ref().map_or(0, |m| m.first + (line - top) as i64);
+        let mut here: Vec<&Mark> = Vec::new();
+        while let Some(m) = next.next_if(|m| m.row <= abs) {
+            if m.row == abs {
+                here.push(m);
+            }
+        }
+        // The cursor of a row that continues the previous one stays on the previous row until
+        // a cell lands, so a mark for it waits for the first cell.
+        if !continues {
+            marks_at(w, &mut here, &mut pending_exit);
+        }
         for col in 0..end {
             let cell = &row[Column(col)];
             if cell
@@ -212,13 +266,19 @@ fn rows(w: &mut Writer, grid: &Grid<Cell>) {
                 continue;
             }
             w.cell(cell);
+            marks_at(w, &mut here, &mut pending_exit);
         }
+        marks_at(w, &mut here, &mut pending_exit);
+        continues = wrapped;
         if line < bottom && !wrapped {
             w.plain();
             w.out.push_str("\r\n");
         }
     }
     w.plain();
+    if let Some(code) = pending_exit {
+        let _ = write!(w.out, "\x1b]133;D;{code};{MARK}\x07");
+    }
 }
 
 fn charsets(w: &mut Writer, cursor: &Cursor<Cell>) {
@@ -269,7 +329,8 @@ const PRIVATE: [(TermMode, u16); 12] = [
     (TermMode::LINE_WRAP, 7),
 ];
 
-pub fn snapshot<T>(term: &Term<T>) -> Vec<u8> {
+/// `marks` are the main screen's prompt marks and `first` the absolute number of its oldest row.
+pub fn snapshot<T>(term: &Term<T>, marks: &VecDeque<Mark>, first: i64) -> Vec<u8> {
     let mut w = Writer::new();
     let alt = term.mode().contains(TermMode::ALT_SCREEN);
     let (main, alt_grid) = if alt {
@@ -301,7 +362,7 @@ pub fn snapshot<T>(term: &Term<T>) -> Vec<u8> {
         }
     }
 
-    rows(&mut w, main);
+    rows(&mut w, main, Some(Marks { list: marks, first }));
 
     if let Some(grid) = alt_grid {
         // Leaving the alternate screen restores the main saved cursor, so park the main cursor
@@ -314,7 +375,7 @@ pub fn snapshot<T>(term: &Term<T>) -> Vec<u8> {
         keyboard(&mut w, term.inactive_keyboard_mode_stack());
         w.plain();
         w.out.push_str("\x1b[?1049h\x1b[H");
-        rows(&mut w, grid);
+        rows(&mut w, grid, None);
     }
     let grid = alt_grid.unwrap_or(main);
 
@@ -457,7 +518,7 @@ mod tests {
     }
 
     fn screen(cols: u16, rows: u16, input: &[u8]) -> Screen {
-        let mut s = Screen::new(cols, rows);
+        let mut s = Screen::new(cols, rows, crate::screen::SCROLLBACK);
         s.feed(input);
         s
     }
@@ -599,7 +660,7 @@ mod tests {
             )
         };
         let (cols, rows) = size(&events[0]);
-        let mut a = Screen::new(cols, rows);
+        let mut a = Screen::new(cols, rows, crate::screen::SCROLLBACK);
         let mut at = 0;
         for e in &events[1..] {
             let offset = e["offset"].as_u64().unwrap() as usize;

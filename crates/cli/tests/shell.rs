@@ -65,6 +65,7 @@ impl Session {
                 ("BASH_SILENCE_DEPRECATION_WARNING".into(), "1".into()),
             ],
             side_tab: Some("st-1".into()),
+            scrollback: None,
         };
         client
             .send(&Frame::Control(Control::Spawn { req: 1, spec }))
