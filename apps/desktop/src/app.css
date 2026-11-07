@@ -370,6 +370,7 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 /* The pixel tooltip: a name and status beside an icon, or a whole name over one cut short. */
 .px-tip { position: fixed; z-index: 60; pointer-events: none; display: flex; flex-direction: column; gap: 4px; max-width: min(360px, calc(100vw - 8px)); padding: 4px 6px; background: var(--panel-2); color: var(--fg); font-size: 12px; line-height: 16px; box-shadow: 0 -2px 0 0 var(--line-strong), 0 2px 0 0 var(--line-strong), -2px 0 0 0 var(--line-strong), 2px 0 0 0 var(--line-strong), var(--shadow-hard-sm); overflow-wrap: anywhere; }
 .px-tip-name { font-weight: 600; }
+.px-tip-sub { color: var(--dim); font-size: 11px; }
 .px-tip-status { font-family: var(--font-pixel); font-size: 8px; line-height: 1; text-transform: uppercase; letter-spacing: .04em; color: var(--dim); }
 
 /* Task 8.28: a bigger icon over two lines, the status under the name, and a row's shells beside it. */

@@ -5,7 +5,8 @@ import { tabAgent, type Agents } from "./agents";
 import { StatusChip } from "./StatusChip";
 import { chipOf, rowStyle, type Builtins } from "./status";
 import { useEffect, useRef, useState } from "react";
-import { KidIcon, pickAt, RenameInput, tabDirty, tabName, tabRequest, withSub, type DocMarks } from "./SideTabList";
+import { Tip, useTip } from "./Tip";
+import { KidIcon, pickAt, RenameInput, tabDirty, tabName, tabRequest, type DocMarks } from "./SideTabList";
 
 export interface TabBarProps {
   tabs: Tab[];
@@ -52,6 +53,7 @@ function TabItem({
   onRenameEnd,
   onIconPick,
   onEdit,
+  tips,
 }: Pick<TabBarProps, "onRenameStart" | "onRename" | "onRenameEnd" | "onIconPick" | "onEdit"> & {
   renaming: boolean;
   tab: Tab;
@@ -63,6 +65,7 @@ function TabItem({
   sub: string | undefined;
   onSelect(): void;
   onClose(): void;
+  tips: ReturnType<typeof useTip>;
 }) {
   const agent = tabAgent(tab, agents);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: tab.id });
@@ -83,6 +86,15 @@ function TabItem({
       className={`ao-tab${active ? " active" : ""}${tab.accent ? " neon" : ""}${isDragging ? " placeholder" : ""}${shown?.waiting || agent?.state === "waiting" || tabRequest(tab, docs) ? " wait" : ""}`}
       style={{ transform: CSS.Translate.toString(transform), transition, ...look, ...wash } as React.CSSProperties}
       onClick={onSelect}
+      // The whole name, the path and program and the status, as the sidebar rows show them (task 8.48).
+      onMouseEnter={(e) => {
+        if (renaming || isDragging) return;
+        const chip = shown?.look || shown?.waiting ? chipOf(shown, builtins).label : undefined;
+        tips.below(e.currentTarget, tabName(tab, docs), sub, chip);
+      }}
+      onMouseLeave={tips.hide}
+      // Not onPointerDown: that one is the drag sensor's.
+      onMouseDown={tips.hide}
       onContextMenu={(e) => {
         if (!onEdit) return;
         e.preventDefault();
@@ -110,7 +122,6 @@ function TabItem({
       ) : (
         <span
           className="n"
-          title={`${withSub(tabName(tab, docs), sub)}\nDouble-click to rename`}
           onDoubleClick={(e) => {
             e.stopPropagation();
             onRenameStart?.(tab.id);
@@ -191,6 +202,7 @@ function NewMenu({ onNew, onNewText }: { onNew(): void; onNewText(beside: boolea
 }
 
 export function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNewText, agents = {}, statuses = {}, builtins = {}, docs = {}, subtitles = {}, renaming, onRenameStart, onRename, onRenameEnd, onIconPick, onEdit }: TabBarProps) {
+  const tips = useTip();
   return (
     <div className="ao-tabs" role="tablist" data-tauri-drag-region>
       <SortableContext items={tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
@@ -212,6 +224,7 @@ export function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNewText, ag
             onRenameEnd={onRenameEnd}
             onIconPick={onIconPick}
             onEdit={onEdit}
+            tips={tips}
           />
         ))}
       </SortableContext>
@@ -221,6 +234,7 @@ export function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNewText, ag
       {onNewText && <NewMenu onNew={onNew} onNewText={onNewText} />}
       <span className="grow" data-tauri-drag-region />
       <span className="small ao-dim tabs-hint" data-tauri-drag-region>⌘D split · ⌘⇧D split down</span>
+      <Tip tip={tips.tip} />
     </div>
   );
 }

@@ -535,6 +535,9 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       profile, SF Mono Regular 11 px at line height 1.00 with a blinking bar cursor and no
       bright bold; Option as Meta stays, so Option+Enter sends Esc+Return. Verify:
       `terminal-font.spec.ts`.
+- [x] 8.48 Tab tooltips (2026-11-07): hovering a tab in the tab bar shows the sidebar's pixel
+      tooltip under it, with the whole name, the path and program, and a set status. It
+      replaces the plain title. Verify: `tab-names.spec.ts`.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves
