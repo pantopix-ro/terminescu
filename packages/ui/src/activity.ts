@@ -9,12 +9,14 @@ export type Activities = Readonly<Record<string, Activity>>;
 
 /**
  * One pane: Claude's hook state when the hook reports it, else the shell's running program.
- * Claude at its prompt (idle, done) is not busy, though `claude` still runs.
+ * Claude blinks only while it works or waits: at its prompt, or with no hook state yet (a
+ * session older than the app, the hook off), `claude` running is not busy.
  */
 export function paneActivity(pane: string, labels: Labels, agents: Agents): Activity | undefined {
   const agent = agents[pane];
   if (agent) return agent.state === "waiting" ? "wait" : agent.state === "running" ? "busy" : undefined;
-  return labels[pane]?.program ? "busy" : undefined;
+  const program = labels[pane]?.program;
+  return program && program !== "claude" ? "busy" : undefined;
 }
 
 /** A tab takes its most urgent pane: waiting over busy. */

@@ -54,6 +54,8 @@ pub enum EntryKind {
     ToolDenied,
     /// A turn ended.
     TurnEnd,
+    /// The person pressed Esc: the turn stopped and no `Stop` hook fires.
+    Interrupted,
     /// The conversation was compacted; entries before it stay valid.
     Compaction,
     /// The summary Claude carries past a compaction.
@@ -81,6 +83,11 @@ impl EntryKind {
     /// Ends a Waiting state that no hook will end (D34).
     pub fn ends_waiting(&self) -> bool {
         matches!(self, EntryKind::ToolDenied | EntryKind::TurnEnd)
+    }
+
+    /// Ends a Running state: an interrupt fires no hook.
+    pub fn ends_running(&self) -> bool {
+        matches!(self, EntryKind::Interrupted | EntryKind::TurnEnd)
     }
 }
 
@@ -318,7 +325,10 @@ fn kinds_of(v: &Value) -> Vec<(Option<usize>, EntryKind)> {
                 return results;
             }
             let text = text_of(content);
-            if text.is_empty() || text.starts_with("[Request interrupted") {
+            if text.starts_with("[Request interrupted") {
+                return one(EntryKind::Interrupted);
+            }
+            if text.is_empty() {
                 return Vec::new();
             }
             one(EntryKind::User { text })

@@ -262,6 +262,7 @@ export type Entry = { id: string; offset: number; timestamp: string | null } & (
   | { kind: "toolResult"; toolUseId: string; text: string; isError: boolean; hunks: Hunk[] }
   | { kind: "toolDenied" }
   | { kind: "turnEnd" }
+  | { kind: "interrupted" }
   | { kind: "compaction" }
   | { kind: "compactSummary"; text: string }
 );

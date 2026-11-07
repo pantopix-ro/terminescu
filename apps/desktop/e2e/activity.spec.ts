@@ -30,6 +30,7 @@ test("icons blink while a command runs and bounce while Claude waits", async ({ 
 
   // Claude at its prompt is still; working blinks; a question blinks and bounces.
   await host(page, "runCommand", pane, "claude", null);
+  await expect(tabIcon).not.toHaveClass(/act-/);
   await host(page, "setAgent", pane, { session: "s-1", state: "idle", lastMessage: null });
   await expect(tabIcon).not.toHaveClass(/act-/);
   await host(page, "setAgent", pane, { session: "s-1", state: "running", lastMessage: null });
