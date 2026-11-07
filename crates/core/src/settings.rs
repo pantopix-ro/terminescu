@@ -134,6 +134,31 @@ pub struct Settings {
     pub terminal_opacity: u8,
     /// The chords the terminal turns into shell editing keys (task 8.53).
     pub terminal_keys: TerminalKeys,
+    /// Whether the person agreed to the Claude Code hook (add-public-release D5).
+    pub hook: HookConsent,
+    /// The first-run screen was seen to its end (D6).
+    pub first_run_done: bool,
+}
+
+/// The person's answer about the Claude Code hook. `Unasked` turns into `On` when Claude
+/// Code's settings already hold the hook, as on the owner's Mac before consent existed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum HookConsent {
+    #[default]
+    Unasked,
+    On,
+    Off,
+}
+
+impl HookConsent {
+    /// The answer at launch: an existing hook entry counts as consent.
+    pub fn at_launch(self, hook_present: bool) -> Self {
+        match self {
+            Self::Unasked if hook_present => Self::On,
+            other => other,
+        }
+    }
 }
 
 /// Chords such as "Alt+Left" that a focused terminal turns into the bytes a shell reads; an
@@ -208,6 +233,8 @@ impl Default for Settings {
             terminal_colors: None,
             terminal_opacity: OPACITY,
             terminal_keys: TerminalKeys::default(),
+            hook: HookConsent::Unasked,
+            first_run_done: false,
         }
     }
 }

@@ -27,7 +27,7 @@ test("every section opens; extraction is read-only and the editor setting saves"
   await expect(dialog.locator("[data-rule-name]")).toHaveCount(4);
   await expect(dialog.locator("[data-rule-name] input")).toHaveCount(0);
   await dialog.getByRole("button", { name: "Shell" }).click();
-  await dialog.getByRole("checkbox").check();
+  await dialog.getByRole("checkbox", { name: /VISUAL/ }).check();
   await expect.poll(() => mock(page, "settings")).toMatchObject({ varMode: "saved", varTtlSecs: null, editor: true, zoomPercent: 100, sidebarWidth: 272, sidebarCollapsed: false });
   await dialog.getByRole("button", { name: "Keys" }).click();
   await expect(dialog.locator('[data-action="new_tab"] kbd')).toHaveText("⌘T");

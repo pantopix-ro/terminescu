@@ -644,6 +644,18 @@ function ShellSettings({ host, onError }: SettingsSheetProps) {
           new shells only: git and Claude Code then open their editor in a pane beside yours, ⌘↵ returns
         </span>
       </label>
+      <label className="srow">
+        <input
+          type="checkbox"
+          checked={settings.hook === "on"}
+          aria-describedby="hook-hint"
+          onChange={(e) => change({ hook: e.target.checked ? "on" : "off", firstRunDone: true })}
+        />
+        <span>Claude Code hook</span>
+        <span id="hook-hint" className="small ao-dim grow">
+          Claude Code tells Terminescu when a session starts, waits or ends; off removes only Terminescu&apos;s entry from Claude Code&apos;s settings
+        </span>
+      </label>
     </section>
   );
 }

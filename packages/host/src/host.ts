@@ -39,6 +39,8 @@ import type {
   TranscriptChunk,
   Variable,
   VariableChange,
+  AppInfo,
+  FeedbackRoute,
 } from "./protocol";
 
 /** One window's view of a pane (D33). */
@@ -187,6 +189,14 @@ export interface Host {
   setBuiltin(auto: Auto, look: Look | null): Promise<void>;
   /** Opens an http(s) link in the default browser. */
   openUrl(url: string): Promise<void>;
+  /** The version, build and macOS version, for About and feedback (add-public-release). */
+  appInfo(): Promise<AppInfo>;
+  /** Opens the feedback email or a new GitHub issue; `includeLog` shows app.log in Finder. */
+  feedbackOpen(route: FeedbackRoute, includeLog: boolean): Promise<void>;
+  /** Removes the hook, the daemon and the copied helpers, and the data when asked (D9). */
+  uninstallHelpers(deleteData: boolean): Promise<void>;
+  /** Quits the app. */
+  appQuit(): Promise<void>;
   /**
    * A path link's menu (task 8.49): `reveal` shows it in Finder, else its default app opens it.
    * Resolved against the pane's folder; programs and scripts are refused.

@@ -518,7 +518,30 @@ export interface AppSettings {
   terminalOpacity: number;
   /** Chords a focused terminal turns into shell editing keys (task 8.53); "" is off. */
   terminalKeys: TerminalKeys;
+  /** The person's answer about the Claude Code hook (add-public-release D5). */
+  hook: HookConsent;
+  /** The first-run screen was seen to its end (D6). */
+  firstRunDone: boolean;
 }
+
+export type HookConsent = "unasked" | "on" | "off";
+
+/** Where the public project lives. Same as `public.rs` in the protocol crate. */
+export const PUBLIC_REPO = "pantopix/terminescu";
+export const MAKER = "PANTOPIX RO";
+export const MAKER_URL = "https://pantopix.ro";
+export const FEEDBACK_EMAIL = "salut@pantopix.com";
+export const FEEDBACK_PREFIX = "[Terminescu]";
+
+/** What About and the feedback routes say about the build and the Mac. */
+export interface AppInfo {
+  version: string;
+  /** The commit the build came from, or `dev`. */
+  build: string;
+  macos: string;
+}
+
+export type FeedbackRoute = "email" | "issue";
 
 /** As `TerminalKeys` in settings.rs. */
 export interface TerminalKeys {
@@ -623,6 +646,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     deleteLine: "Cmd+Backspace",
     newline: "",
   },
+  hook: "unasked",
+  firstRunDone: false,
 };
 
 /** The steps `⌘+` and `⌘-` walk, in percent. Same as `ZOOM_STEPS` in settings.rs. */

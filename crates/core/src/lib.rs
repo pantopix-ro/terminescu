@@ -10,6 +10,7 @@ pub mod daemon;
 pub mod db;
 pub mod documents;
 pub mod extract;
+pub mod feedback;
 pub mod files;
 pub mod hook_install;
 pub mod keys;
@@ -26,6 +27,7 @@ pub mod status;
 pub mod status_store;
 pub mod term_import;
 pub mod transcript;
+pub mod uninstall;
 pub mod vars;
 pub mod views;
 

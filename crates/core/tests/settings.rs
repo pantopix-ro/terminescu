@@ -322,3 +322,27 @@ fn terminal_keys_are_editable() {
         assert!(settings::set(&db, s).is_err());
     }
 }
+
+/// add-public-release D5: the hook answer starts unasked, an existing entry counts as consent,
+/// and older settings rows without the fields read as unasked.
+#[test]
+fn unasked_with_entry_becomes_on() {
+    use terminescu_core::settings::HookConsent;
+    let db = Db::open_in_memory().unwrap();
+    let s = settings::get(&db).unwrap();
+    assert_eq!(s.hook, HookConsent::Unasked);
+    assert!(!s.first_run_done);
+    assert_eq!(HookConsent::Unasked.at_launch(true), HookConsent::On);
+    assert_eq!(HookConsent::Unasked.at_launch(false), HookConsent::Unasked);
+    assert_eq!(HookConsent::Off.at_launch(true), HookConsent::Off);
+    let old: Settings = serde_json::from_str(r#"{"varMode":"saved"}"#).unwrap();
+    assert_eq!(old.hook, HookConsent::Unasked);
+    assert_eq!(
+        serde_json::to_value(Settings {
+            hook: HookConsent::Off,
+            ..Settings::default()
+        })
+        .unwrap()["hook"],
+        serde_json::json!("off")
+    );
+}

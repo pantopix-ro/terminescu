@@ -493,3 +493,16 @@ html[data-scheme] .pane-slot:has(> .term-pane[data-tint="red"]) { background: co
 /* The selected outline: a thin line in the group's neon at half strength. */
 .app-side .ao-st, .app-side .ao-st-kids { --sel-line: color-mix(in srgb, var(--st-accent, var(--line-strong)) 55%, transparent); }
 .ao-side.collapsed .ao-st.active { padding-right: 0; }
+
+/* add-public-release: first run, About, Licenses, Privacy, Feedback and Uninstall. */
+.app-sheet { width: min(560px, calc(100% - 32px)); max-height: 84vh; display: flex; flex-direction: column; }
+.app-sheet .ao-frame-body { display: flex; flex-direction: column; gap: var(--space-2); min-height: 0; overflow-y: auto; font-size: 12px; }
+.app-sheet h2 { margin: 0; font-size: 14px; font-weight: 400; }
+.app-sheet h3 { margin: 0; font-size: 8px; font-weight: 400; text-transform: uppercase; }
+.app-sheet p, .app-sheet ul { margin: 0; }
+.app-sheet ul { padding-left: 18px; }
+.licenses-sheet { width: min(760px, calc(100% - 32px)); }
+.licenses-list { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; min-height: 0; }
+.license-group summary { cursor: pointer; padding: 2px 0; }
+.license-group .paste-preview { max-height: 240px; }
+.privacy-points li + li { margin-top: var(--space-1); }

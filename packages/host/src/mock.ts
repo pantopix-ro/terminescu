@@ -11,6 +11,9 @@ import {
   type DragPoint,
   MAX_LABEL,
   DEFAULT_SETTINGS,
+  FEEDBACK_EMAIL,
+  FEEDBACK_PREFIX,
+  PUBLIC_REPO,
   MAX_TTL_SECS,
   ZOOM_STEPS,
   SIDEBAR_MAX,
@@ -84,6 +87,13 @@ export interface MockHost extends Host {
   workspace(): Workspace;
   /** Links the UI asked to open. */
   readonly openedUrls: string[];
+  /** Whether Claude Code's settings would hold the hook (add-public-release D5). */
+  readonly claudeHook: () => boolean;
+  /** Each uninstall, with its delete-data answer; and whether the app quit. */
+  readonly uninstalls: boolean[];
+  readonly quits: () => number;
+  /** Picks a menu item, as the native menu would: the Help items have no chord. */
+  menu(action: string): void;
   /** Every size a pane view reported, in order, as `pane cols x rows`. */
   readonly resizes: string[];
   /** Text a ResumePane typed, per pane. */
@@ -227,6 +237,13 @@ export function createMockHost(initial?: Workspace): MockHost {
   const batches: PatchBatch[] = [];
   const shells = new Map<string, MockShell>();
   const openedUrls: string[] = [];
+  const uninstalls: boolean[] = [];
+  let quits = 0;
+  const actionListeners = new Set<(action: string) => void>();
+  // A browser run starts past the first run, with the hook on, unless the page asks for a
+  // fresh Mac with `?first-run` (add-public-release D6).
+  const freshMac = typeof location !== "undefined" && new URLSearchParams(location.search).has("first-run");
+  let claudeHook = !freshMac;
   const resizes: string[] = [];
   const typed = new Map<string, string>();
   const files = new Map<string, string>();
@@ -284,7 +301,7 @@ export function createMockHost(initial?: Workspace): MockHost {
   const waitingSince = new Map<string, number>();
   let waitClock = 0;
   let attention: AttentionSettings = { notify: true, chime: false, commandNotify: true, commandSecs: 30 };
-  let settings: AppSettings = { ...DEFAULT_SETTINGS };
+  let settings: AppSettings = { ...DEFAULT_SETTINGS, ...(freshMac ? {} : { hook: "on" as const, firstRunDone: true }) };
   const settingsListeners = new Set<() => void>();
   let keyBindings: KeyBindings = {};
   // As the app menu while Settings › Keys records: no action chords.
@@ -775,6 +792,12 @@ export function createMockHost(initial?: Workspace): MockHost {
   const host: MockHost = {
     batches,
     openedUrls,
+    claudeHook: () => claudeHook,
+    uninstalls,
+    quits: () => quits,
+    menu(action) {
+      for (const l of actionListeners) l(action);
+    },
     resizes,
     typed,
     inputs,
@@ -1222,6 +1245,10 @@ export function createMockHost(initial?: Workspace): MockHost {
         (theme === "imported" && !c)
       )
         throw new Error("imported colours are #rrggbb values with 16 ANSI colours; import a theme before choosing Imported");
+      // The hook toggle edits Claude Code's settings (add-public-release D5).
+      const hook = next.hook ?? settings.hook;
+      if (!["unasked", "on", "off"].includes(hook)) throw new Error("the hook answer is unasked, on or off");
+      if (hook !== settings.hook && hook !== "unasked") claudeHook = hook === "on";
       // As settings.rs (task 8.53).
       const tk = { ...DEFAULT_SETTINGS.terminalKeys, ...next.terminalKeys };
       const seen = new Set<string>();
@@ -1234,7 +1261,7 @@ export function createMockHost(initial?: Workspace): MockHost {
         seen.add(n);
       }
       const sidebarWidth = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(next.sidebarWidth)));
-      settings = { ...next, sidebarWidth, terminalFont, terminalOpacity: opacity, terminalTheme: theme, terminalColors: c, terminalKeys: tk };
+      settings = { ...next, sidebarWidth, terminalFont, terminalOpacity: opacity, terminalTheme: theme, terminalColors: c, terminalKeys: tk, hook, firstRunDone: next.firstRunDone ?? settings.firstRunDone };
       // The app zooms its webview natively; a browser has CSS zoom on the root.
       if (typeof document !== "undefined") document.documentElement.style.zoom = zoom === 100 ? "" : String(zoom / 100);
       settingsListeners.forEach((l) => l());
@@ -1416,6 +1443,25 @@ export function createMockHost(initial?: Workspace): MockHost {
     },
     async openUrl(url) {
       openedUrls.push(url);
+    },
+    async appInfo() {
+      return { version: "0.1.0", build: "dev", macos: "15.0" };
+    },
+    async feedbackOpen(route, includeLog) {
+      const body = encodeURIComponent(`\n\n---\nTerminescu 0.1.0 (dev)\nmacOS 15.0\n${includeLog ? "app.log: attached by hand\n" : ""}`);
+      openedUrls.push(
+        route === "email"
+          ? `mailto:${FEEDBACK_EMAIL}?subject=${encodeURIComponent(`${FEEDBACK_PREFIX} Feedback`)}&body=${body}`
+          : `https://github.com/${PUBLIC_REPO}/issues/new?body=${body}`,
+      );
+      if (includeLog) openedUrls.push("reveal:app.log");
+    },
+    async uninstallHelpers(deleteData) {
+      claudeHook = false;
+      uninstalls.push(deleteData);
+    },
+    async appQuit() {
+      quits++;
     },
     async openPathWith(paneId, path, reveal) {
       if (!reveal && /\.(app|command|sh)$/i.test(path)) throw new Error(`${path} is a program or script; Reveal in Finder shows it instead`);
@@ -1608,8 +1654,9 @@ export function createMockHost(initial?: Workspace): MockHost {
     },
     // Outside Tauri there is no app menu: chords come from key events, caught before xterm.js.
     async onAction(listener) {
+      actionListeners.add(listener);
       const target = globalThis as Partial<typeof globalThis>;
-      if (!target.addEventListener || !target.removeEventListener) return () => {};
+      if (!target.addEventListener || !target.removeEventListener) return () => void actionListeners.delete(listener);
       const onKey = (e: KeyboardEvent) => {
         // A chord the app hands back to a field (see `passToField` in App.tsx) is untrusted.
         if (recording || !e.isTrusted) return;
@@ -1620,7 +1667,10 @@ export function createMockHost(initial?: Workspace): MockHost {
         listener(action);
       };
       target.addEventListener("keydown", onKey, true);
-      return () => target.removeEventListener?.("keydown", onKey, true);
+      return () => {
+        actionListeners.delete(listener);
+        target.removeEventListener?.("keydown", onKey, true);
+      };
     },
   };
   return host;
