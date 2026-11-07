@@ -743,16 +743,8 @@ fn watch_commands(app: AppHandle, runtime: Runtime, db: Arc<Mutex<Db>>) {
             let what = end
                 .command
                 .as_deref()
-                .map(str::trim)
-                .filter(|c| !c.is_empty())
-                .map(|c| {
-                    let short: String = c.chars().take(60).collect();
-                    if short.len() < c.len() {
-                        format!("`{short}…`")
-                    } else {
-                        format!("`{c}`")
-                    }
-                })
+                .and_then(attention::command_label)
+                .map(|c| format!("`{c}`"))
                 .unwrap_or_else(|| "A command".into());
             let took = attention::run_time(end.ms);
             let body = match end.exit {

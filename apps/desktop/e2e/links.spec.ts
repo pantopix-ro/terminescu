@@ -94,3 +94,22 @@ test("a right click shows the apps for the link's kind", async ({ page }) => {
   await page.mouse.click(blank.x, blank.y, { button: "right" });
   await expect(page.getByRole("menu")).toHaveCount(0);
 });
+
+test("a double click or a drag inside a link selects text and copies no link", async ({ page }) => {
+  const pane = await start(page);
+  const p = await at(page, pane, 0);
+  await page.mouse.dblclick(p.x, p.y);
+  await page.waitForTimeout(500);
+  await expect(page.locator(".link-tip")).toHaveCount(0);
+  const q = await cell(page, pane, 0, 14);
+  await at(page, pane, 0);
+  await page.mouse.down();
+  await page.mouse.move(q.x, q.y, { steps: 5 });
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+  await expect(page.locator(".link-tip")).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__copied as string[])).not.toContain("https://example.com/docs");
+  // A plain click still copies it.
+  await page.mouse.click(p.x, p.y);
+  await expect(page.locator(".link-tip")).toHaveText("Copied link");
+});

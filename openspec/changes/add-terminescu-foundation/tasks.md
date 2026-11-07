@@ -604,9 +604,17 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       bottom line and opens into its pane. A one-tab sidebar row wears its tab's neon, and each
       tab under a group wears its own. The selected row, or in an open group the selected tab
       under it, reaches the panes with no border between them, a stronger wash and an outline
-      on its other sides, drawn in the group's neon; the group's header and other rows keep
-      their gap. Verify:
+      on its other sides, a 1px line in the group's neon at half strength; the group's header
+      and other rows keep their gap. Verify:
       `sidebar-highlight.spec.ts`, `sidebar-neon.spec.ts`.
+From the 8.38-8.51 review: a path link opens only a plain folder or a regular file with no
+execute bit, after following symlinks, and `open` gets the real path; a longer list of program,
+bundle, disk image and web location extensions is refused. A command's notification names the
+program and subcommand only. Clear runs through its own parser. Imports read regular files of at
+most 4 MB. A plain link click waits out a double click and skips when text got selected; package
+versions and git remotes are no email addresses. WebGL restarts when transparency flips, a stale
+maximized pane is forgotten, `⌘↑`/`⌘↓` move a field's caret, and find in all panes reads the
+buffers once per sheet.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

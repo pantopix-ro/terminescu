@@ -69,7 +69,8 @@ export function attachPromptMarks(term: MarkTerminal, colors: { tick: string; fa
           marks.pop();
         }
         const m: Mark = { prompt };
-        marks.push(m);
+        // Marks trimmed off the top of the history go, so a long session holds only live ones.
+        live().push(m);
         tick(m, colors.tick);
         return false;
       }

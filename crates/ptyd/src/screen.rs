@@ -142,7 +142,11 @@ impl Screen {
         } else {
             format!("\x1b[{n}S\x1b[3J\x1b[{n}A")
         };
-        self.feed(seq.as_bytes());
+        // A parser of its own: the shell's last chunk may have ended inside a sequence, which
+        // would swallow these bytes, and the scanner has no marks to find in them.
+        Processor::<alacritty_terminal::vte::ansi::StdSyncHandler>::new()
+            .advance(&mut self.term, seq.as_bytes());
+        self.prune();
     }
 
     pub fn resize(&mut self, cols: u16, rows: u16) {
@@ -523,6 +527,17 @@ mod tests {
         let mut b = Screen::new(10, 5, 100);
         b.feed(&a.snapshot());
         assert_eq!(marks(&a), marks(&b));
+    }
+
+    #[test]
+    fn clear_works_while_the_shell_is_inside_a_sequence() {
+        let mut s = screen(20, 4, 100, &session());
+        assert_eq!(s.main_grid().history_size(), 1);
+        // The last chunk stopped inside an OSC title; the clear still applies.
+        s.feed(b"\x1b]0;half a ti");
+        s.clear(true);
+        assert_eq!(s.main_grid().history_size(), 0);
+        s.feed(b"tle\x07");
     }
 
     #[test]

@@ -1,6 +1,6 @@
 import { Command } from "cmdk";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { FIND_ALL_LIMIT, findAll, type FindHit } from "./find-all";
+import { FIND_ALL_LIMIT, findInLines, readLines, type FindHit } from "./find-all";
 import { terminalRows } from "./TerminalPane";
 
 export interface FindAllSheetProps {
@@ -34,15 +34,20 @@ export function FindAllSheet({ panes, onPick, onClose }: FindAllSheetProps) {
   const shown = useDeferredValue(query);
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => input.current?.focus(), []);
-  // The buffers as they are when the query changes; output arriving later shows on the next key.
+  // The buffers are read once as the sheet opens, so a key only searches strings; output
+  // arriving later shows the next time the sheet opens.
   const ids = panes.map((p) => p.paneId).join(" ");
-  const found = useMemo(() => {
-    const sources = ids.split(" ").flatMap((paneId) => {
-      const rows = paneId ? terminalRows(paneId) : undefined;
-      return rows ? [{ paneId, rows }] : [];
-    });
-    return findAll(sources, shown);
-  }, [ids, shown]);
+  const lines = useMemo(
+    () =>
+      readLines(
+        ids.split(" ").flatMap((paneId) => {
+          const rows = paneId ? terminalRows(paneId) : undefined;
+          return rows ? [{ paneId, rows }] : [];
+        }),
+      ),
+    [ids],
+  );
+  const found = useMemo(() => findInLines(lines, shown), [lines, shown]);
   const groups = panes.map((p) => ({ ...p, hits: found.hits.filter((h) => h.paneId === p.paneId) })).filter((g) => g.hits.length);
   return (
     <div className="palette-back" onPointerDown={onClose}>

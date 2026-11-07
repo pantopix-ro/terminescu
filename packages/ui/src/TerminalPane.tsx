@@ -101,6 +101,9 @@ function fontsReady(font: TerminalFont): Promise<unknown> {
   return ready;
 }
 
+/** How long a plain click on a link waits for a second click before it copies. */
+const LINK_CLICK_MS = 300;
+
 const isHttp = (uri: string) => /^https?:\/\//i.test(uri);
 
 function takeWebgl(live: Live, el: HTMLElement) {
@@ -320,7 +323,18 @@ export function TerminalPane({
       await fontsReady(startFont);
       if (disposed) return;
       // `⌘`-click opens (D27); a plain click copies; the hovered link feeds the right click.
-      const clicked = (e: MouseEvent, link: TerminalLink) => callbacks.current.onLinkClick?.(link, { x: e.clientX, y: e.clientY });
+      // A double click or a drag inside a link selects text there, so it copies no link: the
+      // copy waits out the double-click interval and drops when a selection appeared.
+      let made: Terminal | undefined;
+      let pending = 0;
+      const clicked = (e: MouseEvent, link: TerminalLink) => {
+        window.clearTimeout(pending);
+        if (e.detail > 1 || made?.hasSelection()) return;
+        const at = { x: e.clientX, y: e.clientY };
+        pending = window.setTimeout(() => {
+          if (!disposed && !made?.hasSelection()) callbacks.current.onLinkClick?.(link, at);
+        }, LINK_CLICK_MS);
+      };
       const activate = (e: MouseEvent, uri: string) => {
         if (!isHttp(uri)) return;
         if (e.metaKey) callbacks.current.openUrl(uri);
@@ -346,6 +360,7 @@ export function TerminalPane({
         // The scrollbar's ruler shows search matches and prompt marks; it needs a width to draw.
         overviewRuler: { width: 10 },
       });
+      made = term;
       const fit = new FitAddon();
       term.loadAddon(fit);
       const search = new SearchAddon({ highlightLimit: 2000 });
@@ -530,10 +545,17 @@ export function TerminalPane({
     const el = paneElement(paneId);
     if (tint) el.dataset.tint = tint;
     else delete el.dataset.tint;
-    const term = live.current?.term;
-    if (!term) return;
-    term.options.allowTransparency = (opacity ?? 100) < 100;
-    term.options.theme = themeFor(tint, scheme, opacity);
+    const l = live.current;
+    if (!l) return;
+    const clear = (opacity ?? 100) < 100;
+    const flipped = l.term.options.allowTransparency !== clear;
+    l.term.options.allowTransparency = clear;
+    l.term.options.theme = themeFor(tint, scheme, opacity);
+    // WebGL fixes its canvas's alpha when it starts, so a flip retakes it.
+    if (flipped && l.gl) {
+      dropWebgl(l, el);
+      takeWebgl(l, el);
+    }
   }, [paneId, tint, scheme, opacity, ready]);
 
   // Settings › Terminal applies at once: xterm.js measures the new cell, then the pane refits
