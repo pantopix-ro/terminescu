@@ -1719,7 +1719,6 @@ fn build_menu(
             &PredefinedMenuItem::cut(app, None)?,
             &PredefinedMenuItem::copy(app, None)?,
             &PredefinedMenuItem::paste(app, None)?,
-            &PredefinedMenuItem::select_all(app, None)?,
         ],
     )?;
     let menu = Menu::with_items(
@@ -1750,9 +1749,18 @@ fn build_menu(
             .map(|i| i as &dyn tauri::menu::IsMenuItem<Wry>)
             .collect();
         // Find, clear and the prompt marks join the standard Edit menu, under a separator.
+        // Select All is the app's own item under Paste: macOS's would select only inside the
+        // terminal's hidden input, so the app selects the terminal's whole buffer instead.
         if name == "Edit" {
+            let (all, rest): (Vec<_>, Vec<_>) = items
+                .iter()
+                .zip(refs)
+                .partition(|(i, _)| i.id().as_ref() == "select_all");
+            for (_, r) in all {
+                edit.append(r)?;
+            }
             edit.append(&PredefinedMenuItem::separator(app)?)?;
-            edit.append_items(&refs)?;
+            edit.append_items(&rest.into_iter().map(|(_, r)| r).collect::<Vec<_>>())?;
             continue;
         }
         let sub = Submenu::with_items(app, name, true, &refs)?;

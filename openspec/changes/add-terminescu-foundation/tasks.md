@@ -570,7 +570,7 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       focus. A pane running Claude is left to the waiting notification. Settings ›
       Notifications: on by default, 30 seconds (5 to 3,600). Verify: `command_tests`,
       `attention.rs` tests, `settings.spec.ts`.
-- [x] 8.44 Clear a terminal (2026-11-07): Edit › Clear to Start `⌘⇧K` makes the prompt line
+- [x] 8.44 Clear a terminal (2026-11-07): Edit › Clear to Start `⌘K` (`⌘⇧K` until 8.52) makes the prompt line
       the first line and drops the history; Clear Scrollback `⌥⌘K` drops the history and keeps
       the screen. The daemon clears its copy (`Control::Clear`), so a reattach shows the same; an
       older daemon keeps its lines. Verify: `clear.spec.ts`, ptyd clear tests.
@@ -615,6 +615,12 @@ most 4 MB. A plain link click waits out a double click and skips when text got s
 versions and git remotes are no email addresses. WebGL restarts when transparency flips, a stale
 maximized pane is forgotten, `⌘↑`/`⌘↓` move a field's caret, and find in all panes reads the
 buffers once per sheet.
+- [x] 8.52 macOS terminal and editor shortcuts (owner request 2026-11-07): `⌘K` is Clear to
+      Start, as in Terminal.app and iTerm2, and the palette moves to `⌘P`. `⌘A` is the app's
+      Select All: the terminal's whole buffer, the editor's document, or a field's text. A
+      terminal sends `⌥←`/`⌥→` as Esc b/f (xterm.js sent `Esc [1;3D`, which zsh does not bind)
+      and `⌘←`/`⌘→`/`⌘⌫` as ^A/^E/^U. `⌘⇧K` is free again, so it deletes a line in the editor.
+      Verify: `shortcuts.spec.ts`, `terminal-keys.test.ts`, `keys.test.ts`.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

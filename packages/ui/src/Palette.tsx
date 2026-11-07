@@ -14,7 +14,7 @@ export interface PaletteProps {
   onClose(): void;
 }
 
-/** `⌘K`: every app action and "Move tab to…", filtered as you type (task 3.2). */
+/** `⌘P`: every app action and "Move tab to…", filtered as you type (task 3.2). */
 export function Palette({ items, onClose }: PaletteProps) {
   const groups = [...new Set(items.map((i) => i.group))];
   const input = useRef<HTMLInputElement>(null);

@@ -44,10 +44,11 @@ describe("chords", () => {
 const withOpenFile = ACTIONS;
 
 describe("editable shortcuts (task 6.10)", () => {
-  it("rebinds Open file to ⌘P: ⌘P opens it and ⌘O does nothing", () => {
-    const actions = withBindings(withOpenFile, { open_file: "Cmd+P" });
-    expect(bindingProblem("open_file", "Cmd+P", withOpenFile)).toBeUndefined();
-    expect(actionFor(key("KeyP", { metaKey: true }), actions)).toBe("open_file");
+  it("rebinds Open file to ⌘⇧E: ⌘⇧E opens it and ⌘O does nothing", () => {
+    const actions = withBindings(withOpenFile, { open_file: "Cmd+Shift+E" });
+    expect(bindingProblem("open_file", "Cmd+Shift+E", withOpenFile)).toBeUndefined();
+    expect(bindingProblem("open_file", "Cmd+P", withOpenFile)).toBe("⌘P is already Command Palette….");
+    expect(actionFor(key("KeyE", { metaKey: true, shiftKey: true }), actions)).toBe("open_file");
     expect(actionFor(key("KeyO", { metaKey: true }), actions)).toBeUndefined();
     expect(actionFor(key("KeyO", { metaKey: true }), withOpenFile)).toBe("open_file");
   });

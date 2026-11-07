@@ -63,7 +63,7 @@ All motion stops under `prefers-reduced-motion`. The chime is off by default.
 ## Keyboard
 
 Plain keys always go to the focused pane: this is a terminal. App actions are `⌘` chords:
-- `⌘K` palette
+- `⌘P` palette, `⌘K` clear
 - `⌘T` new tab, `⌘N` new side tab, `⌘D` and `⌘⇧D` split, `⌘W` close
 - `⌘1`–`⌘9` switch tab, `⌃⌘1`–`⌃⌘9` switch side tab
 - `⌘I` insert a prompt or variable at the cursor

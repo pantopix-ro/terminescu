@@ -90,7 +90,7 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 .ctx-sec-head { position: sticky; top: 0; z-index: 1; margin: 0; padding: 6px var(--space-3); font-size: 9px; font-weight: normal; color: var(--amber); background: var(--panel); border-bottom: 1px solid var(--line); }
 .ctx-empty { padding: var(--space-3); }
 
-/* Palette (⌘K). */
+/* Palette (⌘P). */
 .palette-back { position: fixed; inset: 0; z-index: 20; display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh; background: rgba(0, 0, 0, .35); }
 .palette { width: min(560px, calc(100% - 32px)); display: flex; flex-direction: column; max-height: 60vh; }
 .palette-input { margin: var(--space-3); }

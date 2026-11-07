@@ -125,7 +125,7 @@
    "id": "palette",
    "label": "Command Palette…",
    "menu": "View",
-   "accel": "Cmd+K"
+   "accel": "Cmd+P"
   },
   {
    "id": "prompt_library",
@@ -320,10 +320,16 @@
    "accel": "Cmd+Shift+O"
   },
   {
+   "id": "select_all",
+   "label": "Select All",
+   "menu": "Edit",
+   "accel": "Cmd+A"
+  },
+  {
    "id": "clear_to_start",
    "label": "Clear to Start",
    "menu": "Edit",
-   "accel": "Cmd+Shift+K"
+   "accel": "Cmd+K"
   },
   {
    "id": "clear_scrollback",

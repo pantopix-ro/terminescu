@@ -202,20 +202,20 @@ test("the palette runs actions and moves the tab", async ({ page }) => {
   await expect.poll(() => tabIds(page)).toHaveLength(2);
   const tab = (await tabIds(page))[1]!;
 
-  await page.keyboard.press("Meta+k");
+  await page.keyboard.press("Meta+p");
   await expect(page.locator(".palette-input")).toBeFocused();
   await page.keyboard.type("split right");
   await page.keyboard.press("Enter");
   await expect(page.locator(".palette")).toHaveCount(0);
   await expect.poll(() => shownPanes(page)).toHaveLength(2);
 
-  await page.keyboard.press("Meta+k");
+  await page.keyboard.press("Meta+p");
   await page.locator(".palette-item", { hasText: "New side tab" }).filter({ hasNotText: "⌘" }).click();
   await expect(page.locator(".ao-st")).toHaveCount(2);
   await expect.poll(() => tabIds(page)).toEqual([tab]);
   await expect.poll(() => shownPanes(page)).toHaveLength(2);
 
-  await page.keyboard.press("Meta+k");
+  await page.keyboard.press("Meta+p");
   await page.keyboard.press("Escape");
   await expect(page.locator(".palette")).toHaveCount(0);
   await expect.poll(() => focusedPane(page)).toBeTruthy();
@@ -332,7 +332,7 @@ test("a tab dropped outside every window moves to a new window; the palette does
   await drag(page, `[data-tab="${b}"]`, await center(page, `[data-tab="${a}"]`));
   await expect.poll(() => tabIds(page)).toEqual([b, a]);
 
-  await page.keyboard.press("Meta+k");
+  await page.keyboard.press("Meta+p");
   await page.locator(".palette-item", { hasText: "New window" }).click();
   await expect.poll(() => tabIds(page)).toHaveLength(1);
   ws = (await mock(page)).ws;

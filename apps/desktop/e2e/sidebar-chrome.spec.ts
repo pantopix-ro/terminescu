@@ -49,7 +49,7 @@ test("a right click under the rows adds a side tab or changes the sort", async (
 
 test("the palette changes the sort", async ({ page }) => {
   await start(page);
-  await page.keyboard.press("Meta+k");
+  await page.keyboard.press("Meta+p");
   await page.getByRole("group", { name: "Sort side tabs" }).getByRole("option", { name: "background" }).click();
   await page.locator(".side-fill").click({ button: "right" });
   await page.getByRole("menuitem", { name: "Sort side tabs" }).click();
