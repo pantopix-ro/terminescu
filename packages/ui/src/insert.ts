@@ -58,3 +58,12 @@ export function renderPrompt(body: string, variables: Variable[], pins: Pin[], e
   });
   return { text, missing };
 }
+
+/**
+ * Paths as a shell reads them back (task 8.43): plain ones as they are, others in single quotes
+ * with `'` written as `'\''`; space-joined, with a trailing space as Terminal.app leaves one.
+ */
+export function shellPaths(paths: readonly string[]): string {
+  const quote = (p: string) => (/^[\w@%+=:,./~-]+$/.test(p) ? p : `'${p.replaceAll("'", `'\\''`)}'`);
+  return `${paths.map(quote).join(" ")} `;
+}

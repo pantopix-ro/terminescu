@@ -130,7 +130,7 @@ export interface MockHost extends Host {
    */
   editWait(pane: Id, path: string): Promise<void>;
   /** Plays files dropped from Finder. */
-  dropFiles(paths: string[]): void;
+  dropFiles(paths: string[], at?: { x: number; y: number }): void;
   /** Plays a `PostToolUse` hook for Write or Edit in a pane: the file joins its side tab's Files. */
   touchFile(pane: Id, path: string, change: "added" | "modified"): void;
 }
@@ -247,7 +247,7 @@ export function createMockHost(initial?: Workspace): MockHost {
     for (const done of waits.get(docId) ?? []) done();
     waits.delete(docId);
   };
-  const dropListeners = new Set<(paths: string[]) => void>();
+  const dropListeners = new Set<(paths: string[], at?: { x: number; y: number }) => void>();
   const MOCK_CWD = "/Users/owner/acme-api";
   const inputs = new Map<string, string>();
   const agents = new Map<string, AgentView>();
@@ -1423,8 +1423,8 @@ export function createMockHost(initial?: Workspace): MockHost {
       dropListeners.add(listener);
       return () => dropListeners.delete(listener);
     },
-    dropFiles(paths) {
-      for (const l of dropListeners) l(paths);
+    dropFiles(paths, at) {
+      for (const l of dropListeners) l(paths, at);
     },
     touchFile(pane, path, change) {
       const side = ws.windows.flatMap((w) => w.sideTabs).find((s) => s.tabs.some((t) => panesOf(t.layout).includes(pane)));

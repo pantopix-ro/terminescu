@@ -560,6 +560,10 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       background), copy on select, a check before a risky paste (over 5,000 characters, a
       `sudo` line, or a pipe into a shell) and raised contrast. Defaults as Terminal.app.
       Verify: `terminal-behaviour.spec.ts`, `paste.test.ts`, `settings.rs`.
+- [x] 8.43 Drop files on a terminal (2026-11-07): files dropped from Finder on a terminal go in
+      as shell-quoted, space-joined paths with a trailing space and no Enter; dropped anywhere
+      else, the tab bar first, they open in text tabs as before. Verify: `file-drop.spec.ts`,
+      `insert.test.ts`.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

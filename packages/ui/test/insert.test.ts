@@ -1,6 +1,6 @@
 import type { Pin, Variable } from "@terminescu/host";
 import { describe, expect, it } from "vitest";
-import { pasteBytes, renderPrompt, typeable } from "../src/insert";
+import { pasteBytes, renderPrompt, typeable, shellPaths } from "../src/insert";
 
 const v = (name: string, mode: Variable["mode"], value: string | null): Variable => ({
   id: name,
@@ -78,5 +78,14 @@ describe("a paste end marker cannot be rebuilt", () => {
     expect(bytes.split("\x1b").length - 1).toBe(2);
     expect(bytes).toBe("\x1b[200~echo hi\nrm -rf ~/work\n\x1b[201~");
     expect(typeable("a\x07b\x9bc\td\r\ne")).toBe("ab" + "c\td\ne");
+  });
+});
+
+describe("shellPaths", () => {
+  it("leaves plain paths and quotes the rest", () => {
+    expect(shellPaths(["/Users/owner/acme-api/README.md"])).toBe("/Users/owner/acme-api/README.md ");
+    expect(shellPaths(["/Users/owner/My Files/a b.txt", "/tmp/x"])).toBe("'/Users/owner/My Files/a b.txt' /tmp/x ");
+    expect(shellPaths(["/tmp/it's.txt"])).toBe(`'/tmp/it'\\''s.txt' `);
+    expect(shellPaths(["/tmp/$HOME;rm"])).toBe("'/tmp/$HOME;rm' ");
   });
 });
