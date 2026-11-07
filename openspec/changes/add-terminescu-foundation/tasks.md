@@ -633,6 +633,12 @@ buffers once per sheet.
       blinks and bounces while Claude waits for an answer. Claude at its prompt stays still: the
       hook state wins over the `claude` program. A row takes its most urgent tab; reduced motion
       stops both. Verify: `activity.test.ts`, `activity.spec.ts`.
+- [x] 8.55 Pixel context menu (owner request 2026-11-07): a right click that no row, tab or link
+      takes opens the app's pixel menu instead of the system's. A terminal gets Copy, Paste,
+      Select All, Find, Clear to Start and its pane actions; a text pane Undo, Redo, Cut, Copy,
+      Paste, Select All and Find; a field Cut, Copy, Paste and Select All; other selected text
+      Copy. Undo to Paste go down the responder chain as the Edit menu's items do (`edit_command`).
+      Verify: `context-menu.spec.ts`, `links.spec.ts`, `edit_actions_map_to_the_standard_selectors`.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

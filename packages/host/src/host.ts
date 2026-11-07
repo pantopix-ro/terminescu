@@ -197,6 +197,8 @@ export interface Host {
   uninstallHelpers(deleteData: boolean): Promise<void>;
   /** Quits the app. */
   appQuit(): Promise<void>;
+  /** Sends an Edit action to the focused element, as the Edit menu does (task 8.55). */
+  editCommand(action: EditAction): Promise<void>;
   /** Checks the release feed now: the verified newer version, or null when up to date (D4). */
   checkUpdates(): Promise<string | null>;
   /** Installs the verified update and restarts into it; the shells stay in the daemon. */
@@ -287,3 +289,6 @@ export interface Host {
   /** The macOS Save dialog; null when cancelled. */
   chooseSavePath(defaultPath?: string): Promise<string | null>;
 }
+
+/** The Edit menu actions the pixel context menu sends (task 8.55). */
+export type EditAction = "undo" | "redo" | "cut" | "copy" | "paste";

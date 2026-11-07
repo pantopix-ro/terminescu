@@ -5,6 +5,7 @@
 mod crashlog;
 mod docs;
 mod drag;
+mod edit;
 mod public;
 mod updates;
 
@@ -1940,6 +1941,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            edit::edit_command,
             public::app_info,
             public::feedback_open,
             public::uninstall_helpers,

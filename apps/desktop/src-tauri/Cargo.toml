@@ -24,3 +24,9 @@ tauri-plugin-dialog = "=2.8.3"
 tauri-plugin-updater = "=2.14.0"
 # Already in the tree through tauri; only its timer is used here.
 tokio = { version = "1", features = ["time"] }
+
+# Already in the tree through tauri: the pixel context menu sends Copy, Paste and the other
+# Edit actions down the responder chain, as the Edit menu does.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "=0.6.5"
+objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSApplication", "NSResponder"] }
