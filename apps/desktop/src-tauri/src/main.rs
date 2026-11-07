@@ -1605,6 +1605,20 @@ fn build_menu(
             None => sections.push((a.menu.clone(), vec![item])),
         }
     }
+    let edit = Submenu::with_items(
+        app,
+        "Edit",
+        true,
+        &[
+            &PredefinedMenuItem::undo(app, None)?,
+            &PredefinedMenuItem::redo(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::cut(app, None)?,
+            &PredefinedMenuItem::copy(app, None)?,
+            &PredefinedMenuItem::paste(app, None)?,
+            &PredefinedMenuItem::select_all(app, None)?,
+        ],
+    )?;
     let menu = Menu::with_items(
         app,
         &[
@@ -1624,20 +1638,7 @@ fn build_menu(
                     &PredefinedMenuItem::quit(app, None)?,
                 ],
             )?,
-            &Submenu::with_items(
-                app,
-                "Edit",
-                true,
-                &[
-                    &PredefinedMenuItem::undo(app, None)?,
-                    &PredefinedMenuItem::redo(app, None)?,
-                    &PredefinedMenuItem::separator(app)?,
-                    &PredefinedMenuItem::cut(app, None)?,
-                    &PredefinedMenuItem::copy(app, None)?,
-                    &PredefinedMenuItem::paste(app, None)?,
-                    &PredefinedMenuItem::select_all(app, None)?,
-                ],
-            )?,
+            &edit,
         ],
     )?;
     for (name, items) in &sections {
@@ -1645,6 +1646,12 @@ fn build_menu(
             .iter()
             .map(|i| i as &dyn tauri::menu::IsMenuItem<Wry>)
             .collect();
+        // Find, clear and the prompt marks join the standard Edit menu, under a separator.
+        if name == "Edit" {
+            edit.append(&PredefinedMenuItem::separator(app)?)?;
+            edit.append_items(&refs)?;
+            continue;
+        }
         let sub = Submenu::with_items(app, name, true, &refs)?;
         if name == "Window" {
             sub.prepend_items(&[
@@ -1871,7 +1878,7 @@ mod tests {
         for a in &file.actions {
             assert!(ids.insert(a.id.as_str()), "{} is listed twice", a.id);
             assert!(
-                ["File", "Shell", "View", "Window"].contains(&a.menu.as_str()),
+                ["File", "Edit", "Shell", "View", "Window"].contains(&a.menu.as_str()),
                 "{}",
                 a.menu
             );

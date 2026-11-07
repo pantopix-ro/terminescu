@@ -288,6 +288,24 @@
    "label": "Last Side Tab",
    "menu": "Window",
    "accel": "Ctrl+Cmd+9"
+  },
+  {
+   "id": "find",
+   "label": "Find…",
+   "menu": "Edit",
+   "accel": "Cmd+F"
+  },
+  {
+   "id": "find_next",
+   "label": "Find Next",
+   "menu": "Edit",
+   "accel": "Cmd+G"
+  },
+  {
+   "id": "find_previous",
+   "label": "Find Previous",
+   "menu": "Edit",
+   "accel": "Cmd+Shift+G"
   }
  ]
 }
