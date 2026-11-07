@@ -1,5 +1,6 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon, type ISearchOptions } from "@xterm/addon-search";
+import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal, type IBufferLine } from "@xterm/xterm";
@@ -227,6 +228,9 @@ export function TerminalPane({ paneId, visible, focused, onFocus, open, openUrl,
       term.loadAddon(fit);
       const search = new SearchAddon({ highlightLimit: 2000 });
       term.loadAddon(search);
+      // The daemon's grid measures with a newer table; Unicode 11 is the closest xterm.js has.
+      term.loadAddon(new Unicode11Addon());
+      term.unicode.activeVersion = "11";
       term.loadAddon(new WebLinksAddon(activate));
       // File paths underline on hover like links and open on `⌘`-click (D27).
       term.registerLinkProvider({

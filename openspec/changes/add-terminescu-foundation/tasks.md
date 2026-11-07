@@ -547,6 +547,12 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       pane alone and brings the split back; a split or a focus move restores it, and so does
       the pane leaving the tab. Session only; the hidden panes park (D33). Verify:
       `maximize.spec.ts`.
+- [x] 8.41 Unicode 11 widths (2026-11-07): terminals load `@xterm/addon-unicode11` and measure
+      with its table. `crates/ptyd/tests/fixtures/widths.json` holds characters up to Unicode
+      11 with their widths; the daemon's grid and headless xterm.js both match it. Emoji newer
+      than Unicode 11 stay a known gap, since xterm.js has no newer table. A DEC 2026 block
+      split over two writes keeps synchronized output on until its end. Verify:
+      `widths.rs`, `widths.test.ts`, `unicode.spec.ts`.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves
