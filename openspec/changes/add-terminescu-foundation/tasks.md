@@ -621,6 +621,13 @@ buffers once per sheet.
       terminal sends `⌥←`/`⌥→` as Esc b/f (xterm.js sent `Esc [1;3D`, which zsh does not bind)
       and `⌘←`/`⌘→`/`⌘⌫` as ^A/^E/^U. `⌘⇧K` is free again, so it deletes a line in the editor.
       Verify: `shortcuts.spec.ts`, `terminal-keys.test.ts`, `keys.test.ts`.
+- [x] 8.53 Editable terminal chords (owner request 2026-11-07): Settings › Keys lists the
+      terminal's chords under "In the terminal": word left and right, line start and end, delete
+      to the line's start, and a new line chord that sends Esc CR (`⌥↵` in Claude), off by
+      default. Each can be rebound, turned off or reset. A chord needs ⌘, ⌥ or ⌃ (⇧ only with a
+      named key such as ↵), and one that an app shortcut or macOS owns is refused or flagged.
+      Saved as `terminalKeys` in settings. Verify: `settings.spec.ts`, `terminal-keys.test.ts`,
+      `terminal_keys_are_editable`.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

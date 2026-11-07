@@ -4,6 +4,10 @@ import {
   bindingProblem,
   chordLabel,
   conflicts,
+  normalAccel,
+  RESERVED,
+  TERMINAL_KEYS,
+  terminalChordProblem,
   withBindings,
   type KeyBindings,
   COMMAND_TARGETS,
@@ -19,7 +23,9 @@ import {
   COMMAND_SECS,
   TAB_FONT_SIZES,
   VAR_MODES,
+  type ActionDef,
   type AppSettings,
+  type TerminalKeys,
   type AttentionSettings,
   type Bell,
   type CursorStyle,
@@ -642,7 +648,25 @@ function ShellSettings({ host, onError }: SettingsSheetProps) {
   );
 }
 
+/** Recorder ids for the terminal's chords, apart from the app actions' ids. */
+const TERM = "term:";
+
+/** Why `accel` cannot be terminal key `id`'s chord: a menu chord would never reach the pane. */
+function terminalKeyProblem(id: keyof TerminalKeys, accel: string, keys: TerminalKeys, actions: readonly ActionDef[]): string | undefined {
+  const why = terminalChordProblem(accel);
+  if (why) return why;
+  const want = normalAccel(accel);
+  const reserved = RESERVED.find((r) => normalAccel(r.accel) === want);
+  if (reserved) return `${chordLabel(accel)} is ${reserved.label}.`;
+  const action = actions.find((a) => normalAccel(a.accel) === want);
+  if (action) return `${chordLabel(accel)} is already ${action.label}.`;
+  const other = TERMINAL_KEYS.find((k) => k.id !== id && keys[k.id] && normalAccel(keys[k.id]) === want);
+  if (other) return `${chordLabel(accel)} is already ${other.label}.`;
+  return undefined;
+}
+
 function KeysSettings({ host, onError }: SettingsSheetProps) {
+  const [settings, change] = useAppSettings(host, onError);
   const [bindings, setBindings] = useState<KeyBindings>({});
   const [recording, setRecording] = useState<string>();
   const [problem, setProblem] = useState<{ id: string; text: string }>();
@@ -669,8 +693,9 @@ function KeysSettings({ host, onError }: SettingsSheetProps) {
 
   // The next chord goes to the recorder wherever focus is (WebKit does not focus a clicked
   // button), ahead of the sheet's Escape and the panes.
-  const latest = useRef({ actions, bindings });
-  latest.current = { actions, bindings };
+  const termKeys = settings?.terminalKeys ?? DEFAULT_SETTINGS.terminalKeys;
+  const latest = useRef({ actions, bindings, termKeys, change });
+  latest.current = { actions, bindings, termKeys, change };
   useEffect(() => {
     if (!recording) return;
     const onKey = (e: KeyboardEvent) => {
@@ -679,7 +704,15 @@ function KeysSettings({ host, onError }: SettingsSheetProps) {
       if (e.key === "Escape" && !e.metaKey) return setRecording(undefined);
       const accel = accelOf(e);
       if (!accel) return;
-      const { actions, bindings } = latest.current;
+      const { actions, bindings, termKeys, change } = latest.current;
+      if (recording.startsWith(TERM)) {
+        const id = recording.slice(TERM.length) as keyof TerminalKeys;
+        const why = terminalKeyProblem(id, accel, termKeys, actions);
+        if (why) return setProblem({ id: recording, text: why });
+        setProblem(undefined);
+        setRecording(undefined);
+        return change({ terminalKeys: { ...termKeys, [id]: accel } });
+      }
       const why = bindingProblem(recording, accel, actions);
       if (why) return setProblem({ id: recording, text: why });
       setProblem(undefined);
@@ -688,7 +721,7 @@ function KeysSettings({ host, onError }: SettingsSheetProps) {
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-    // `save` reads only host and onError, both in the deps.
+    // `save` reads only host and onError, both in the deps; the rest comes from `latest`.
   }, [host, onError, recording]);
 
   return (
@@ -736,6 +769,62 @@ function KeysSettings({ host, onError }: SettingsSheetProps) {
             Reset all
           </button>
         )}
+      </div>
+      <h3 className="ao-pixel ao-dim">In the terminal</h3>
+      {settings &&
+        TERMINAL_KEYS.map((k) => {
+          const rid = TERM + k.id;
+          const accel = termKeys[k.id];
+          const changed = accel !== DEFAULT_SETTINGS.terminalKeys[k.id];
+          // A chord saved before an app shortcut took it never reaches the pane.
+          const taken = accel ? actions.find((a) => normalAccel(a.accel) === normalAccel(accel)) : undefined;
+          return (
+            <div key={k.id} className={`srow${taken ? " key-clash" : ""}`} data-term-key={k.id}>
+              <span className="grow">{k.label}</span>
+              {problem?.id === rid ? (
+                <span className="small key-problem" role="alert">
+                  {problem.text}
+                </span>
+              ) : (
+                taken && (
+                  <span className="small key-problem" role="alert">
+                    {chordLabel(accel)} is {taken.label}, which wins.
+                  </span>
+                )
+              )}
+              {changed && (
+                <button
+                  type="button"
+                  className="link small"
+                  aria-label={`Reset ${k.label}`}
+                  onClick={() => change({ terminalKeys: { ...termKeys, [k.id]: DEFAULT_SETTINGS.terminalKeys[k.id] } })}
+                >
+                  reset
+                </button>
+              )}
+              {accel && (
+                <button type="button" className="link small" aria-label={`Turn off ${k.label}`} onClick={() => change({ terminalKeys: { ...termKeys, [k.id]: "" } })}>
+                  off
+                </button>
+              )}
+              <button
+                type="button"
+                className={`ao-btn ghost set-chord${recording === rid ? " recording" : ""}`}
+                aria-label={`Shortcut for ${k.label}`}
+                onClick={() => {
+                  setProblem(undefined);
+                  setRecording(recording === rid ? undefined : rid);
+                }}
+              >
+                {recording === rid ? "press a chord" : accel ? <kbd>{chordLabel(accel)}</kbd> : <span className="ao-dim">off</span>}
+              </button>
+            </div>
+          );
+        })}
+      <div className="srow">
+        <span className="small ao-dim grow">
+          A focused terminal turns these into the keys a shell reads. The new line chord sends what ⌥↵ sends, a line break in Claude&apos;s prompt; ⇧↵ is a common pick.
+        </span>
       </div>
     </section>
   );

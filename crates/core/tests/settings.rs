@@ -263,3 +263,62 @@ fn theme_colours_and_opacity() {
         assert!(settings::set(&db, s.clone()).is_err(), "{s:?}");
     }
 }
+
+/// Task 8.53: the terminal's chords keep their values, an empty one is off, and bad ones are refused.
+#[test]
+fn terminal_keys_are_editable() {
+    use terminescu_core::settings::TerminalKeys;
+    let db = Db::open_in_memory().unwrap();
+    assert_eq!(
+        settings::get(&db).unwrap().terminal_keys.word_left,
+        "Alt+Left"
+    );
+    assert_eq!(settings::get(&db).unwrap().terminal_keys.newline, "");
+    let keys = TerminalKeys {
+        newline: " Shift+Enter ".into(),
+        delete_line: String::new(),
+        ..TerminalKeys::default()
+    };
+    let saved = settings::set(
+        &db,
+        Settings {
+            terminal_keys: keys,
+            ..Settings::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(saved.terminal_keys.newline, "Shift+Enter");
+    assert_eq!(
+        settings::get(&db).unwrap().terminal_keys,
+        saved.terminal_keys
+    );
+    assert_eq!(
+        serde_json::to_value(&saved).unwrap()["terminalKeys"]["wordLeft"],
+        serde_json::json!("Alt+Left")
+    );
+
+    for bad in [
+        TerminalKeys {
+            newline: "Enter".into(),
+            ..TerminalKeys::default()
+        },
+        TerminalKeys {
+            newline: "Shift+A".into(),
+            ..TerminalKeys::default()
+        },
+        TerminalKeys {
+            newline: "Alt+".into(),
+            ..TerminalKeys::default()
+        },
+        TerminalKeys {
+            newline: "Option+Left".into(),
+            ..TerminalKeys::default()
+        },
+    ] {
+        let s = Settings {
+            terminal_keys: bad,
+            ..Settings::default()
+        };
+        assert!(settings::set(&db, s).is_err());
+    }
+}

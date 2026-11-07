@@ -934,10 +934,10 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     [terminalFont, terminalFontSize, terminalLineHeight, terminalLetterSpacing, terminalFontWeight],
   );
   // Task 8.42: cursor, history, Option keys, bell, clipboard and contrast, live.
-  const { terminalCursor, terminalCursorBlink, terminalScrollback, optionAsMeta, bell, copyOnSelect, pasteWarning, raiseContrast } = appSettings;
+  const { terminalCursor, terminalCursorBlink, terminalScrollback, optionAsMeta, bell, copyOnSelect, pasteWarning, raiseContrast, terminalKeys } = appSettings;
   const termBehaviour = useMemo(
-    () => ({ terminalCursor, terminalCursorBlink, terminalScrollback, optionAsMeta, bell, copyOnSelect, pasteWarning, raiseContrast }),
-    [terminalCursor, terminalCursorBlink, terminalScrollback, optionAsMeta, bell, copyOnSelect, pasteWarning, raiseContrast],
+    () => ({ terminalCursor, terminalCursorBlink, terminalScrollback, optionAsMeta, bell, copyOnSelect, pasteWarning, raiseContrast, terminalKeys }),
+    [terminalCursor, terminalCursorBlink, terminalScrollback, optionAsMeta, bell, copyOnSelect, pasteWarning, raiseContrast, terminalKeys],
   );
   // Task 8.47: the colour scheme and opacity. The page paints the panes' margins in the scheme's
   // background; below 100% the window lets the desktop through there, the chrome stays solid.

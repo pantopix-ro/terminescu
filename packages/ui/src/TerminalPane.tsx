@@ -426,8 +426,8 @@ export function TerminalPane({
         if (e.type === "keydown" && e.key === "Alt" && (meta === "left" || meta === "right")) {
           term.options.macOptionIsMeta = e.code === (meta === "left" ? "AltLeft" : "AltRight");
         }
-        // The macOS editing chords: word moves, line start and end, delete to the line's start.
-        const text = terminalKeyText(e);
+        // The editing chords of Settings › Keys: word moves, line start and end, and so on.
+        const text = terminalKeyText(e, behaviourNow.current.terminalKeys);
         if (text !== undefined) {
           if (e.type === "keydown") {
             e.preventDefault();
