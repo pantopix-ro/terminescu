@@ -16,7 +16,7 @@ terminescu-protocol.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 libc.workspace = true
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["macos-private-api"] }
 # 2.7.0 shipped 2026-10-14; 2.8 is under two weeks old.
 tauri-plugin-notification = "~2.7.0"
 tauri-plugin-dialog = "=2.8.3"

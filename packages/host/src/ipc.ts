@@ -5,6 +5,7 @@ import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialo
 import type { Host, PaneView } from "./host";
 import { ACTIONS, plusActionFor, withBindings, type KeyBindings } from "./keys";
 import type {
+  TerminalProfile,
   AgentUpdate,
   DragEnd,
   DragPoint,
@@ -153,6 +154,8 @@ export function createIpcHost(): Host {
     setBuiltin: (auto, look) => invoke("builtin_set", { auto, look }),
     openUrl: (url) => invoke("open_url", { url }),
     bounceDock: () => invoke("bounce_dock"),
+    importTerminalApp: () => invoke<TerminalProfile>("import_terminal_app"),
+    importTerminalFile: (path) => invoke<TerminalProfile>("import_terminal_file", { path }),
     newText: (sideTab, beside) => invoke<DocView>("doc_new", { sideTab, beside: beside ?? null }),
     openFile: (sideTab, path, beside) => invoke<DocView>("doc_open_file", { sideTab, path, beside: beside ?? null }),
     openPath: (sideTab, pane, path, beside) => invoke<DocView>("doc_open_path", { sideTab, pane, path, beside: beside ?? null }),

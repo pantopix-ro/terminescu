@@ -16,3 +16,4 @@ uuid.workspace = true
 terminescu-protocol.workspace = true
 libc.workspace = true
 sha2 = "0.11"
+plist = { version = "1.10.3", default-features = false }

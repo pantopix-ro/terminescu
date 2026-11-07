@@ -35,6 +35,7 @@ use terminescu_core::state::{
 };
 use terminescu_core::status::{Auto, Look, ManualStatus, RuleKind, Shown};
 use terminescu_core::status_store::{self, SavedStatus, StatusConfig};
+use terminescu_core::term_import;
 use terminescu_core::vars;
 use terminescu_core::views::ViewId;
 use terminescu_protocol::core::{CoreMessage, CoreReply, CoreRequest};
@@ -1315,6 +1316,18 @@ fn bounce_dock(window: tauri::WebviewWindow) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// Settings › Terminal › Import from Terminal.app (task 8.47): its default profile.
+#[tauri::command]
+async fn import_terminal_app() -> Result<term_import::Profile, String> {
+    term_import::terminal_app_default().map_err(|e| e.to_string())
+}
+
+/// Settings › Terminal › Import file: a `.terminal` profile or an `.itermcolors` preset.
+#[tauri::command]
+async fn import_terminal_file(path: PathBuf) -> Result<term_import::Profile, String> {
+    term_import::import_file(&path).map_err(|e| e.to_string())
+}
+
 /// The sidecars sit next to the app binary: in `Contents/MacOS` when bundled, in
 /// `target/debug` under `tauri dev`.
 fn sidecar(name: &str) -> std::io::Result<PathBuf> {
@@ -1635,7 +1648,9 @@ fn open_window(app: &AppHandle, window_id: &str, at: Option<(f64, f64, f64)>) ->
         .traffic_light_position(tauri::LogicalPosition::new(14.0, 20.0))
         // The click that brings the window forward also reaches the page, so a double click
         // on an icon or a name works from another app (task 8.19).
-        .accept_first_mouse(true);
+        .accept_first_mouse(true)
+        // Terminal opacity (task 8.47): the page paints its own background, opaque at 100%.
+        .transparent(true);
     let w = builder.build()?;
     // The caller holds no db lock: the window opens from the patch emitter and from setup.
     let saved = settings::get(&lock(&app.state::<AppState>().db)).unwrap_or_default();
@@ -1904,6 +1919,8 @@ fn main() {
             pane_resize,
             pane_input,
             pane_clear,
+            import_terminal_app,
+            import_terminal_file,
             open_url,
             bounce_dock,
             docs::doc_new,

@@ -510,6 +510,40 @@ export interface AppSettings {
   pasteWarning: boolean;
   /** Text too close to its background is drawn with more contrast. */
   raiseContrast: boolean;
+  /** The terminal's colours (task 8.47); `imported` uses `terminalColors`. */
+  terminalTheme: TerminalTheme;
+  /** The colours last imported from Terminal.app or a file. */
+  terminalColors: ImportedColors | null;
+  /** 30 to 100; below 100 the desktop shows through the terminals' background. */
+  terminalOpacity: number;
+}
+
+export type TerminalTheme = "terminescu" | "basic" | "solarizedDark" | "solarizedLight" | "imported";
+export const TERMINAL_THEMES: readonly TerminalTheme[] = ["terminescu", "basic", "solarizedDark", "solarizedLight", "imported"];
+/** The terminal opacity's range in percent. Same as `OPACITIES` in settings.rs. */
+export const OPACITIES = [30, 100] as const;
+
+/** Colours from an imported profile, as `term_import::Colors`: `#rrggbb`, 16 ANSI entries. */
+export interface ImportedColors {
+  foreground: string;
+  background: string;
+  cursor: string | null;
+  selection: string | null;
+  bold: string | null;
+  ansi: string[];
+}
+
+/** A Terminal.app profile or iTerm2 preset as `term_import::Profile` reads it. */
+export interface TerminalProfile {
+  name: string;
+  colors: ImportedColors | null;
+  /** "" is the system mono font. */
+  fontFamily: string | null;
+  fontSize: number | null;
+  backgroundOpacity: number | null;
+  cursor: CursorStyle | null;
+  cursorBlink: boolean | null;
+  optionAsMeta: boolean | null;
 }
 
 export type CursorStyle = "bar" | "block" | "underline";
@@ -556,6 +590,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   copyOnSelect: false,
   pasteWarning: true,
   raiseContrast: false,
+  terminalTheme: "terminescu",
+  terminalColors: null,
+  terminalOpacity: 100,
 };
 
 /** The steps `⌘+` and `⌘-` walk, in percent. Same as `ZOOM_STEPS` in settings.rs. */

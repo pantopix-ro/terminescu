@@ -24,6 +24,7 @@ pub mod settings;
 pub mod state;
 pub mod status;
 pub mod status_store;
+pub mod term_import;
 pub mod transcript;
 pub mod vars;
 pub mod views;

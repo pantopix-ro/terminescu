@@ -585,6 +585,14 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       terminal of the window, history included, case-insensitive, one hit per line (wrapped rows
       joined), up to 200, grouped by "Side › Tab". A hit selects its tab, focuses the pane and
       selects the line. Verify: `find-all.test.ts`, `find-all.spec.ts`.
+- [x] 8.47 Colours and opacity (2026-11-07): Settings › Terminal › Colours picks Terminescu,
+      Terminal.app Basic, Solarized Dark or Light, or Imported. "From Terminal.app" reads its
+      default profile, "File…" a `.terminal` or `.itermcolors` file (core `term_import`):
+      colours, font, size, cursor, Option as Meta and background opacity. A status tint still
+      replaces a dark scheme's background and mixes 35% into a light one. Opacity 30 to 100%:
+      windows are transparent and the page paints its own background, so below 100% only the
+      terminals let the desktop through. Verify: `terminal-theme.spec.ts`, `theme.test.ts`,
+      `settings.rs` tests, `term_import` tests, a real-app screenshot.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

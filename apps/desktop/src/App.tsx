@@ -117,6 +117,9 @@ import {
   playChime,
   type SortMode,
   terminalFontOptions,
+  schemeTheme,
+  isLight,
+  LIGHT_TINT,
 } from "@terminescu/ui";
 import type { Terminal } from "@xterm/xterm";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -901,6 +904,21 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     () => ({ terminalCursor, terminalCursorBlink, terminalScrollback, optionAsMeta, bell, copyOnSelect, pasteWarning, raiseContrast }),
     [terminalCursor, terminalCursorBlink, terminalScrollback, optionAsMeta, bell, copyOnSelect, pasteWarning, raiseContrast],
   );
+  // Task 8.47: the colour scheme and opacity. The page paints the panes' margins in the scheme's
+  // background; below 100% the window lets the desktop through there, the chrome stays solid.
+  const { terminalTheme, terminalColors, terminalOpacity } = appSettings;
+  const scheme = useMemo(() => schemeTheme(terminalTheme, terminalColors), [terminalTheme, terminalColors]);
+  useEffect(() => {
+    const root = document.documentElement;
+    const custom = terminalTheme !== "terminescu" || terminalOpacity < 100;
+    if (custom) root.dataset.scheme = "";
+    else delete root.dataset.scheme;
+    if (terminalOpacity < 100) root.dataset.seeThrough = "";
+    else delete root.dataset.seeThrough;
+    root.style.setProperty("--term-base", scheme.background ?? "");
+    root.style.setProperty("--term-alpha", `${terminalOpacity}%`);
+    root.style.setProperty("--tint-mix", isLight(scheme.background ?? "") ? `${LIGHT_TINT * 100}%` : "100%");
+  }, [scheme, terminalTheme, terminalOpacity]);
   // A risky paste waits on this dialog; one at a time.
   const [pasteAsk, setPasteAsk] = useState<{ text: string; reason: string; answer(ok: boolean): void }>();
   const confirmPaste = (text: string, reason: string) =>
@@ -1820,6 +1838,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               tint={statuses[tab.id]?.look?.background ?? statuses[side.id]?.look?.background}
               font={termFont}
               behaviour={termBehaviour}
+              scheme={scheme}
+              opacity={terminalOpacity}
               onBell={ringBell}
               confirmPaste={confirmPaste}
               visible={tab.id === activeTab?.id}
