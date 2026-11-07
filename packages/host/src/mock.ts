@@ -94,6 +94,11 @@ export interface MockHost extends Host {
   readonly quits: () => number;
   /** Picks a menu item, as the native menu would: the Help items have no chord. */
   menu(action: string): void;
+  /** What the next update check finds, and a background check finding `version`. */
+  nextUpdate: (version: string | null) => void;
+  offerUpdate: (version: string) => void;
+  /** How many times Restart to update ran. */
+  updateRestarts: () => number;
   /** Every size a pane view reported, in order, as `pane cols x rows`. */
   readonly resizes: string[];
   /** Text a ResumePane typed, per pane. */
@@ -240,6 +245,9 @@ export function createMockHost(initial?: Workspace): MockHost {
   const uninstalls: boolean[] = [];
   let quits = 0;
   const actionListeners = new Set<(action: string) => void>();
+  const updateListeners = new Set<(version: string) => void>();
+  let pendingUpdate: string | null = null;
+  let updateRestarts = 0;
   // A browser run starts past the first run, with the hook on, unless the page asks for a
   // fresh Mac with `?first-run` (add-public-release D6).
   const freshMac = typeof location !== "undefined" && new URLSearchParams(location.search).has("first-run");
@@ -798,6 +806,14 @@ export function createMockHost(initial?: Workspace): MockHost {
     menu(action) {
       for (const l of actionListeners) l(action);
     },
+    nextUpdate(version) {
+      pendingUpdate = version;
+    },
+    offerUpdate(version) {
+      pendingUpdate = version;
+      for (const l of updateListeners) l(version);
+    },
+    updateRestarts: () => updateRestarts,
     resizes,
     typed,
     inputs,
@@ -1462,6 +1478,17 @@ export function createMockHost(initial?: Workspace): MockHost {
     },
     async appQuit() {
       quits++;
+    },
+    async checkUpdates() {
+      return pendingUpdate;
+    },
+    async updateRestart() {
+      if (!pendingUpdate) throw new Error("No update is ready.");
+      updateRestarts++;
+    },
+    async onUpdate(listener) {
+      updateListeners.add(listener);
+      return () => void updateListeners.delete(listener);
     },
     async openPathWith(paneId, path, reveal) {
       if (!reveal && /\.(app|command|sh)$/i.test(path)) throw new Error(`${path} is a program or script; Reveal in Finder shows it instead`);

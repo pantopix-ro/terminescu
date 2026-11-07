@@ -45,6 +45,7 @@ export const CONTEXT_EVENT = "host://context";
 export const PROMPTS_EVENT = "host://prompts";
 export const COMMANDS_EVENT = "host://commands";
 export const SETTINGS_EVENT = "host://settings";
+export const UPDATE_EVENT = "host://update";
 export const KEYS_EVENT = "host://keys";
 export const STATUS_EVENT = "host://status";
 export const LABEL_EVENT = "host://labels";
@@ -158,6 +159,9 @@ export function createIpcHost(): Host {
     feedbackOpen: (route, includeLog) => invoke("feedback_open", { route, includeLog }),
     uninstallHelpers: (deleteData) => invoke("uninstall_helpers", { deleteData }),
     appQuit: () => invoke("app_quit"),
+    checkUpdates: () => invoke<string | null>("update_check"),
+    updateRestart: () => invoke("update_restart"),
+    onUpdate: (listener) => listen<string>(UPDATE_EVENT, (e) => listener(e.payload)),
     openPathWith: (pane, path, reveal) => invoke("path_open", { pane, path, reveal }),
     bounceDock: () => invoke("bounce_dock"),
     importTerminalApp: () => invoke<TerminalProfile>("import_terminal_app"),

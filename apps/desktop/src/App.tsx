@@ -327,6 +327,17 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   }, [staleMax]);
 
   const [error, setError] = useState<string>();
+  // A verified update waiting for Restart to update (add-public-release D4).
+  const [update, setUpdate] = useState<string>();
+  useEffect(() => {
+    let gone = false;
+    let off: (() => void) | undefined;
+    void host.onUpdate((v) => !gone && setUpdate(v)).then((o) => (gone ? o() : (off = o)));
+    return () => {
+      gone = true;
+      off?.();
+    };
+  }, [host]);
   const [palette, setPalette] = useState(false);
   const [mode, setMode] = useState<ContextMode>(loadMode);
   const [dragging, setDragging] = useState<string>();
@@ -721,6 +732,11 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       case "privacy":
       case "uninstall":
         return setSheet(id as "about" | "licenses" | "privacy" | "uninstall");
+      case "check_updates":
+        return void host.checkUpdates().then(
+          (v) => (v ? setUpdate(v) : setNotice("Terminescu is up to date.")),
+          (e: unknown) => setError(String(e)),
+        );
       case "feedback_email":
         return setSheet("feedback-email");
       case "feedback_issue":
@@ -1865,6 +1881,18 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                 />
               )}
               {!activeTab && <p className="small app-empty">No side tabs. Press + in the sidebar.</p>}
+              {update && (
+                <div className="ao-bar-wait resume-bar update-bar" role="status">
+                  <span className="w">Terminescu {update} is ready</span>
+                  <span className="grow small ao-dim">your shells keep running across the restart</span>
+                  <button type="button" className="ao-btn primary" onClick={() => void host.updateRestart().catch((e: unknown) => setError(String(e)))}>
+                    Restart to update
+                  </button>
+                  <button type="button" className="ao-btn ghost" onClick={() => setUpdate(undefined)}>
+                    Later
+                  </button>
+                </div>
+              )}
               {notice && (
                 <p className="small app-note" role="status" onClick={() => setNotice(undefined)}>
                   {notice}

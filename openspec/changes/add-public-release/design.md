@@ -75,11 +75,14 @@ shells run, and D32 relies on the versioned copy.
 
 ### D4. Tauri updater on the GitHub Releases feed
 `tauri-plugin-updater` reads `https://github.com/<org>/terminescu/releases/latest/download/latest.json`
-and verifies the minisign signature against the public key in `tauri.conf.json`. The check
-runs at launch, every 24 h and from the menu.
+and verifies the minisign signature against the public key. The release job builds the key in
+from the `TERMINESCU_UPDATER_PUBKEY` repository variable and passes it to the updater at
+runtime, so the repository holds no key, and a local build without it never checks. The
+check runs at launch, every 24 h and from the menu. It downloads and verifies a newer release
+and keeps it in memory; it installs only when the person picks Restart to update.
 
-`tauri-plugin-process` handles the restart. The daemon keeps the shells (D32), and the new
-app reattaches.
+`AppHandle::restart` handles the restart, so `tauri-plugin-process` is not needed. The daemon
+keeps the shells (D32), and the new app reattaches.
 
 `<org>` is one constant, `PUBLIC_REPO` in `crates/protocol`, so the org slug changes in one
 place.

@@ -1,0 +1,73 @@
+# add-public-release task 7.1 (D2, D4): builds the DMG and the signed update, and drafts a
+# GitHub Release. Ad-hoc signed until the Apple secrets exist; with APPLE_CERTIFICATE set,
+# Tauri signs with the Developer ID and notarizes instead. docs/releasing.md has the steps.
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-14
+    env:
+      CREDITS_STRICT: "1"
+      TERMINESCU_UPDATER_PUBKEY: ${{ vars.TERMINESCU_UPDATER_PUBKEY }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      # Empty until the Apple Developer account exists; Tauri then signs ad hoc.
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the update key
+        run: |
+          if [ -z "$TERMINESCU_UPDATER_PUBKEY" ] || [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::Set the TERMINESCU_UPDATER_PUBKEY variable and the TAURI_SIGNING_PRIVATE_KEY secret (docs/releasing.md)."
+            exit 1
+          fi
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install cargo-about
+        run: cargo install --locked cargo-about@0.9.2 --features cli
+      - run: pnpm install --frozen-lockfile
+      - name: Build
+        working-directory: apps/desktop
+        run: |
+          export TERMINESCU_BUILD="$(git rev-parse --short HEAD)"
+          pnpm tauri build --config src-tauri/tauri.release.conf.json
+      - name: Write latest.json and SHA256SUMS
+        run: |
+          version=$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")
+          out=target/release/bundle
+          mkdir -p dist-release
+          cp "$out"/dmg/*.dmg dist-release/
+          cp "$out"/macos/Terminescu.app.tar.gz "$out"/macos/Terminescu.app.tar.gz.sig dist-release/
+          node -e '
+            const fs = require("fs");
+            const [version, repo] = process.argv.slice(1);
+            const signature = fs.readFileSync("dist-release/Terminescu.app.tar.gz.sig", "utf8").trim();
+            const url = `https://github.com/${repo}/releases/download/v${version}/Terminescu.app.tar.gz`;
+            const feed = { version, pub_date: new Date().toISOString(), platforms: { "darwin-aarch64": { signature, url } } };
+            fs.writeFileSync("dist-release/latest.json", JSON.stringify(feed, null, 2) + "\n");
+          ' "$version" "$GITHUB_REPOSITORY"
+          (cd dist-release && shasum -a 256 *.dmg Terminescu.app.tar.gz latest.json > SHA256SUMS)
+          codesign -dv "$out"/macos/Terminescu.app 2>&1 | grep -E 'Signature|Authority' || true
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - name: Draft the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v$VERSION" --draft --title "Terminescu $VERSION" \
+            --notes-file .github/release-notes.md dist-release/*
