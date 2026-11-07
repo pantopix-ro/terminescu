@@ -228,8 +228,11 @@ export interface Host {
    * and resolves to the file name to link (D29). `ext` is png, jpg, gif or webp.
    */
   pasteImage(docId: Id, bytes: Uint8Array, ext: string): Promise<string>;
-  /** Files dropped from Finder on the window, as absolute paths. */
-  onFileDrop(listener: (paths: string[]) => void): Promise<() => void>;
+  /**
+   * Files dropped from Finder on the window, as absolute paths, with the drop point in CSS
+   * pixels of the page when known (task 8.43).
+   */
+  onFileDrop(listener: (paths: string[], at?: { x: number; y: number }) => void): Promise<() => void>;
   /** A document with its text. */
   document(docId: Id): Promise<DocView>;
   /** The editor's whole text, after a pause in typing (D28). */

@@ -63,6 +63,7 @@ import {
   ExtractDialog,
   MergeDialog,
   PasteDialog,
+  shellPaths,
   ContextMenu,
   type MenuEntry,
   chipOf,
@@ -1034,7 +1035,15 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     const keep = (o: () => void) => (gone ? o() : offs.push(o));
     void host.onRevealPane((p) => revealRef.current(p)).then(keep);
     void host.onChime(playChime).then(keep);
-    void host.onFileDrop((paths) => paths.forEach((p) => openRef.current(p, false))).then(keep);
+    // Files dropped on a terminal go in as its shell reads them (task 8.43); anywhere else,
+    // the tab bar first of all, they open in text tabs.
+    void host
+      .onFileDrop((paths, at) => {
+        const term = at && document.elementFromPoint(at.x, at.y)?.closest<HTMLElement>(".term-pane[data-pane]");
+        if (!term) return paths.forEach((p) => openRef.current(p, false));
+        paneEvent(term.dataset.pane!, new CustomEvent(INSERT_EVENT, { detail: { text: shellPaths(paths) } }));
+      })
+      .then(keep);
     return () => {
       gone = true;
       offs.forEach((o) => o());

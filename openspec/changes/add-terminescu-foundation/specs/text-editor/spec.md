@@ -25,6 +25,10 @@ bar, SHALL open in a text tab.
 - **WHEN** `git status` in `~/work/api` prints `src/routes/audit.ts` and the person `⌘`-clicks it
 - **THEN** `~/work/api/src/routes/audit.ts` opens in a new text tab of the same side tab
 
+#### Scenario: Drop on a terminal
+- **WHEN** the person drops `README.md` and `My Files/it's.txt` from Finder on a terminal pane
+- **THEN** the shell's line gets both paths, the second in single quotes, and nothing runs
+
 #### Scenario: Open from a shell
 - **WHEN** the person runs `terminescu edit notes/PROJ-482.md` in a pane of PROJ-482
 - **THEN** the file opens in a text tab of PROJ-482, even when another window has focus

@@ -167,10 +167,22 @@ export function createIpcHost(): Host {
     pasteImage: (id, bytes, ext) => invoke<string>("doc_paste_image", bytes, { headers: { "x-doc": id, "x-ext": ext } }),
     openPrompt: (sideTab, promptId, beside) => invoke<DocView>("doc_open_prompt", { sideTab, promptId, beside: beside ?? null }),
     openVariable: (sideTab, name, beside) => invoke<DocView>("doc_open_variable", { sideTab, name, beside: beside ?? null }),
-    onFileDrop: (listener) =>
-      getCurrentWebviewWindow().onDragDropEvent((e) => {
-        if (e.payload.type === "drop" && e.payload.paths.length) listener(e.payload.paths);
-      }),
+    onFileDrop: (listener) => {
+      const win = getCurrentWebviewWindow();
+      return win.onDragDropEvent((e) => {
+        if (e.payload.type !== "drop" || !e.payload.paths.length) return;
+        const { paths, position } = e.payload;
+        // The point comes in physical pixels; the window's width in both units gives the factor,
+        // the screen's scale and the page zoom together.
+        void win.innerSize().then(
+          (size) => {
+            const f = size.width / window.innerWidth || 1;
+            listener(paths, { x: position.x / f, y: position.y / f });
+          },
+          () => listener(paths),
+        );
+      });
+    },
     document: (id) => invoke<DocView>("doc_get", { id }),
     editDocument: (id, text, rev) => invoke<DocView>("doc_edit", { id, text, rev: rev ?? null }),
     saveDocument: (id, path) => invoke<DocView>("doc_save", { id, path: path ?? null }),
