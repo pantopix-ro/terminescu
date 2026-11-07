@@ -21,6 +21,7 @@ import {
   stepZoom,
   withBindings,
   docOf,
+  leaf,
   panesOf,
   terminalsOf,
   transcriptOf,
@@ -113,6 +114,7 @@ import {
 } from "@terminescu/ui";
 import type { Terminal } from "@xterm/xterm";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useStore } from "zustand";
 
 export interface AppProps {
@@ -294,6 +296,11 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const panes = activeTab ? panesOf(activeTab.layout) : [];
   const [focusByTab, setFocusByTab] = useState<Record<string, string>>({});
   const focused = pick(panes, activeTab && focusByTab[activeTab.id]);
+  // The pane each tab shows alone (task 8.39), for this session only; a pane that left the tab
+  // shows the whole layout again.
+  const [maxByTab, setMaxByTab] = useState<Record<string, string>>({});
+  const maxPane = activeTab && panes.length > 1 && panes.includes(maxByTab[activeTab.id]!) ? maxByTab[activeTab.id] : undefined;
+  const restore = (tabId: string) => setMaxByTab((m) => (tabId in m ? Object.fromEntries(Object.entries(m).filter(([t]) => t !== tabId)) : m));
 
   const [error, setError] = useState<string>();
   const [palette, setPalette] = useState(false);
@@ -594,11 +601,17 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       case "split_right":
       case "split_down":
         if (!activeTab || !focused) return;
+        restore(activeTab.id);
         followNewPane(activeTab.id);
         return void send({ type: "SplitPane", paneId: focused, dir: id === "split_right" ? "row" : "column" });
       case "close":
         if (focused) closePane(focused);
         return;
+      case "maximize_pane":
+        if (!activeTab || !focused || panes.length < 2) return;
+        if (maxPane) restore(activeTab.id);
+        else setMaxByTab((m) => ({ ...m, [activeTab.id]: focused }));
+        return refocus();
       case "pane_to_tab":
         // A tab's only pane is already a tab.
         if (!activeTab || !focused || activeTab.layout.type !== "split") return;
@@ -667,6 +680,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       case "focus_right":
       case "focus_up":
       case "focus_down": {
+        // The neighbour comes from the panes on screen, so a maximized pane shows the split first.
+        if (maxPane && activeTab) flushSync(() => restore(activeTab.id));
         const next = focused && neighbor(focused, panes, id.slice(6) as Dir);
         if (next && activeTab) focusIn(activeTab.id, next);
         return;
@@ -1562,7 +1577,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               {activeTab && (
                 <SplitView
                   key={activeTab.id}
-                  layout={activeTab.layout}
+                  layout={(maxPane && leaf(activeTab.layout, maxPane)) || activeTab.layout}
                   onResize={(splitId, sizes) => send({ type: "ResizeSplit", splitId, sizes })}
                   renderPane={(paneId, resume, slot, transcript) => (
                     <section
@@ -1575,6 +1590,20 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                           <i className={`ao-i x1 ${transcript ? "ao-i-agent" : docOf(activeTab.layout, paneId) ? "ao-i-doc" : "ao-i-term"}`} />
                           <span className="tp-name">{paneHeadName(paneId, !!transcript)}</span>
                           <span className="grow" />
+                          <button
+                            type="button"
+                            className={`tp-close tp-max${maxPane === paneId ? " on" : ""}`}
+                            aria-label={maxPane === paneId ? "Restore panes" : "Maximize pane"}
+                            title={`${maxPane === paneId ? "Restore panes" : "Maximize pane"} (${chordLabel(withBindings(ACTIONS, keyBindings).find((a) => a.id === "maximize_pane")!.accel)})`}
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={() => {
+                              focusIn(activeTab.id, paneId);
+                              if (maxPane === paneId) restore(activeTab.id);
+                              else setMaxByTab((m) => ({ ...m, [activeTab.id]: paneId }));
+                            }}
+                          >
+                            {maxPane === paneId ? "▣" : "□"}
+                          </button>
                           <button
                             type="button"
                             className="tp-close"

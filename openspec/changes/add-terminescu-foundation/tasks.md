@@ -543,6 +543,10 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       scrollbar marks the matches, Esc closes and refocuses. In a text pane the chords stay
       the editor's search. Find, Find Next and Find Previous sit in the Edit menu.
       Verify: `find.spec.ts`.
+- [x] 8.39 Maximize pane (2026-11-07): `⌘⇧M` or the header's square shows the focused split
+      pane alone and brings the split back; a split or a focus move restores it, and so does
+      the pane leaving the tab. Session only; the hidden panes park (D33). Verify:
+      `maximize.spec.ts`.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

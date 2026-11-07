@@ -162,6 +162,10 @@ that is not installed SHALL fall back to SF Mono.
 - **THEN** a find bar shows the match count, the next match is selected and the scrollbar marks
   every match; Esc closes the bar and the terminal takes the keys again
 
+#### Scenario: Maximize a pane
+- **WHEN** a tab has two panes and the person presses `⌘⇧M`
+- **THEN** only the focused pane shows, filling the tab, and `⌘⇧M` again brings both back
+
 #### Scenario: Pane header tooltip
 - **WHEN** the person hovers a split pane's header whose name is cut off
 - **THEN** a tooltip shows the whole name
