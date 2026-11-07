@@ -1,0 +1,19 @@
+{
+  "comment": "Cell widths the daemon's grid and xterm.js with the Unicode 11 table must agree on (task 8.41). Characters up to Unicode 11 only: xterm.js's table stops there.",
+  "cases": [
+    { "name": "ascii", "text": "abc", "width": 3 },
+    { "name": "latin precomposed", "text": "été", "width": 3 },
+    { "name": "combining accent", "text": "é", "width": 1 },
+    { "name": "zero width space", "text": "a​b", "width": 2 },
+    { "name": "han", "text": "中文", "width": 4 },
+    { "name": "hiragana", "text": "あ", "width": 2 },
+    { "name": "halfwidth katakana", "text": "ｱ", "width": 1 },
+    { "name": "box drawing", "text": "─│╭", "width": 3 },
+    { "name": "heart without selector", "text": "❤", "width": 1 },
+    { "name": "watch, wide since Unicode 9", "text": "⌚", "width": 2 },
+    { "name": "grinning face, Unicode 6.1", "text": "😀", "width": 2 },
+    { "name": "robot, Unicode 8", "text": "🤖", "width": 2 },
+    { "name": "smiling face with hearts, Unicode 11", "text": "🥰", "width": 2 },
+    { "name": "mixed prompt", "text": "❯ git 中 🤖 ok", "width": 14 }
+  ]
+}
