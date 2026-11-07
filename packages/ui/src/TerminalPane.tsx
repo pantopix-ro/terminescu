@@ -14,6 +14,7 @@ import { findPaths } from "./paths";
 import { webglBudget } from "./webgl-budget";
 import { colors } from "./generated/colors";
 import { pasteRisk } from "./paste";
+import { attachPromptMarks, type PromptMarks } from "./prompt-marks";
 import { terminalBehaviour, terminalBehaviourOptions, terminalFont, themeFor, type TerminalBehaviourSettings, type TerminalFont } from "./xterm-theme";
 
 export interface TerminalPaneProps {
@@ -145,6 +146,17 @@ const MATCHES: ISearchOptions["decorations"] = {
   activeMatchBackground: colors.amber,
   activeMatchColorOverviewRuler: colors.amber,
 };
+
+const promptMarks = new Map<string, PromptMarks>();
+/**
+ * Prompt jumps and output selection on `paneId`'s terminal (task 8.45): `previous` and `next`
+ * scroll to a prompt, `output` selects a finished command's output. False when nothing moved.
+ */
+export function promptAction(paneId: string, how: "previous" | "next" | "output"): boolean {
+  const m = promptMarks.get(paneId);
+  if (!m) return false;
+  return how === "output" ? m.selectOutput() : m.jump(how === "previous");
+}
 
 const clearers = new Map<string, (keepScreen: boolean) => void>();
 /**
@@ -279,6 +291,8 @@ export function TerminalPane({
         linkHandler: { activate },
         // Search highlights and markers are decorations, still a proposed API in xterm.js 6.
         allowProposedApi: true,
+        // The scrollbar's ruler shows search matches and prompt marks; it needs a width to draw.
+        overviewRuler: { width: 10 },
       });
       const fit = new FitAddon();
       term.loadAddon(fit);
@@ -325,6 +339,7 @@ export function TerminalPane({
       });
       term.open(el);
       el.dataset.renderer = "dom";
+      promptMarks.set(paneId, attachPromptMarks(term, { tick: colors.dim, failed: colors.red }));
       const l: Live = { term, fit, search, early: 0, glLost: false };
       live.current = l;
       // addon-search 0.16.0 stores the new options before it compares them, so a changed toggle
@@ -391,6 +406,8 @@ export function TerminalPane({
       if (selections.get(paneId) === selected) selections.delete(paneId);
       finders.delete(paneId);
       clearers.delete(paneId);
+      promptMarks.get(paneId)?.dispose();
+      promptMarks.delete(paneId);
       disposed = true;
       cancelAnimationFrame(frame);
       observer?.disconnect();

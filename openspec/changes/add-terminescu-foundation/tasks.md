@@ -574,6 +574,13 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       the first line and drops the history; Clear Scrollback `⌥⌘K` drops the history and keeps
       the screen. The daemon clears its copy (`Control::Clear`), so a reattach shows the same; an
       older daemon keeps its lines. Verify: `clear.spec.ts`, ptyd clear tests.
+- [x] 8.45 Prompt marks (2026-11-07): the daemon records each prompt (OSC 133 A), output (C)
+      and end (D) as rows and replays them in a reattach snapshot. The terminal marks each
+      prompt on the scrollbar, red after a failed command; Edit › Previous Prompt `⌘↑` and Next
+      Prompt `⌘↓` scroll to them (a text pane keeps both for its editor), and Select Command
+      Output `⌘⇧O` selects the output of the prompt jumped to or of the last finished command.
+      The scrollbar's ruler gets a width, which the find bar's match marks needed too. Verify:
+      `prompt-marks.test.ts`, `prompt-marks.spec.ts`, ptyd mark tests.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves
