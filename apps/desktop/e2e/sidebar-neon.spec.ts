@@ -14,13 +14,17 @@ test("new side tabs open with different neon edges", async ({ page }) => {
   const accents: string[] = (await workspace(page)).windows[0].sideTabs.map((s: { accent?: string }) => s.accent);
   expect(new Set(accents).size).toBe(4);
   expect(accents).not.toContain(undefined);
+  // Task 8.51: a one-tab row wears its tab's neon, so the sidebar shows the tabs' colours.
+  const worn: string[] = (await workspace(page)).windows[0].sideTabs.map(
+    (s: { accent?: string; tabs: { accent?: string }[] }) => (s.tabs.length === 1 && s.tabs[0]?.accent) || s.accent,
+  );
 
   const rows = page.locator(".ao-st");
   for (let i = 0; i < 4; i++) {
     const row = rows.nth(i);
-    await expect(row).toHaveAttribute("style", new RegExp(`--st-accent: var\\(--neon-${accents[i]}\\)`));
+    await expect(row).toHaveAttribute("style", new RegExp(`--st-accent: var\\(--neon-${worn[i]}\\)`));
     // The neon washes 12% into the row's background (the Wash board).
-    await expect(row).toHaveAttribute("style", new RegExp(`--st-bg: color-mix\\(in srgb, var\\(--neon-${accents[i]}\\) 12%, var\\(--panel(-2)?\\)\\)`));
+    await expect(row).toHaveAttribute("style", new RegExp(`--st-bg: color-mix\\(in srgb, var\\(--neon-${worn[i]}\\) 12%, var\\(--panel(-2)?\\)\\)`));
     expect(await row.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe(
       await row.evaluate(() => {
         const probe = document.createElement("i");
@@ -44,7 +48,7 @@ test("new side tabs open with different neon edges", async ({ page }) => {
       const c = getComputedStyle(probe).color;
       probe.remove();
       return c;
-    }, accents[i]));
+    }, worn[i]));
   }
 });
 

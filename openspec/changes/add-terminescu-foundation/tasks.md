@@ -600,6 +600,12 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       Copy; an address Compose in Mail and Copy. The core resolves a path against the pane's
       folder and refuses to open programs and scripts; `open_url` takes one plain `mailto:`
       address. Verify: `links.spec.ts`, `links.test.ts`, `docs.rs` and `main.rs` tests.
+- [x] 8.51 Selected tab and row (owner request 2026-11-07): the active tab covers the tab bar's
+      bottom line and opens into its pane. A one-tab sidebar row wears its tab's neon, and each
+      tab under a group wears its own. The selected row, or in an open group the selected tab
+      under it, reaches the panes with no border between them, a stronger wash and an outline
+      on its other sides; the group's header and other rows keep their gap. Verify:
+      `sidebar-highlight.spec.ts`, `sidebar-neon.spec.ts`.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

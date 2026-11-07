@@ -118,6 +118,12 @@ of the row's shells beside it, over the panes; one click on a shell SHALL select
 - **WHEN** another row is active and the pointer rests on a row with three tabs, then clicks its third shell in the list
 - **THEN** that row and its third tab become active with one click, and the list closes
 
+#### Scenario: The selected tab stands out
+- **WHEN** a side tab holds three tabs, its group is open and its second tab is selected
+- **THEN** each tab row shows its own neon, the second one reaches the panes with no border
+  between them, and the group's header and other rows keep a gap; in the tab bar the second
+  tab has no bottom line
+
 ### Requirement: Independent scrolling
 The sidebar, each pane and the context panel SHALL scroll on their own, and the tab bar SHALL
 scroll sideways when its tabs overflow.
