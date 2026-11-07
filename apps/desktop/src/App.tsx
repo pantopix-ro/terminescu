@@ -82,6 +82,7 @@ import {
   dockBox,
   dockZone,
   paneSubtitle,
+  tabActivities,
   tabSubtitles,
   type Reveal,
   DROP_END,
@@ -795,6 +796,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   // Each terminal pane's path, program and Claude title, for the tabs' subtitles (task 8.30).
   const [labels, setLabels] = useState<Labels>({});
   const subtitles = useMemo(() => tabSubtitles(sideTabs.flatMap((s) => s.tabs), focusByTab, labels, agents), [sideTabs, focusByTab, labels, agents]);
+  // What runs in each tab: its icons blink, and bounce while Claude waits (task 8.54).
+  const activity = useMemo(() => tabActivities(sideTabs.flatMap((s) => s.tabs), labels, agents), [sideTabs, labels, agents]);
   useEffect(() => {
     let off: (() => void) | undefined;
     let gone = false;
@@ -1677,6 +1680,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               builtins={statusConfig.builtins}
               docs={docs}
               subtitles={subtitles}
+              activity={activity}
               sort={sort}
               activeId={activeSide?.id}
               activeTabId={activeTab?.id}
@@ -1743,6 +1747,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               builtins={statusConfig.builtins}
               docs={docs}
               subtitles={subtitles}
+              activity={activity}
               renaming={renaming?.in === "bar" ? renaming.id : undefined}
               onRenameStart={(id) => setRenaming({ id, in: "bar" })}
               onRename={rename}

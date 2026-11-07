@@ -1,6 +1,7 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { leaf, panesOf, type AgentView, type Icon, type Neon, type Shown, type SideTab, type Tab } from "@terminescu/host";
 import { useEffect, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { actClass, rowActivity, type Activities, type Activity } from "./activity";
 import { DOT, tabAgent, type Agents } from "./agents";
 import { StatusChip } from "./StatusChip";
 import { chipOf, rowStyle, type Builtins, type Chip, type SortMode } from "./status";
@@ -32,6 +33,8 @@ export interface SideTabListProps {
   docs?: DocMarks;
   /** Each tab's live subtitle by tab id: path, then program or Claude's title (task 8.30). */
   subtitles?: Readonly<Record<string, string>>;
+  /** What runs in each tab, by tab id: icons blink, and bounce while Claude waits (task 8.54). */
+  activity?: Activities;
   /** A right click, Shift F10 or the menu key on a row (task 8.7), or a right click under the rows, at a window point. */
   onMenu?(at: { x: number; y: number }, target: MenuTarget): void;
   /** The side tab or tab id whose name is being edited in place. */
@@ -191,6 +194,7 @@ function Row(props: {
   builtins: Builtins;
   docs: DocMarks;
   subtitles: Readonly<Record<string, string>>;
+  activity: Activities;
   onSelect(): void;
   onSelectTab(tabId: string): void;
   onToggle(): void;
@@ -272,7 +276,7 @@ function Row(props: {
         }}
       >
         <i
-          className={`ao-i ao-i-${side.icon ?? (group ? "group" : (side.tabs[0]?.icon ?? (side.tabs[0] && tabAgent(side.tabs[0], agents) ? "agent" : "term")))}`}
+          className={`ao-i ao-i-${side.icon ?? (group ? "group" : (side.tabs[0]?.icon ?? (side.tabs[0] && tabAgent(side.tabs[0], agents) ? "agent" : "term")))}${actClass(rowActivity(side.tabs, props.activity))}`}
           title={collapsed ? undefined : "Double-click to change the icon"}
           onDoubleClick={(e) => {
             e.stopPropagation();
@@ -363,6 +367,7 @@ function Row(props: {
                 agent={tabAgent(t, agents)}
                 icon={t.icon}
                 accent={t.accent}
+                act={props.activity[t.id]}
                 onDoubleClick={(e) => {
                   e.stopPropagation();
                   props.onIconPick?.(t.id, pickAt(e));
@@ -419,11 +424,11 @@ function kidStyle(t: Tab, shown: Shown | undefined): React.CSSProperties {
 }
 
 /** A tab's icon: the one picked, else Claude's or a terminal's; Claude's state dot stays either way. */
-export function KidIcon({ agent, icon, accent, onDoubleClick }: { agent: AgentView | undefined; icon?: Icon; accent?: Neon; onDoubleClick?(e: MouseEvent): void }) {
+export function KidIcon({ agent, icon, accent, act, onDoubleClick }: { agent: AgentView | undefined; icon?: Icon; accent?: Neon; act?: Activity; onDoubleClick?(e: MouseEvent): void }) {
   return (
     <>
       <i
-        className={`ao-i x1 ao-i-${icon ?? (agent ? "agent" : "term")}`}
+        className={`ao-i x1 ao-i-${icon ?? (agent ? "agent" : "term")}${actClass(act)}`}
         style={accent && { color: `var(--neon-${accent})` }}
         aria-label={agent && !icon ? "Claude" : undefined}
         title={onDoubleClick && "Double-click to change the icon"}
@@ -449,6 +454,7 @@ export function SideTabList({
   sort = "manual",
   docs = {},
   subtitles = {},
+  activity = {},
   onMenu,
   renaming,
   onRename,
@@ -489,6 +495,7 @@ export function SideTabList({
               builtins={builtins}
               docs={docs}
               subtitles={subtitles}
+              activity={activity}
               onSelect={() => onSelect(s.id)}
               onSelectTab={(t) => onSelectTab(s.id, t)}
               onToggle={() => setExpanded((m) => ({ ...m, [s.id]: !m[s.id] }))}
@@ -546,7 +553,7 @@ export function SideTabList({
                 onSelectTab(picked.id, t.id);
               }}
             >
-              <KidIcon agent={tabAgent(t, agents)} icon={t.icon} accent={t.accent} />
+              <KidIcon agent={tabAgent(t, agents)} icon={t.icon} accent={t.accent} act={activity[t.id]} />
               <span className="grow px-pick-text">
                 <span className="px-pick-name">{tabName(t, docs)}</span>
                 {subtitles[t.id] && <span className="px-pick-sub">{subtitles[t.id]}</span>}

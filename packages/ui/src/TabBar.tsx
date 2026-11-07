@@ -1,6 +1,7 @@
 import { horizontalListSortingStrategy, SortableContext, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { Shown, Tab } from "@terminescu/host";
+import { type Activities, type Activity } from "./activity";
 import { tabAgent, type Agents } from "./agents";
 import { StatusChip } from "./StatusChip";
 import { chipOf, rowStyle, type Builtins } from "./status";
@@ -25,6 +26,8 @@ export interface TabBarProps {
   docs?: DocMarks;
   /** Each tab's live subtitle by tab id: path, then program or Claude's title (task 8.30). */
   subtitles?: Readonly<Record<string, string>>;
+  /** What runs in each tab, by tab id: its icon blinks, and bounces while Claude waits (task 8.54). */
+  activity?: Activities;
   /** The tab whose name is being edited in place; a double click on a name starts it. */
   renaming?: string;
   onRenameStart?(tabId: string): void;
@@ -45,6 +48,7 @@ function TabItem({
   builtins,
   docs,
   sub,
+  act,
   onSelect,
   onClose,
   renaming,
@@ -63,6 +67,7 @@ function TabItem({
   builtins: Builtins;
   docs: DocMarks;
   sub: string | undefined;
+  act: Activity | undefined;
   onSelect(): void;
   onClose(): void;
   tips: ReturnType<typeof useTip>;
@@ -107,6 +112,7 @@ function TabItem({
         agent={agent}
         icon={tab.icon}
         accent={tab.accent}
+        act={act}
         onDoubleClick={(e) => {
           e.stopPropagation();
           onIconPick?.(tab.id, pickAt(e));
@@ -201,7 +207,7 @@ function NewMenu({ onNew, onNewText }: { onNew(): void; onNewText(beside: boolea
   );
 }
 
-export function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNewText, agents = {}, statuses = {}, builtins = {}, docs = {}, subtitles = {}, renaming, onRenameStart, onRename, onRenameEnd, onIconPick, onEdit }: TabBarProps) {
+export function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNewText, agents = {}, statuses = {}, builtins = {}, docs = {}, subtitles = {}, activity = {}, renaming, onRenameStart, onRename, onRenameEnd, onIconPick, onEdit }: TabBarProps) {
   const tips = useTip();
   return (
     <div className="ao-tabs" role="tablist" data-tauri-drag-region>
@@ -216,6 +222,7 @@ export function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNewText, ag
             builtins={builtins}
             docs={docs}
             sub={subtitles[t.id]}
+            act={activity[t.id]}
             onSelect={() => onSelect(t.id)}
             onClose={() => onClose(t.id)}
             renaming={renaming === t.id}

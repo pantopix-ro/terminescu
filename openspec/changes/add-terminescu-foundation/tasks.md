@@ -628,6 +628,11 @@ buffers once per sheet.
       named key such as ↵), and one that an app shortcut or macOS owns is refused or flagged.
       Saved as `terminalKeys` in settings. Verify: `settings.spec.ts`, `terminal-keys.test.ts`,
       `terminal_keys_are_editable`.
+- [x] 8.54 Busy icons (owner request 2026-11-07): a tab's icon, in the tab bar, the sidebar row
+      and the row's shell list, blinks while a command runs (`mvn`, `npm`) or Claude works, and
+      blinks and bounces while Claude waits for an answer. Claude at its prompt stays still: the
+      hook state wins over the `claude` program. A row takes its most urgent tab; reduced motion
+      stops both. Verify: `activity.test.ts`, `activity.spec.ts`.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves
