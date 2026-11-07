@@ -203,6 +203,15 @@ that is not installed SHALL fall back to SF Mono.
 - **THEN** the desktop shows through the terminals' background while the sidebar, tab bar and
   pane headers stay solid
 
+#### Scenario: Click a link
+- **WHEN** the person clicks `https://example.com/docs` in a terminal without `⌘`
+- **THEN** the link is on the clipboard, a pixel tip says "Copied link", and no browser opens
+
+#### Scenario: Right-click a path
+- **WHEN** the person right-clicks `./notes/todo.md` in a terminal
+- **THEN** a pixel menu offers Open in Text Tab, Reveal in Finder, Open with Default App and
+  Copy Path; Open with Default App on a script shows an error and runs nothing
+
 #### Scenario: Pane header tooltip
 - **WHEN** the person hovers a split pane's header whose name is cut off
 - **THEN** a tooltip shows the whole name

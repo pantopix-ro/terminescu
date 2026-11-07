@@ -187,6 +187,11 @@ export interface Host {
   setBuiltin(auto: Auto, look: Look | null): Promise<void>;
   /** Opens an http(s) link in the default browser. */
   openUrl(url: string): Promise<void>;
+  /**
+   * A path link's menu (task 8.49): `reveal` shows it in Finder, else its default app opens it.
+   * Resolved against the pane's folder; programs and scripts are refused.
+   */
+  openPathWith(paneId: Id, path: string, reveal: boolean): Promise<void>;
   /** Bounces the dock icon once, for a terminal's bell while the app is in the background. */
   bounceDock(): Promise<void>;
   /** Settings › Terminal (task 8.47): Terminal.app's default profile. */

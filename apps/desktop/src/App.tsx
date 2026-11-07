@@ -118,6 +118,8 @@ import {
   type SortMode,
   terminalFontOptions,
   schemeTheme,
+  linkActions,
+  type TerminalLink,
   isLight,
   LIGHT_TINT,
 } from "@terminescu/ui";
@@ -1127,6 +1129,31 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
 
   // Right-click menus on the sidebar (task 8.7). Rename edits the name in place.
   const [menu, setMenu] = useState<{ x: number; y: number; target: MenuTarget }>();
+  // Terminal links (task 8.49): a click copies and says so at the pointer; a right click opens
+  // the apps that fit the link's kind.
+  const [linkTip, setLinkTip] = useState<{ text: string; x: number; y: number; key: number }>();
+  const [linkMenu, setLinkMenu] = useState<{ link: TerminalLink; sideId: string; paneId: string; x: number; y: number }>();
+  useEffect(() => {
+    if (!linkTip) return;
+    const t = setTimeout(() => setLinkTip(undefined), 1600);
+    return () => clearTimeout(t);
+  }, [linkTip]);
+  const copyLink = (link: TerminalLink, at: { x: number; y: number }) => {
+    const what = link.kind === "url" ? "link" : link.kind === "path" ? "path" : "address";
+    void (navigator.clipboard?.writeText(link.text) ?? Promise.reject(new Error("no clipboard"))).then(
+      () => setLinkTip({ text: `Copied ${what}`, x: at.x, y: at.y, key: Date.now() }),
+      () => setError(`Could not copy the ${what}.`),
+    );
+  };
+  const runLink = (id: string, m: NonNullable<typeof linkMenu>) => {
+    const fail = (e: unknown) => setError(String(e));
+    const { link, sideId, paneId } = m;
+    if (id === "copy") return copyLink(link, m);
+    if (id === "browser") return void host.openUrl(link.text).catch(fail);
+    if (id === "mail") return void host.openUrl(`mailto:${link.text}`).catch(fail);
+    if (id === "text") return void host.openPath(sideId, paneId, link.text, null).then((d) => revealDoc(d.id), fail);
+    if (id === "reveal" || id === "default") return void host.openPathWith(paneId, link.text, id === "reveal").catch(fail);
+  };
   // Where a name is being edited: the sidebar, or the tab bar, which shows the same tabs.
   const [renaming, setRenaming] = useState<{ id: string; in: "list" | "bar" }>();
   const [closingSide, setClosingSide] = useState<SideTab>();
@@ -1847,6 +1874,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               onFocus={() => focusIn(tab.id, paneId)}
               open={(cols, rows, onOutput) => host.openPane(paneId, cols, rows, onOutput)}
               openUrl={(url) => void host.openUrl(url).catch((e: unknown) => setError(String(e)))}
+              onLinkClick={copyLink}
+              onLinkMenu={(link, at) => setLinkMenu({ link, sideId: side.id, paneId, ...at })}
               openPath={(path, beside) =>
                 void host.openPath(side.id, paneId, path, beside ? paneId : null).then((d) => revealDoc(d.id), (e: unknown) => setError(String(e)))
               }
@@ -2145,6 +2174,23 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           onMerge={(r) => finishMerge(merging.from, merging.into, r)}
           onCancel={() => {
             setMerging(undefined);
+            refocus();
+          }}
+        />
+      )}
+      {linkTip && (
+        <div key={linkTip.key} className="px-tip link-tip" role="status" style={{ left: linkTip.x + 10, top: linkTip.y + 14 }}>
+          {linkTip.text}
+        </div>
+      )}
+      {linkMenu && (
+        <ContextMenu
+          x={linkMenu.x}
+          y={linkMenu.y}
+          label={linkMenu.link.kind === "url" ? "Link" : linkMenu.link.kind === "path" ? "Path" : "Email address"}
+          items={linkActions(linkMenu.link.kind).map((a) => ({ id: a.id, label: a.label, run: () => runLink(a.id, linkMenu) }))}
+          onClose={() => {
+            setLinkMenu(undefined);
             refocus();
           }}
         />

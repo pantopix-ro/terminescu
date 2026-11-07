@@ -153,6 +153,7 @@ export function createIpcHost(): Host {
     deleteRule: (id) => invoke("rule_delete", { id }),
     setBuiltin: (auto, look) => invoke("builtin_set", { auto, look }),
     openUrl: (url) => invoke("open_url", { url }),
+    openPathWith: (pane, path, reveal) => invoke("path_open", { pane, path, reveal }),
     bounceDock: () => invoke("bounce_dock"),
     importTerminalApp: () => invoke<TerminalProfile>("import_terminal_app"),
     importTerminalFile: (path) => invoke<TerminalProfile>("import_terminal_file", { path }),
