@@ -193,6 +193,16 @@ that is not installed SHALL fall back to SF Mono.
 - **THEN** the sheet lists each matching line under its "Side › Tab", and picking one shows
   that tab with the line selected
 
+#### Scenario: Import Terminal.app's colours
+- **WHEN** the person clicks Import › From Terminal.app in Settings › Terminal
+- **THEN** every terminal takes the default profile's colours, font, size, cursor and
+  opacity, and a line names what was imported
+
+#### Scenario: See-through terminals
+- **WHEN** the person sets Opacity to 80%
+- **THEN** the desktop shows through the terminals' background while the sidebar, tab bar and
+  pane headers stay solid
+
 #### Scenario: Pane header tooltip
 - **WHEN** the person hovers a split pane's header whose name is cut off
 - **THEN** a tooltip shows the whole name

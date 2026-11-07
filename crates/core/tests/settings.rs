@@ -203,3 +203,63 @@ fn a_scrollback_out_of_range_is_refused() {
         assert!(settings::set(&db, s).is_err());
     }
 }
+
+/// Task 8.47: theme, imported colours and opacity keep their values; bad ones are refused.
+#[test]
+fn theme_colours_and_opacity() {
+    use terminescu_core::settings::TerminalTheme;
+    use terminescu_core::term_import::Colors;
+    let db = Db::open_in_memory().unwrap();
+    let colors = Colors {
+        foreground: "#e0e0e0".into(),
+        background: "#101820".into(),
+        cursor: Some("#ffcc00".into()),
+        selection: None,
+        bold: None,
+        ansi: vec!["#202020".into(); 16],
+    };
+    let s = Settings {
+        terminal_theme: TerminalTheme::Imported,
+        terminal_colors: Some(colors.clone()),
+        terminal_opacity: 85,
+        ..Settings::default()
+    };
+    settings::set(&db, s.clone()).unwrap();
+    assert_eq!(settings::get(&db).unwrap(), s);
+    assert_eq!(
+        serde_json::to_value(&s).unwrap()["terminalTheme"],
+        serde_json::json!("imported")
+    );
+
+    let bad = [
+        Settings {
+            terminal_opacity: 29,
+            ..Settings::default()
+        },
+        Settings {
+            terminal_opacity: 101,
+            ..Settings::default()
+        },
+        Settings {
+            terminal_theme: TerminalTheme::Imported,
+            ..Settings::default()
+        },
+        Settings {
+            terminal_colors: Some(Colors {
+                background: "red; x".into(),
+                ..colors.clone()
+            }),
+            ..Settings::default()
+        },
+        Settings {
+            terminal_colors: Some(Colors {
+                ansi: vec!["#000000".into(); 8],
+                ..colors
+            }),
+            ..Settings::default()
+        },
+    ];
+    for s in bad {
+        assert!(settings::set(&db, s.clone()).is_err(), "{s:?}");
+    }
+}

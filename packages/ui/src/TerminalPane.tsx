@@ -3,7 +3,7 @@ import { SearchAddon, type ISearchOptions } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
-import { Terminal, type IBufferLine } from "@xterm/xterm";
+import { Terminal, type IBufferLine, type ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import type { PaneView, Tint } from "@terminescu/host";
 import { useEffect, useRef, useState } from "react";
@@ -46,6 +46,10 @@ export interface TerminalPaneProps {
   font?: TerminalFont;
   /** Cursor, history, Option keys, bell, clipboard and contrast, live (task 8.42). */
   behaviour?: TerminalBehaviourSettings;
+  /** The colour scheme (task 8.47); a status tint still replaces its background. */
+  scheme?: ITheme;
+  /** 30 to 100; below 100 the terminal's background lets the desktop through. */
+  opacity?: number;
   /** The shell rang the bell and the setting is visual or sound. */
   onBell?(kind: "visual" | "sound"): void;
   /** A risky paste waits for this; true pastes. Without it the paste goes through. */
@@ -211,6 +215,8 @@ export function TerminalPane({
   tint,
   font = terminalFont,
   behaviour = terminalBehaviour,
+  scheme,
+  opacity,
   onBell,
   confirmPaste,
 }: TerminalPaneProps) {
@@ -223,6 +229,8 @@ export function TerminalPane({
   const behaviourKey = JSON.stringify(behaviour);
   const tintNow = useRef(tint);
   tintNow.current = tint;
+  const lookNow = useRef({ scheme, opacity });
+  lookNow.current = { scheme, opacity };
   const fontNow = useRef(font);
   fontNow.current = font;
   const fontKey = JSON.stringify(font);
@@ -300,7 +308,8 @@ export function TerminalPane({
       };
       const term = new Terminal({
         ...startFont,
-        theme: themeFor(tintNow.current),
+        theme: themeFor(tintNow.current, lookNow.current.scheme, lookNow.current.opacity),
+        allowTransparency: (lookNow.current.opacity ?? 100) < 100,
         // As Terminal.app's Basic profile: bold without bright colours. The behaviour defaults
         // give a blinking bar and Option as Meta, so Option+Enter sends Esc+Return.
         ...terminalBehaviourOptions(behaviourNow.current),
@@ -469,8 +478,10 @@ export function TerminalPane({
     if (tint) el.dataset.tint = tint;
     else delete el.dataset.tint;
     const term = live.current?.term;
-    if (term) term.options.theme = themeFor(tint);
-  }, [paneId, tint, ready]);
+    if (!term) return;
+    term.options.allowTransparency = (opacity ?? 100) < 100;
+    term.options.theme = themeFor(tint, scheme, opacity);
+  }, [paneId, tint, scheme, opacity, ready]);
 
   // Settings › Terminal applies at once: xterm.js measures the new cell, then the pane refits
   // and the shell gets its new size.

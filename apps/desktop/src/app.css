@@ -451,3 +451,15 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 .find-all .palette-item { height: auto; min-height: 24px; }
 .find-all-text { font-family: var(--font-mono); font-size: 11px; white-space: pre; overflow: hidden; text-overflow: ellipsis; }
 .find-all-text mark { background: var(--selection); color: var(--fg); }
+/* Task 8.47: a colour scheme or opacity other than the default. The panes' margins take the
+   scheme's background, a tint mixes into it (a light scheme takes part of it), and the opacity
+   lets the desktop through the transparent window; chrome keeps its own solid background. */
+html[data-see-through], html[data-see-through] body { background: transparent; }
+html[data-scheme] .app-pane, html[data-scheme] .app-pane .ao-tp { background: color-mix(in srgb, var(--term-base) var(--term-alpha), transparent); }
+html[data-scheme] .pane-slot:has(> .term-pane[data-tint="blue"]) { background: color-mix(in srgb, color-mix(in srgb, var(--tint-blue) var(--tint-mix), var(--term-base)) var(--term-alpha), transparent); }
+html[data-scheme] .pane-slot:has(> .term-pane[data-tint="cyan"]) { background: color-mix(in srgb, color-mix(in srgb, var(--tint-cyan) var(--tint-mix), var(--term-base)) var(--term-alpha), transparent); }
+html[data-scheme] .pane-slot:has(> .term-pane[data-tint="green"]) { background: color-mix(in srgb, color-mix(in srgb, var(--tint-green) var(--tint-mix), var(--term-base)) var(--term-alpha), transparent); }
+html[data-scheme] .pane-slot:has(> .term-pane[data-tint="magenta"]) { background: color-mix(in srgb, color-mix(in srgb, var(--tint-magenta) var(--tint-mix), var(--term-base)) var(--term-alpha), transparent); }
+html[data-scheme] .pane-slot:has(> .term-pane[data-tint="red"]) { background: color-mix(in srgb, color-mix(in srgb, var(--tint-red) var(--tint-mix), var(--term-base)) var(--term-alpha), transparent); }
+.term-swatches { display: inline-flex; gap: 1px; }
+.term-swatches span { width: 10px; height: 14px; box-shadow: inset 0 0 0 1px var(--line); }

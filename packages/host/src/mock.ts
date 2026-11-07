@@ -21,6 +21,9 @@ import {
   LINE_HEIGHTS,
   TAB_FONT_SIZES,
   SCROLLBACKS,
+  OPACITIES,
+  TERMINAL_THEMES,
+  type TerminalProfile,
   COMMAND_SECS,
   CURSOR_STYLES,
   OPTION_METAS,
@@ -192,6 +195,28 @@ class MockShell {
     return out;
   }
 }
+
+/** What the mock's Terminal.app import returns: invented colours, Menlo 12, a block cursor. */
+const MOCK_PROFILE: TerminalProfile = {
+  name: "Ocean",
+  colors: {
+    foreground: "#e6e6e6",
+    background: "#1b2b4a",
+    cursor: "#ffcc00",
+    selection: "#3a5a8a",
+    bold: null,
+    ansi: [
+      "#000000", "#cc3333", "#33cc66", "#cccc33", "#3366cc", "#cc33cc", "#33cccc", "#cccccc",
+      "#666666", "#ff5555", "#55ff88", "#ffff55", "#5588ff", "#ff55ff", "#55ffff", "#ffffff",
+    ],
+  },
+  fontFamily: "Menlo",
+  fontSize: 12,
+  backgroundOpacity: 90,
+  cursor: "block",
+  cursorBlink: false,
+  optionAsMeta: true,
+};
 
 export function createMockHost(initial?: Workspace): MockHost {
   let n = 0;
@@ -1185,8 +1210,20 @@ export function createMockHost(initial?: Workspace): MockHost {
         !BELLS.includes(next.bell)
       )
         throw new Error("a terminal setting is out of range");
+      // As settings.rs (task 8.47).
+      const opacity = next.terminalOpacity ?? 100;
+      if (!within(opacity, OPACITIES)) throw new Error("the terminal opacity runs from 30% to 100%");
+      const theme = next.terminalTheme ?? "terminescu";
+      const hex = (c: string | null | undefined) => c == null || /^#[0-9a-f]{6}$/i.test(c);
+      const c = next.terminalColors ?? null;
+      if (
+        !TERMINAL_THEMES.includes(theme) ||
+        (c && !(c.ansi.length === 16 && [c.foreground, c.background, ...c.ansi].every((x) => /^#[0-9a-f]{6}$/i.test(x)) && hex(c.cursor) && hex(c.selection) && hex(c.bold))) ||
+        (theme === "imported" && !c)
+      )
+        throw new Error("imported colours are #rrggbb values with 16 ANSI colours; import a theme before choosing Imported");
       const sidebarWidth = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(next.sidebarWidth)));
-      settings = { ...next, sidebarWidth, terminalFont };
+      settings = { ...next, sidebarWidth, terminalFont, terminalOpacity: opacity, terminalTheme: theme, terminalColors: c };
       // The app zooms its webview natively; a browser has CSS zoom on the root.
       if (typeof document !== "undefined") document.documentElement.style.zoom = zoom === 100 ? "" : String(zoom / 100);
       settingsListeners.forEach((l) => l());
@@ -1371,6 +1408,15 @@ export function createMockHost(initial?: Workspace): MockHost {
     },
     async bounceDock() {
       bounces++;
+    },
+    // Invented profiles: the mock reads no Terminal.app preferences.
+    async importTerminalApp() {
+      return { ...MOCK_PROFILE };
+    },
+    async importTerminalFile(path) {
+      if (!/\.(terminal|itermcolors)$/i.test(path)) throw new Error("this file is not a Terminal.app profile or an iTerm2 colour preset");
+      const name = path.split("/").pop()!.replace(/\.[^.]+$/, "");
+      return { ...MOCK_PROFILE, name, fontFamily: null, fontSize: null, cursor: null, backgroundOpacity: null };
     },
     files,
     dialogAnswers,

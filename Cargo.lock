@@ -4047,6 +4047,7 @@ name = "terminescu-core"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "plist",
  "rusqlite",
  "serde",
  "serde_json",

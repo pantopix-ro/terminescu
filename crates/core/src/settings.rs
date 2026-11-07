@@ -35,6 +35,22 @@ pub const FONT_FAMILY_MAX: usize = 64;
 pub const SCROLLBACK: u32 = 10_000;
 pub const SCROLLBACKS: std::ops::RangeInclusive<u32> = 1_000..=50_000;
 
+/// The terminal's window opacity in percent (task 8.47); the sidebar and bars stay opaque.
+pub const OPACITY: u8 = 100;
+pub const OPACITIES: std::ops::RangeInclusive<u8> = 30..=100;
+
+/// The terminal's colours: the app's own, three built in, or the ones last imported.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TerminalTheme {
+    #[default]
+    Terminescu,
+    Basic,
+    SolarizedDark,
+    SolarizedLight,
+    Imported,
+}
+
 /// The terminal's cursor shape.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -110,6 +126,12 @@ pub struct Settings {
     pub paste_warning: bool,
     /// Text whose colour is too close to its background is drawn with more contrast.
     pub raise_contrast: bool,
+    /// The terminal's colours (task 8.47); `Imported` uses `terminal_colors`.
+    pub terminal_theme: TerminalTheme,
+    /// The colours last imported from Terminal.app or a file.
+    pub terminal_colors: Option<crate::term_import::Colors>,
+    /// Below 100 the desktop shows through the terminals' background.
+    pub terminal_opacity: u8,
 }
 
 impl Default for Settings {
@@ -135,6 +157,9 @@ impl Default for Settings {
             copy_on_select: false,
             paste_warning: true,
             raise_contrast: false,
+            terminal_theme: TerminalTheme::Terminescu,
+            terminal_colors: None,
+            terminal_opacity: OPACITY,
         }
     }
 }
@@ -153,6 +178,12 @@ pub enum SettingsError {
         "the terminal font size runs from 9 to 24, its line height from 1.00 to 2.00, its letter spacing from -2 to 4, its weight from 100 to 900 in steps of 100, its history from 1,000 to 50,000 lines, and the tab text from 9 to 14"
     )]
     BadTerminal,
+    #[error("the terminal opacity runs from 30% to 100%")]
+    BadOpacity,
+    #[error(
+        "imported colours are #rrggbb values with 16 ANSI colours; import a theme before choosing Imported"
+    )]
+    BadColors,
     #[error(transparent)]
     Db(#[from] crate::db::DbError),
 }
@@ -184,9 +215,31 @@ pub fn set(db: &Db, mut s: Settings) -> std::result::Result<Settings, SettingsEr
     {
         return Err(SettingsError::BadTerminal);
     }
+    if !OPACITIES.contains(&s.terminal_opacity) {
+        return Err(SettingsError::BadOpacity);
+    }
+    // The colours go into CSS and the xterm theme, so each is a plain hex colour.
+    if s.terminal_colors.as_ref().is_some_and(|c| !colors_ok(c))
+        || (s.terminal_theme == TerminalTheme::Imported && s.terminal_colors.is_none())
+    {
+        return Err(SettingsError::BadColors);
+    }
     s.sidebar_width = s.sidebar_width.clamp(SIDEBAR_MIN, SIDEBAR_MAX);
     write(db, KEY, &s)?;
     Ok(s)
+}
+
+fn hex(c: &str) -> bool {
+    c.len() == 7 && c.starts_with('#') && c[1..].chars().all(|d| d.is_ascii_hexdigit())
+}
+
+fn colors_ok(c: &crate::term_import::Colors) -> bool {
+    let optional = [&c.cursor, &c.selection, &c.bold];
+    c.ansi.len() == 16
+        && hex(&c.foreground)
+        && hex(&c.background)
+        && c.ansi.iter().all(|a| hex(a))
+        && optional.iter().all(|o| o.as_deref().is_none_or(hex))
 }
 
 /// One JSON value from `app_state`; a value that no longer parses reads as absent.

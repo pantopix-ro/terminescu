@@ -15,6 +15,7 @@ import {
   LINE_HEIGHTS,
   MAX_TTL_SECS,
   SCROLLBACKS,
+  OPACITIES,
   COMMAND_SECS,
   TAB_FONT_SIZES,
   VAR_MODES,
@@ -22,6 +23,8 @@ import {
   type AttentionSettings,
   type Bell,
   type CursorStyle,
+  type TerminalProfile,
+  type TerminalTheme,
   type OptionMeta,
   type CommandTarget,
   type Host,
@@ -32,7 +35,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { MODE_HINT, MODE_LABEL } from "./ExtractDialog";
 import { EXTRACTION_RULES, parseTtl, ttlText } from "./names";
-import { terminalFontOptions } from "./xterm-theme";
+import { ANSI_SLOTS, schemeTheme, terminalFontOptions } from "./xterm-theme";
 import { StatusesSection } from "./StatusSettings";
 import { TARGET_LABEL } from "./CommandsSection";
 
@@ -71,7 +74,48 @@ type Api = Pick<
   | "setKeyBindings"
   | "onKeyBindings"
   | "recordKeys"
+  | "importTerminalApp"
+  | "importTerminalFile"
+  | "chooseFile"
 >;
+
+const THEME_LABEL: Record<TerminalTheme, string> = {
+  terminescu: "Terminescu",
+  basic: "Terminal.app Basic",
+  solarizedDark: "Solarized Dark",
+  solarizedLight: "Solarized Light",
+  imported: "Imported",
+};
+
+/** What an imported profile changes, as a Settings patch and a line naming it (task 8.47). */
+export function profilePatch(p: TerminalProfile): { patch: Partial<AppSettings>; note: string } {
+  const patch: Partial<AppSettings> = {};
+  const took: string[] = [];
+  if (p.colors) {
+    patch.terminalColors = p.colors;
+    patch.terminalTheme = "imported";
+    took.push("colours");
+  }
+  if (p.fontFamily != null && p.fontFamily.length <= FONT_FAMILY_MAX && FONT_NAME.test(p.fontFamily)) {
+    patch.terminalFont = p.fontFamily;
+    took.push(p.fontFamily || "SF Mono");
+  }
+  if (p.fontSize != null) {
+    patch.terminalFontSize = Math.min(FONT_SIZES[1], Math.max(FONT_SIZES[0], Math.round(p.fontSize)));
+    took.push(`${patch.terminalFontSize} px`);
+  }
+  if (p.cursor) {
+    patch.terminalCursor = p.cursor;
+    took.push(`${p.cursor} cursor`);
+  }
+  if (p.cursorBlink != null) patch.terminalCursorBlink = p.cursorBlink;
+  if (p.optionAsMeta != null) patch.optionAsMeta = p.optionAsMeta ? "both" : "off";
+  if (p.backgroundOpacity != null) {
+    patch.terminalOpacity = Math.min(OPACITIES[1], Math.max(OPACITIES[0], Math.round(p.backgroundOpacity)));
+    took.push(`${patch.terminalOpacity}% opacity`);
+  }
+  return { patch, note: took.length ? `Imported ${p.name}: ${took.join(", ")}.` : `${p.name} has nothing Terminescu can use.` };
+}
 
 export interface SettingsSheetProps {
   section: SettingsSection;
@@ -337,6 +381,7 @@ function NumberField({ label, value, range, onSave }: { label: string; value: nu
 function TerminalSettings({ host, onError }: SettingsSheetProps) {
   const [settings, save] = useAppSettings(host, onError);
   const [family, setFamily] = useState("");
+  const [imported, setImported] = useState<string>();
   useEffect(() => setFamily(settings?.terminalFont ?? ""), [settings?.terminalFont]);
   if (!settings) return null;
   const commitFamily = () => {
@@ -349,6 +394,12 @@ function TerminalSettings({ host, onError }: SettingsSheetProps) {
   };
   const font = terminalFontOptions(settings);
   const lh = settings.terminalLineHeight;
+  const scheme = schemeTheme(settings.terminalTheme, settings.terminalColors);
+  const apply = (p: TerminalProfile) => {
+    const { patch, note } = profilePatch(p);
+    setImported(note);
+    if (Object.keys(patch).length) save(patch);
+  };
   return (
     <section aria-label="Terminal">
       <h3 className="ao-pixel ao-dim">Terminal font</h3>
@@ -419,6 +470,65 @@ function TerminalSettings({ host, onError }: SettingsSheetProps) {
       >
         {PREVIEW}
       </pre>
+      <h3 className="ao-pixel ao-dim">Colours</h3>
+      <div className="srow">
+        <span>Theme</span>
+        <select
+          className="ao-input"
+          aria-label="Colour theme"
+          value={settings.terminalTheme}
+          onChange={(e) => save({ terminalTheme: e.target.value as TerminalTheme })}
+        >
+          {(Object.keys(THEME_LABEL) as TerminalTheme[])
+            .filter((t) => t !== "imported" || settings.terminalColors)
+            .map((t) => (
+              <option key={t} value={t}>
+                {THEME_LABEL[t]}
+              </option>
+            ))}
+        </select>
+        <span className="term-swatches" aria-label="Theme colours">
+          {[scheme.background, scheme.foreground, ...ANSI_SLOTS.map((s) => scheme[s])].map((c, i) => (
+            <span key={i} style={{ background: c as string }} />
+          ))}
+        </span>
+        <span className="small ao-dim grow">a status background still tints the terminals</span>
+      </div>
+      <div className="srow">
+        <span>Import</span>
+        <button type="button" className="ao-btn ghost" onClick={() => void host.importTerminalApp().then(apply, (e: unknown) => onError(String(e)))}>
+          From Terminal.app
+        </button>
+        <button
+          type="button"
+          className="ao-btn ghost"
+          onClick={() =>
+            void host
+              .chooseFile()
+              .then((path) => (path ? host.importTerminalFile(path).then(apply) : undefined))
+              .catch((e: unknown) => onError(String(e)))
+          }
+        >
+          File…
+        </button>
+        <span className="small ao-dim grow" role="status">
+          {imported ?? "the default profile, or a .terminal or .itermcolors file"}
+        </span>
+      </div>
+      <div className="srow">
+        <span>Opacity</span>
+        <input
+          type="range"
+          aria-label="Terminal opacity"
+          min={OPACITIES[0]}
+          max={OPACITIES[1]}
+          step={5}
+          value={settings.terminalOpacity}
+          onChange={(e) => save({ terminalOpacity: Number(e.target.value) })}
+        />
+        <output className="set-out">{settings.terminalOpacity}%</output>
+        <span className="small ao-dim grow">below 100% the desktop shows through the terminals; the sidebar and bars stay solid</span>
+      </div>
       <h3 className="ao-pixel ao-dim">Terminal behaviour</h3>
       <div className="srow">
         <span>Cursor</span>
@@ -496,6 +606,8 @@ function TerminalSettings({ host, onError }: SettingsSheetProps) {
               copyOnSelect: DEFAULT_SETTINGS.copyOnSelect,
               pasteWarning: DEFAULT_SETTINGS.pasteWarning,
               raiseContrast: DEFAULT_SETTINGS.raiseContrast,
+              terminalTheme: DEFAULT_SETTINGS.terminalTheme,
+              terminalOpacity: DEFAULT_SETTINGS.terminalOpacity,
             })
           }
         >
