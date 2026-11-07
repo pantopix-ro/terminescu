@@ -1,7 +1,7 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { leaf, panesOf, type AgentView, type Icon, type Neon, type Shown, type SideTab, type Tab } from "@terminescu/host";
 import { useEffect, useState, type KeyboardEvent, type MouseEvent } from "react";
-import { actClass, rowActivity, type Activities, type Activity } from "./activity";
+import { actClass, type Activities, type Activity } from "./activity";
 import { DOT, tabAgent, type Agents } from "./agents";
 import { StatusChip } from "./StatusChip";
 import { chipOf, rowStyle, type Builtins, type Chip, type SortMode } from "./status";
@@ -276,7 +276,7 @@ function Row(props: {
         }}
       >
         <i
-          className={`ao-i ao-i-${side.icon ?? (group ? "group" : (side.tabs[0]?.icon ?? (side.tabs[0] && tabAgent(side.tabs[0], agents) ? "agent" : "term")))}${actClass(rowActivity(side.tabs, props.activity))}`}
+          className={`ao-i ao-i-${side.icon ?? (group ? "group" : (side.tabs[0]?.icon ?? (side.tabs[0] && tabAgent(side.tabs[0], agents) ? "agent" : "term")))}${actClass(group ? undefined : props.activity[side.tabs[0]?.id ?? ""])}`}
           title={collapsed ? undefined : "Double-click to change the icon"}
           onDoubleClick={(e) => {
             e.stopPropagation();

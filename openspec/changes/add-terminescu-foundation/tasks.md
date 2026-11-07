@@ -631,8 +631,8 @@ buffers once per sheet.
 - [x] 8.54 Busy icons (owner request 2026-11-07): a tab's icon, in the tab bar, the sidebar row
       and the row's shell list, blinks while a command runs (`mvn`, `npm`) or Claude works, and
       blinks and bounces while Claude waits for an answer. Claude at its prompt stays still: the
-      hook state wins over the `claude` program. A row takes its most urgent tab; reduced motion
-      stops both. Verify: `activity.test.ts`, `activity.spec.ts`.
+      hook state wins over the `claude` program. A one-tab row blinks with its tab; a group's own
+      icon stays still and only its shells blink. Reduced motion stops both. Verify: `activity.test.ts`, `activity.spec.ts`.
 - [x] 8.55 Pixel context menu (owner request 2026-11-07): a right click that no row, tab or link
       takes opens the app's pixel menu instead of the system's. A terminal gets Copy, Paste,
       Select All, Find, Clear to Start and its pane actions; a text pane Undo, Redo, Cut, Copy,

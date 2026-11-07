@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Tab } from "@terminescu/host";
-import { paneActivity, rowActivity, tabActivities, tabActivity } from "../src/activity";
+import { paneActivity, tabActivities, tabActivity } from "../src/activity";
 
 const pane = (id: string) => ({ type: "pane" as const, id });
 const tab = (id: string, ...panes: string[]): Tab => ({
@@ -24,15 +24,12 @@ describe("activity", () => {
     expect(paneActivity("p", labels, { p: agent("done") })).toBeUndefined();
   });
 
-  it("a tab and a row take the most urgent pane", () => {
+  it("a tab takes the most urgent pane", () => {
     const a = tab("a", "p1", "p2");
     const b = tab("b", "p3");
     const labels = { p1: { program: "npm" }, p3: { program: "claude" } };
     expect(tabActivity(a, labels, { p2: agent("waiting") })).toBe("wait");
     const acts = tabActivities([a, b], labels, { p3: agent("idle") });
     expect(acts).toEqual({ a: "busy" });
-    expect(rowActivity([b, a], acts)).toBe("busy");
-    expect(rowActivity([a, b], { a: "busy", b: "wait" })).toBe("wait");
-    expect(rowActivity([b], acts)).toBeUndefined();
   });
 });
