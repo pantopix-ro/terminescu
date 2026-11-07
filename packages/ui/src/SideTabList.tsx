@@ -392,6 +392,7 @@ function Row(props: {
                     props.onRenameStart?.(t.id);
                   }}
                 >
+                  {props.activity[t.id] === "wait" && <AskMark />}
                   <span className="kid-n">{tabName(t, docs)}</span>
                   {props.subtitles[t.id] && <span className="kid-sub">{props.subtitles[t.id]}</span>}
                 </span>
@@ -424,6 +425,15 @@ function kidStyle(t: Tab, shown: Shown | undefined): React.CSSProperties {
 }
 
 /** A tab's icon: the one picked, else Claude's or a terminal's; Claude's state dot stays either way. */
+/** Claude's ✳ before a tab name while Claude waits for the person, as Claude Code titles it. */
+export function AskMark() {
+  return (
+    <span className="ask-mark" aria-hidden="true">
+      ✳
+    </span>
+  );
+}
+
 export function KidIcon({ agent, icon, accent, act, onDoubleClick }: { agent: AgentView | undefined; icon?: Icon; accent?: Neon; act?: Activity; onDoubleClick?(e: MouseEvent): void }) {
   return (
     <>

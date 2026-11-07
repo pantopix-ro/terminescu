@@ -7,7 +7,7 @@ import { StatusChip } from "./StatusChip";
 import { chipOf, rowStyle, type Builtins } from "./status";
 import { useEffect, useRef, useState } from "react";
 import { Tip, useTip } from "./Tip";
-import { KidIcon, pickAt, RenameInput, tabDirty, tabName, tabRequest, type DocMarks } from "./SideTabList";
+import { AskMark, KidIcon, pickAt, RenameInput, tabDirty, tabName, tabRequest, type DocMarks } from "./SideTabList";
 
 export interface TabBarProps {
   tabs: Tab[];
@@ -126,6 +126,8 @@ function TabItem({
           onCancel={() => onRenameEnd?.()}
         />
       ) : (
+        <>
+        {act === "wait" && <AskMark />}
         <span
           className="n"
           onDoubleClick={(e) => {
@@ -135,6 +137,7 @@ function TabItem({
         >
           {tabName(tab, docs)}
         </span>
+        </>
       )}
       {!renaming && sub && <span className="tab-sub">{sub}</span>}
       {tabDirty(tab, docs) && <span className="tab-dirty" title="Unsaved changes" aria-label="Unsaved changes" />}

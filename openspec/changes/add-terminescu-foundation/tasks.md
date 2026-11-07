@@ -641,6 +641,10 @@ buffers once per sheet.
       Paste, Select All and Find; a field Cut, Copy, Paste and Select All; other selected text
       Copy. Undo to Paste go down the responder chain as the Edit menu's items do (`edit_command`).
       Verify: `context-menu.spec.ts`, `links.spec.ts`, `edit_actions_map_to_the_standard_selectors`.
+- [x] 8.56 Claude asks (owner request 2026-11-07): while Claude waits for the person, its tab
+      name gets Claude Code's ✳ in front, in the tab bar and the sidebar shell list, and the
+      dock icon bounces once (macOS skips it while the app is in front). Verify:
+      `activity.spec.ts`; the bounce by hand.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves
