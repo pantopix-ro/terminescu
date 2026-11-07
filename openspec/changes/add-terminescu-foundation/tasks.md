@@ -633,7 +633,7 @@ buffers once per sheet.
       blinks and bounces while Claude waits for an answer. Claude at its prompt stays still, and
       so does `claude` with no hook state; an interrupt (Esc, no `Stop` hook) read from the
       transcript ends Running. A one-tab row blinks with its tab; a group's own icon stays still
-      and only its shells blink. Reduced motion stops both. Verify: `activity.test.ts`,
+      and only its shells blink, or its tab squares while the group is closed. Reduced motion stops both. Verify: `activity.test.ts`,
       `activity.spec.ts`, Rust test `an_interrupt_in_the_transcript_ends_running`.
 - [x] 8.55 Pixel context menu (owner request 2026-11-07): a right click that no row, tab or link
       takes opens the app's pixel menu instead of the system's. A terminal gets Copy, Paste,

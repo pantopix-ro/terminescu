@@ -324,10 +324,11 @@ function Row(props: {
         )}
         </span>
         <span className="m">
-          {/* One square per tab, in the tab's neon (task 8.26). */}
+          {/* One square per tab, in the tab's neon (task 8.26). A closed group's squares blink
+              for their tabs, since its shell list is hidden (task 8.54). */}
           <span className="ao-strip" aria-hidden="true">
             {side.tabs.map((t) => (
-              <i key={t.id} className="ao-cell" data-cell={t.id} style={t.accent && { background: `var(--neon-${t.accent})` }} />
+              <i key={t.id} className={`ao-cell${group && !open ? actClass(props.activity[t.id]) : ""}`} data-cell={t.id} style={t.accent && { background: `var(--neon-${t.accent})` }} />
             ))}
           </span>
           {/* A one-tab row shows its tab's live subtitle here; a group's tabs show theirs below (task 8.30). */}
