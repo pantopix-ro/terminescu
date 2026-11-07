@@ -550,6 +550,7 @@ fn settings_set(
 ) -> Result<settings::Settings, String> {
     let saved = settings::set(&lock(&state.db), settings).map_err(|e| e.to_string())?;
     state.runtime.set_editor(saved.editor);
+    state.runtime.set_scrollback(saved.terminal_scrollback);
     for w in app.webview_windows().values() {
         let _ = w.set_zoom(zoom_of(&saved));
     }
@@ -1238,6 +1239,15 @@ fn open_url(url: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// Bounces the dock icon once for a terminal's bell (task 8.42); macOS ignores it while the app
+/// is in front.
+#[tauri::command]
+fn bounce_dock(window: tauri::WebviewWindow) -> Result<(), String> {
+    window
+        .request_user_attention(Some(tauri::UserAttentionType::Informational))
+        .map_err(|e| e.to_string())
+}
+
 /// The sidecars sit next to the app binary: in `Contents/MacOS` when bundled, in
 /// `target/debug` under `tauri dev`.
 fn sidecar(name: &str) -> std::io::Result<PathBuf> {
@@ -1339,9 +1349,11 @@ fn start_runtime(
     if let Some(s) = saved.as_mut() {
         terminescu_core::state::fill_accents(&mut s.workspace);
     }
-    let editor = {
+    let (editor, scrollback) = {
         let db = lock(&db);
-        settings::get(&db).map(|s| s.editor).unwrap_or(false)
+        settings::get(&db)
+            .map(|s| (s.editor, s.terminal_scrollback))
+            .unwrap_or((false, settings::SCROLLBACK))
     };
     // Closing a side tab deletes its local statuses and their rules (ON DELETE CASCADE), so the
     // runtime gets the rules again and windows reload the config.
@@ -1390,6 +1402,7 @@ fn start_runtime(
         persist,
         editor,
     )?;
+    runtime.set_scrollback(scrollback);
     let handle = app.clone();
     let (to_attention, updates) = std::sync::mpsc::channel();
     for u in runtime.agents() {
@@ -1823,6 +1836,7 @@ fn main() {
             pane_resize,
             pane_input,
             open_url,
+            bounce_dock,
             docs::doc_new,
             docs::doc_open_file,
             docs::doc_open_path,

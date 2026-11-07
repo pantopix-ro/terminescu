@@ -13,7 +13,8 @@ import { pasteBytes } from "./insert";
 import { findPaths } from "./paths";
 import { webglBudget } from "./webgl-budget";
 import { colors } from "./generated/colors";
-import { terminalFont, themeFor, type TerminalFont } from "./xterm-theme";
+import { pasteRisk } from "./paste";
+import { terminalBehaviour, terminalBehaviourOptions, terminalFont, themeFor, type TerminalBehaviourSettings, type TerminalFont } from "./xterm-theme";
 
 export interface TerminalPaneProps {
   paneId: string;
@@ -41,6 +42,12 @@ export interface TerminalPaneProps {
   tint?: Tint | null;
   /** Font and spacing from Settings › Terminal, live (task 8.36). None keeps the defaults. */
   font?: TerminalFont;
+  /** Cursor, history, Option keys, bell, clipboard and contrast, live (task 8.42). */
+  behaviour?: TerminalBehaviourSettings;
+  /** The shell rang the bell and the setting is visual or sound. */
+  onBell?(kind: "visual" | "sound"): void;
+  /** A risky paste waits for this; true pastes. Without it the paste goes through. */
+  confirmPaste?(text: string, reason: string): Promise<boolean>;
 }
 
 /** Scrolls a terminal to a pin's rows and selects them; `detail` is `[first, last]`. */
@@ -150,11 +157,29 @@ export function terminalSelection(paneId: string): string {
  * chords pass through to the app menu; every other key goes to the shell, with Option as Meta.
  * Links open on `⌘`-click.
  */
-export function TerminalPane({ paneId, visible, focused, onFocus, open, openUrl, openPath, onTerminal, onSelection, tint, font = terminalFont }: TerminalPaneProps) {
+export function TerminalPane({
+  paneId,
+  visible,
+  focused,
+  onFocus,
+  open,
+  openUrl,
+  openPath,
+  onTerminal,
+  onSelection,
+  tint,
+  font = terminalFont,
+  behaviour = terminalBehaviour,
+  onBell,
+  confirmPaste,
+}: TerminalPaneProps) {
   const live = useRef<Live | null>(null);
   const [ready, setReady] = useState(false);
-  const callbacks = useRef({ open, openUrl, openPath, onTerminal, onFocus, onSelection });
-  callbacks.current = { open, openUrl, openPath, onTerminal, onFocus, onSelection };
+  const callbacks = useRef({ open, openUrl, openPath, onTerminal, onFocus, onSelection, onBell, confirmPaste });
+  callbacks.current = { open, openUrl, openPath, onTerminal, onFocus, onSelection, onBell, confirmPaste };
+  const behaviourNow = useRef(behaviour);
+  behaviourNow.current = behaviour;
+  const behaviourKey = JSON.stringify(behaviour);
   const tintNow = useRef(tint);
   tintNow.current = tint;
   const fontNow = useRef(font);
@@ -199,6 +224,28 @@ export function TerminalPane({ paneId, visible, focused, onFocus, open, openUrl,
     el.addEventListener(EXTRACT_EVENT, onExtract);
     el.addEventListener(INSERT_EVENT, onInsert);
     el.addEventListener(REVEAL_ROWS_EVENT, onReveal);
+    // Copy on select writes from mouseup, a user gesture the clipboard accepts.
+    const onMouseUp = () => {
+      const term = live.current?.term;
+      if (!behaviourNow.current.copyOnSelect || !term?.hasSelection()) return;
+      void navigator.clipboard?.writeText(term.getSelection()).catch(() => undefined);
+    };
+    // Ahead of xterm.js's own listener: a risky paste waits for the person (task 8.42).
+    const onPaste = (e: ClipboardEvent) => {
+      const term = live.current?.term;
+      const text = e.clipboardData?.getData("text/plain") ?? "";
+      const ask = callbacks.current.confirmPaste;
+      const reason = behaviourNow.current.pasteWarning && ask ? pasteRisk(text) : undefined;
+      if (!term || !reason || !ask) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      void ask(text, reason).then((ok) => {
+        if (ok && live.current?.term === term) term.paste(text);
+        if (live.current?.term === term) term.focus();
+      });
+    };
+    el.addEventListener("mouseup", onMouseUp);
+    el.addEventListener("paste", onPaste, true);
     let disposed = false;
     let observer: ResizeObserver | undefined;
     let frame = 0;
@@ -213,13 +260,10 @@ export function TerminalPane({ paneId, visible, focused, onFocus, open, openUrl,
       const term = new Terminal({
         ...startFont,
         theme: themeFor(tintNow.current),
-        scrollback: 10_000,
-        // As Terminal.app's Basic profile: a blinking bar, bold without bright colours, and
-        // Option as Meta, so Option+Enter sends Esc+Return (a newline in Claude Code).
-        cursorStyle: "bar",
-        cursorBlink: true,
+        // As Terminal.app's Basic profile: bold without bright colours. The behaviour defaults
+        // give a blinking bar and Option as Meta, so Option+Enter sends Esc+Return.
+        ...terminalBehaviourOptions(behaviourNow.current),
         drawBoldTextInBrightColors: false,
-        macOptionIsMeta: true,
         linkHandler: { activate },
         // Search highlights and markers are decorations, still a proposed API in xterm.js 6.
         allowProposedApi: true,
@@ -248,8 +292,25 @@ export function TerminalPane({ paneId, visible, focused, onFocus, open, openUrl,
           done(links.length ? links : undefined);
         },
       });
-      // ⌘ chords belong to the app menu (D17), including copy and paste.
-      term.attachCustomKeyEventHandler((e) => !e.metaKey);
+      // ⌘ chords belong to the app menu (D17), including copy and paste. With one Option key as
+      // Meta, pressing an Option key picks the mode before the key it modifies arrives.
+      term.attachCustomKeyEventHandler((e) => {
+        const meta = behaviourNow.current.optionAsMeta;
+        if (e.type === "keydown" && e.key === "Alt" && (meta === "left" || meta === "right")) {
+          term.options.macOptionIsMeta = e.code === (meta === "left" ? "AltLeft" : "AltRight");
+        }
+        return !e.metaKey;
+      });
+      term.onBell(() => {
+        const kind = behaviourNow.current.bell;
+        if (kind === "off") return;
+        if (kind === "visual") {
+          el.classList.remove("bell");
+          void el.offsetWidth;
+          el.classList.add("bell");
+        }
+        callbacks.current.onBell?.(kind);
+      });
       term.open(el);
       el.dataset.renderer = "dom";
       const l: Live = { term, fit, search, early: 0, glLost: false };
@@ -320,6 +381,8 @@ export function TerminalPane({ paneId, visible, focused, onFocus, open, openUrl,
       el.removeEventListener(EXTRACT_EVENT, onExtract);
       el.removeEventListener(INSERT_EVENT, onInsert);
       el.removeEventListener(REVEAL_ROWS_EVENT, onReveal);
+      el.removeEventListener("mouseup", onMouseUp);
+      el.removeEventListener("paste", onPaste, true);
       const l = live.current;
       live.current = null;
       if (l) {
@@ -372,6 +435,12 @@ export function TerminalPane({ paneId, visible, focused, onFocus, open, openUrl,
       gone = true;
     };
   }, [paneId, fontKey, ready]);
+
+  // Settings › Terminal's behaviour applies at once too; a shorter history drops the oldest lines.
+  useEffect(() => {
+    const term = live.current?.term;
+    if (term) Object.assign(term.options, terminalBehaviourOptions(behaviourNow.current));
+  }, [paneId, behaviourKey, ready]);
 
   return null;
 }

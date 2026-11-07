@@ -553,6 +553,13 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       than Unicode 11 stay a known gap, since xterm.js has no newer table. A DEC 2026 block
       split over two writes keeps synchronized output on until its end. Verify:
       `widths.rs`, `widths.test.ts`, `unicode.spec.ts`.
+- [x] 8.42 Terminal behaviour settings (2026-11-07): Settings › Terminal sets the cursor (bar,
+      block or underline, blink; an unfocused terminal shows an outline), history (1,000 to
+      50,000 lines, live, and new shells' daemon copies through `SpawnSpec.scrollback`),
+      which Option key is Meta, the bell (off, flash or sound; both bounce the dock icon in the
+      background), copy on select, a check before a risky paste (over 5,000 characters, a
+      `sudo` line, or a pipe into a shell) and raised contrast. Defaults as Terminal.app.
+      Verify: `terminal-behaviour.spec.ts`, `paste.test.ts`, `settings.rs`.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

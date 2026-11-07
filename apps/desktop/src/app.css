@@ -440,3 +440,10 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 .find-opt[aria-pressed="true"] { color: var(--blue); box-shadow: inset 0 0 0 1px var(--blue); }
 /* Maximize a split pane (task 8.39). */
 .tp-max.on { color: var(--fg); }
+/* Ask before a risky paste (task 8.42). */
+.paste-dialog { width: min(560px, calc(100vw - 32px)); margin-top: 10vh; }
+.paste-dialog .ao-frame-body { display: flex; flex-direction: column; gap: var(--space-2); }
+.paste-preview { max-height: 180px; overflow: auto; margin: 0; padding: 8px; background: var(--bg); color: var(--fg); font: 11px/1.3 ui-monospace, "SF Mono", monospace; white-space: pre-wrap; word-break: break-all; }
+/* A visual bell flashes the terminal once. */
+.term-pane.bell { animation: term-bell 150ms ease-out; }
+@keyframes term-bell { from { filter: brightness(1.8); } to { filter: none; } }

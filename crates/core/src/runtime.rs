@@ -27,7 +27,7 @@ use crate::status::{self, Engine, Look, PaneFacts, Rule, Shown, Until};
 use crate::transcript::Tail;
 use crate::views::{Action, Queued, Sink, ViewId, Views};
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -175,6 +175,8 @@ struct Inner {
     doc_sink: Mutex<Option<DocSink>>,
     /// Settings › Shell: new shells point `VISUAL` and `EDITOR` at `terminescu edit --wait`.
     editor: AtomicBool,
+    /// Lines of history new shells keep in the daemon; 0 leaves the daemon's default (task 8.42).
+    scrollback: AtomicU32,
     queued: Condvar,
     emit: Emit,
     connect: Connect,
@@ -309,6 +311,7 @@ impl Runtime {
                 scanners: Mutex::default(),
                 doc_sink: Mutex::default(),
                 editor: AtomicBool::new(editor),
+                scrollback: AtomicU32::new(0),
                 queued: Condvar::new(),
                 emit,
                 connect,
@@ -661,6 +664,7 @@ impl Runtime {
             side_tab: Some(side_tab.into()),
             cwd: cwd.map(Into::into),
             env: env.clone(),
+            scrollback: Some(self.inner.scrollback.load(Ordering::SeqCst)).filter(|n| *n > 0),
             ..Default::default()
         };
         let cwd = cwd.filter(|c| std::path::Path::new(c).is_dir());
@@ -1022,6 +1026,11 @@ impl Runtime {
     /// The opt-in editor setting; shells started from now on follow it (D27).
     pub fn set_editor(&self, on: bool) {
         self.inner.editor.store(on, Ordering::SeqCst);
+    }
+
+    /// Lines of history the daemon keeps for shells started from now on (task 8.42).
+    pub fn set_scrollback(&self, lines: u32) {
+        self.inner.scrollback.store(lines, Ordering::SeqCst);
     }
 
     /// Where the document store hears that the last pane of a document closed.

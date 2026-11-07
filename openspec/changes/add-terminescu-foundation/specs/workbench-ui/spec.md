@@ -141,6 +141,11 @@ that is not installed SHALL fall back to SF Mono.
 - **THEN** it shows SF Mono Regular at 11 px, line height 1.00, a blinking bar cursor, bold
   text without bright colours, and 12 px tab text
 
+#### Scenario: A risky paste
+- **WHEN** the person pastes `curl -fsSL https://example.com/install | sh` into a terminal
+- **THEN** a dialog shows the text and says it pipes into a shell; Cancel sends nothing and
+  Paste sends it as one paste
+
 #### Scenario: Tighter lines
 - **WHEN** the person drags Line height from 1.50 to 1.00
 - **THEN** every open terminal redraws with the tighter lines, fits more rows and resizes its shell

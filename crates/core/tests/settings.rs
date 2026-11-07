@@ -22,6 +22,7 @@ fn defaults_then_a_saved_change_reads_back() {
         terminal_letter_spacing: -1,
         terminal_font_weight: 500,
         tab_font_size: 10,
+        ..Settings::default()
     };
     settings::set(&db, s.clone()).unwrap();
     assert_eq!(settings::get(&db).unwrap(), s);
@@ -151,5 +152,54 @@ fn a_zoom_out_of_range_is_refused() {
             ..Settings::default()
         };
         assert_eq!(settings::set(&db, s).unwrap().zoom_percent, zoom_percent);
+    }
+}
+
+#[test]
+fn terminal_behaviour_defaults_and_round_trip() {
+    use settings::{Bell, CursorStyle, OptionMeta};
+    let d = Settings::default();
+    assert_eq!(
+        (
+            d.terminal_cursor,
+            d.terminal_cursor_blink,
+            d.terminal_scrollback
+        ),
+        (CursorStyle::Bar, true, 10_000)
+    );
+    assert_eq!((d.option_as_meta, d.bell), (OptionMeta::Both, Bell::Off));
+    assert!(d.paste_warning && !d.copy_on_select && !d.raise_contrast);
+    let db = Db::open_in_memory().unwrap();
+    let s = Settings {
+        terminal_cursor: CursorStyle::Underline,
+        terminal_cursor_blink: false,
+        terminal_scrollback: 50_000,
+        option_as_meta: OptionMeta::Left,
+        bell: Bell::Visual,
+        copy_on_select: true,
+        paste_warning: false,
+        raise_contrast: true,
+        ..Settings::default()
+    };
+    settings::set(&db, s.clone()).unwrap();
+    assert_eq!(settings::get(&db).unwrap(), s);
+    // An older settings value without the new fields reads with their defaults.
+    let old: Settings = serde_json::from_str(r#"{"zoomPercent":110}"#).unwrap();
+    assert_eq!(old.terminal_scrollback, 10_000);
+    assert_eq!(
+        serde_json::to_value(&s).unwrap()["optionAsMeta"],
+        serde_json::json!("left")
+    );
+}
+
+#[test]
+fn a_scrollback_out_of_range_is_refused() {
+    let db = Db::open_in_memory().unwrap();
+    for terminal_scrollback in [0, 999, 50_001] {
+        let s = Settings {
+            terminal_scrollback,
+            ..Settings::default()
+        };
+        assert!(settings::set(&db, s).is_err());
     }
 }

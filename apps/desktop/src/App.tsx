@@ -62,6 +62,7 @@ import {
   insertText,
   ExtractDialog,
   MergeDialog,
+  PasteDialog,
   ContextMenu,
   type MenuEntry,
   chipOf,
@@ -876,6 +877,25 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     () => terminalFontOptions({ terminalFont, terminalFontSize, terminalLineHeight, terminalLetterSpacing, terminalFontWeight }),
     [terminalFont, terminalFontSize, terminalLineHeight, terminalLetterSpacing, terminalFontWeight],
   );
+  // Task 8.42: cursor, history, Option keys, bell, clipboard and contrast, live.
+  const { terminalCursor, terminalCursorBlink, terminalScrollback, optionAsMeta, bell, copyOnSelect, pasteWarning, raiseContrast } = appSettings;
+  const termBehaviour = useMemo(
+    () => ({ terminalCursor, terminalCursorBlink, terminalScrollback, optionAsMeta, bell, copyOnSelect, pasteWarning, raiseContrast }),
+    [terminalCursor, terminalCursorBlink, terminalScrollback, optionAsMeta, bell, copyOnSelect, pasteWarning, raiseContrast],
+  );
+  // A risky paste waits on this dialog; one at a time.
+  const [pasteAsk, setPasteAsk] = useState<{ text: string; reason: string; answer(ok: boolean): void }>();
+  const confirmPaste = (text: string, reason: string) =>
+    new Promise<boolean>((resolve) => {
+      setPasteAsk((prev) => {
+        prev?.answer(false);
+        return { text, reason, answer: resolve };
+      });
+    });
+  const ringBell = (kind: "visual" | "sound") => {
+    if (kind === "sound") playChime();
+    if (!document.hasFocus()) void host.bounceDock().catch(() => undefined);
+  };
   // Task 8.23: a drag on the sidebar's edge sets its width live; the drop saves it.
   const [sideDrag, setSideDrag] = useState<number>();
   const sideWidth = sideDrag ?? appSettings.sidebarWidth;
@@ -1761,6 +1781,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               paneId={paneId}
               tint={statuses[tab.id]?.look?.background ?? statuses[side.id]?.look?.background}
               font={termFont}
+              behaviour={termBehaviour}
+              onBell={ringBell}
+              confirmPaste={confirmPaste}
               visible={tab.id === activeTab?.id}
               focused={paneId === focused}
               onFocus={() => focusIn(tab.id, paneId)}
@@ -2041,6 +2064,20 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
             </div>
           </div>
         </div>
+      )}
+      {pasteAsk && (
+        <PasteDialog
+          text={pasteAsk.text}
+          reason={pasteAsk.reason}
+          onPaste={() => {
+            pasteAsk.answer(true);
+            setPasteAsk(undefined);
+          }}
+          onCancel={() => {
+            pasteAsk.answer(false);
+            setPasteAsk(undefined);
+          }}
+        />
       )}
       {merging && (
         <MergeDialog

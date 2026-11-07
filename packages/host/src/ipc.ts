@@ -151,6 +151,7 @@ export function createIpcHost(): Host {
     deleteRule: (id) => invoke("rule_delete", { id }),
     setBuiltin: (auto, look) => invoke("builtin_set", { auto, look }),
     openUrl: (url) => invoke("open_url", { url }),
+    bounceDock: () => invoke("bounce_dock"),
     newText: (sideTab, beside) => invoke<DocView>("doc_new", { sideTab, beside: beside ?? null }),
     openFile: (sideTab, path, beside) => invoke<DocView>("doc_open_file", { sideTab, path, beside: beside ?? null }),
     openPath: (sideTab, pane, path, beside) => invoke<DocView>("doc_open_path", { sideTab, pane, path, beside: beside ?? null }),

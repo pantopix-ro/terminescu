@@ -70,6 +70,42 @@ export function terminalFontOptions(s: TerminalFontSettings) {
 }
 export type TerminalFont = ReturnType<typeof terminalFontOptions>;
 
+/** The behaviour fields of the app settings that shape the terminal (task 8.42). */
+export interface TerminalBehaviourSettings {
+  terminalCursor: "bar" | "block" | "underline";
+  terminalCursorBlink: boolean;
+  terminalScrollback: number;
+  optionAsMeta: "both" | "left" | "right" | "off";
+  bell: "off" | "visual" | "sound";
+  copyOnSelect: boolean;
+  pasteWarning: boolean;
+  raiseContrast: boolean;
+}
+
+/** The xterm.js options among them; the rest the pane handles itself. */
+export function terminalBehaviourOptions(b: TerminalBehaviourSettings) {
+  return {
+    cursorStyle: b.terminalCursor,
+    cursorBlink: b.terminalCursorBlink,
+    cursorInactiveStyle: "outline" as const,
+    scrollback: b.terminalScrollback,
+    macOptionIsMeta: b.optionAsMeta === "both",
+    minimumContrastRatio: b.raiseContrast ? 4.5 : 1,
+  };
+}
+
+/** As Terminal.app's Basic profile: a blinking bar, both Option keys as Meta, no bell. */
+export const terminalBehaviour: TerminalBehaviourSettings = {
+  terminalCursor: "bar",
+  terminalCursorBlink: true,
+  terminalScrollback: 10_000,
+  optionAsMeta: "both",
+  bell: "off",
+  copyOnSelect: false,
+  pasteWarning: true,
+  raiseContrast: false,
+};
+
 /** The defaults match Terminal.app's Basic profile: SF Mono Regular 11, line spacing 1.0. */
 export const terminalFont: TerminalFont = terminalFontOptions({
   terminalFont: "",
