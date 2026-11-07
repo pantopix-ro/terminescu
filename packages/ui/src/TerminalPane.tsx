@@ -11,6 +11,7 @@ import { claimPane, keyboardHeld, paneElement, releasePane } from "./pane-regist
 import { EXTRACT_EVENT, INSERT_EVENT, PIN_EVENT, type InsertDetail } from "./events";
 import { pasteBytes } from "./insert";
 import { findPaths } from "./paths";
+import { findEmails, type TerminalLink } from "./links";
 import { webglBudget } from "./webgl-budget";
 import { colors } from "./generated/colors";
 import { pasteRisk } from "./paste";
@@ -52,6 +53,10 @@ export interface TerminalPaneProps {
   opacity?: number;
   /** The shell rang the bell and the setting is visual or sound. */
   onBell?(kind: "visual" | "sound"): void;
+  /** A plain click on a link (task 8.49): the app copies it and says so at `at`. */
+  onLinkClick?(link: TerminalLink, at: { x: number; y: number }): void;
+  /** A right click on a link: the app shows the menu for its kind. */
+  onLinkMenu?(link: TerminalLink, at: { x: number; y: number }): void;
   /** A risky paste waits for this; true pastes. Without it the paste goes through. */
   confirmPaste?(text: string, reason: string): Promise<boolean>;
 }
@@ -219,11 +224,13 @@ export function TerminalPane({
   opacity,
   onBell,
   confirmPaste,
+  onLinkClick,
+  onLinkMenu,
 }: TerminalPaneProps) {
   const live = useRef<Live | null>(null);
   const [ready, setReady] = useState(false);
-  const callbacks = useRef({ open, openUrl, openPath, onTerminal, onFocus, onSelection, onBell, confirmPaste });
-  callbacks.current = { open, openUrl, openPath, onTerminal, onFocus, onSelection, onBell, confirmPaste };
+  const callbacks = useRef({ open, openUrl, openPath, onTerminal, onFocus, onSelection, onBell, confirmPaste, onLinkClick, onLinkMenu });
+  callbacks.current = { open, openUrl, openPath, onTerminal, onFocus, onSelection, onBell, confirmPaste, onLinkClick, onLinkMenu };
   const behaviourNow = useRef(behaviour);
   behaviourNow.current = behaviour;
   const behaviourKey = JSON.stringify(behaviour);
@@ -295,6 +302,15 @@ export function TerminalPane({
     };
     el.addEventListener("mouseup", onMouseUp);
     el.addEventListener("paste", onPaste, true);
+    // A right click on a link opens the app's menu for it (task 8.49), not the word selection.
+    let hoveredLink: TerminalLink | undefined;
+    const onContextMenu = (e: MouseEvent) => {
+      if (!hoveredLink || !callbacks.current.onLinkMenu) return;
+      e.preventDefault();
+      e.stopPropagation();
+      callbacks.current.onLinkMenu(hoveredLink, { x: e.clientX, y: e.clientY });
+    };
+    el.addEventListener("contextmenu", onContextMenu, true);
     let disposed = false;
     let observer: ResizeObserver | undefined;
     let frame = 0;
@@ -303,9 +319,19 @@ export function TerminalPane({
       const startFont = fontNow.current;
       await fontsReady(startFont);
       if (disposed) return;
+      // `⌘`-click opens (D27); a plain click copies; the hovered link feeds the right click.
+      const clicked = (e: MouseEvent, link: TerminalLink) => callbacks.current.onLinkClick?.(link, { x: e.clientX, y: e.clientY });
       const activate = (e: MouseEvent, uri: string) => {
-        if (e.metaKey && isHttp(uri)) callbacks.current.openUrl(uri);
+        if (!isHttp(uri)) return;
+        if (e.metaKey) callbacks.current.openUrl(uri);
+        else clicked(e, { kind: "url", text: uri });
       };
+      const hover = (link: TerminalLink) => ({
+        hover: () => (hoveredLink = link),
+        leave: () => {
+          if (hoveredLink === link) hoveredLink = undefined;
+        },
+      });
       const term = new Terminal({
         ...startFont,
         theme: themeFor(tintNow.current, lookNow.current.scheme, lookNow.current.opacity),
@@ -327,19 +353,45 @@ export function TerminalPane({
       // The daemon's grid measures with a newer table; Unicode 11 is the closest xterm.js has.
       term.loadAddon(new Unicode11Addon());
       term.unicode.activeVersion = "11";
-      term.loadAddon(new WebLinksAddon(activate));
+      term.loadAddon(
+        new WebLinksAddon(activate, {
+          hover: (_e, text) => (hoveredLink = { kind: "url", text }),
+          leave: () => (hoveredLink = undefined),
+        }),
+      );
       // File paths underline on hover like links and open on `⌘`-click (D27).
       term.registerLinkProvider({
         provideLinks(y, done) {
           const line = term.buffer.active.getLine(y - 1);
           if (!line || !callbacks.current.openPath) return done(undefined);
           const text = line.translateToString(true);
-          const links = findPaths(text).map((p) => ({
+          // An address is the email provider's link, though it reads as a file name too.
+          const mails = findEmails(text);
+          const paths = findPaths(text).filter((p) => !mails.some((m) => p.start < m.end && m.start < p.end));
+          const links = paths.map((p) => ({
             range: { start: { x: cellOf(line, p.start) + 1, y }, end: { x: cellOf(line, p.end - 1) + 1, y } },
             text: p.path,
             activate: (e: MouseEvent, path: string) => {
               if (e.metaKey) callbacks.current.openPath?.(path, e.altKey);
+              else clicked(e, { kind: "path", text: path });
             },
+            ...hover({ kind: "path", text: p.path }),
+          }));
+          done(links.length ? links : undefined);
+        },
+      });
+      term.registerLinkProvider({
+        provideLinks(y, done) {
+          const line = term.buffer.active.getLine(y - 1);
+          if (!line) return done(undefined);
+          const links = findEmails(line.translateToString(true)).map((m) => ({
+            range: { start: { x: cellOf(line, m.start) + 1, y }, end: { x: cellOf(line, m.end - 1) + 1, y } },
+            text: m.text,
+            activate: (e: MouseEvent, text: string) => {
+              if (e.metaKey) callbacks.current.openUrl(`mailto:${text}`);
+              else clicked(e, { kind: "email", text });
+            },
+            ...hover({ kind: "email", text: m.text }),
           }));
           done(links.length ? links : undefined);
         },
@@ -446,6 +498,7 @@ export function TerminalPane({
       el.removeEventListener(REVEAL_ROWS_EVENT, onReveal);
       el.removeEventListener("mouseup", onMouseUp);
       el.removeEventListener("paste", onPaste, true);
+      el.removeEventListener("contextmenu", onContextMenu, true);
       const l = live.current;
       live.current = null;
       if (l) {

@@ -1406,6 +1406,10 @@ export function createMockHost(initial?: Workspace): MockHost {
     async openUrl(url) {
       openedUrls.push(url);
     },
+    async openPathWith(paneId, path, reveal) {
+      if (!reveal && /\.(app|command|sh)$/i.test(path)) throw new Error(`${path} is a program or script; Reveal in Finder shows it instead`);
+      openedUrls.push(`${reveal ? "reveal" : "open"}:${path}`);
+    },
     async bounceDock() {
       bounces++;
     },

@@ -10,6 +10,7 @@ export { FindAllSheet, type FindAllSheetProps } from "./FindAllSheet";
 export { type FindHit } from "./find-all";
 export { MAX_SHOWN, rankFiles } from "./files";
 export { findPaths, type FoundPath } from "./paths";
+export { linkActions, type LinkKind, type TerminalLink } from "./links";
 export {
   DROP_END,
   dragSide,

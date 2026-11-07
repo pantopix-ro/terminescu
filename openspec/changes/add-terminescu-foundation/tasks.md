@@ -593,6 +593,13 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       windows are transparent and the page paints its own background, so below 100% only the
       terminals let the desktop through. Verify: `terminal-theme.spec.ts`, `theme.test.ts`,
       `settings.rs` tests, `term_import` tests, a real-app screenshot.
+- [x] 8.49 Terminal links (owner request 2026-11-07): a plain click on a link, path or email
+      address copies it and shows "Copied link" in a pixel tip at the pointer; `⌘`-click still
+      opens it (D27). A right click opens a pixel menu for the kind: a link Open in Browser and
+      Copy; a path Open in Text Tab, Reveal in Finder (`open -R`), Open with Default App and
+      Copy; an address Compose in Mail and Copy. The core resolves a path against the pane's
+      folder and refuses to open programs and scripts; `open_url` takes one plain `mailto:`
+      address. Verify: `links.spec.ts`, `links.test.ts`, `docs.rs` and `main.rs` tests.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

@@ -1292,19 +1292,35 @@ fn pane_input(state: State<'_, AppState>, view: ViewId, data: String, binary: bo
     state.runtime.view_input(view, bytes);
 }
 
-/// Opens a link from a pane in the default browser. Only http and https leave the app, so the
-/// url can never read as an `open` option.
+/// Opens a link from a pane: http(s) in the default browser, a `mailto:` address in Mail
+/// (task 8.49). Nothing else leaves the app, so the url can never read as an `open` option.
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
     let lower = url.to_ascii_lowercase();
-    if !(lower.starts_with("http://") || lower.starts_with("https://")) {
-        return Err(format!("not an http(s) link: {url}"));
+    if !(lower.starts_with("http://") || lower.starts_with("https://") || mail_ok(&url)) {
+        return Err(format!("not an http(s) or mail link: {url}"));
     }
     std::process::Command::new("/usr/bin/open")
         .arg(&url)
         .spawn()
         .map(drop)
         .map_err(|e| e.to_string())
+}
+
+/// `mailto:` and one plain address: no spaces, headers or second recipient.
+fn mail_ok(url: &str) -> bool {
+    let Some(addr) = url.strip_prefix("mailto:") else {
+        return false;
+    };
+    let Some((user, host)) = addr.split_once('@') else {
+        return false;
+    };
+    let ok = |s: &str, extra: &str| {
+        !s.is_empty()
+            && s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || extra.contains(c))
+    };
+    ok(user, "._%+-") && ok(host, ".-") && host.contains('.') && !user.starts_with('-')
 }
 
 /// Bounces the dock icon once for a terminal's bell (task 8.42); macOS ignores it while the app
@@ -1926,6 +1942,7 @@ fn main() {
             docs::doc_new,
             docs::doc_open_file,
             docs::doc_open_path,
+            docs::path_open,
             docs::doc_open_prompt,
             docs::doc_open_variable,
             docs::doc_get,
@@ -1969,6 +1986,15 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn mail_links_take_one_plain_address() {
+        assert!(super::mail_ok("mailto:dev@example.com"));
+        assert!(!super::mail_ok("mailto:dev@example.com?bcc=x@example.com"));
+        assert!(!super::mail_ok("mailto:a b@example.com"));
+        assert!(!super::mail_ok("mailto:-a@example.com"));
+        assert!(!super::mail_ok("dev@example.com"));
+    }
+
     use super::*;
 
     #[test]

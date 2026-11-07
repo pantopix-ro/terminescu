@@ -463,3 +463,7 @@ html[data-scheme] .pane-slot:has(> .term-pane[data-tint="magenta"]) { background
 html[data-scheme] .pane-slot:has(> .term-pane[data-tint="red"]) { background: color-mix(in srgb, color-mix(in srgb, var(--tint-red) var(--tint-mix), var(--term-base)) var(--term-alpha), transparent); }
 .term-swatches { display: inline-flex; gap: 1px; }
 .term-swatches span { width: 10px; height: 14px; box-shadow: inset 0 0 0 1px var(--line); }
+/* Task 8.49: "Copied link" at the pointer, in the sidebar's pixel tooltip; it pops in. */
+.link-tip { animation: link-tip-in 120ms steps(2); }
+@keyframes link-tip-in { from { transform: translateY(4px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .link-tip { animation: none; } }
