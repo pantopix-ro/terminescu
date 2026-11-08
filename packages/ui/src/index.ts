@@ -65,3 +65,4 @@ export { BUILTIN_LOOKS, builtinLook, chipOf, chipStyle, rowStyle, SORTS, sortSid
 export { attentionCounts, StatusLine, type StatusLineProps } from "./StatusLine";
 export { playChime } from "./chime";
 export { CommandsSection, TARGET_LABEL, launcherUp, type CommandDraft, type CommandsSectionProps } from "./CommandsSection";
+export { nextStop, tabStops, topModal, trapModalFocus } from "./modal";

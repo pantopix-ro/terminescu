@@ -17,6 +17,7 @@ function Sheet({ label, className = "", onClose, children }: { label: string; cl
         tabIndex={-1}
         className={`ao-frame app-sheet ${className}`}
         role="dialog"
+        aria-modal="true"
         aria-label={label}
         onPointerDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => {

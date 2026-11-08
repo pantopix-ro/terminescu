@@ -227,6 +227,7 @@ export function PromptLibrary({ host, selectKey, onError, onClose, onEditInText 
         tabIndex={-1}
         className="ao-frame prompt-library"
         role="dialog"
+        aria-modal="true"
         aria-labelledby="pl-t"
         onPointerDown={(e) => e.stopPropagation()}
       >

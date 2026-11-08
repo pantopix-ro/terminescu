@@ -24,6 +24,7 @@ export function PasteDialog({ text, reason, onPaste, onCancel }: PasteDialogProp
       <div
         className="ao-frame paste-dialog"
         role="alertdialog"
+        aria-modal="true"
         aria-label="Paste into the terminal?"
         onPointerDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => {

@@ -149,6 +149,7 @@ export function StatusEditor(props: StatusEditorProps) {
       <div
         className="ao-frame status-editor"
         role="dialog"
+        aria-modal="true"
         tabIndex={-1}
         aria-labelledby="se-t"
         onPointerDown={(e) => e.stopPropagation()}

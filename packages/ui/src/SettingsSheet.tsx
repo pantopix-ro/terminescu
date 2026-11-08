@@ -147,6 +147,7 @@ export function SettingsSheet(props: SettingsSheetProps) {
         tabIndex={-1}
         className="ao-frame status-settings settings-sheet"
         role="dialog"
+        aria-modal="true"
         aria-labelledby="ss-t"
         onPointerDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
