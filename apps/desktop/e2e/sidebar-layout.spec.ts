@@ -54,8 +54,7 @@ test("the collapse button shows on hover and leaves only icons with a tooltip", 
   await row.hover();
   // Collapsed, every row's shell list carries its name and status.
   const tip = page.getByRole("group", { name: /^Shells in / });
-  const first = await page.evaluate(() => (window as any).__terminescu.host.workspace().windows[0].sideTabs[0].tabs[0].name);
-  await expect(tip.locator(".px-tip-name")).toHaveText(first);
+  await expect(tip.locator(".px-tip-name")).toHaveText("Terminal");
   await expect(tip.locator(".px-tip-status")).toHaveText("Idle");
   await page.mouse.move(1000, 400);
   await expect(tip).toHaveCount(0);
@@ -134,16 +133,19 @@ test("tabs live in the sidebar by default and groups stay as left", async ({ pag
   await expect(page.locator(".ao-tabs .ao-tab")).toHaveCount(0);
   await expect(page.locator(".ao-st-kid")).toHaveCount(2);
 
-  // Another row keeps this group open; the chevron closes it, and it stays closed when it is
-  // selected again.
+  // Another row keeps this group open; the chevron closes it. A click on the group selects it
+  // and opens it, and a click on the selected group closes and opens it (task 8.61).
   await page.getByRole("button", { name: "Add a side tab", exact: true }).click();
   await expect(page.locator(".ao-st-kid")).toHaveCount(2);
   await page.getByLabel("Collapse side tab").click();
   await expect(page.locator(".ao-st-kid")).toHaveCount(0);
-  await page.locator(".ao-st").first().click();
-  await expect(page.locator(".ao-st").first()).toHaveClass(/active/);
+  const group = page.locator(".ao-st").first();
+  await group.click();
+  await expect(group).toHaveClass(/active/);
+  await expect(page.locator(".ao-st-kid")).toHaveCount(2);
+  await group.click();
   await expect(page.locator(".ao-st-kid")).toHaveCount(0);
-  await page.getByLabel("Expand side tab").click();
+  await group.click();
   await expect(page.locator(".ao-st-kid")).toHaveCount(2);
 
   // Settings › Terminal › Show tabs in the top bar brings them back.

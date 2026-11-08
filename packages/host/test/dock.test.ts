@@ -68,6 +68,5 @@ describe("mock dock commands", () => {
     await host.send({ type: "PaneToTab", paneId: "p2", index: 0 });
     const tabs = host.workspace().windows[0]!.sideTabs[0]!.tabs;
     expect(tabs.map((t) => panesOf(t.layout))).toEqual([["p2"], ["p1"]]);
-    expect(tabs[0]!.name).toBeTruthy();
   });
 });

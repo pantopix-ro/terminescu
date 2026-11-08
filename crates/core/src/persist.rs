@@ -91,24 +91,25 @@ pub fn save(db: &Db, saved: &Saved) -> Result<()> {
         ids[0].push(&w.id);
         for (si, s) in w.side_tabs.iter().enumerate() {
             tx.execute(
-                "INSERT INTO side_tabs (id, owner_id, window_id, position, title, status_json, created_at, icon, accent)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?7, ?6, ?8, ?9)
+                "INSERT INTO side_tabs (id, owner_id, window_id, position, title, status_json, created_at, icon, accent, name)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?7, ?6, ?8, ?9, ?10)
                  ON CONFLICT (id) DO UPDATE SET window_id = excluded.window_id,
                    position = excluded.position, title = excluded.title,
-                   status_json = excluded.status_json, icon = excluded.icon, accent = excluded.accent",
-                params![s.id, owner, w.id, si as i64, s.title, now, status_json(&s.status), s.icon, s.accent],
+                   status_json = excluded.status_json, icon = excluded.icon, accent = excluded.accent,
+                   name = excluded.name",
+                params![s.id, owner, w.id, si as i64, s.title, now, status_json(&s.status), s.icon, s.accent, s.name],
             )?;
             ids[1].push(&s.id);
             for (ti, t) in s.tabs.iter().enumerate() {
                 let layout = serde_json::to_string(&t.layout).expect("a layout serializes");
                 tx.execute(
-                    "INSERT INTO tabs (id, owner_id, side_tab_id, position, title, layout_json, status_json, created_at, icon, accent, name)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?8, ?7, ?9, ?10, ?11)
+                    "INSERT INTO tabs (id, owner_id, side_tab_id, position, title, layout_json, status_json, created_at, icon, accent)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?8, ?7, ?9, ?10)
                      ON CONFLICT (id) DO UPDATE SET side_tab_id = excluded.side_tab_id,
                        position = excluded.position, title = excluded.title,
                        layout_json = excluded.layout_json, status_json = excluded.status_json,
-                       icon = excluded.icon, accent = excluded.accent, name = excluded.name",
-                    params![t.id, owner, s.id, ti as i64, t.title, layout, now, status_json(&t.status), t.icon, t.accent, t.name],
+                       icon = excluded.icon, accent = excluded.accent",
+                    params![t.id, owner, s.id, ti as i64, t.title, layout, now, status_json(&t.status), t.icon, t.accent],
                 )?;
                 ids[2].push(&t.id);
                 if let Some(old) = was.get(&t.id).filter(|old| **old != s.id) {
@@ -248,7 +249,7 @@ pub fn load(db: &Db) -> Result<Option<Saved>> {
     }
     let mut side_tabs: Vec<(Id, SideTab)> = conn
         .prepare(
-            "SELECT window_id, id, title, status_json, icon, accent FROM side_tabs WHERE owner_id = ?1 ORDER BY position",
+            "SELECT window_id, id, title, status_json, icon, accent, name FROM side_tabs WHERE owner_id = ?1 ORDER BY position",
         )?
         .query_map([&owner], |r| {
             Ok((
@@ -260,6 +261,7 @@ pub fn load(db: &Db) -> Result<Option<Saved>> {
                     status: status_of(r.get(3)?),
                     icon: icon_of(r.get(4)?),
                     accent: accent_of(r.get(5)?),
+                    name: r.get::<_, Option<String>>(6)?.filter(|n| !n.trim().is_empty()),
                 },
             ))
         })?
@@ -272,11 +274,10 @@ pub fn load(db: &Db) -> Result<Option<Saved>> {
         Option<String>,
         Option<String>,
         Option<String>,
-        Option<String>,
     );
     let tabs: Vec<TabRow> = conn
-        .prepare("SELECT side_tab_id, id, title, layout_json, status_json, icon, accent, name FROM tabs WHERE owner_id = ?1 ORDER BY position")?
-        .query_map([&owner], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?)))?
+        .prepare("SELECT side_tab_id, id, title, layout_json, status_json, icon, accent FROM tabs WHERE owner_id = ?1 ORDER BY position")?
+        .query_map([&owner], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?)))?
         .collect::<rusqlite::Result<_>>()?;
     let mut panes: HashMap<Id, PaneRecord> = conn
         .prepare("SELECT id, daemon_pane_id, cwd, session_id FROM panes WHERE owner_id = ?1")?
@@ -291,7 +292,7 @@ pub fn load(db: &Db) -> Result<Option<Saved>> {
             ))
         })?
         .collect::<rusqlite::Result<_>>()?;
-    for (side_tab_id, id, title, layout_json, status_json, icon, accent, name) in tabs {
+    for (side_tab_id, id, title, layout_json, status_json, icon, accent) in tabs {
         let mut layout = serde_json::from_str::<Layout>(&layout_json).unwrap_or_else(|e| {
             eprintln!(
                 "terminescu: tab {id} has an unreadable layout, it restarts with one pane: {e}"
@@ -333,7 +334,6 @@ pub fn load(db: &Db) -> Result<Option<Saved>> {
                 status: status_of(status_json),
                 icon: icon_of(icon),
                 accent: accent_of(accent),
-                name: name.filter(|n| !n.trim().is_empty()),
             });
         }
     }
@@ -378,6 +378,7 @@ mod tests {
                 side_tabs: vec![
                     SideTab {
                         accent: None,
+                        name: None,
                         status: None,
                         icon: None,
                         id: "s1".into(),
@@ -390,7 +391,6 @@ mod tests {
                                 id: "t1".into(),
                                 title: None,
                                 layout,
-                                name: None,
                             },
                             Tab {
                                 accent: None,
@@ -399,12 +399,12 @@ mod tests {
                                 id: "t2".into(),
                                 title: Some("dev server".into()),
                                 layout: Layout::pane("p3"),
-                                name: None,
                             },
                         ],
                     },
                     SideTab {
                         accent: None,
+                        name: None,
                         status: None,
                         icon: None,
                         id: "s2".into(),
@@ -416,7 +416,6 @@ mod tests {
                             id: "t3".into(),
                             title: None,
                             layout: Layout::pane("p4"),
-                            name: None,
                         }],
                     },
                 ],
@@ -473,7 +472,7 @@ mod tests {
         side.accent = Some("lime".into());
         side.tabs[0].icon = Some("doc".into());
         side.tabs[0].accent = Some("rose".into());
-        side.tabs[0].name = Some("Otter 2".into());
+        side.name = Some("Otter 2".into());
         save(&db, &saved).unwrap();
         assert_eq!(load(&db).unwrap(), Some(saved.clone()));
 

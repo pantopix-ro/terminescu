@@ -1,7 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// Task 8.30 on the mock host: every tab gets an animal or bird name, and a live subtitle
-// follows its focused terminal: the path, then the program or `claude` and Claude's title.
+// Tasks 8.30 and 8.60 on the mock host: a tab is named "Terminal", a row with two tabs or more
+// takes an animal or bird name, and a live subtitle follows its focused terminal: the path,
+// then the program or `claude` and Claude's title.
 
 const host = (page: Page, fn: string, ...args: unknown[]) =>
   page.evaluate(({ fn, args }) => (window as any).__terminescu.host[fn](...args), { fn, args });
@@ -13,24 +14,29 @@ async function start(page: Page) {
   await page.locator(".term-pane").first().click();
 }
 
-test("new tabs take different animal names, and a rename overrides one", async ({ page }) => {
+test("tabs are named Terminal, and only a row with two tabs or more takes an animal name", async ({ page }) => {
   await start(page);
   for (let i = 0; i < 2; i++) await page.getByRole("button", { name: "New tab", exact: true }).click();
   await page.getByRole("button", { name: "Add a side tab" }).click();
-  const sides = (await workspace(page)).windows[0].sideTabs;
-  const tabs: { id: string; name: string }[] = sides.flatMap((s: { tabs: unknown[] }) => s.tabs);
-  expect(tabs).toHaveLength(4);
-  expect(new Set(tabs.map((t) => t.name)).size).toBe(4);
-  expect(tabs.every((t) => /^[A-Z][a-z]+$/.test(t.name))).toBe(true);
-  // The row takes its first tab's name; the second row is the active one.
-  await expect(page.locator(".ao-st .t")).toHaveText([tabs[0]!.name, tabs[3]!.name]);
-  await expect(page.locator(`.ao-tab[data-tab="${tabs[3]!.id}"] .n`)).toHaveText(tabs[3]!.name);
+  const sides: { id: string; name: string; tabs: { id: string }[] }[] = (await workspace(page)).windows[0].sideTabs;
+  expect(sides.map((s) => s.tabs.length)).toEqual([3, 1]);
+  expect(sides[0]!.name).toMatch(/^[A-Z][a-z]+$/);
+  expect(sides[0]!.name).not.toBe(sides[1]!.name);
+  // The group shows its animal; the single row shows its tab's name.
+  await expect(page.locator(".ao-st .t")).toHaveText([sides[0]!.name, "Terminal"]);
+  const tab = sides[1]!.tabs[0]!.id;
+  await expect(page.locator(`.ao-tab[data-tab="${tab}"] .n`)).toHaveText("Terminal");
 
-  await host(page, "send", { type: "RenameTab", tabId: tabs[3]!.id, title: "api" });
-  await expect(page.locator(`.ao-tab[data-tab="${tabs[3]!.id}"] .n`)).toHaveText("api");
-  // Clearing the name brings the animal back.
-  await host(page, "send", { type: "RenameTab", tabId: tabs[3]!.id, title: null });
-  await expect(page.locator(`.ao-tab[data-tab="${tabs[3]!.id}"] .n`)).toHaveText(tabs[3]!.name);
+  await host(page, "send", { type: "RenameTab", tabId: tab, title: "api" });
+  await expect(page.locator(`.ao-tab[data-tab="${tab}"] .n`)).toHaveText("api");
+  await expect(page.locator(".ao-st .t").nth(1)).toHaveText("api");
+  // Clearing the name brings "Terminal" back.
+  await host(page, "send", { type: "RenameTab", tabId: tab, title: null });
+  await expect(page.locator(`.ao-tab[data-tab="${tab}"] .n`)).toHaveText("Terminal");
+
+  // A group left with one tab shows that tab's name again.
+  for (const t of sides[0]!.tabs.slice(1)) await host(page, "send", { type: "CloseTab", tabId: t.id });
+  await expect(page.locator(".ao-st .t").first()).toHaveText("Terminal");
 });
 
 test("the subtitle keeps the path and follows the program and Claude's title", async ({ page }) => {
@@ -60,7 +66,7 @@ test("the subtitle keeps the path and follows the program and Claude's title", a
   // Hovering the tab shows the sidebar's tooltip under it: the whole name, then the subtitle (task 8.48).
   await page.locator(`.ao-tab[data-tab="${tab.id}"]`).hover();
   const tip = page.getByRole("tooltip");
-  await expect(tip.locator(".px-tip-name")).toHaveText(tab.name);
+  await expect(tip.locator(".px-tip-name")).toHaveText("Terminal");
   await expect(tip.locator(".px-tip-sub")).toHaveText("~/work/api · claude · Fix PROJ-482");
   const [t, b] = await Promise.all([tip.boundingBox(), page.locator(`.ao-tab[data-tab="${tab.id}"]`).boundingBox()]);
   expect(t!.y).toBeGreaterThan(b!.y + b!.height - 1);
@@ -91,5 +97,5 @@ test("a split tab's subtitle follows its focused terminal, also in the group and
   await expect(sub).toHaveText("~/work/web");
   // The open group lists the same subtitle beside the tab's name.
   await expect(page.locator(`.ao-st-kid[data-kid="${tab.id}"] .kid-sub`)).toHaveText("~/work/web");
-  await expect(page.locator(`.ao-st-kid[data-kid="${tab.id}"] .kid-n`)).toHaveText(tab.name);
+  await expect(page.locator(`.ao-st-kid[data-kid="${tab.id}"] .kid-n`)).toHaveText("Terminal");
 });

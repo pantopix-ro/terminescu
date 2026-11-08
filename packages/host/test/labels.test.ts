@@ -30,7 +30,7 @@ describe("pane labels", () => {
 
 describe("mock labels and names", () => {
   const seed: Workspace = {
-    windows: [{ id: "w1", sideTabs: [{ id: "s1", title: null, tabs: [{ id: "t1", title: null, name: "Otter", layout: { type: "pane", id: "p1" } }] }] }],
+    windows: [{ id: "w1", sideTabs: [{ id: "s1", title: null, name: "Otter", tabs: [{ id: "t1", title: null, layout: { type: "pane", id: "p1" } }] }] }],
   };
 
   it("sends a pane's path, program and Claude's title as they change", async () => {
@@ -51,12 +51,15 @@ describe("mock labels and names", () => {
     expect(heard).toHaveLength(before);
   });
 
-  it("names each new tab after an animal or bird no other tab has, and numbers only when they run out", async () => {
+  it("names each new side tab after an animal or bird no other side tab has, and numbers only when they run out", async () => {
     const host = createMockHost(seed);
-    for (let i = 0; i < NAMES.length + 2; i++) await host.send({ type: "CreateTab", sideTabId: "s1" });
-    const names = host.workspace().windows[0]!.sideTabs[0]!.tabs.map((t) => t.name!);
-    expect(new Set(names).size).toBe(names.length);
+    for (let i = 0; i < NAMES.length + 2; i++) await host.send({ type: "CreateSideTab", windowId: "w1" });
+    const sides = host.workspace().windows[0]!.sideTabs;
+    expect(sides.every((s) => s.tabs.every((t) => !("name" in t)))).toBe(true);
+    const names = sides.slice(1).map((s) => s.name!);
+    expect(new Set([...names, "Otter"]).size).toBe(names.length + 1);
+    // "Otter" is taken by the seed, so the last three new rows get a number.
     expect(names.filter((n) => / \d+$/.test(n))).toHaveLength(3);
-    expect(names.slice(0, NAMES.length).every((n) => (NAMES as readonly string[]).includes(n))).toBe(true);
+    expect(names.slice(0, NAMES.length - 1).every((n) => (NAMES as readonly string[]).includes(n))).toBe(true);
   });
 });

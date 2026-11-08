@@ -25,6 +25,7 @@ fn db() -> Db {
     let db = Db::open_in_memory().unwrap();
     let side = |id: &str, tab: &str, pane: &str| SideTab {
         status: None,
+        name: None,
         accent: None,
         icon: None,
         id: id.into(),
@@ -36,7 +37,6 @@ fn db() -> Db {
             id: tab.into(),
             title: None,
             layout: Layout::pane(pane),
-            name: None,
         }],
     };
     let workspace = Workspace {

@@ -20,13 +20,13 @@ fn tab(id: &str, pane: &str) -> Tab {
         id: id.into(),
         title: None,
         layout: Layout::pane(pane),
-        name: None,
     }
 }
 
 fn side(id: &str, title: &str, tabs: Vec<Tab>) -> SideTab {
     SideTab {
         accent: None,
+        name: None,
         status: None,
         icon: None,
         id: id.into(),
