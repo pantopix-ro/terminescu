@@ -481,6 +481,18 @@ html[data-scheme] .pane-slot:has(> .term-pane[data-tint="red"]) { background: co
 html[data-see-through] .app-pane, html[data-see-through] .app-pane .ao-tp { background: transparent; }
 html[data-see-through] .pane-slot:has(> .term-pane) { background: color-mix(in srgb, var(--term-base) var(--term-alpha), transparent); }
 html[data-see-through] .term-pane .xterm-viewport, html[data-see-through] .term-pane .xterm-scrollable-element { background: transparent !important; }
+/* Task 8.64: the sidebars share the terminal's opacity. Each one's frame paints its colour at
+   that alpha; inside it the card colours turn into the faint light they add over --bg
+   (--panel is about 3% lighter, --panel-2 about 6%), so rows look the same and nothing stacks
+   into a solid patch. Menus, tooltips and pickers keep the solid colours, to stay readable. */
+html[data-see-through] :is(.app-side, .ctx-pinned, .ao-ctx-over) { --solid-bg: var(--bg); --solid-panel: var(--panel); --solid-panel-2: var(--panel-2); }
+html[data-see-through] .app-side { background: color-mix(in srgb, var(--solid-bg) var(--term-alpha), transparent); }
+html[data-see-through] :is(.ctx-pinned, .ao-ctx-over) { background: color-mix(in srgb, var(--solid-panel) var(--term-alpha), transparent); }
+html[data-see-through] :is(.app-side, .ctx-pinned, .ao-ctx-over) * { --bg: transparent; --panel: color-mix(in srgb, var(--fg) 3%, transparent); --panel-2: color-mix(in srgb, var(--fg) 6%, transparent); }
+html[data-see-through] :is(.app-side, .ctx-pinned, .ao-ctx-over) :is(.tab-menu, .ctx-menu, .ao-menu, .px-tip, [role="menu"], [role="tooltip"], [role="dialog"]),
+html[data-see-through] :is(.app-side, .ctx-pinned, .ao-ctx-over) :is(.tab-menu, .ctx-menu, .ao-menu, .px-tip, [role="menu"], [role="tooltip"], [role="dialog"]) * { --bg: var(--solid-bg); --panel: var(--solid-panel); --panel-2: var(--solid-panel-2); }
+/* A sticky section head covers the rows that scroll under it. */
+html[data-see-through] :is(.ctx-pinned, .ao-ctx-over) .ctx-sec-head { background: color-mix(in srgb, var(--solid-panel) var(--term-alpha), transparent); }
 .term-swatches { display: inline-flex; gap: 1px; }
 .term-swatches span { width: 10px; height: 14px; box-shadow: inset 0 0 0 1px var(--line); }
 /* Task 8.49: "Copied link" at the pointer, in the sidebar's pixel tooltip; it pops in. */

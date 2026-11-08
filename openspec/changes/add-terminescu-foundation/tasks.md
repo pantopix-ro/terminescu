@@ -674,6 +674,10 @@ buffers once per sheet.
       at the opacity (70% three times reads solid) and xterm's viewport painted black. Each
       terminal's slot now carries the colour alone. Verify: `terminal-theme.spec.ts` measures
       the coverage under a terminal.
+- [x] 8.64 Sidebar opacity (owner request 2026-11-08): the sidebar and the context panel share
+      the terminal opacity. Their frames paint at that alpha and the card colours inside turn
+      into the light they add over `--bg`, so rows look the same; menus and tooltips stay
+      solid. Verify: `terminal-theme.spec.ts` measures both sidebars.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves
