@@ -18,6 +18,19 @@ async function openColours(page: Page) {
   return dialog;
 }
 
+/** How much the layers under the first terminal cover the desktop: 1 is solid, 0 is clear. */
+const coverage = (page: Page) =>
+  page.evaluate(() => {
+    let clear = 1;
+    for (let el: Element | null = document.querySelector(".term-pane .xterm-viewport"); el; el = el.parentElement) {
+      const m = getComputedStyle(el).backgroundColor.match(/[\d.]+/g)?.map(Number) ?? [];
+      // rgb() and color(srgb …) list three channels, then the alpha when there is one.
+      const alpha = m.length >= 4 ? m[3]! : m.length === 3 ? 1 : 0;
+      clear *= 1 - alpha;
+    }
+    return 1 - clear;
+  });
+
 test("a scheme and the opacity apply live, and Reset brings the defaults back", async ({ page }) => {
   const dialog = await openColours(page);
   const panel = await background(page);
@@ -31,7 +44,10 @@ test("a scheme and the opacity apply live, and Reset brings the defaults back", 
   expect(await rootHas(page, "data-scheme")).toBe(true);
 
   await dialog.getByLabel("Terminal opacity").fill("80");
-  await expect.poll(() => background(page)).toBe("rgba(0, 43, 54, 0.8)");
+  // xterm stays clear and one layer paints the scheme at 80% (task 8.63): what covers the desktop
+  // under a terminal, from xterm's viewport up to the page, adds up to 80%, not near 100%.
+  await expect.poll(() => background(page)).toBe("rgba(0, 43, 54, 0)");
+  await expect.poll(() => coverage(page)).toBeCloseTo(0.8, 2);
   expect(await option(page, "allowTransparency")).toBe(true);
   expect(await rootHas(page, "data-see-through")).toBe(true);
   // The sidebar stays solid.
@@ -49,7 +65,8 @@ test("Import from Terminal.app takes its colours, font, cursor and opacity", asy
   await expect(dialog.getByRole("status").filter({ hasText: "Imported Ocean" })).toHaveText(
     "Imported Ocean: colours, Menlo, 12 px, block cursor, 90% opacity.",
   );
-  await expect.poll(() => background(page)).toBe("rgba(27, 43, 74, 0.9)");
+  await expect.poll(() => background(page)).toBe("rgba(27, 43, 74, 0)");
+  await expect.poll(() => coverage(page)).toBeCloseTo(0.9, 2);
   await expect(dialog.getByLabel("Colour theme")).toHaveValue("imported");
   expect(await option(page, "cursorStyle")).toBe("block");
   expect(await option(page, "fontFamily")).toMatch(/^"Menlo"/);

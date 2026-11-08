@@ -37,15 +37,15 @@ describe("mock labels and names", () => {
     const host = createMockHost(seed);
     const heard: Record<string, PaneLabel>[] = [];
     await host.onLabels((l) => heard.push(l));
-    expect(await host.labels()).toEqual({ p1: { path: "~" } });
+    expect(await host.labels()).toEqual({ p1: { path: "~", process: "zsh" } });
     host.setCwd("p1", "/Users/owner/work/api");
     host.runCommand("p1", "npm run dev", null);
-    expect(heard.at(-1)).toEqual({ p1: { path: "~/work/api", program: "npm" } });
+    expect(heard.at(-1)).toEqual({ p1: { path: "~/work/api", program: "npm", process: "npm" } });
     host.runCommand("p1", "npm run dev", 0);
     host.runCommand("p1", "claude", null);
     host.setAgent("p1", { session: "s-1", state: "running", lastMessage: null });
     host.setTitle("p1", "◑ Fix PROJ-482");
-    expect(heard.at(-1)).toEqual({ p1: { path: "~/work/api", program: "claude", title: "Fix PROJ-482" } });
+    expect(heard.at(-1)).toEqual({ p1: { path: "~/work/api", program: "claude", title: "Fix PROJ-482", process: "claude" } });
     const before = heard.length;
     host.setTitle("p1", "◐ Fix PROJ-482");
     expect(heard).toHaveLength(before);

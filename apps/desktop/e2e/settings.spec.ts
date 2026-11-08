@@ -43,7 +43,7 @@ test("a command edited in Settings changes in the sidebar, and a global one cann
   const dialog = await openSettings(page, "Commands");
   const row = dialog.locator('.cmd-edit[data-command="checks"]');
   // A side tab with one tab takes that tab's name (task 8.60).
-  await expect(row.locator(".cmd-scope")).toHaveText("Terminal");
+  await expect(row.locator(".cmd-scope")).toHaveText("zsh");
   await expect(dialog.locator('.cmd-edit[data-command="status"]').getByLabel("launcher")).toBeDisabled();
   await row.getByLabel("checks command").fill("gh pr checks --watch");
   await row.getByRole("button", { name: "Save" }).click();

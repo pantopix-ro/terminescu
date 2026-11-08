@@ -1,3 +1,4 @@
+import type { LiveTab } from "./subtitles";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { leaf, panesOf, type AgentView, type Icon, type Neon, type Shown, type SideTab, type Tab } from "@terminescu/host";
 import { useEffect, useState, type KeyboardEvent, type MouseEvent } from "react";
@@ -136,7 +137,7 @@ export function RenameInput({ value, label, onDone, onCancel }: { value: string;
 export function sideTabName(s: SideTab, docs: DocMarks = {}): string {
   if (s.title) return s.title;
   if (s.tabs.length > 1 && s.name) return s.name;
-  return s.tabs[0] ? tabName(s.tabs[0], docs) : "Terminal";
+  return s.tabs[0] ? tabName(s.tabs[0], docs) : "shell";
 }
 
 /**
@@ -147,10 +148,10 @@ export type DocMarks = Readonly<Record<string, { title: string; dirty: boolean; 
 
 const docsOf = (t: Tab): string[] => panesOf(t.layout).flatMap((p) => leaf(t.layout, p)?.doc ?? []);
 
-/** A tab's name: its own title, else its first document's title, else "Terminal" (task 8.60). */
-export const tabName = (t: Tab, docs: DocMarks = {}) => t.title ?? docsOf(t).map((d) => docs[d]?.title).find(Boolean) ?? "Terminal";
+/** A tab's name: its own title, else its first document's title, else its terminal's live name (task 8.62). */
+export const tabName = (t: Tab, docs: DocMarks = {}) => t.title ?? docsOf(t).map((d) => docs[d]?.title).find(Boolean) ?? (t as LiveTab).live ?? "shell";
 
-/** A name with its live subtitle, for a tooltip: `Terminal · ~/work/api · npm`. */
+/** A name with its live subtitle, for a tooltip: `npm · ~/work/api`. */
 export const withSub = (name: string, sub: string | undefined) => (sub ? `${name} · ${sub}` : name);
 
 /** A tab holds a document with unsaved edits. */
@@ -586,6 +587,8 @@ export function SideTabList({
         <ShellPicker at={picker.at} label={`Shells in ${sideTabName(picked, docs)}`} onEnter={picker.keep} onLeave={picker.leave}>
           <div className="px-pick-head">
             <span className="px-tip-name">{sideTabName(picked, docs)}</span>
+            {/* A renamed group still shows its animal, so it can be told apart (task 8.62). */}
+            {picked.title && picked.tabs.length > 1 && picked.name && <span className="px-tip-alias">{picked.name}</span>}
             <span className="px-tip-status">{chipOf(statuses[picked.id], builtins).label}</span>
           </div>
           {picked.tabs.map((t) => (

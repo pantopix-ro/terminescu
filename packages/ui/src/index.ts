@@ -44,7 +44,7 @@ export { WEBGL_LIMIT, webglBudget } from "./webgl-budget";
 export { actClass, paneActivity, tabActivities, tabActivity, type Activities, type Activity } from "./activity";
 export { DOT, tabAgent, type Agents } from "./agents";
 export { DOCK_CENTER, dockBox, dockZone, type Box } from "./dock";
-export { MAX_PATH, paneSubtitle, shortPath, subtitlePane, tabSubtitles, type Labels } from "./subtitles";
+export { MAX_PATH, paneName, paneSubtitle, shortPath, subtitlePane, tabSubtitles, withLiveNames, type Labels, type LiveTab } from "./subtitles";
 export { anchor, quoteOf, QUOTE_CONTEXT, type Quote } from "./anchor";
 export { EXTRACTION_RULES, insertText, parseTtl, suggestName, timeAgo, timeLeft, ttlText } from "./names";
 export { PromptLibrary, type PromptLibraryProps } from "./PromptLibrary";

@@ -665,6 +665,15 @@ buffers once per sheet.
       row opens or closes it, a click on another group selects and opens it; the selected row's
       path reads in `--dim`; rows in the context panel and the commands list take the amber
       hover line. Verify: `sidebar-layout.spec.ts`.
+- [x] 8.62 Live tab names (owner request 2026-11-08): a tab is named as Terminal.app names one,
+      after what runs in its focused terminal: `claude` while Claude runs, else the command the
+      shell runs, else the pty's foreground process (`zsh` at the prompt), polled every second.
+      The subtitle leaves the program out when the name shows it; a renamed group shows its
+      animal in its hover list. Verify: `tab-names.spec.ts`, `subtitles.test.ts`.
+- [x] 8.63 Opacity fix (owner report 2026-11-08): below 100% three layers each painted the scheme
+      at the opacity (70% three times reads solid) and xterm's viewport painted black. Each
+      terminal's slot now carries the colour alone. Verify: `terminal-theme.spec.ts` measures
+      the coverage under a terminal.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

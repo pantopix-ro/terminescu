@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Tab } from "@terminescu/host";
-import { paneSubtitle, shortPath, subtitlePane, tabSubtitles } from "../src/subtitles";
+import { paneName, paneSubtitle, shortPath, subtitlePane, tabSubtitles, withLiveNames } from "../src/subtitles";
 
 // Task 8.30: a tab's subtitle follows its focused terminal.
 
@@ -41,7 +41,19 @@ describe("tab subtitles", () => {
     expect(subtitlePane(tab, "doc")).toBe("p1");
     expect(subtitlePane(tab, undefined)).toBe("p1");
     const labels = { p1: { path: "~/a" }, p2: { path: "~/b", program: "claude", title: "Plan" } };
-    expect(tabSubtitles([tab], { t1: "p2" }, labels, { p2: running })).toEqual({ t1: "~/b · claude · Plan" });
+    // The tab is named "claude" (task 8.62), so its subtitle leaves the word out; a renamed tab keeps it.
+    expect(tabSubtitles([tab], { t1: "p2" }, labels, { p2: running })).toEqual({ t1: "~/b · Plan" });
+    expect(tabSubtitles([{ ...tab, title: "api" }], { t1: "p2" }, labels, { p2: running })).toEqual({ t1: "~/b · claude · Plan" });
     expect(tabSubtitles([tab], {}, labels, {})).toEqual({ t1: "~/a" });
+  });
+
+  it("names a tab after Claude, else the running command, else the foreground process", () => {
+    expect(paneName({ program: "npm", process: "node" }, false)).toBe("npm");
+    expect(paneName({ process: "zsh" }, false)).toBe("zsh");
+    expect(paneName({ process: "2.1.0" }, true)).toBe("claude");
+    expect(paneName(undefined, false)).toBeUndefined();
+    const tab: Tab = { id: "t1", title: null, layout: { type: "pane", id: "p1" } };
+    const [side] = withLiveNames([{ tabs: [tab] }], {}, { p1: { process: "zsh" } }, {});
+    expect(side!.tabs[0]).toMatchObject({ live: "zsh" });
   });
 });

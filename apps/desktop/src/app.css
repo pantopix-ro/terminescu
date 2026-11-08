@@ -476,6 +476,11 @@ html[data-scheme] .pane-slot:has(> .term-pane[data-tint="cyan"]) { background: c
 html[data-scheme] .pane-slot:has(> .term-pane[data-tint="green"]) { background: color-mix(in srgb, color-mix(in srgb, var(--tint-green) var(--tint-mix), var(--term-base)) var(--term-alpha), transparent); }
 html[data-scheme] .pane-slot:has(> .term-pane[data-tint="magenta"]) { background: color-mix(in srgb, color-mix(in srgb, var(--tint-magenta) var(--tint-mix), var(--term-base)) var(--term-alpha), transparent); }
 html[data-scheme] .pane-slot:has(> .term-pane[data-tint="red"]) { background: color-mix(in srgb, color-mix(in srgb, var(--tint-red) var(--tint-mix), var(--term-base)) var(--term-alpha), transparent); }
+/* Task 8.63: see-through, one layer carries the opacity. Stacked 70% layers read as solid, so
+   the pane frames and xterm stay clear and each terminal's slot takes the scheme at that alpha. */
+html[data-see-through] .app-pane, html[data-see-through] .app-pane .ao-tp { background: transparent; }
+html[data-see-through] .pane-slot:has(> .term-pane) { background: color-mix(in srgb, var(--term-base) var(--term-alpha), transparent); }
+html[data-see-through] .term-pane .xterm-viewport, html[data-see-through] .term-pane .xterm-scrollable-element { background: transparent !important; }
 .term-swatches { display: inline-flex; gap: 1px; }
 .term-swatches span { width: 10px; height: 14px; box-shadow: inset 0 0 0 1px var(--line); }
 /* Task 8.49: "Copied link" at the pointer, in the sidebar's pixel tooltip; it pops in. */
@@ -543,3 +548,4 @@ html[data-scheme] .pane-slot:has(> .term-pane[data-tint="red"]) { background: co
 .ctx-list > li:hover::before, .cmd-list > div:hover::before { content: ""; position: absolute; inset: 0; z-index: 2; box-shadow: inset 0 0 0 2px var(--focus); pointer-events: none; }
 /* The selected row's path reads brighter than the others'. */
 .app-side .ao-st.active .st-sub, .app-side .ao-st-kid.active .kid-sub { color: var(--dim); }
+.px-tip-alias { color: var(--dim); font-size: 11px; }

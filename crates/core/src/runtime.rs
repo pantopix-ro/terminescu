@@ -194,6 +194,8 @@ struct Inner {
     paths: Mutex<HashMap<String, std::path::PathBuf>>,
     /// The last shell state per pane, from daemon pushes and the cwd poll.
     shells: Mutex<HashMap<Id, ShellState>>,
+    /// Each pane's foreground process name, from the daemon (task 8.62).
+    foreground: Mutex<HashMap<Id, String>>,
     status: Mutex<StatusState>,
     /// Set when something a status depends on changed; the status thread wakes on it.
     status_dirty: Mutex<bool>,
@@ -338,6 +340,7 @@ impl Runtime {
                 agent_sink: Mutex::default(),
                 paths: Mutex::default(),
                 shells: Mutex::default(),
+                foreground: Mutex::default(),
                 status: Mutex::default(),
                 status_dirty: Mutex::new(true),
                 status_wake: Condvar::new(),
@@ -378,6 +381,7 @@ impl Runtime {
         rt.thread("daemon-events", move |me| me.events(rx))?;
         rt.thread("view-flush", |me| me.flush())?;
         rt.thread("cwd-poll", |me| me.poll_cwds())?;
+        rt.thread("foreground-poll", |me| me.poll_foreground())?;
         rt.thread("agent-tail", |me| me.tail_agents())?;
         rt.thread("statuses", |me| me.run_statuses())?;
         Ok((rt, windows))
@@ -1153,6 +1157,7 @@ impl Runtime {
             .map(|(p, (a, _))| (p.clone(), a.state))
             .collect();
         let shells = lock(&self.inner.shells).clone();
+        let foreground = lock(&self.inner.foreground).clone();
         let now = crate::now_ms();
         let terminals: Vec<Id> = ws.terminal_sides().into_iter().map(|(p, _)| p).collect();
         // Read before the status lock: no path takes `panes` under `status`.
@@ -1200,14 +1205,17 @@ impl Runtime {
                     .or(saved.get(p).map(String::as_str));
                 (
                     p.clone(),
-                    crate::labels::label(
-                        cwd,
-                        sh.is_some_and(|s| s.running),
-                        sh.and_then(|s| s.command.as_deref()),
-                        sh.and_then(|s| s.title.as_deref()),
-                        agents.contains_key(p),
-                        home.as_deref(),
-                    ),
+                    crate::labels::PaneLabel {
+                        process: foreground.get(p).cloned(),
+                        ..crate::labels::label(
+                            cwd,
+                            sh.is_some_and(|s| s.running),
+                            sh.and_then(|s| s.command.as_deref()),
+                            sh.and_then(|s| s.title.as_deref()),
+                            agents.contains_key(p),
+                            home.as_deref(),
+                        )
+                    },
                 )
             })
             .collect();
@@ -1251,6 +1259,42 @@ impl Runtime {
             let pushes = self.daemon().is_none_or(|c| c.pushes_shell);
             std::thread::sleep(if pushes { CWD_POLL } else { SHELL_POLL });
             self.refresh_cwds();
+        }
+    }
+
+    /// Reads each pane's foreground process every second, so a tab's name follows what runs
+    /// in it as Terminal.app's does (task 8.62).
+    fn poll_foreground(self) {
+        while !self.inner.stopped.load(Ordering::SeqCst) {
+            std::thread::sleep(SHELL_POLL);
+            self.refresh_foreground();
+        }
+    }
+
+    fn refresh_foreground(&self) {
+        let Some(client) = self.daemon() else {
+            return;
+        };
+        let Ok(list) = client.list() else {
+            return;
+        };
+        let next: HashMap<Id, String> = {
+            let panes = lock(&self.inner.panes);
+            list.iter()
+                .filter_map(|i| {
+                    let name = crate::labels::process_name(i.foreground.as_deref()?)?;
+                    Some((panes.by_daemon.get(&i.pane)?.clone(), name))
+                })
+                .collect()
+        };
+        let changed = {
+            let mut fg = lock(&self.inner.foreground);
+            let changed = *fg != next;
+            *fg = next;
+            changed
+        };
+        if changed {
+            self.mark_status();
         }
     }
 

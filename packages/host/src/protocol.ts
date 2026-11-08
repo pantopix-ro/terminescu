@@ -39,6 +39,8 @@ export interface PaneLabel {
   program?: string;
   /** Claude's terminal title, without its spinner, while Claude runs. */
   title?: string;
+  /** The pty's foreground process, `zsh` at the prompt, as Terminal.app names a tab (task 8.62). */
+  process?: string;
 }
 
 export interface SideTab {

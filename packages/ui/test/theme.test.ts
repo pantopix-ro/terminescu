@@ -19,9 +19,10 @@ describe("themes", () => {
     expect(themeFor("blue", light).background).toBe(mix("#ffffff", colors["tint-blue"], 0.35));
   });
 
-  it("puts the opacity on the background only", () => {
+  it("leaves the background clear when see-through, for the pane's slot to paint (task 8.63)", () => {
     const t = themeFor(null, schemeTheme("solarizedLight"), 50);
-    expect(t.background).toBe("rgba(253, 246, 227, 0.5)");
+    expect(t.background).toBe("rgba(253, 246, 227, 0)");
+    expect(withOpacity("#fdf6e3", 50)).toBe("rgba(253, 246, 227, 0.5)");
     expect(t.foreground).toBe("#657b83");
     expect(withOpacity("#102030", 100)).toBe("#102030");
   });
