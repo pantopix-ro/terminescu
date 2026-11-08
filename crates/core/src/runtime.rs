@@ -387,8 +387,7 @@ impl Runtime {
         }
         rt.thread("daemon-events", move |me| me.events(rx))?;
         rt.thread("view-flush", |me| me.flush())?;
-        rt.thread("cwd-poll", |me| me.poll_cwds())?;
-        rt.thread("foreground-poll", |me| me.poll_foreground())?;
+        rt.thread("pane-poll", |me| me.poll_panes())?;
         rt.thread("agent-tail", |me| me.tail_agents())?;
         rt.thread("statuses", |me| me.run_statuses())?;
         Ok((rt, windows))
@@ -1259,32 +1258,29 @@ impl Runtime {
         }
     }
 
-    /// Reads each pane's cwd every few seconds, so a reboot restarts shells where they were.
-    fn poll_cwds(self) {
-        while !self.inner.stopped.load(Ordering::SeqCst) {
-            // A daemon without shell pushes gets polled faster, so statuses keep up.
-            let pushes = self.daemon().is_none_or(|c| c.pushes_shell);
-            std::thread::sleep(if pushes { CWD_POLL } else { SHELL_POLL });
-            self.refresh_cwds();
-        }
-    }
-
-    /// Reads each pane's foreground process every second, so a tab's name follows what runs
-    /// in it as Terminal.app's does (task 8.62).
-    fn poll_foreground(self) {
+    /// Lists the panes once a second for the foreground process, so a tab's name follows what
+    /// runs in it as Terminal.app's does (task 8.62). The same list gives the cwds every few
+    /// seconds, so a reboot restarts shells where they were, or every second from a daemon
+    /// too old to push shell changes, so statuses keep up.
+    fn poll_panes(self) {
+        let mut cwds_at = Instant::now();
         while !self.inner.stopped.load(Ordering::SeqCst) {
             std::thread::sleep(SHELL_POLL);
-            self.refresh_foreground();
+            let Some(client) = self.daemon() else {
+                continue;
+            };
+            let Ok(list) = client.list() else {
+                continue;
+            };
+            self.foreground_from(&list);
+            if !client.pushes_shell || cwds_at.elapsed() >= CWD_POLL {
+                cwds_at = Instant::now();
+                self.cwds_from(list);
+            }
         }
     }
 
-    fn refresh_foreground(&self) {
-        let Some(client) = self.daemon() else {
-            return;
-        };
-        let Ok(list) = client.list() else {
-            return;
-        };
+    fn foreground_from(&self, list: &[PaneInfo]) {
         let next: HashMap<Id, String> = {
             let panes = lock(&self.inner.panes);
             list.iter()
@@ -1307,12 +1303,12 @@ impl Runtime {
 
     /// Reads every pane's cwd from the daemon now and saves the layout when one changed.
     pub fn refresh_cwds(&self) {
-        let Some(client) = self.daemon() else {
-            return;
-        };
-        let Ok(list) = client.list() else {
-            return;
-        };
+        if let Some(Ok(list)) = self.daemon().map(|c| c.list()) {
+            self.cwds_from(list);
+        }
+    }
+
+    fn cwds_from(&self, list: Vec<PaneInfo>) {
         // The poll also covers a daemon too old to push shell changes.
         let shells: Vec<(Id, ShellState)> = {
             let panes = lock(&self.inner.panes);

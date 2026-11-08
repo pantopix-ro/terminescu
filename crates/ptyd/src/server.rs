@@ -14,6 +14,7 @@ use std::io::{self, Read, Write};
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
+use std::panic::AssertUnwindSafe;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TrySendError};
@@ -274,12 +275,7 @@ impl Shared {
                         data: buf[..n].to_vec(),
                     });
                     let mut st = lock(&p.state);
-                    st.screen.feed(&buf[..n]);
-                    let PaneState { osc, shell, .. } = &mut *st;
-                    let mut changed = false;
-                    osc.feed(&buf[..n], |payload| {
-                        changed |= shell.apply(payload);
-                    });
+                    let changed = feed_guarded(&mut st, &buf[..n], scrollback, p.id);
                     st.subscribers
                         .retain(|s| shared.push(s.client, &s.tx, frame.clone()));
                     // One push per chunk: the counters carry runs that started and ended in it.
@@ -379,6 +375,36 @@ fn no_sigpipe(stream: &UnixStream) {
             size_of::<libc::c_int>() as libc::socklen_t,
         );
     }
+}
+
+/// Feeds a chunk to the screen model and the shell scanner. A panic there (a bug in the
+/// terminal model on odd output) costs the model its history, not the pane: the model starts
+/// over at the same size and the output keeps flowing to the attached terminals.
+fn feed_guarded(st: &mut PaneState, bytes: &[u8], scrollback: usize, pane: PaneId) -> bool {
+    feed_with(st, bytes, scrollback, pane, |screen, b| screen.feed(b))
+}
+
+fn feed_with(
+    st: &mut PaneState,
+    bytes: &[u8],
+    scrollback: usize,
+    pane: PaneId,
+    feed: impl FnOnce(&mut Screen, &[u8]),
+) -> bool {
+    let (cols, rows) = st.screen.size();
+    let fed = std::panic::catch_unwind(AssertUnwindSafe(|| {
+        feed(&mut st.screen, bytes);
+        let PaneState { osc, shell, .. } = &mut *st;
+        let mut changed = false;
+        osc.feed(bytes, |payload| changed |= shell.apply(payload));
+        changed
+    }));
+    fed.unwrap_or_else(|_| {
+        eprintln!("terminescu-ptyd: pane {pane}: the screen model failed; it starts over");
+        st.screen = Screen::new(cols, rows, scrollback);
+        st.osc = OscScanner::default();
+        false
+    })
 }
 
 fn reply(tx: &SyncSender<Vec<u8>>, c: Control) {
@@ -485,7 +511,12 @@ fn serve_client(shared: Arc<Shared>, mut stream: UnixStream) {
                 greeted = true;
                 continue;
             }
-            handle(&shared, id, &tx, frame);
+            // A panic on one message ends that message, not the connection and its panes.
+            if std::panic::catch_unwind(AssertUnwindSafe(|| handle(&shared, id, &tx, frame)))
+                .is_err()
+            {
+                eprintln!("terminescu-ptyd: client {id}: a message failed and was dropped");
+            }
         }
     }
     shared.drop_client(id);
@@ -814,4 +845,47 @@ pub fn run(opts: Options) -> io::Result<bool> {
         std::thread::spawn(move || serve_client(shared, stream));
     }
     Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn state() -> PaneState {
+        let mut screen = Screen::new(80, 24, 1000);
+        screen.feed(b"history\r\n");
+        PaneState {
+            screen,
+            subscribers: Vec::new(),
+            side_tab: None,
+            exited: None,
+            osc: OscScanner::default(),
+            shell: ShellTracker::default(),
+        }
+    }
+
+    #[test]
+    fn a_panic_in_the_screen_model_starts_it_over_at_the_same_size() {
+        let mut st = state();
+        st.screen.resize(120, 40);
+        let changed = feed_with(&mut st, b"x", 1000, 7, |_, _| panic!("model bug"));
+        assert!(!changed);
+        assert_eq!(st.screen.size(), (120, 40));
+        // The new model takes output again.
+        assert!(!feed_guarded(&mut st, b"after\r\n", 1000, 7));
+        assert!(String::from_utf8_lossy(&st.screen.snapshot()).contains("after"));
+        assert!(!String::from_utf8_lossy(&st.screen.snapshot()).contains("history"));
+    }
+
+    #[test]
+    fn a_chunk_still_reaches_the_shell_scanner() {
+        let mut st = state();
+        assert!(feed_guarded(
+            &mut st,
+            b"\x1b]7;file://host/tmp/x\x07",
+            1000,
+            7
+        ));
+        assert_eq!(st.shell.state.cwd.as_deref(), Some("/tmp/x"));
+    }
 }

@@ -696,6 +696,12 @@ buffers once per sheet.
       A removed variable leaves the panel at once and is deleted when its Undo toast goes, so
       a secret comes back without the panel holding its value. The bundle id is
       `ro.pantopix.terminescu`. Verify: `a11y.spec.ts`, `context.spec.ts`, `modal.test.ts`.
+- [x] 8.68 Review follow-up 2. A removed pin or saved command waits on the same Undo toast as
+      a variable. A panic in the daemon's screen model starts that pane's model over at the
+      same size and keeps the output flowing; a panic on one client message drops only that
+      message. One thread lists the panes once a second for the foreground names and reads
+      the cwds from the same list every 5 s. Verify: `context.spec.ts`,
+      `sidebar-menu.spec.ts`, `server.rs` tests.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves
