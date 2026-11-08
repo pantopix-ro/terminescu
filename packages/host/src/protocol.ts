@@ -29,8 +29,6 @@ export interface Tab {
   icon?: Icon;
   /** A neon given when the tab is made (task 8.26): its icon and its square in the sidebar. */
   accent?: Neon;
-  /** A random animal or bird, unique across windows (task 8.30); `title` overrides it. */
-  name?: string;
 }
 
 /** A terminal pane's live label (task 8.30): where it is and what runs in it. */
@@ -51,6 +49,8 @@ export interface SideTab {
   icon?: Icon;
   /** A neon given when the row is made (task 8.25): its edge and icon take `--neon-*`. */
   accent?: Neon;
+  /** A random animal or bird, unique across windows (task 8.60). It names the row while the row holds two tabs or more; `title` overrides it. */
+  name?: string;
 }
 
 /** Neon row accents, as `--neon-*` tokens. Mirrors `NEONS` in state.rs; no amber. */

@@ -657,6 +657,14 @@ buffers once per sheet.
       holds an untitled text; a small `+` on a group's bottom line adds a tab to that group.
       The sidebar toggle sits on the sidebar's right line by the wordmark, and a row or group
       tab under the mouse gets the amber line. Verify: `sidebar-layout.spec.ts`.
+- [x] 8.60 Group names (owner request 2026-11-08): a tab is named "Terminal" (a text tab keeps
+      its document's title) and no longer gets an animal. A side tab gets the animal when it is
+      made, unique across windows, and shows it while it holds two tabs or more (migration 11
+      moves each row's first tab name over). Verify: `tab-names.spec.ts`, core and host tests.
+- [x] 8.61 Sidebar and panel polish (owner request 2026-11-08): a click on the selected group
+      row opens or closes it, a click on another group selects and opens it; the selected row's
+      path reads in `--dim`; rows in the context panel and the commands list take the amber
+      hover line. Verify: `sidebar-layout.spec.ts`.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

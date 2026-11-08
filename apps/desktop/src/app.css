@@ -537,3 +537,9 @@ html[data-scheme] .pane-slot:has(> .term-pane[data-tint="red"]) { background: co
    row and each tab under a group on its own, drawn over its other lines. */
 .app-side .ao-st-kid { position: relative; }
 .app-side .ao-st:hover::before, .app-side .ao-st-kid:hover::before { content: ""; position: absolute; inset: 0; z-index: 2; box-shadow: inset 0 0 0 2px var(--focus); pointer-events: none; }
+
+/* Task 8.61: right panel rows take the sidebar's amber hover outline. */
+.ctx-list > li, .cmd-list > div { position: relative; }
+.ctx-list > li:hover::before, .cmd-list > div:hover::before { content: ""; position: absolute; inset: 0; z-index: 2; box-shadow: inset 0 0 0 2px var(--focus); pointer-events: none; }
+/* The selected row's path reads brighter than the others'. */
+.app-side .ao-st.active .st-sub, .app-side .ao-st-kid.active .kid-sub { color: var(--dim); }

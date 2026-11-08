@@ -59,6 +59,7 @@ fn db_at(path: &std::path::Path) -> Db {
             id: "w1".into(),
             side_tabs: vec![SideTab {
                 accent: None,
+                name: None,
                 status: None,
                 icon: None,
                 id: "s1".into(),
@@ -70,7 +71,6 @@ fn db_at(path: &std::path::Path) -> Db {
                     id: "t1".into(),
                     title: None,
                     layout: Layout::pane("p1"),
-                    name: None,
                 }],
             }],
         }],

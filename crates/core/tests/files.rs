@@ -15,6 +15,7 @@ fn db() -> Db {
             id: "w1".into(),
             side_tabs: vec![SideTab {
                 status: None,
+                name: None,
                 accent: None,
                 icon: None,
                 id: "s1".into(),
@@ -26,7 +27,6 @@ fn db() -> Db {
                     id: "t1".into(),
                     title: None,
                     layout: Layout::pane("p1"),
-                    name: None,
                 }],
             }],
         }],

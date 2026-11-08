@@ -34,7 +34,7 @@ pub fn pick_icon(ws: &Workspace, tab_id: &str, also: &[Option<String>]) -> Strin
     pick_unused(&pool, tab_id, &used)
 }
 
-/// The animals and birds a new tab is named after (task 8.30). Short, plain words, so a name
+/// The animals and birds a group is named after (tasks 8.30, 8.60). Short, plain words, so a name
 /// fits a tab and reads out loud.
 pub const NAMES: &[&str] = &[
     "Otter", "Heron", "Lynx", "Wren", "Ibis", "Fox", "Badger", "Marten", "Stoat", "Hare", "Bison",
@@ -49,20 +49,18 @@ pub const NAMES: &[&str] = &[
     "Dove", "Curlew", "Snipe", "Avocet",
 ];
 
-/// A new tab's name (task 8.30): an animal or bird no tab in any window has yet, picked from
-/// the tab id so it looks random but replays the same in tests. Names are unique across
-/// windows, so a tab that moves to another window never clashes there. Once every name is
-/// taken, a number follows the picked one: "Otter 2".
-pub fn pick_name(ws: &Workspace, tab_id: &str, also: &[Option<String>]) -> String {
+/// A new side tab's name (task 8.60): an animal or bird no side tab in any window has yet,
+/// picked from its id so it looks random but replays the same in tests. The sidebar shows it
+/// once the side tab holds two tabs or more. Once every name is taken, a number follows the
+/// picked one: "Otter 2".
+pub fn pick_name(ws: &Workspace, side_tab_id: &str) -> String {
     let used: Vec<&str> = ws
         .windows
         .iter()
         .flat_map(|w| &w.side_tabs)
-        .flat_map(|s| &s.tabs)
-        .filter_map(|t| t.name.as_deref())
-        .chain(also.iter().filter_map(|n| n.as_deref()))
+        .filter_map(|s| s.name.as_deref())
         .collect();
-    let name = pick_unused(NAMES, tab_id, &used);
+    let name = pick_unused(NAMES, side_tab_id, &used);
     if !used.contains(&name.as_str()) {
         return name;
     }
@@ -100,26 +98,24 @@ pub fn pick_tab_neon(siblings: &[Tab], tab_id: &str) -> String {
 }
 
 /// Gives a neon to every side tab and tab saved before neons existed, as a new one would get,
-/// an icon to every tab saved before tabs got one (task 8.29) and a name to every tab saved
-/// before tabs got one (task 8.30).
+/// an icon to every tab saved before tabs got one (task 8.29) and a name to every side tab
+/// saved before side tabs got one (task 8.60).
 pub fn fill_accents(ws: &mut Workspace) {
-    let unnamed: Vec<(usize, usize, usize)> = ws
+    let unnamed: Vec<(usize, usize)> = ws
         .windows
         .iter()
         .enumerate()
         .flat_map(|(w, win)| {
-            win.side_tabs.iter().enumerate().flat_map(move |(s, side)| {
-                side.tabs
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, t)| t.name.is_none())
-                    .map(move |(t, _)| (w, s, t))
-            })
+            win.side_tabs
+                .iter()
+                .enumerate()
+                .filter(|(_, s)| s.name.is_none())
+                .map(move |(s, _)| (w, s))
         })
         .collect();
-    for (w, s, t) in unnamed {
-        let id = ws.windows[w].side_tabs[s].tabs[t].id.clone();
-        ws.windows[w].side_tabs[s].tabs[t].name = Some(pick_name(ws, &id, &[]));
+    for (w, s) in unnamed {
+        let id = ws.windows[w].side_tabs[s].id.clone();
+        ws.windows[w].side_tabs[s].name = Some(pick_name(ws, &id));
     }
     let bare: Vec<(usize, usize, usize)> = ws
         .windows
@@ -198,6 +194,10 @@ pub struct SideTab {
     /// One of [`NEONS`], given when the row is made (task 8.25); absent keeps the neutral edge.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub accent: Option<String>,
+    /// An animal or bird, given when the row is made (task 8.60). It names the row while the row
+    /// holds two tabs or more; `title` overrides it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -215,9 +215,6 @@ pub struct Tab {
     /// One of [`NEONS`] (task 8.26): the icon's colour and the tab's square in the sidebar.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub accent: Option<String>,
-    /// The animal or bird the tab is named after (task 8.30); `title` overrides it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
 }
 
 /// The side of a pane a dropped tab lands on (task 8.32).
@@ -798,8 +795,6 @@ impl Core {
         let also: Vec<Option<String>> = others.iter().map(|t| t.icon.clone()).collect();
         let icon = Some(pick_icon(&self.ws, &id, &also));
         let accent = Some(pick_tab_neon(others, &id));
-        let names: Vec<Option<String>> = others.iter().map(|t| t.name.clone()).collect();
-        let name = Some(pick_name(&self.ws, &id, &names));
         Tab {
             id,
             title: None,
@@ -807,7 +802,6 @@ impl Core {
             status: None,
             icon,
             accent,
-            name,
         }
     }
 
@@ -824,7 +818,9 @@ impl Core {
         let tabs = made;
         let id = (self.new_id)();
         let accent = Some(pick_neon(&self.ws, &id));
+        let name = Some(pick_name(&self.ws, &id));
         SideTab {
+            name,
             id,
             title: None,
             tabs,
@@ -926,6 +922,7 @@ impl Core {
                 let id = (self.new_id)();
                 let side_tab = SideTab {
                     accent: Some(pick_neon(ws, &id)),
+                    name: Some(pick_name(ws, &id)),
                     id,
                     title: None,
                     tabs: vec![],
@@ -958,6 +955,7 @@ impl Core {
                 let id = (self.new_id)();
                 let side_tab = SideTab {
                     accent: Some(pick_neon(ws, &id)),
+                    name: Some(pick_name(ws, &id)),
                     id,
                     title: None,
                     tabs: vec![],
@@ -1260,7 +1258,6 @@ impl Core {
                 let new = Tab {
                     icon: Some(pick_icon(ws, &id, &[])),
                     accent: Some(pick_tab_neon(&side.tabs, &id)),
-                    name: Some(pick_name(ws, &id, &[])),
                     id,
                     title: None,
                     layout: pane,
@@ -1314,7 +1311,6 @@ impl Core {
                             Tab {
                                 icon: Some(pick_icon(ws, &id, &[])),
                                 accent: Some(pick_tab_neon(&side.tabs, &id)),
-                                name: Some(pick_name(ws, &id, &[])),
                                 id,
                                 title: None,
                                 layout: pane,
@@ -1599,6 +1595,7 @@ mod tests {
             index: 0,
             side_tab: SideTab {
                 accent: None,
+                name: None,
                 id: "fresh".into(),
                 title: None,
                 tabs: Vec::new(),
@@ -1613,6 +1610,7 @@ mod tests {
             index: 0,
             side_tab: SideTab {
                 accent: None,
+                name: None,
                 id: "fresh".into(),
                 title: None,
                 tabs: Vec::new(),
@@ -1841,22 +1839,23 @@ mod tests {
     }
 
     #[test]
-    fn tab_names_stay_unique_across_windows_and_number_once_the_list_runs_out() {
+    fn side_tab_names_stay_unique_and_number_once_the_list_runs_out() {
         let mut c = core();
-        let side = c.workspace().windows[0].side_tabs[0].id.clone();
+        let window = c.workspace().windows[0].id.clone();
         for _ in 0..NAMES.len() + 2 {
-            c.handle(Command::CreateTab {
-                side_tab_id: side.clone(),
+            c.handle(Command::CreateSideTab {
+                window_id: window.clone(),
+                index: None,
             })
             .unwrap();
         }
-        let names: Vec<String> = c.workspace().windows[0].side_tabs[0]
-            .tabs
+        let names: Vec<String> = c.workspace().windows[0]
+            .side_tabs
             .iter()
-            .map(|t| t.name.clone().unwrap())
+            .map(|s| s.name.clone().unwrap())
             .collect();
         let unique: HashSet<&String> = names.iter().collect();
-        assert_eq!(unique.len(), names.len(), "no two tabs share a name");
+        assert_eq!(unique.len(), names.len(), "no two side tabs share a name");
         assert!(
             names[..NAMES.len()]
                 .iter()
@@ -1867,10 +1866,10 @@ mod tests {
         assert!(extra.iter().all(|n| n.ends_with(" 2") || n.ends_with(" 3")));
 
         let mut ws = c.workspace().clone();
-        ws.windows[0].side_tabs[0].tabs[0].name = None;
-        let taken = ws.windows[0].side_tabs[0].tabs[1].name.clone();
+        ws.windows[0].side_tabs[0].name = None;
+        let taken = ws.windows[0].side_tabs[1].name.clone();
         fill_accents(&mut ws);
-        let filled = ws.windows[0].side_tabs[0].tabs[0].name.clone();
+        let filled = ws.windows[0].side_tabs[0].name.clone();
         assert!(filled.is_some() && filled != taken);
     }
 
@@ -2451,7 +2450,7 @@ mod dock_tests {
         assert_eq!(s.tabs[2].id, b);
         let new = &s.tabs[1];
         assert_eq!(new.layout, Layout::pane(pa2));
-        assert!(new.name.is_some() && new.icon.is_some() && new.accent.is_some());
+        assert!(new.icon.is_some() && new.accent.is_some());
         assert_eq!(c.workspace().tab(&a).unwrap().layout, Layout::pane(pa));
         assert_eq!(
             c.handle(Command::PaneToTab {

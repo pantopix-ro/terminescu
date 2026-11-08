@@ -547,24 +547,24 @@ export function createMockHost(initial?: Workspace): MockHost {
   function pickTabNeon(siblings: Tab[], tabId: string): Neon {
     return pickUnused(NEONS, tabId, () => siblings.map((t) => t.accent), true);
   }
-  /** A name no tab in any window has yet, as `pick_name` in state.rs; "Otter 2" once all are taken. */
-  function pickName(tabId: string): string {
+  /** A name no side tab in any window has yet, as `pick_name` in state.rs; "Otter 2" once all are taken. */
+  function pickName(sideTabId: string): string {
     const used = new Set<string | undefined>();
     try {
-      for (const s of allSideTabs()) for (const t of s.tabs) used.add(t.name);
+      for (const s of allSideTabs()) used.add(s.name);
     } catch {}
-    const name = pickUnused(NAMES, tabId, () => [...used], true);
+    const name = pickUnused(NAMES, sideTabId, () => [...used], true);
     if (!used.has(name)) return name;
     for (let n = 2; ; n++) if (!used.has(`${name} ${n}`)) return `${name} ${n}`;
   }
   function newTab(siblings: Tab[] = []): Tab {
     const tabId = id();
-    return { id: tabId, title: null, name: pickName(tabId), layout: { type: "pane", id: id() }, icon: pickIcon(tabId), accent: pickTabNeon(siblings, tabId) };
+    return { id: tabId, title: null, layout: { type: "pane", id: id() }, icon: pickIcon(tabId), accent: pickTabNeon(siblings, tabId) };
   }
   function newSideTab(): SideTab {
     const tab = newTab();
     const sid = id();
-    return { id: sid, title: null, tabs: [tab], accent: pickNeon(sid) };
+    return { id: sid, title: null, tabs: [tab], accent: pickNeon(sid), name: pickName(sid) };
   }
 
   const fail = (code: CommandError["code"], ref: string | number): never => {
@@ -661,7 +661,7 @@ export function createMockHost(initial?: Workspace): MockHost {
         inRange(c.index, window(c.windowId).sideTabs.length);
         const closed = closesSource(c.tabId);
         const sid = id();
-        const created: SideTab = { id: sid, title: null, tabs: [], accent: pickNeon(sid) };
+        const created: SideTab = { id: sid, title: null, tabs: [], accent: pickNeon(sid), name: pickName(sid) };
         return [
           { type: "SideTabCreated", windowId: c.windowId, index: c.index, sideTab: created },
           { type: "TabMoved", tabId: c.tabId, toSideTabId: created.id, index: 0 },
@@ -673,7 +673,7 @@ export function createMockHost(initial?: Workspace): MockHost {
         const closed = closesSource(c.tabId);
         const windowId = id();
         const sid = id();
-        const created: SideTab = { id: sid, title: null, tabs: [], accent: pickNeon(sid) };
+        const created: SideTab = { id: sid, title: null, tabs: [], accent: pickNeon(sid), name: pickName(sid) };
         return [
           { type: "WindowCreated", windowId },
           { type: "SideTabCreated", windowId, index: 0, sideTab: created },
@@ -720,7 +720,7 @@ export function createMockHost(initial?: Workspace): MockHost {
           return [{ type: "LayoutChanged", tabId: tab.id, layout: layout! }];
         }
         const tabId = id();
-        const tab: Tab = { id: tabId, title: null, name: pickName(tabId), layout: { type: "pane", id: id(), doc: c.docId }, icon: pickIcon(tabId), accent: pickTabNeon(side.tabs, tabId) };
+        const tab: Tab = { id: tabId, title: null, layout: { type: "pane", id: id(), doc: c.docId }, icon: pickIcon(tabId), accent: pickTabNeon(side.tabs, tabId) };
         return [{ type: "TabCreated", sideTabId: c.sideTabId, index: side.tabs.length, tab }];
       }
       case "DockTab": {
@@ -741,7 +741,7 @@ export function createMockHost(initial?: Workspace): MockHost {
         const left = removePane(tab.layout, c.paneId);
         if (!left) return fail("OnlyPane", c.paneId);
         const tabId = id();
-        const made: Tab = { id: tabId, title: null, name: pickName(tabId), layout: structuredClone(leaf(tab.layout, c.paneId)!), icon: pickIcon(tabId), accent: pickTabNeon(side.tabs, tabId) };
+        const made: Tab = { id: tabId, title: null, layout: structuredClone(leaf(tab.layout, c.paneId)!), icon: pickIcon(tabId), accent: pickTabNeon(side.tabs, tabId) };
         return [
           { type: "LayoutChanged", tabId: tab.id, layout: left },
           { type: "TabCreated", sideTabId: side.id, index: c.index, tab: made },

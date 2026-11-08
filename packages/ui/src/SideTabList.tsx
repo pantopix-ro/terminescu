@@ -132,9 +132,11 @@ export function RenameInput({ value, label, onDone, onCancel }: { value: string;
   );
 }
 
-/** A side tab's name: its own title, else its first tab's name, else "shell". */
+/** A side tab's name: its own title, else its animal once it holds two tabs (task 8.60), else its first tab's name. */
 export function sideTabName(s: SideTab, docs: DocMarks = {}): string {
-  return s.title ?? (s.tabs[0] ? tabName(s.tabs[0], docs) : "shell");
+  if (s.title) return s.title;
+  if (s.tabs.length > 1 && s.name) return s.name;
+  return s.tabs[0] ? tabName(s.tabs[0], docs) : "Terminal";
 }
 
 /**
@@ -145,10 +147,10 @@ export type DocMarks = Readonly<Record<string, { title: string; dirty: boolean; 
 
 const docsOf = (t: Tab): string[] => panesOf(t.layout).flatMap((p) => leaf(t.layout, p)?.doc ?? []);
 
-/** A tab's name: its own title, else its first document's title, else its animal (task 8.30), else "shell". */
-export const tabName = (t: Tab, docs: DocMarks = {}) => t.title ?? docsOf(t).map((d) => docs[d]?.title).find(Boolean) ?? t.name ?? "shell";
+/** A tab's name: its own title, else its first document's title, else "Terminal" (task 8.60). */
+export const tabName = (t: Tab, docs: DocMarks = {}) => t.title ?? docsOf(t).map((d) => docs[d]?.title).find(Boolean) ?? "Terminal";
 
-/** A name with its live subtitle, for a tooltip: `Otter · ~/work/api · npm`. */
+/** A name with its live subtitle, for a tooltip: `Terminal · ~/work/api · npm`. */
 export const withSub = (name: string, sub: string | undefined) => (sub ? `${name} · ${sub}` : name);
 
 /** A tab holds a document with unsaved edits. */
@@ -268,7 +270,12 @@ function Row(props: {
           tips.hide();
           picker.leave();
         }}
-        onClick={props.onSelect}
+        // A click on the selected group opens or closes its tabs; on another one it selects
+        // that one and opens it (task 8.61).
+        onClick={() => {
+          if (group && !collapsed && (active ? true : !expanded)) props.onToggle();
+          props.onSelect();
+        }}
         onContextMenu={(e) => {
           if (!props.onMenu) return;
           e.preventDefault();

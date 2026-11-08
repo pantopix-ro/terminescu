@@ -444,6 +444,7 @@ mod tests {
                 id: "w1".into(),
                 side_tabs: vec![SideTab {
                     accent: None,
+                    name: None,
                     status: None,
                     icon: None,
                     id: "s1".into(),
@@ -455,7 +456,6 @@ mod tests {
                         id: "t1".into(),
                         title: None,
                         layout: crate::layout::Layout::pane("p1"),
-                        name: None,
                     }],
                 }],
             }],
