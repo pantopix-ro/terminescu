@@ -147,6 +147,9 @@ export interface AppProps {
 }
 
 /** Keeps a selection valid: the previous id while it still exists, else the first one. */
+/** Foreground processes that mean a terminal sits at its prompt, with nothing to lose. */
+const LOGIN_SHELLS = new Set(["zsh", "bash", "fish", "sh", "dash", "tcsh", "csh", "ksh", "nu", "login"]);
+
 function pick(ids: string[], previous: string | undefined): string | undefined {
   return previous && ids.includes(previous) ? previous : ids[0];
 }
@@ -587,7 +590,22 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   };
 
   // Closing panes with unsaved text asks first: Save, Don't save or Cancel (D27).
-  const [closing, setClosing] = useState<{ panes: string[]; titles: string[]; command: Command }>();
+  const [closing, setClosing] = useState<{ panes: string[]; titles: string[]; command: Command; all: string[] }>();
+  // Closing a terminal that still runs something asks too, as Terminal.app does: the program
+  // ends with its shell.
+  const [closingRunning, setClosingRunning] = useState<{ names: string[]; command: Command }>();
+  const runningIn = (pane: string): string | undefined => {
+    const agent = agents[pane];
+    if (agent && agent.state !== "done") return "claude";
+    const label = labels[pane];
+    if (label?.program) return label.program;
+    return label?.process && !LOGIN_SHELLS.has(label.process.replace(/^-/, "")) ? label.process : undefined;
+  };
+  const closeIfIdle = (panes: string[], command: Command) => {
+    const names = [...new Set(panes.map(runningIn).filter((n): n is string => !!n))];
+    if (!names.length) return void send(command);
+    setClosingRunning({ names, command });
+  };
   const closeWith = async (panes: string[], command: Command) => {
     const dirty: { pane: string; title: string }[] = [];
     for (const p of panes) {
@@ -597,8 +615,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       const d = await host.document(t.docId).catch(() => undefined);
       if (d?.dirty) dirty.push({ pane: p, title: d.title });
     }
-    if (!dirty.length) return void send(command);
-    setClosing({ panes: dirty.map((d) => d.pane), titles: dirty.map((d) => d.title), command });
+    if (!dirty.length) return closeIfIdle(panes, command);
+    setClosing({ panes: dirty.map((d) => d.pane), titles: dirty.map((d) => d.title), command, all: panes });
   };
   const closePane = (paneId: string) => void closeWith([paneId], { type: "ClosePane", paneId });
   const closeTab = (tabId: string) => {
@@ -612,7 +630,13 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     if (choice === "save") {
       for (const p of c.panes) if (!(await saveDoc(p, false))) return refocus();
     }
-    void send(c.command);
+    closeIfIdle(c.all, c.command);
+  };
+  const finishCloseRunning = (close: boolean) => {
+    const c = closingRunning;
+    setClosingRunning(undefined);
+    if (c && close) void send(c.command);
+    else refocus();
   };
 
   // A closed pane hands focus to the pane before it, as the core hands it its space.
@@ -2368,6 +2392,31 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                 </button>
                 <button type="button" className="ao-btn primary" autoFocus onClick={() => void finishClose("save")}>
                   Save
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {closingRunning && (
+        <div className="sheet-back" onPointerDown={() => finishCloseRunning(false)}>
+          <div
+            className="ao-frame close-dialog"
+            role="alertdialog"
+            aria-label="Close a running program"
+            onPointerDown={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.key === "Escape" && finishCloseRunning(false)}
+          >
+            <div className="ao-frame-body">
+              <p>Close while {closingRunning.names.join(", ")} {closingRunning.names.length === 1 ? "is" : "are"} running?</p>
+              <p className="small ao-dim">Closing ends the shell and what runs in it.</p>
+              <div className="close-actions">
+                <span className="grow" />
+                <button type="button" className="ao-btn ghost" onClick={() => finishCloseRunning(false)}>
+                  Cancel
+                </button>
+                <button type="button" className="ao-btn primary" autoFocus onClick={() => finishCloseRunning(true)}>
+                  Close
                 </button>
               </div>
             </div>

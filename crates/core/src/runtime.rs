@@ -252,7 +252,14 @@ impl Runtime {
             .collect();
         let mut panes = Panes::default();
         let mut spawn: Vec<(Id, Id, Option<String>)> = Vec::new();
-        let saved = saved.filter(|s| !s.workspace.windows.is_empty());
+        // A window left with no side tab restores as nothing to look at: it is dropped, and a
+        // workspace with no side tab at all starts fresh, as a first start does.
+        let saved = saved
+            .map(|mut s| {
+                s.workspace.windows.retain(|w| !w.side_tabs.is_empty());
+                s
+            })
+            .filter(|s| !s.workspace.windows.is_empty());
         match saved {
             Some(saved) => {
                 let same = saved.instance.as_deref() == Some(client.instance.as_str());

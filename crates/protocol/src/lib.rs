@@ -259,11 +259,47 @@ pub struct Var {
     pub expires_in_ms: Option<u64>,
 }
 
+/// Names the shell or the loader acts on: `var env` runs before every prompt, so a variable
+/// with one of these names would change how every later command runs.
+fn is_shell_control(name: &str) -> bool {
+    const NAMES: &[&str] = &[
+        "PATH",
+        "HOME",
+        "SHELL",
+        "USER",
+        "LOGNAME",
+        "IFS",
+        "ENV",
+        "BASH_ENV",
+        "ZDOTDIR",
+        "PROMPT_COMMAND",
+        "PS0",
+        "PS1",
+        "PS2",
+        "PS4",
+        "PROMPT",
+        "RPROMPT",
+        "FPATH",
+        "CDPATH",
+        "TMPDIR",
+        "LD_PRELOAD",
+        "LD_LIBRARY_PATH",
+        "XDG_CONFIG_HOME",
+        "XDG_DATA_DIRS",
+        "CLAUDE_ENV_FILE",
+        "CLAUDE_CONFIG_DIR",
+    ];
+    NAMES.contains(&name)
+        || name.starts_with("DYLD_")
+        || name.starts_with("BASH_FUNC_")
+        || name.starts_with("fish_")
+}
+
 /// A variable name a shell can export: a letter or `_`, then letters, digits or `_`.
 /// A name a variable may take. `TERMINESCU_*` is reserved for the shell integration's own
 /// bookkeeping.
 pub fn is_var_name(name: &str) -> bool {
-    if name.starts_with("TERMINESCU_") {
+    if name.starts_with("TERMINESCU_") || is_shell_control(name) {
         return false;
     }
     let mut chars = name.chars();
@@ -457,7 +493,19 @@ mod tests {
         for ok in ["API_TOKEN", "_x", "from_date", "a1"] {
             assert!(is_var_name(ok), "{ok}");
         }
-        for bad in ["", "1a", "A-B", "A B", "a$", "é", "TERMINESCU_VARS"] {
+        for bad in [
+            "",
+            "1a",
+            "A-B",
+            "A B",
+            "a$",
+            "é",
+            "TERMINESCU_VARS",
+            "PATH",
+            "PROMPT_COMMAND",
+            "DYLD_INSERT_LIBRARIES",
+            "LD_PRELOAD",
+        ] {
             assert!(!is_var_name(bad), "{bad}");
         }
     }

@@ -362,7 +362,18 @@ export function TerminalPane({
         // give a blinking bar and Option as Meta, so Option+Enter sends Esc+Return.
         ...terminalBehaviourOptions(behaviourNow.current),
         drawBoldTextInBrightColors: false,
-        linkHandler: { activate },
+        // An OSC 8 link's text can say anything; hovering shows the address it really opens.
+        linkHandler: {
+          activate,
+          hover: (_e, uri) => {
+            hoveredLink = { kind: "url", text: uri };
+            el.title = uri;
+          },
+          leave: () => {
+            hoveredLink = undefined;
+            el.removeAttribute("title");
+          },
+        },
         // Search highlights and markers are decorations, still a proposed API in xterm.js 6.
         allowProposedApi: true,
         // The scrollbar's ruler shows search matches and prompt marks; it needs a width to draw.

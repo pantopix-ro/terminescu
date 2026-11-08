@@ -452,9 +452,24 @@ export function variablesOf(body: string): string[] {
   return out;
 }
 
-/** `pr_api`, `API_TOKEN`: what `$NAME` and `{{name}}` accept. `TERMINESCU_*` is reserved. */
+/** Names the shell or the loader acts on, as `is_shell_control` in crates/protocol lists them. */
+export const SHELL_CONTROL_NAMES = [
+  "PATH", "HOME", "SHELL", "USER", "LOGNAME", "IFS", "ENV", "BASH_ENV", "ZDOTDIR", "PROMPT_COMMAND",
+  "PS0", "PS1", "PS2", "PS4", "PROMPT", "RPROMPT", "FPATH", "CDPATH", "TMPDIR", "LD_PRELOAD",
+  "LD_LIBRARY_PATH", "XDG_CONFIG_HOME", "XDG_DATA_DIRS", "CLAUDE_ENV_FILE", "CLAUDE_CONFIG_DIR",
+];
+
+/**
+ * `pr_api`, `API_TOKEN`: what `$NAME` and `{{name}}` accept. `TERMINESCU_*` is reserved, and the
+ * names the shell acts on stay the shell's: `var env` runs before every prompt.
+ */
 export function isVariableName(name: string): boolean {
-  return /^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(name) && !name.startsWith("TERMINESCU_");
+  return (
+    /^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(name) &&
+    !name.startsWith("TERMINESCU_") &&
+    !SHELL_CONTROL_NAMES.includes(name) &&
+    !/^(DYLD_|BASH_FUNC_|fish_)/.test(name)
+  );
 }
 
 /** Settings › Notifications (workbench-ui "Attention signals"). */

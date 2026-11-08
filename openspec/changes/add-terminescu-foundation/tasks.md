@@ -681,6 +681,16 @@ buffers once per sheet.
 - [x] 8.65 Context panel hover (owner request 2026-11-08): every button, input and link in the
       context panel takes the amber line under the mouse; a button that fills its row leaves it
       to the row. Verify: `context.spec.ts`.
+- [x] 8.66 Codebase review (owner request 2026-11-08). Closing a tab or pane that runs a program
+      or Claude asks first. An OSC 8 link shows its real address on hover. Enter on a group row
+      does what a click does, and → and ← open and close it. The daemon clamps pane sizes to
+      1000x500 and never signals a reaped pid. The hook swallows panics and keeps its write in
+      budget. Variables cannot take names the shell acts on (`PATH`, `PROMPT_COMMAND`,
+      `DYLD_*`). Text saves and the settings.json edit go through a private temp file and a
+      rename. A window with no side tab is not restored. A notification names only a plain
+      lowercase subcommand. CI runs every gate and the release job waits for it, with secrets
+      on the Build step only, actions pinned by commit, and repo, tag and signature checks.
+      Verify: `windows.spec.ts`, `mirror.test.ts`, `atomic.rs`, `screen.rs`, `attention.rs`.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

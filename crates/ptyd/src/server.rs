@@ -175,7 +175,7 @@ impl Shared {
 
     fn spawn(self: &Arc<Self>, spec: SpawnSpec) -> io::Result<PaneId> {
         let id = self.next_pane.fetch_add(1, Ordering::Relaxed);
-        let (cols, rows) = (spec.cols.max(2), spec.rows.max(1));
+        let (cols, rows) = crate::screen::clamp_size(spec.cols, spec.rows);
         let scrollback = spec.scrollback.map_or(crate::screen::SCROLLBACK, |n| {
             (n as usize).clamp(
                 *crate::screen::SCROLLBACK_RANGE.start(),
@@ -554,7 +554,7 @@ fn handle(shared: &Arc<Shared>, client: u64, tx: &SyncSender<Vec<u8>>, frame: Fr
             }
             Control::Resize { pane, cols, rows } => {
                 if let Some(p) = shared.pane(pane) {
-                    let (cols, rows) = (cols.max(2), rows.max(1));
+                    let (cols, rows) = crate::screen::clamp_size(cols, rows);
                     let mut st = lock(&p.state);
                     st.screen.resize(cols, rows);
                     let _ = lock(&p.master).resize(PtySize {
@@ -573,7 +573,10 @@ fn handle(shared: &Arc<Shared>, client: u64, tx: &SyncSender<Vec<u8>>, frame: Fr
             }
             Control::Close { pane } => {
                 if let Some(p) = lock(&shared.panes).remove(&pane) {
-                    let _ = lock(&p.killer).kill();
+                    // A reaped child's pid may belong to another process by now.
+                    if lock(&p.state).exited.is_none() {
+                        let _ = lock(&p.killer).kill();
+                    }
                 }
                 shared.touch();
             }

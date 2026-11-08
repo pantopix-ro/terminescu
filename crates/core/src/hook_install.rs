@@ -3,7 +3,6 @@
 //! other hook and setting stays as it was, key order included.
 
 use serde_json::{Map, Value, json};
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 /// The events D34 listens to. `PreToolUse` stays out: it fires before the prompt and tells
@@ -220,18 +219,8 @@ fn edit(
     std::fs::create_dir_all(dir)?;
     let mut text = serde_json::to_string_pretty(&settings).expect("a JSON map serializes");
     text.push('\n');
-    let tmp = dir.join(format!(".settings.json.terminescu-{}", std::process::id()));
-    {
-        let mut f = std::fs::File::create(&tmp)?;
-        f.write_all(text.as_bytes())?;
-        f.sync_all()?;
-    }
-    if let Ok(meta) = std::fs::metadata(path) {
-        std::fs::set_permissions(&tmp, meta.permissions())?;
-    }
-    std::fs::rename(&tmp, path).inspect_err(|_| {
-        let _ = std::fs::remove_file(&tmp);
-    })?;
+    // The settings may hold API keys: the temp file starts private and takes the file's mode.
+    crate::atomic::write(path, text.as_bytes())?;
     Ok(true)
 }
 

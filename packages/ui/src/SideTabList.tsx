@@ -283,8 +283,16 @@ function Row(props: {
           props.onMenu(menuAt(e), { kind: "side", sideTabId: side.id });
         }}
         onKeyDown={(e) => {
-          if (e.key === "Enter") props.onSelect();
-          else if (menuKey(e) && props.onMenu) {
+          // Keys on a button inside the row, as the chevron, are that button's.
+          if (e.target !== e.currentTarget) return;
+          // Enter does what a click does; → opens a group and ← closes it.
+          if (e.key === "Enter") {
+            if (group && !collapsed && (active ? true : !expanded)) props.onToggle();
+            props.onSelect();
+          } else if (group && !collapsed && ((e.key === "ArrowRight" && !expanded) || (e.key === "ArrowLeft" && expanded))) {
+            e.preventDefault();
+            props.onToggle();
+          } else if (menuKey(e) && props.onMenu) {
             e.preventDefault();
             props.onMenu(menuAt(e), { kind: "side", sideTabId: side.id });
           }

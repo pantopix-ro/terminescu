@@ -145,9 +145,19 @@ fn left(deadline: Instant) -> io::Result<Duration> {
         .ok_or_else(|| io::Error::from(io::ErrorKind::TimedOut))
 }
 
-fn write_within(stream: &mut UnixStream, bytes: &[u8], deadline: Instant) -> io::Result<()> {
-    stream.set_write_timeout(Some(left(deadline)?))?;
-    stream.write_all(bytes)
+/// Writes all of `bytes` by `deadline`. The socket's timeout counts per write call, so it is
+/// set again before each one from the time that is left.
+fn write_within(stream: &mut UnixStream, mut bytes: &[u8], deadline: Instant) -> io::Result<()> {
+    while !bytes.is_empty() {
+        stream.set_write_timeout(Some(left(deadline)?))?;
+        match stream.write(bytes) {
+            Ok(0) => return Err(io::ErrorKind::WriteZero.into()),
+            Ok(n) => bytes = &bytes[n..],
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

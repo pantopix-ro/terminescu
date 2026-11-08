@@ -371,3 +371,34 @@ test("a tab from another window lights the row under it and drops into it; its w
   expect(ws.windows, "the emptied second window closes").toHaveLength(1);
   expect(ws.windows[0].sideTabs.find((s: any) => s.id === firstSide).tabs.map((t: any) => t.id)).toEqual([b, a]);
 });
+
+// Codebase review: closing a terminal that runs a program asks first, as Terminal.app does.
+test("closing a tab that runs a program asks; Cancel keeps it, Close ends it", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/?top-tabs");
+  await page.locator(".term-pane").first().click();
+  await page.keyboard.press("Meta+t");
+  await expect(page.locator(".ao-tab")).toHaveCount(2);
+  const pane = await page.evaluate(() => document.querySelector<HTMLElement>(".app-pane .term-pane:not([hidden])")!.dataset.pane!);
+  await page.evaluate((p) => (window as any).__terminescu.host.runCommand(p, "npm run dev", null), pane);
+  await expect(page.locator(".ao-tab .n").nth(1)).toHaveText("npm");
+
+  await page.keyboard.press("Meta+w");
+  const ask = page.getByRole("alertdialog", { name: "Close a running program" });
+  await expect(ask).toContainText("Close while npm is running?");
+  await ask.getByRole("button", { name: "Cancel" }).click();
+  await expect(ask).toHaveCount(0);
+  await expect(page.locator(".ao-tab")).toHaveCount(2);
+
+  await page.locator(`.term-pane[data-pane="${pane}"]`).click();
+  await page.keyboard.press("Meta+w");
+  await ask.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(page.locator(".ao-tab")).toHaveCount(1);
+
+  // A shell at its prompt closes without asking.
+  await page.keyboard.press("Meta+t");
+  await expect(page.locator(".ao-tab")).toHaveCount(2);
+  await page.keyboard.press("Meta+w");
+  await expect(page.locator(".ao-tab")).toHaveCount(1);
+  await expect(ask).toHaveCount(0);
+});
