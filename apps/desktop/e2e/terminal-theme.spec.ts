@@ -19,17 +19,17 @@ async function openColours(page: Page) {
 }
 
 /** How much the layers under the first terminal cover the desktop: 1 is solid, 0 is clear. */
-const coverage = (page: Page) =>
-  page.evaluate(() => {
+const coverage = (page: Page, from = ".term-pane .xterm-viewport") =>
+  page.evaluate((from) => {
     let clear = 1;
-    for (let el: Element | null = document.querySelector(".term-pane .xterm-viewport"); el; el = el.parentElement) {
+    for (let el: Element | null = document.querySelector(from); el; el = el.parentElement) {
       const m = getComputedStyle(el).backgroundColor.match(/[\d.]+/g)?.map(Number) ?? [];
       // rgb() and color(srgb …) list three channels, then the alpha when there is one.
       const alpha = m.length >= 4 ? m[3]! : m.length === 3 ? 1 : 0;
       clear *= 1 - alpha;
     }
     return 1 - clear;
-  });
+  }, from);
 
 test("a scheme and the opacity apply live, and Reset brings the defaults back", async ({ page }) => {
   const dialog = await openColours(page);
@@ -50,10 +50,28 @@ test("a scheme and the opacity apply live, and Reset brings the defaults back", 
   await expect.poll(() => coverage(page)).toBeCloseTo(0.8, 2);
   expect(await option(page, "allowTransparency")).toBe(true);
   expect(await rootHas(page, "data-see-through")).toBe(true);
-  // The sidebar stays solid.
-  expect(await page.locator(".app-side").evaluate((el) => getComputedStyle(el).backgroundColor)).not.toMatch(/rgba\(.*, 0\)|transparent/);
+  // The sidebars share the opacity (task 8.64): a row, its name and the context panel read about
+  // 80%, a row's light and tint add a few percent; a menu inside the sidebar stays solid.
+  expect(await coverage(page, ".app-side .ao-side")).toBeCloseTo(0.8, 2);
+  const row = await coverage(page, ".app-side .ao-st .t");
+  expect(row).toBeGreaterThan(0.79);
+  expect(row).toBeLessThan(0.87);
+  await page.keyboard.press("Escape");
+  await page.locator(".term-pane").first().click();
+  await page.keyboard.press("Meta+Backslash");
+  await expect(page.locator("aside.ctx-pinned")).toBeVisible();
+  expect(await coverage(page, "aside.ctx-pinned .ctx-scroll")).toBeCloseTo(0.8, 1);
+  await page.getByRole("button", { name: "Choose side tab kind" }).click();
+  expect(await page.locator(".app-side .tab-menu").evaluate((el) => getComputedStyle(el).backgroundColor)).toMatch(/^rgb\(/);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Meta+Backslash");
+  await page.locator(".term-pane").first().click();
+  await page.keyboard.press("Meta+Comma");
+  const dialog2 = page.getByRole("dialog");
+  await dialog2.getByRole("navigation", { name: "Settings sections" }).getByRole("button", { name: "Terminal" }).click();
+  expect(await rootHas(page, "data-see-through")).toBe(true);
 
-  await dialog.getByRole("button", { name: "Reset to defaults" }).click();
+  await dialog2.getByRole("button", { name: "Reset to defaults" }).click();
   await expect.poll(() => background(page)).toBe(panel);
   expect(await option(page, "allowTransparency")).toBe(false);
   expect(await rootHas(page, "data-see-through")).toBe(false);
