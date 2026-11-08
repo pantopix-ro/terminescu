@@ -176,3 +176,19 @@ test("a command edits, duplicates and deletes from its menu", async ({ page }) =
   await expect(row).toBeHidden();
   await expect(page.locator(".cmd-row")).toHaveCount(1);
 });
+
+test("a deleted command comes back with Undo", async ({ page }) => {
+  await start(page);
+  await page.getByRole("button", { name: "New command" }).click();
+  await page.getByLabel("Command name").fill("checks");
+  await page.getByLabel("Command", { exact: true }).fill("gh pr checks 918");
+  await page.locator(".cmd-form").getByRole("button", { name: "Save" }).click();
+  const row = page.locator('.cmd-row[data-command="checks"]');
+  await row.click({ button: "right" });
+  await item(page, "Delete").click();
+  await expect(row).toBeHidden();
+  await expect(page.locator(".toast")).toContainText("Deleted checks.");
+  await page.locator(".toast").getByRole("button", { name: "Undo" }).click();
+  await expect(row).toBeVisible();
+  await expect(page.locator(".toast")).toHaveCount(0);
+});

@@ -211,3 +211,38 @@ test("a removed variable comes back with Undo, and goes once the toast does", as
   await expect.poll(ctxOf).not.toContain("ticket");
   expect(await ctxOf()).toContain("API_TOKEN");
 });
+
+test("a removed pin waits on its toast, and a second removal deletes the first", async ({ page }) => {
+  await start(page);
+  const pane = await page.evaluate(() => document.querySelector<HTMLElement>(".term-pane")!.dataset.pane!);
+  await page.locator(".term-pane").first().click();
+  const pinLine = async () => {
+    await page.evaluate((id) => (window as any).__terminescu.terminals.get(id).selectLines(0, 0), pane);
+    await page.keyboard.press("Meta+Shift+P");
+  };
+  await pinLine();
+  await expect(page.locator(".ctx-pin")).toHaveCount(1);
+  const pins = () =>
+    page.evaluate(async () => {
+      const t = (window as any).__terminescu;
+      return (await t.host.pins(t.host.workspace().windows[0].sideTabs[0].id)).length;
+    });
+
+  await page.locator(".ctx-pin").getByLabel("Remove pin").click();
+  await expect(page.locator(".ctx-pin")).toHaveCount(0);
+  expect(await pins()).toBe(1);
+  await page.locator(".toast").getByRole("button", { name: "Undo" }).click();
+  await expect(page.locator(".ctx-pin")).toHaveCount(1);
+
+  // Removing the pin, then a variable: the pin's toast gives way and the pin is deleted.
+  await page.locator(".ctx-pin").getByLabel("Remove pin").click();
+  const panel = page.locator("aside.ctx-pinned");
+  await panel.getByRole("button", { name: "+ variable" }).click();
+  const form = panel.getByRole("form", { name: "Add a variable" });
+  await form.getByLabel("Name").fill("ticket");
+  await form.getByLabel("Value").fill("example");
+  await form.getByRole("button", { name: "Add" }).click();
+  await panel.locator('.ctx-var[data-var="ticket"]').getByLabel("Remove ticket").click();
+  await expect(page.locator(".toast")).toContainText("Removed ticket.");
+  await expect.poll(pins).toBe(0);
+});

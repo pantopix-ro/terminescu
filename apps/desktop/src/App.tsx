@@ -152,7 +152,9 @@ export interface AppProps {
 const LOGIN_SHELLS = new Set(["zsh", "bash", "fish", "sh", "dash", "tcsh", "csh", "ksh", "nu", "login"]);
 
 /** The undo toast: `undo` on its button, `done` when it goes without one. */
-type Toast = { text: string; undo(): void; done?(): void; removes?: { side: string; name: string } };
+type Toast = { text: string; undo(): void; done?(): void; removes?: Removal };
+/** Something removed in the sidebars that waits on its undo toast before it is deleted. */
+type Removal = { kind: "variable"; side: string; name: string } | { kind: "pin" | "command"; id: string };
 
 function pick(ids: string[], previous: string | undefined): string | undefined {
   return previous && ids.includes(previous) ? previous : ids[0];
@@ -385,8 +387,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     window.addEventListener("pagehide", flush);
     return () => window.removeEventListener("pagehide", flush);
   }, []);
-  // Variables removed in the panel but kept until their toast goes, by side tab.
-  const [removing, setRemoving] = useState<{ side: string; name: string }[]>([]);
+  // Variables, pins and commands removed but kept until their toast goes.
+  const [removing, setRemoving] = useState<Removal[]>([]);
   const [sheet, setSheet] = useState<
     | "status"
     | "settings"
@@ -960,8 +962,10 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   }, [host, sideId]);
   const shownCtx: Ctx = useMemo(() => {
     if (ctx.side !== sideId) return { variables: [], items: [], pins: [], files: [] };
-    const gone = removing.filter((r) => r.side === sideId).map((r) => r.name);
-    return gone.length ? { ...ctx, variables: ctx.variables.filter((v) => !gone.includes(v.name)) } : ctx;
+    if (!removing.length) return ctx;
+    const variable = (name: string) => removing.some((r) => r.kind === "variable" && r.side === sideId && r.name === name);
+    const pin = (id: string) => removing.some((r) => r.kind === "pin" && r.id === id);
+    return { ...ctx, variables: ctx.variables.filter((v) => !variable(v.name)), pins: ctx.pins.filter((p) => !pin(p.id)) };
   }, [ctx, sideId, removing]);
   // Names and modes for the editor's chips; values stay out of the text panes (D35).
   const chipVars = useMemo(
@@ -1515,28 +1519,33 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     const t = setTimeout(() => toastRef.current === toast && endToast(false), MERGE_UNDO_MS);
     return () => clearTimeout(t);
   }, [toast]);
-  // A removed variable leaves the panel at once and is deleted when its toast goes, so Undo
-  // works for a secret too: the panel never holds a secret's value to add it back (D35).
-  const removeVariable = (side: string, name: string) => {
-    const key = { side, name };
+  // A removed variable, pin or command leaves the sidebar at once and is deleted when its
+  // toast goes. Undo works for a secret too: the panel never holds a secret's value (D35).
+  const removeLater = (key: Removal, text: string, remove: () => Promise<unknown>) => {
     const forget = () => setRemoving((r) => r.filter((x) => x !== key));
     setRemoving((r) => [...r, key]);
     showToast({
-      text: `Removed ${name}.`,
+      text,
       removes: key,
       undo: forget,
       done: () => {
         forget();
-        host.removeVariable(side, name).catch(report);
+        remove().catch(report);
       },
     });
     return Promise.resolve();
   };
+  const removeVariable = (side: string, name: string) =>
+    removeLater({ kind: "variable", side, name }, `Removed ${name}.`, () => host.removeVariable(side, name));
+  const shownCommands = useMemo(
+    () => (removing.length ? commands.filter((c) => !removing.some((r) => r.kind === "command" && r.id === c.id)) : commands),
+    [commands, removing],
+  );
   // Adding a name whose removal waits on the toast deletes the old one first, so the late
   // delete cannot take the new variable.
   const addVariable = async (side: string, v: Parameters<typeof host.addVariable>[1]) => {
     const r = toastRef.current?.removes;
-    if (r?.side === side && r.name === v.name) {
+    if (r?.kind === "variable" && r.side === side && r.name === v.name) {
       toastRef.current = undefined;
       setToast(undefined);
       setRemoving((x) => x.filter((k) => k !== r));
@@ -1895,7 +1904,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               }}
             />
             <CommandsSection
-              commands={commands}
+              commands={shownCommands}
               enabled={!!activeSide}
               onAdd={(d) =>
                 host.createCommand({
@@ -1915,7 +1924,11 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                   launcher: d.launcher && !d.global,
                 })
               }
-              onDelete={(id) => host.deleteCommand(id)}
+              onDelete={(id) =>
+                removeLater({ kind: "command", id }, `Deleted ${commands.find((c) => c.id === id)?.name ?? "the command"}.`, () =>
+                  host.deleteCommand(id),
+                )
+              }
               onRun={runCommand}
               statuses={statuses}
               onRestart={(id) => (activeSide ? host.restartLauncher(activeSide.id, id) : Promise.resolve())}
@@ -2101,7 +2114,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
             items={shownCtx.items}
             pins={shownCtx.pins}
             onOpenPin={openPin}
-            onRemovePin={(p) => void host.removePin(p.id).catch((e: unknown) => setError(String(e)))}
+            onRemovePin={(p) => void removeLater({ kind: "pin", id: p.id }, "Removed the pin.", () => host.removePin(p.id))}
             onAddVariable={(v) => (sideId ? addVariable(sideId, { ...v, originTabId: activeTab?.id ?? null }) : Promise.resolve())}
             onChangeVariable={(name, change) => (sideId ? host.changeVariable(sideId, name, change) : Promise.resolve())}
             onInsertVariable={focused && activeTab && !transcriptOf(activeTab.layout, focused) ? insertVariable : undefined}
