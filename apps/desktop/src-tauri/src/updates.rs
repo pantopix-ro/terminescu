@@ -14,7 +14,12 @@ pub const UPDATE_EVENT: &str = "host://update";
 
 /// The updater's public key. The release job builds it in from the repository variable of the
 /// same name; a build without it never checks (docs/releasing.md).
-const PUBKEY: Option<&str> = option_env!("TERMINESCU_UPDATER_PUBKEY");
+const PUBKEY_RAW: Option<&str> = option_env!("TERMINESCU_UPDATER_PUBKEY");
+
+/// The update key, with a variable set to nothing read as no key.
+fn pubkey() -> Option<&'static str> {
+    PUBKEY_RAW.map(str::trim).filter(|k| !k.is_empty())
+}
 const EVERY: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// A downloaded, verified update waiting for the person's yes.
@@ -23,7 +28,7 @@ pub struct Pending(Mutex<Option<(Update, Vec<u8>)>>);
 
 /// Checks now and then once a day, in the background.
 pub fn start(app: &AppHandle) {
-    if PUBKEY.is_none() {
+    if pubkey().is_none() {
         return;
     }
     let app = app.clone();
@@ -47,7 +52,7 @@ async fn fetch(app: &AppHandle) -> Result<Option<String>, String> {
     if let Some((update, _)) = pending.0.lock().map_err(|e| e.to_string())?.as_ref() {
         return Ok(Some(update.version.clone()));
     }
-    let key = PUBKEY.ok_or("Updates are off in this build: it has no update key.")?;
+    let key = pubkey().ok_or("Updates are off in this build: it has no update key.")?;
     let feed = Url::parse(&public::update_feed()).map_err(|e| e.to_string())?;
     let updater = app
         .updater_builder()

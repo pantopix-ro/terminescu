@@ -588,7 +588,8 @@ impl Documents {
                     }
                 }
             }
-            std::fs::write(&path, &bytes).map_err(|e| io_err(&path, e))?;
+            // Through a temp file: a full disk or a crash mid-save leaves the old file whole.
+            crate::atomic::write(&path, &bytes).map_err(|e| io_err(&path, e))?;
             doc.images.clear();
             let meta = std::fs::metadata(&path).map_err(|e| io_err(&path, e))?;
             let shown = path.display().to_string();

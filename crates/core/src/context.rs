@@ -141,15 +141,10 @@ fn cut(s: &str, chars: usize) -> String {
     s.chars().take(chars).collect()
 }
 
-/// `branch`, `pr_api`, `API_TOKEN`: what `$NAME` and `{{name}}` accept. `TERMINESCU_*` is ours.
+/// `branch`, `pr_api`, `API_TOKEN`: what `$NAME` and `{{name}}` accept. `TERMINESCU_*` is ours,
+/// and names the shell acts on, as `PATH`, stay the shell's.
 pub fn is_variable_name(name: &str) -> bool {
-    let mut chars = name.chars();
-    chars
-        .next()
-        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
-        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
-        && name.len() <= 64
-        && !name.starts_with("TERMINESCU_")
+    name.len() <= 64 && terminescu_protocol::is_var_name(name)
 }
 
 pub fn add_pin(db: &Db, pin: &Pin) -> std::result::Result<Pin, ContextError> {

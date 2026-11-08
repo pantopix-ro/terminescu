@@ -462,6 +462,7 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 /* A visual bell flashes the terminal once. */
 .term-pane.bell { animation: term-bell 150ms ease-out; }
 @keyframes term-bell { from { filter: brightness(1.8); } to { filter: none; } }
+@media (prefers-reduced-motion: reduce) { .term-pane.bell, .ctx-over { animation: none; } }
 /* Find in all panes (task 8.46): matches in the selection's blue, amber stays for attention. */
 .find-all .palette-item { height: auto; min-height: 24px; }
 .find-all-text { font-family: var(--font-mono); font-size: 11px; white-space: pre; overflow: hidden; text-overflow: ellipsis; }

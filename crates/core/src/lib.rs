@@ -2,6 +2,7 @@
 //! contexts (D6), persisted in SQLite (D18).
 
 pub mod agent;
+mod atomic;
 pub mod attention;
 pub mod commands;
 pub mod context;

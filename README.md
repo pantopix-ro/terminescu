@@ -9,65 +9,17 @@ whichever of your 20 terminals it lives in.
 It doesn't orchestrate Claude. You start every session yourself by typing `claude` in a
 shell, and Terminescu never starts a turn on its own.
 
-> Status: P1 and P2 are built (task groups 1 to 8), including text tabs, cross-window drag,
-> side tab merge, sidebar right-click menus and zoom. Releases ship as an unsigned DMG with
-> signed auto-updates; notarization waits for an Apple developer account. To build from
+> Status: pre-release, macOS on Apple silicon. The DMG is ad-hoc signed until an Apple
+> Developer ID exists, so the first launch needs Open Anyway in System Settings › Privacy &
+> Security. Updates are signed and checked against the key built into the app. To build from
 > source, read [Getting started](docs/getting-started.md).
->
-> How it grew: the spikes came first, then the skeleton (tasks 1.1 to 1.4):
-> an app window with side tabs and tabs over the core's command and patch protocol, the
-> SQLite schema, and the design tokens. The pty daemon (task 2.1) runs shells and restores
-> their screens on reattach. The app starts it and gives each tab a shell that outlives the
-> app (task 2.6), shown in an xterm.js pane that streams raw bytes from the core (task 2.5).
-> The `terminescu` CLI forwards hooks, sets statuses and keeps session and secret variables in
-> the daemon, so `var env` answers while the app is closed (task 2.3). Those variables stay in
-> memory only, are wiped on unset and expire on their TTL (task 2.2). Shell integration for zsh,
-> bash and fish reports each command's line, exit code and cwd, and loads the side tab's
-> variables before every prompt and command (task 2.4). Tabs split into panes with `⌘D` and
-> `⌘⇧D`, side tabs with several tabs list them in the sidebar, tabs drag to reorder or into
-> another side tab, and `⌘P` opens a palette (tasks 3.1, 3.2). The layout survives a restart;
-> after a reboot each pane gets a fresh shell in its last folder and a Resume button for its
-> Claude session (tasks 3.3, 3.4). The context panel pins or hides behind a hover edge (3.5).
-> The app registers `terminescu hook` in Claude Code's settings on start. A tab running Claude
-> shows the agent icon and turns amber while Claude waits on a permission prompt, clearing when
-> the prompt is answered or denied (tasks 4.1 to 4.3). `⌘⇧L` opens a read-only transcript beside
-> a Claude pane, where a selection pins to the context or extracts to a variable (task 4.4).
-> Every tab and side tab shows a status: Running, Done or Failed from the shell, Waiting from
-> Claude, or one you set with `⌘⇧S`. Settings › Statuses (`⌘,`) holds the global statuses and
-> the rules, such as `pnpm test*` failing sets `Tests red`; `terminescu status "Deploying"
-> --until-exit` sets one from any shell. The sidebar sorts by hand, background, status or name
-> (tasks 5.1 to 5.3).
-> The context panel keeps variables in three modes: saved in SQLite, session only, or secret,
-> which lives in the daemon, shows masked and inserts as `$NAME` (tasks 6.1, 6.2). `⌘E` extracts
-> a selection, `⌘⇧P` pins it, and `⌘I` inserts a prompt from the library (`⌘⇧I`) with its
-> `{{variables}}` filled from the side tab (tasks 6.3 to 6.5). A waiting session shows in the
-> status line and the dock badge, posts a silent notification while the app is in the
-> background, and `⌘⇧A` jumps to the oldest one (task 6.6). The sidebar's Commands section runs
-> or inserts saved shell lines; a launcher command runs in its own tab and the side tab shows
-> `n/m up` (tasks 6.7, 6.8). Settings (`⌘,`) covers statuses, commands, variable defaults,
-> extraction rules, shell, notifications and keys, where every shortcut can be rebound
-> (tasks 6.9, 6.10).
-
-## See it
-
-All links are private claude.ai artifacts. Only the owner can open them until they are shared.
-
-| What | Link |
-|---|---|
-| Plan page: proposal, 53 tasks, decisions D1 to D36, risks, confidence | https://claude.ai/artifact/NxQVoq2agT798FUijmKxmQ |
-| Reel: an 80-second animated walkthrough in 11 scenes | https://claude.ai/artifact/9xWiUJnmsdS2z4aYauTGik |
-| Screens: 15 canvas boards (main window, drags, merge, statuses, extract, insert, prompts, hidden context panel, settings, text editor, editor request, three app icon boards) | https://claude.ai/artifact/RGGKUzakwC7mZqvNZ3tPpH |
-| Workbench: the design system (tokens, 8x8 icons, components) | https://claude.ai/artifact/AhrMAGQJ1CGCzb6JYYBojH |
-| UI directions from 2026-11-03, from back when the project was called agent-orch | https://claude.ai/artifact/VjG2fC1eTnc2QTogGHNpmq |
-
-The source of each page lives in this repo under `design/` (see [Design](#design)).
 
 ## The model
 
 ```
 Window            an OS window
 └─ Side tab       a row in the sidebar; owns one context
-   └─ Tab         browser-style, across the top
+   └─ Tab         listed under its side tab; Settings can show them in a top bar
       └─ Pane     a split: terminal, transcript or text
 ```
 
@@ -192,7 +144,7 @@ statuses.
   client tickets, tokens or real names in the repo.
 - Run `openspec validate add-terminescu-foundation --strict` after every change to the plan.
 
-## Requirements (target)
+## Requirements
 
 macOS 14 or later, Rust stable, Node 24, pnpm, and Claude Code with a logged-in `claude`.
 

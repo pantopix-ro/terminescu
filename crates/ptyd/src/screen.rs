@@ -82,6 +82,16 @@ impl Report {
     }
 }
 
+/// The widest and tallest grid a pane gets: a 6K screen at the smallest font fits, and a
+/// size from a confused client cannot make the daemon allocate gigabytes.
+pub const MAX_COLS: u16 = 1000;
+pub const MAX_ROWS: u16 = 500;
+
+/// A pane size the grid can hold, from 2x1 up to [`MAX_COLS`] x [`MAX_ROWS`].
+pub fn clamp_size(cols: u16, rows: u16) -> (u16, u16) {
+    (cols.clamp(2, MAX_COLS), rows.clamp(1, MAX_ROWS))
+}
+
 pub struct Screen {
     term: Term<VoidListener>,
     parser: Processor,
@@ -99,9 +109,10 @@ impl Screen {
             kitty_keyboard: true,
             ..Config::default()
         };
+        let (cols, rows) = clamp_size(cols, rows);
         let size = Size {
-            cols: cols.max(2) as usize,
-            rows: rows.max(1) as usize,
+            cols: cols as usize,
+            rows: rows as usize,
         };
         Self {
             term: Term::new(config, &size, VoidListener),
@@ -150,9 +161,10 @@ impl Screen {
     }
 
     pub fn resize(&mut self, cols: u16, rows: u16) {
+        let (cols, rows) = clamp_size(cols, rows);
         let size = Size {
-            cols: cols.max(2) as usize,
-            rows: rows.max(1) as usize,
+            cols: cols as usize,
+            rows: rows as usize,
         };
         if self.marks.is_empty() {
             self.term.resize(size);
@@ -313,6 +325,15 @@ impl Lines {
 mod tests {
     use super::MarkKind::{Output, Prompt};
     use super::*;
+
+    #[test]
+    fn a_huge_size_is_clamped_before_the_grid_is_made() {
+        assert_eq!(clamp_size(u16::MAX, u16::MAX), (MAX_COLS, MAX_ROWS));
+        assert_eq!(clamp_size(0, 0), (2, 1));
+        let mut screen = Screen::new(u16::MAX, u16::MAX, 100);
+        screen.resize(u16::MAX, 3);
+        screen.feed(b"ok");
+    }
 
     const A: &str = "\x1b]133;A;src=terminescu\x07";
     const C: &str = "\x1b]133;C;src=terminescu\x07";

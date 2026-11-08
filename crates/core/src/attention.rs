@@ -54,10 +54,19 @@ pub fn command_label(command: &str) -> Option<String> {
         .skip_while(|w| w.split_once('=').is_some_and(|(k, _)| is_name(k)));
     let program = words.next()?;
     let program = program.rsplit('/').next().filter(|p| is_word(p))?;
-    Some(match words.next().filter(|w| is_word(w)) {
+    Some(match words.next().filter(|w| is_subcommand(w)) {
         Some(sub) => format!("{program} {sub}"),
         None => program.to_owned(),
     })
+}
+
+/// A subcommand as `build`, `run` or `compose`: lowercase letters, `-` and `:`. A token or an
+/// id passed as the first argument has digits or capitals and stays out.
+fn is_subcommand(s: &str) -> bool {
+    (1..=20).contains(&s.len())
+        && s.starts_with(|c: char| c.is_ascii_lowercase())
+        && s.chars()
+            .all(|c| c.is_ascii_lowercase() || "-:".contains(c))
 }
 
 fn is_name(s: &str) -> bool {
@@ -253,6 +262,13 @@ mod tests {
             Some("curl")
         );
         assert_eq!(command_label("make").as_deref(), Some("make"));
+        // A bare token as the first argument is not a subcommand.
+        assert_eq!(command_label("echo tok_AbC123xyz").as_deref(), Some("echo"));
+        assert_eq!(
+            command_label("vault login hvs.CAESxyz").as_deref(),
+            Some("vault login")
+        );
+        assert_eq!(command_label("open s3cr3t").as_deref(), Some("open"));
         assert_eq!(command_label("  ").as_deref(), None);
         assert_eq!(command_label("'quoted thing'").as_deref(), None);
     }

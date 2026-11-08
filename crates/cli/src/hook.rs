@@ -19,15 +19,22 @@ const MAX_EVENT: u64 = 4 * 1024 * 1024;
 const CLAUDE_ENV_FILE: &str = "CLAUDE_ENV_FILE";
 
 pub fn run() -> ExitCode {
+    // A panic must not reach Claude as exit 101 or as text: it ends here, silently.
+    std::panic::set_hook(Box::new(|_| {}));
+    let _ = std::panic::catch_unwind(forward);
+    ExitCode::SUCCESS
+}
+
+fn forward() {
     let start = Instant::now();
     // Outside a Terminescu pane there is nobody to tell.
     let Some(pane) = pane_id() else {
-        return ExitCode::SUCCESS;
+        return;
     };
     let (tx, rx) = mpsc::channel();
     // Reading stdin can block on a writer that never closes it; the process exits without
     // waiting for this thread.
-    std::thread::spawn(move || {
+    let reader = std::thread::Builder::new().spawn(move || {
         let mut bytes = Vec::new();
         let read = std::io::stdin()
             .lock()
@@ -35,14 +42,17 @@ pub fn run() -> ExitCode {
             .read_to_end(&mut bytes);
         let _ = tx.send(read.map(|_| bytes));
     });
+    if reader.is_err() {
+        return;
+    }
     let Ok(Ok(bytes)) = rx.recv_timeout(STDIN_WAIT) else {
-        return ExitCode::SUCCESS;
+        return;
     };
     if bytes.len() as u64 > MAX_EVENT {
-        return ExitCode::SUCCESS;
+        return;
     }
     let Ok(event) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
-        return ExitCode::SUCCESS;
+        return;
     };
     if event.get("hook_event_name").and_then(|v| v.as_str()) == Some("SessionStart")
         && let Some(file) = std::env::var_os(CLAUDE_ENV_FILE).filter(|f| !f.is_empty())
@@ -58,7 +68,6 @@ pub fn run() -> ExitCode {
             left,
         );
     }
-    ExitCode::SUCCESS
 }
 
 /// The line that gives Claude's Bash commands the side tab's session and secret variables
