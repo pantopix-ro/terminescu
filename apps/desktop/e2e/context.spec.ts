@@ -175,3 +175,39 @@ test("Context, Pins and Prompts stack one under the other and the panel scrolls"
   await expect(panel.locator('.ctx-section[data-section="Prompts"]')).toBeInViewport();
   await expect(panel.locator(".ctx-head")).toBeInViewport();
 });
+
+test("a removed variable comes back with Undo, and goes once the toast does", async ({ page }) => {
+  await page.clock.install();
+  await start(page);
+  const panel = page.locator("aside.ctx-pinned");
+  for (const [name, mode] of [["ticket", "saved"], ["API_TOKEN", "secret"]] as const) {
+    await panel.getByRole("button", { name: "+ variable" }).click();
+    const form = panel.getByRole("form", { name: "Add a variable" });
+    await form.getByLabel("Name").fill(name);
+    await form.getByLabel("Storage").selectOption(mode);
+    await form.getByLabel("Value").fill("example");
+    await form.getByRole("button", { name: "Add" }).click();
+  }
+  const row = (name: string) => panel.locator(`.ctx-var[data-var="${name}"]`);
+  const ctxOf = () =>
+    page.evaluate(async () => {
+      const t = (window as any).__terminescu;
+      const side = t.host.workspace().windows[0].sideTabs[0].id;
+      return (await t.host.variables(side)).map((v: { name: string }) => v.name);
+    });
+
+  // A secret comes back without the panel ever holding its value.
+  await row("API_TOKEN").getByLabel("Remove API_TOKEN").click();
+  await expect(row("API_TOKEN")).toHaveCount(0);
+  await expect(page.locator(".toast")).toContainText("Removed API_TOKEN.");
+  expect(await ctxOf()).toContain("API_TOKEN");
+  await page.locator(".toast").getByRole("button", { name: "Undo" }).click();
+  await expect(row("API_TOKEN")).toHaveAttribute("data-mode", "secret");
+
+  await row("ticket").getByLabel("Remove ticket").click();
+  await expect(row("ticket")).toHaveCount(0);
+  await page.clock.runFor(11_000);
+  await expect(page.locator(".toast")).toHaveCount(0);
+  await expect.poll(ctxOf).not.toContain("ticket");
+  expect(await ctxOf()).toContain("API_TOKEN");
+});

@@ -101,6 +101,7 @@ import {
   TabBar,
   tabName,
   TerminalPane,
+  trapModalFocus,
   TextPane,
   terminalSelection,
   clearTerminal,
@@ -149,6 +150,9 @@ export interface AppProps {
 /** Keeps a selection valid: the previous id while it still exists, else the first one. */
 /** Foreground processes that mean a terminal sits at its prompt, with nothing to lose. */
 const LOGIN_SHELLS = new Set(["zsh", "bash", "fish", "sh", "dash", "tcsh", "csh", "ksh", "nu", "login"]);
+
+/** The undo toast: `undo` on its button, `done` when it goes without one. */
+type Toast = { text: string; undo(): void; done?(): void; removes?: { side: string; name: string } };
 
 function pick(ids: string[], previous: string | undefined): string | undefined {
   return previous && ids.includes(previous) ? previous : ids[0];
@@ -352,9 +356,37 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const [palette, setPalette] = useState(false);
   const [mode, setMode] = useState<ContextMode>(loadMode);
   const [dragging, setDragging] = useState<string>();
-  // A side tab merge waiting on the clash dialog, and the last merge's undo toast (D5).
+  // A side tab merge waiting on the clash dialog (D5).
   const [merging, setMerging] = useState<{ from: SideTab; into: SideTab; clashes: MergeClash[] }>();
-  const [mergeToast, setMergeToast] = useState<{ undoId: string; text: string }>();
+  // The undo toast for the last merge or removed variable. `done` runs once the toast goes
+  // without Undo: a removed variable is deleted only then.
+  const [toast, setToast] = useState<Toast>();
+  const toastRef = useRef<Toast>(undefined);
+  const endToast = (undo: boolean) => {
+    const t = toastRef.current;
+    toastRef.current = undefined;
+    setToast(undefined);
+    if (undo) t?.undo();
+    else t?.done?.();
+  };
+  const showToast = (next: Toast) => {
+    toastRef.current?.done?.();
+    toastRef.current = next;
+    setToast(next);
+  };
+  // Tab stays inside an open dialog, and focus comes back when it closes.
+  useEffect(() => {
+    const root = document.getElementById("root");
+    return root ? trapModalFocus(root) : undefined;
+  }, []);
+  // A window that closes while a toast shows keeps what the toast would have kept.
+  useEffect(() => {
+    const flush = () => endToast(false);
+    window.addEventListener("pagehide", flush);
+    return () => window.removeEventListener("pagehide", flush);
+  }, []);
+  // Variables removed in the panel but kept until their toast goes, by side tab.
+  const [removing, setRemoving] = useState<{ side: string; name: string }[]>([]);
   const [sheet, setSheet] = useState<
     | "status"
     | "settings"
@@ -926,7 +958,11 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       off?.();
     };
   }, [host, sideId]);
-  const shownCtx: Ctx = ctx.side === sideId ? ctx : { variables: [], items: [], pins: [], files: [] };
+  const shownCtx: Ctx = useMemo(() => {
+    if (ctx.side !== sideId) return { variables: [], items: [], pins: [], files: [] };
+    const gone = removing.filter((r) => r.side === sideId).map((r) => r.name);
+    return gone.length ? { ...ctx, variables: ctx.variables.filter((v) => !gone.includes(v.name)) } : ctx;
+  }, [ctx, sideId, removing]);
   // Names and modes for the editor's chips; values stay out of the text panes (D35).
   const chipVars = useMemo(
     () => (ctx.side === sideId ? ctx.variables.map((v) => ({ name: v.name, mode: v.mode })) : undefined),
@@ -1466,20 +1502,47 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     return host.mergeSideTabs(from.id, into.id, fromName, resolution).then((done) => {
       setMerging(undefined);
       const renamed = done.renames.map(([a, b]) => `${a} → ${b}`).join(", ");
-      setMergeToast({ undoId: done.undoId, text: `Merged ${fromName} into ${intoName}${renamed ? `; kept ${renamed}` : ""}.` });
+      showToast({
+        text: `Merged ${fromName} into ${intoName}${renamed ? `; kept ${renamed}` : ""}.`,
+        undo: () => host.undoMerge(done.undoId).then(refocus, report),
+      });
       if (activeSide?.id === from.id) setSideTabId(into.id);
       refocus();
     });
   };
   useEffect(() => {
-    if (!mergeToast) return;
-    const t = setTimeout(() => setMergeToast((m) => (m === mergeToast ? undefined : m)), MERGE_UNDO_MS);
+    if (!toast) return;
+    const t = setTimeout(() => toastRef.current === toast && endToast(false), MERGE_UNDO_MS);
     return () => clearTimeout(t);
-  }, [mergeToast]);
-  const undoMerge = () => {
-    if (!mergeToast) return;
-    setMergeToast(undefined);
-    host.undoMerge(mergeToast.undoId).then(refocus, report);
+  }, [toast]);
+  // A removed variable leaves the panel at once and is deleted when its toast goes, so Undo
+  // works for a secret too: the panel never holds a secret's value to add it back (D35).
+  const removeVariable = (side: string, name: string) => {
+    const key = { side, name };
+    const forget = () => setRemoving((r) => r.filter((x) => x !== key));
+    setRemoving((r) => [...r, key]);
+    showToast({
+      text: `Removed ${name}.`,
+      removes: key,
+      undo: forget,
+      done: () => {
+        forget();
+        host.removeVariable(side, name).catch(report);
+      },
+    });
+    return Promise.resolve();
+  };
+  // Adding a name whose removal waits on the toast deletes the old one first, so the late
+  // delete cannot take the new variable.
+  const addVariable = async (side: string, v: Parameters<typeof host.addVariable>[1]) => {
+    const r = toastRef.current?.removes;
+    if (r?.side === side && r.name === v.name) {
+      toastRef.current = undefined;
+      setToast(undefined);
+      setRemoving((x) => x.filter((k) => k !== r));
+      await host.removeVariable(side, v.name);
+    }
+    return host.addVariable(side, v);
   };
 
   // A tab dragged from another window (task 8.1): the core says where the cursor is; this
@@ -2039,10 +2102,10 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
             pins={shownCtx.pins}
             onOpenPin={openPin}
             onRemovePin={(p) => void host.removePin(p.id).catch((e: unknown) => setError(String(e)))}
-            onAddVariable={(v) => (sideId ? host.addVariable(sideId, { ...v, originTabId: activeTab?.id ?? null }) : Promise.resolve())}
+            onAddVariable={(v) => (sideId ? addVariable(sideId, { ...v, originTabId: activeTab?.id ?? null }) : Promise.resolve())}
             onChangeVariable={(name, change) => (sideId ? host.changeVariable(sideId, name, change) : Promise.resolve())}
             onInsertVariable={focused && activeTab && !transcriptOf(activeTab.layout, focused) ? insertVariable : undefined}
-            onRemoveVariable={(name) => (sideId ? host.removeVariable(sideId, name) : Promise.resolve())}
+            onRemoveVariable={(name) => (sideId ? removeVariable(sideId, name) : Promise.resolve())}
             onEditVariable={(v) =>
               sideId && void host.openVariable(sideId, v.name).then((d) => revealDoc(d.id), (e: unknown) => setError(String(e)))
             }
@@ -2213,6 +2276,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           <div
             className="ao-frame insert-dialog"
             role="dialog"
+            aria-modal="true"
             aria-label="Save as prompt"
             onPointerDown={(e) => e.stopPropagation()}
             onKeyDown={(e) => e.key === "Escape" && closeSheet()}
@@ -2333,6 +2397,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           <div
             className="ao-frame close-dialog"
             role="alertdialog"
+            aria-modal="true"
             aria-label="Close side tab"
             onPointerDown={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
@@ -2371,6 +2436,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           <div
             className="ao-frame close-dialog"
             role="alertdialog"
+            aria-modal="true"
             aria-label="Unsaved changes"
             onPointerDown={(e) => e.stopPropagation()}
             onKeyDown={(e) => e.key === "Escape" && void finishClose("cancel")}
@@ -2403,6 +2469,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           <div
             className="ao-frame close-dialog"
             role="alertdialog"
+            aria-modal="true"
             aria-label="Close a running program"
             onPointerDown={(e) => e.stopPropagation()}
             onKeyDown={(e) => e.key === "Escape" && finishCloseRunning(false)}
@@ -2479,10 +2546,10 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           }}
         />
       )}
-      {mergeToast && (
+      {toast && (
         <div className="ao-frame toast" role="status">
-          <span className="small">{mergeToast.text}</span>
-          <button type="button" className="ao-btn ghost" onClick={undoMerge}>
+          <span className="small">{toast.text}</span>
+          <button type="button" className="ao-btn ghost" onClick={() => endToast(true)}>
             Undo
           </button>
         </div>

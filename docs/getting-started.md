@@ -98,7 +98,7 @@ On each start the app does these steps:
    all your other settings. If `CLAUDE_CONFIG_DIR` is set, it uses that folder.
 3. It starts `terminescu-ptyd`, which keeps your shells. The daemon continues to run when you
    quit the app, so your shells stay alive.
-4. It opens the database `~/Library/Application Support/ro.pxro.terminescu/terminescu.sqlite`.
+4. It opens the database `~/Library/Application Support/ro.pantopix.terminescu/terminescu.sqlite`.
 
 New tabs start your login shell. Type `claude` in a tab to start a Claude session.
 
@@ -124,7 +124,7 @@ Each start points the Claude hook at the CLI of the build that started. After yo
    shells.
 3. Delete `/Applications/Terminescu.app`.
 4. Delete `~/Library/Application Support/Terminescu`.
-5. Delete `~/Library/Application Support/ro.pxro.terminescu`.
+5. Delete `~/Library/Application Support/ro.pantopix.terminescu`.
 6. In `~/.claude/settings.json`, remove each hook whose command ends in `terminescu' hook`.
 
 ## Troubleshooting

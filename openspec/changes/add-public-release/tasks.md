@@ -11,9 +11,10 @@
 - [ ] 1.3 Scan the whole git history for real names, paths, tokens and emails before the repo
       goes public. Rewrite or squash anything found. Verify: the scan pattern from CLAUDE.md
       over `git log -p --all` prints nothing.
-- [ ] 1.4 Owner: transfer the repo to the PANTOPIX RO org, install the CLA Assistant app, make
-      the repo public, and update the remote and `docs/getting-started.md`. Verify: manual,
-      `git remote -v` shows the org.
+- [ ] 1.4 Owner: move the repo from the owner's personal account to `pantopix/terminescu` (the name
+      `PUBLIC_REPO` and the update feed use), install the CLA Assistant app, make the repo
+      public, and update the remote and `docs/getting-started.md`. The release job refuses to
+      run anywhere else. Verify: manual, `git remote -v` shows `pantopix/terminescu`.
 
 ## 2. Credits and license checks
 
@@ -88,6 +89,8 @@
       `openspec validate add-terminescu-foundation --strict`.
 
 ## Later: notarized releases (after the Apple account)
+
+Not planned for now (owner, 2026-11-08): releases stay ad-hoc signed.
 
 - Spike: sign and notarize one build by hand. Confirm the pty, the sockets and WebGL under
   the hardened runtime, and settle `Entitlements.plist` (D2, D3). Check that `spctl -a -vv`

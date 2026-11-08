@@ -42,6 +42,7 @@ export function MergeDialog({ fromName, intoName, clashes, onMerge, onCancel }: 
       <div
         className="ao-frame merge-dialog"
         role="dialog"
+        aria-modal="true"
         aria-label="Merge side tabs"
         onPointerDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.key === "Escape" && onCancel()}

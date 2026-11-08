@@ -691,6 +691,11 @@ buffers once per sheet.
       lowercase subcommand. CI runs every gate and the release job waits for it, with secrets
       on the Build step only, actions pinned by commit, and repo, tag and signature checks.
       Verify: `windows.spec.ts`, `mirror.test.ts`, `atomic.rs`, `screen.rs`, `attention.rs`.
+- [x] 8.67 Review follow-up (owner request 2026-11-08). Tab and Shift+Tab stay inside an open
+      dialog, focus taken behind it comes back, and closing it returns focus to where it was.
+      A removed variable leaves the panel at once and is deleted when its Undo toast goes, so
+      a secret comes back without the panel holding its value. The bundle id is
+      `ro.pantopix.terminescu`. Verify: `a11y.spec.ts`, `context.spec.ts`, `modal.test.ts`.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

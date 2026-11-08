@@ -182,6 +182,7 @@ export function InsertDialog(props: InsertDialogProps) {
       <div
         className="ao-frame insert-dialog"
         role="dialog"
+        aria-modal="true"
         aria-label="Insert"
         onPointerDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => {

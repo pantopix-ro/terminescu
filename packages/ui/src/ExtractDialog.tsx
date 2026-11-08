@@ -46,6 +46,7 @@ export function ExtractDialog({ value, taken, from, save, onClose, defaults }: E
     <form
       className="ao-frame x-dialog"
       role="dialog"
+      aria-modal="true"
       aria-label="Extract to variable"
       onPointerDown={(e) => e.stopPropagation()}
       onSubmit={(e) => {
