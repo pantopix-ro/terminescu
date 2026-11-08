@@ -122,7 +122,9 @@ export function themeFor(tint?: Tint | null, base: ITheme = xtermTheme, opacity 
   if (!tint && opacity >= 100) return base;
   const bg = base.background ?? colors.panel;
   const tinted = !tint ? bg : isLight(bg) ? mix(bg, colors[`tint-${tint}`], LIGHT_TINT) : colors[`tint-${tint}`];
-  return { ...base, background: withOpacity(tinted, opacity), cursorAccent: tinted };
+  // See-through, the pane's slot paints the colour at the opacity (task 8.63); xterm stays clear
+  // so the two do not stack into a solid one.
+  return { ...base, background: opacity < 100 ? withOpacity(tinted, 0) : tinted, cursorAccent: tinted };
 }
 
 /** xterm's 16 ANSI slots in index order. */

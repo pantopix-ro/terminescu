@@ -85,6 +85,7 @@ import {
   paneSubtitle,
   tabActivities,
   tabSubtitles,
+  withLiveNames,
   type Reveal,
   DROP_END,
   focusPane,
@@ -295,7 +296,13 @@ function PaneHead({ paneId, name, children }: { paneId: string; name: string; ch
 export function App({ windowId, host, workspace, terminals }: AppProps) {
   const ws = useStore(workspace.store, (s) => s.workspace);
   const win = ws.windows.find((w) => w.id === windowId);
-  const sideTabs = win?.sideTabs ?? [];
+  // Claude sessions by pane, from hook events in the core (D34).
+  const [agents, setAgents] = useState<Agents>({});
+  // Each terminal pane's path, program, process and Claude title, for tab names and subtitles (tasks 8.30, 8.62).
+  const [labels, setLabels] = useState<Labels>({});
+  const [focusByTab, setFocusByTab] = useState<Record<string, string>>({});
+  // Each tab carries its focused terminal's live name, `zsh` or `npm`, for `tabName` (task 8.62).
+  const sideTabs = useMemo(() => withLiveNames(win?.sideTabs ?? [], focusByTab, labels, agents), [win?.sideTabs, focusByTab, labels, agents]);
 
   // Shown statuses and the saved config, from the core (D15).
   const [statuses, setStatuses] = useState<Record<string, Shown>>({});
@@ -314,7 +321,6 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const [tabBySide, setTabBySide] = useState<Record<string, string>>({});
   const activeTab = tabs.find((t) => t.id === pick(tabs.map((t) => t.id), activeSide && tabBySide[activeSide.id]));
   const panes = activeTab ? panesOf(activeTab.layout) : [];
-  const [focusByTab, setFocusByTab] = useState<Record<string, string>>({});
   const focused = pick(panes, activeTab && focusByTab[activeTab.id]);
   // The pane each tab shows alone (task 8.39), for this session only; a pane that left the tab
   // shows the whole layout again.
@@ -812,10 +818,6 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       }
     }
   };
-  // Claude sessions by pane, from hook events in the core (D34).
-  const [agents, setAgents] = useState<Agents>({});
-  // Each terminal pane's path, program and Claude title, for the tabs' subtitles (task 8.30).
-  const [labels, setLabels] = useState<Labels>({});
   const subtitles = useMemo(() => tabSubtitles(sideTabs.flatMap((s) => s.tabs), focusByTab, labels, agents), [sideTabs, focusByTab, labels, agents]);
   // What runs in each tab: its icons blink, and bounce while Claude waits (task 8.54).
   const activity = useMemo(() => tabActivities(sideTabs.flatMap((s) => s.tabs), labels, agents), [sideTabs, labels, agents]);
@@ -2241,7 +2243,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               .getState()
               .workspace.windows.flatMap((w) => w.sideTabs)
               .find((x) => x.id === id);
-            return side && sideTabName(side);
+            return side && sideTabName(withLiveNames([side], focusByTab, labels, agents)[0]!);
           }}
           onError={setError}
           onClose={closeSheet}

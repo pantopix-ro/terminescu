@@ -37,6 +37,22 @@ pub struct PaneLabel {
     /// Claude's title while Claude runs in the pane, without its spinner.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// The pty's foreground process, as Terminal.app names a tab: `zsh` at the prompt
+    /// (task 8.62). A tab is named after it while no command of its own runs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub process: Option<String>,
+}
+
+/// A process name fit for a tab: no control characters, at most [`MAX_PROGRAM`] characters,
+/// none for a blank one.
+pub fn process_name(raw: &str) -> Option<String> {
+    let name: String = raw
+        .chars()
+        .filter(|c| !c.is_control())
+        .take(MAX_PROGRAM)
+        .collect();
+    let name = name.trim();
+    (!name.is_empty()).then(|| name.to_string())
 }
 
 /// `cwd` with `home` written `~`; other paths stay whole.
@@ -106,6 +122,7 @@ pub fn label(
             .flatten()
             .filter(|t| *t != CLAUDE_DEFAULT)
             .map(str::to_string),
+        process: None,
     }
 }
 
@@ -141,6 +158,17 @@ mod tests {
         assert_eq!(program_of("time cargo test").as_deref(), Some("cargo"));
         assert_eq!(program_of("   ").as_deref(), None);
         assert_eq!(program_of("A=1").as_deref(), None);
+    }
+
+    #[test]
+    fn a_process_name_drops_control_characters_and_stays_short() {
+        assert_eq!(process_name("zsh").as_deref(), Some("zsh"));
+        assert_eq!(process_name("np\u{7}m").as_deref(), Some("npm"));
+        assert_eq!(process_name(" \n").as_deref(), None);
+        assert_eq!(
+            process_name(&"x".repeat(99)).map(|n| n.len()),
+            Some(MAX_PROGRAM)
+        );
     }
 
     #[test]

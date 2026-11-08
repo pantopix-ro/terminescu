@@ -71,7 +71,7 @@ import {
   type Tab,
   type Workspace,
 } from "./protocol";
-import { MOCK_HOME, NAMES, paneLabel, titleOf } from "./labels";
+import { MOCK_HOME, NAMES, paneLabel, programOf, titleOf } from "./labels";
 import { applyBatch } from "./reducer";
 import { applyLaunchers, computeStatuses, type PaneDynamic, type PaneFacts } from "./status";
 
@@ -466,7 +466,9 @@ export function createMockHost(initial?: Workspace): MockHost {
       for (const t of s.tabs)
         for (const p of terminalsOf(t.layout)) {
           const sh = shellFacts.get(p);
-          next[p] = paneLabel(cwds.get(p) ?? MOCK_HOME, sh?.running ? sh.command : undefined, titles.get(p), agents.has(p));
+          const running = sh?.running ? sh.command : undefined;
+          // The mock's foreground process: the running program, else the login shell.
+          next[p] = { ...paneLabel(cwds.get(p) ?? MOCK_HOME, running, titles.get(p), agents.has(p)), process: (running && programOf(running)) || "zsh" };
         }
     if (JSON.stringify(next) === JSON.stringify(labels)) return;
     labels = next;

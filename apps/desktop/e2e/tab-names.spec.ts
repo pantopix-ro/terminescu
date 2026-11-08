@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// Tasks 8.30 and 8.60 on the mock host: a tab is named "Terminal", a row with two tabs or more
-// takes an animal or bird name, and a live subtitle follows its focused terminal: the path,
+// Tasks 8.30, 8.60 and 8.62 on the mock host: a tab is named after what runs in its terminal, as
+// Terminal.app names one (`zsh`, `npm`, `claude`), a row with two tabs or more takes an animal or bird name, and a live subtitle follows its focused terminal: the path,
 // then the program or `claude` and Claude's title.
 
 const host = (page: Page, fn: string, ...args: unknown[]) =>
@@ -14,7 +14,7 @@ async function start(page: Page) {
   await page.locator(".term-pane").first().click();
 }
 
-test("tabs are named Terminal, and only a row with two tabs or more takes an animal name", async ({ page }) => {
+test("tabs are named after their terminal, and only a row with two tabs or more takes an animal name", async ({ page }) => {
   await start(page);
   for (let i = 0; i < 2; i++) await page.getByRole("button", { name: "New tab", exact: true }).click();
   await page.getByRole("button", { name: "Add a side tab" }).click();
@@ -23,23 +23,42 @@ test("tabs are named Terminal, and only a row with two tabs or more takes an ani
   expect(sides[0]!.name).toMatch(/^[A-Z][a-z]+$/);
   expect(sides[0]!.name).not.toBe(sides[1]!.name);
   // The group shows its animal; the single row shows its tab's name.
-  await expect(page.locator(".ao-st .t")).toHaveText([sides[0]!.name, "Terminal"]);
+  await expect(page.locator(".ao-st .t")).toHaveText([sides[0]!.name, "zsh"]);
   const tab = sides[1]!.tabs[0]!.id;
-  await expect(page.locator(`.ao-tab[data-tab="${tab}"] .n`)).toHaveText("Terminal");
+  await expect(page.locator(`.ao-tab[data-tab="${tab}"] .n`)).toHaveText("zsh");
 
   await host(page, "send", { type: "RenameTab", tabId: tab, title: "api" });
   await expect(page.locator(`.ao-tab[data-tab="${tab}"] .n`)).toHaveText("api");
   await expect(page.locator(".ao-st .t").nth(1)).toHaveText("api");
-  // Clearing the name brings "Terminal" back.
+  // Clearing the name brings the shell's name back.
   await host(page, "send", { type: "RenameTab", tabId: tab, title: null });
-  await expect(page.locator(`.ao-tab[data-tab="${tab}"] .n`)).toHaveText("Terminal");
+  await expect(page.locator(`.ao-tab[data-tab="${tab}"] .n`)).toHaveText("zsh");
+
+  // A renamed group still shows its animal in the list its row shows on hover.
+  await host(page, "send", { type: "RenameSideTab", sideTabId: sides[0]!.id, title: "work" });
+  await page.locator(".ao-st").first().hover();
+  await expect(page.getByRole("group", { name: "Shells in work" }).locator(".px-tip-alias")).toHaveText(sides[0]!.name);
+  await page.mouse.move(900, 500);
+  await host(page, "send", { type: "RenameSideTab", sideTabId: sides[0]!.id, title: null });
+
+  // The name follows what runs: the command, then Claude, then the shell again.
+  const pane = (await workspace(page)).windows[0].sideTabs[1].tabs[0].layout.id as string;
+  await host(page, "runCommand", pane, "npm run dev", null);
+  await expect(page.locator(`.ao-tab[data-tab="${tab}"] .n`)).toHaveText("npm");
+  await host(page, "runCommand", pane, "npm run dev", 0);
+  await host(page, "runCommand", pane, "claude", null);
+  await host(page, "setAgent", pane, { session: "s-1", state: "running", lastMessage: null });
+  await expect(page.locator(`.ao-tab[data-tab="${tab}"] .n`)).toHaveText("claude");
+  await host(page, "setAgent", pane, null);
+  await host(page, "runCommand", pane, "claude", 0);
+  await expect(page.locator(`.ao-tab[data-tab="${tab}"] .n`)).toHaveText("zsh");
 
   // A group left with one tab shows that tab's name again.
   for (const t of sides[0]!.tabs.slice(1)) await host(page, "send", { type: "CloseTab", tabId: t.id });
-  await expect(page.locator(".ao-st .t").first()).toHaveText("Terminal");
+  await expect(page.locator(".ao-st .t").first()).toHaveText("zsh");
 });
 
-test("the subtitle keeps the path and follows the program and Claude's title", async ({ page }) => {
+test("the name follows the program and the subtitle keeps the path and Claude's title", async ({ page }) => {
   await start(page);
   const tab = (await workspace(page)).windows[0].sideTabs[0].tabs[0];
   const pane = tab.layout.id;
@@ -51,23 +70,25 @@ test("the subtitle keeps the path and follows the program and Claude's title", a
   await host(page, "setCwd", pane, "/Users/owner/work/api");
   await expect(sub).toHaveText("~/work/api");
   await host(page, "runCommand", pane, "TOKEN=tok-example npm run dev", null);
-  await expect(sub).toHaveText("~/work/api · npm");
+  // The tab is named "npm" (task 8.62), so the subtitle leaves it out.
+  await expect(page.locator(`.ao-tab[data-tab="${tab.id}"] .n`)).toHaveText("npm");
+  await expect(sub).toHaveText("~/work/api");
   await host(page, "runCommand", pane, "npm run dev", 0);
   await expect(sub).toHaveText("~/work/api");
 
   await host(page, "runCommand", pane, "claude", null);
   await host(page, "setAgent", pane, { session: "s-1", state: "running", lastMessage: null });
-  await expect(sub).toHaveText("~/work/api · claude");
+  await expect(sub).toHaveText("~/work/api");
   // Claude's spinner never shows, and its default title adds nothing.
   await host(page, "setTitle", pane, "✳ Claude Code");
-  await expect(sub).toHaveText("~/work/api · claude");
+  await expect(sub).toHaveText("~/work/api");
   await host(page, "setTitle", pane, "◐ Fix PROJ-482");
-  await expect(sub).toHaveText("~/work/api · claude · Fix PROJ-482");
+  await expect(sub).toHaveText("~/work/api · Fix PROJ-482");
   // Hovering the tab shows the sidebar's tooltip under it: the whole name, then the subtitle (task 8.48).
   await page.locator(`.ao-tab[data-tab="${tab.id}"]`).hover();
   const tip = page.getByRole("tooltip");
-  await expect(tip.locator(".px-tip-name")).toHaveText("Terminal");
-  await expect(tip.locator(".px-tip-sub")).toHaveText("~/work/api · claude · Fix PROJ-482");
+  await expect(tip.locator(".px-tip-name")).toHaveText("claude");
+  await expect(tip.locator(".px-tip-sub")).toHaveText("~/work/api · Fix PROJ-482");
   const [t, b] = await Promise.all([tip.boundingBox(), page.locator(`.ao-tab[data-tab="${tab.id}"]`).boundingBox()]);
   expect(t!.y).toBeGreaterThan(b!.y + b!.height - 1);
   await page.mouse.move(600, 500);
@@ -97,5 +118,5 @@ test("a split tab's subtitle follows its focused terminal, also in the group and
   await expect(sub).toHaveText("~/work/web");
   // The open group lists the same subtitle beside the tab's name.
   await expect(page.locator(`.ao-st-kid[data-kid="${tab.id}"] .kid-sub`)).toHaveText("~/work/web");
-  await expect(page.locator(`.ao-st-kid[data-kid="${tab.id}"] .kid-n`)).toHaveText("Terminal");
+  await expect(page.locator(`.ao-st-kid[data-kid="${tab.id}"] .kid-n`)).toHaveText("zsh");
 });
