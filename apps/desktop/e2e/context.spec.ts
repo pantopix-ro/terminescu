@@ -11,6 +11,24 @@ async function start(page: Page) {
   await expect(page.locator("aside.ctx-pinned")).toBeVisible();
 }
 
+test("rows and controls in the context panel take the amber line under the mouse (tasks 8.61, 8.65)", async ({ page }) => {
+  await start(page);
+  const panel = page.locator("aside.ctx-pinned");
+  for (const name of ["Auto-hide context", "Add"]) {
+    const b = panel.getByRole("button", { name, exact: true }).first();
+    await b.hover();
+    await expect(b).toHaveCSS("outline-style", "solid");
+  }
+  const input = panel.locator("input.ao-input").first();
+  await input.hover();
+  await expect(input).toHaveCSS("outline-style", "solid");
+  // A prompt row draws the line itself; the name button that fills it does not add a second.
+  const row = panel.locator(".ctx-item").first();
+  await row.locator(".link-plain").hover();
+  expect(await row.evaluate((el) => getComputedStyle(el, "::before").boxShadow)).toContain("inset");
+  await expect(row.locator(".link-plain")).toHaveCSS("outline-style", "none");
+});
+
 test("variables: add in each mode, mask a secret, refuse to unmask it", async ({ page }) => {
   await start(page);
   const panel = page.locator("aside.ctx-pinned");

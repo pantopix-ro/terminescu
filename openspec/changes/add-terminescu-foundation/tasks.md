@@ -678,6 +678,9 @@ buffers once per sheet.
       the terminal opacity. Their frames paint at that alpha and the card colours inside turn
       into the light they add over `--bg`, so rows look the same; menus and tooltips stay
       solid. Verify: `terminal-theme.spec.ts` measures both sidebars.
+- [x] 8.65 Context panel hover (owner request 2026-11-08): every button, input and link in the
+      context panel takes the amber line under the mouse; a button that fills its row leaves it
+      to the row. Verify: `context.spec.ts`.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

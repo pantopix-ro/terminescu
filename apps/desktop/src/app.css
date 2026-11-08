@@ -561,3 +561,6 @@ html[data-see-through] :is(.ctx-pinned, .ao-ctx-over) .ctx-sec-head { background
 /* The selected row's path reads brighter than the others'. */
 .app-side .ao-st.active .st-sub, .app-side .ao-st-kid.active .kid-sub { color: var(--dim); }
 .px-tip-alias { color: var(--dim); font-size: 11px; }
+/* Task 8.65: every control in the context panel takes the amber line under the mouse too; a
+   button that fills its row leaves the line to the row. */
+:is(.ctx-pinned, .ao-ctx-over) :is(button, input, textarea, select, a, [role="button"]):not(.ctx-pin-open, .ctx-list > li .link-plain, :disabled):hover { outline: 2px solid var(--focus); outline-offset: -2px; }
