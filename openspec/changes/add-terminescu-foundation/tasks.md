@@ -713,9 +713,18 @@ buffers once per sheet.
       its side tab along (`MoveSideTab`, new): a gap or a new window moves the side tab with
       its context, and a row, the tab bar or a pane merges it in first. A dock after a merge
       has no Undo. Verify: `sidebar-drag.spec.ts`, core `state` tests.
-- [ ] 8.71 Sidebar drags, part 2. A row dragged between rows reorders (hand-sorted only), out
-      of every window opens a new one, onto another window moves there with its context, and
-      a one-tab row docks beside a pane; a group is no pane target.
+- [x] 8.71 Rows side by side. A window shows two or more sidebar rows at once, each in its
+      own area with its current tab; the window keeps this view, per window, across restarts.
+      Shown rows are marked open in the sidebar and the selected one wears the orange focus
+      outline. A pane click selects its row; a row picked in the sidebar takes the selected
+      area's place. A row, or a row's only tab, dropped on a pane's edge shows beside that
+      row with its context, from this window or another, whose emptied window closes. A tab
+      of a group leaves it as a new row beside, taking the group's plain variables. A
+      window's only row dropped in another window's panes joins it as a row, unmerged. The
+      palette shows one row again or hides one. Verify: `split-view.spec.ts`,
+      `dock.spec.ts`, `sidebar-drag.spec.ts`, ui `view` tests, core `state` tests.
+- [ ] 8.72 Sidebar drags, part 3. A row dragged between rows reorders (hand-sorted only), and
+      out of every window opens a new one; the cross-window drag carries a row, not only a tab.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

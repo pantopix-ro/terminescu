@@ -1,7 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// Task 8.32: a tab dropped on a side of a pane splits that pane, the tab's panes taking the
-// half; a pane header dragged to the tab bar makes the pane a tab again.
+// Task 8.32: a tab dropped on a side of the panes shows there, taking the half; since task 8.71
+// it leaves its group as a row of its own. A pane header dragged to the tab bar makes the pane
+// a tab again.
 
 async function start(page: Page) {
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -15,6 +16,7 @@ type Point = { x: number; y: number };
 
 const workspace = (page: Page) => page.evaluate(() => (window as any).__terminescu.host.workspace());
 const tabs = async (page: Page) => (await workspace(page)).windows[0].sideTabs[0].tabs as { id: string; layout: Layout }[];
+const rows = async (page: Page) => ((await workspace(page)).windows[0].sideTabs as { id: string; tabs: { id: string }[] }[]).map((s) => s.tabs.map((t) => t.id));
 const tabIds = (page: Page) => page.locator(".ao-tabs [role=tab]").evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.tab!));
 const shownPanes = (page: Page) =>
   page.locator(".app-pane .ao-tp").evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.pane!));
@@ -63,15 +65,15 @@ for (const [side, fx, fy, dir, order] of [
   ["down", 0.5, 0.95, "column", "after"],
   ["up", 0.5, 0.05, "column", "before"],
 ] as const) {
-  test(`a tab dropped on the ${side} edge splits the pane ${dir === "row" ? "side by side" : "top and bottom"}`, async ({ page }) => {
-    const { pane, second, otherPane } = await twoTabs(page);
+  test(`a tab dropped on the ${side} edge shows as its own row ${dir === "row" ? "side by side" : "top and bottom"}`, async ({ page }) => {
+    const { pane, first, second, otherPane } = await twoTabs(page);
     await drag(page, `.ao-tabs [data-tab="${second}"]`, await at(page, pane, fx, fy), side);
-    // The preview covers the half the tab takes.
     await expect(page.locator(".dock-preview")).toHaveCount(0);
-    await expect.poll(() => tabIds(page)).toHaveLength(1);
-    const [tab] = await tabs(page);
-    expect(tab!.layout).toMatchObject({ type: "split", dir, children: order === "after" ? [{ id: pane }, { id: otherPane }] : [{ id: otherPane }, { id: pane }] });
-    await expect.poll(() => shownPanes(page)).toHaveLength(2);
+    await expect.poll(() => rows(page)).toEqual([[first], [second]]);
+    await expect.poll(() => shownPanes(page)).toEqual(order === "after" ? [pane, otherPane] : [otherPane, pane]);
+    const [a, b] = await page.locator(".app-pane .ao-tp").all();
+    const [ba, bb] = [(await a!.boundingBox())!, (await b!.boundingBox())!];
+    expect(dir === "row" ? ba.x < bb.x && Math.abs(ba.y - bb.y) < 2 : ba.y < bb.y && Math.abs(ba.x - bb.x) < 2).toBe(true);
   });
 }
 
@@ -96,36 +98,16 @@ test("the preview covers the half the tab takes", async ({ page }) => {
   await page.mouse.up();
 });
 
-test("the middle of a pane, Esc and the shown tab itself change nothing", async ({ page }) => {
+test("the middle of a pane, Esc and a row's only tab over itself change nothing", async ({ page }) => {
   const { pane, first, second } = await twoTabs(page);
   await drag(page, `.ao-tabs [data-tab="${second}"]`, await at(page, pane, 0.5, 0.5), "center");
   await drag(page, `.ao-tabs [data-tab="${second}"]`, await at(page, pane, 0.95, 0.5), "right", "escape");
-  await drag(page, `.ao-tabs [data-tab="${first}"]`, await at(page, pane, 0.95, 0.5), null);
   await expect.poll(() => tabIds(page)).toEqual([first, second]);
   await expect.poll(() => shownPanes(page)).toEqual([pane]);
-});
-
-test("a pane too small to halve shows red and refuses the drop", async ({ page }) => {
-  const { pane, second } = await twoTabs(page);
-  // Split the shown pane until the core refuses: the last pane cannot halve again.
-  for (let i = 0; i < 8; i++) await page.keyboard.press("Meta+d");
-  await expect.poll(async () => (await shownPanes(page)).length).toBeGreaterThan(3);
-  // The splits settle when the last pane keeps its place between two reads.
-  let last = "";
-  await expect
-    .poll(async () => {
-      const panes = await shownPanes(page);
-      const now = JSON.stringify([panes, await page.locator(`.app-pane .ao-tp[data-pane="${panes.at(-1)}"]`).boundingBox()]);
-      const same = now === last;
-      last = now;
-      return same;
-    })
-    .toBe(true);
-  const thin = (await shownPanes(page)).at(-1)!;
-  await drag(page, `.ao-tabs [data-tab="${second}"]`, await at(page, thin, 0.9, 0.5), "right", "drop", true);
-  await expect(page.locator(".dock-preview.small")).toHaveCount(0);
-  await expect.poll(() => tabIds(page)).toHaveLength(2);
-  expect(pane).toBeTruthy();
+  await page.locator(`.ao-tabs [data-tab="${second}"]`).getByRole("button", { name: "Close tab" }).click();
+  await expect.poll(() => tabIds(page)).toEqual([first]);
+  await drag(page, `.ao-tabs [data-tab="${first}"]`, await at(page, pane, 0.95, 0.5), null);
+  await expect.poll(() => shownPanes(page)).toEqual([pane]);
 });
 
 test("a pane header dragged to the tab bar becomes a tab; the palette docks and undocks", async ({ page }) => {
