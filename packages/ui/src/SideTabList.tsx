@@ -248,6 +248,9 @@ function Row(props: {
   });
   const drag = useDraggable({ id: dragSide(side.id) });
   const folder = side.tabs.length > 1;
+  // A row with one tab is one line, as a folder's tab (task 8.77).
+  const single = !folder && !collapsed;
+  const only = side.tabs[0];
   // A folder stays open or closed as the person left it; it starts open (task 8.57).
   const open = folder && expanded && !collapsed;
   // A status background tints the row; otherwise the active row takes the raised panel. The
@@ -275,7 +278,7 @@ function Row(props: {
         role="button"
         tabIndex={0}
         aria-roledescription="side tab"
-        className={`ao-st${active ? " active" : ""}${isOver ? " drop-into" : ""}${need ? " need" : ""}${drag.isDragging ? " lifted" : ""}`}
+        className={`ao-st${single ? " single" : ""}${active ? " active" : ""}${isOver ? " drop-into" : ""}${need ? " need" : ""}${drag.isDragging ? " lifted" : ""}`}
         style={style}
         data-side={side.id}
         aria-current={active ? "true" : undefined}
@@ -316,7 +319,7 @@ function Row(props: {
         }}
       >
         <i
-          className={`ao-i ao-i-${side.icon ?? (folder ? "folder" : (side.tabs[0]?.icon ?? (side.tabs[0] && tabAgent(side.tabs[0], agents) ? "agent" : "term")))}${actClass(folder ? undefined : props.activity[side.tabs[0]?.id ?? ""])}`}
+          className={`ao-i${single ? " x1" : ""} ao-i-${side.icon ?? (folder ? "folder" : (side.tabs[0]?.icon ?? (side.tabs[0] && tabAgent(side.tabs[0], agents) ? "agent" : "term")))}${actClass(folder ? undefined : props.activity[side.tabs[0]?.id ?? ""])}`}
           title={collapsed ? undefined : "Double-click to change the icon"}
           onDoubleClick={(e) => {
             e.stopPropagation();
@@ -344,9 +347,11 @@ function Row(props: {
               props.onRenameStart?.(side.id);
             }}
           >
+            {single && only && props.activity[only.id] === "wait" && <AskMark />}
             {name}
           </span>
         )}
+        {single && only && props.subtitles[only.id] && <span className="st-sub">{props.subtitles[only.id]}</span>}
         <span className="side-trail">
         {folder && (
           <button
@@ -363,6 +368,17 @@ function Row(props: {
           </button>
         )}
         </span>
+        {single ? (
+          // The chip shows when a status is set or the row needs the person; otherwise only
+          // under the mouse, so the quick pick stays one click away.
+          <span className={`single-chip${chip.set || chip.need ? "" : " unset"}`}>
+            <ChipButton
+              chip={chip}
+              label={`Status ${chip.label}: edit the status of ${name}`}
+              onClick={props.onStatus && ((at) => props.onStatus!(side.id, undefined, at))}
+            />
+          </span>
+        ) : (
         <span className="m">
           {/* One square per tab, in the tab's neon (task 8.26). A closed folder's squares blink
               for their tabs, since its shell list is hidden (task 8.54). */}
@@ -380,6 +396,7 @@ function Row(props: {
             onClick={props.onStatus && ((at) => props.onStatus!(side.id, undefined, at))}
           />
         </span>
+        )}
       </div>
       {open && (
         <div className="ao-st-kids" style={style}>

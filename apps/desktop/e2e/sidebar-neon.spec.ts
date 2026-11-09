@@ -71,9 +71,13 @@ test("a side tab's tabs show their neons on their icons and squares", async ({ p
     await expect(page.locator(`.ao-st-kid[data-kid="${side.tabs[i].id}"] .ao-i`)).toHaveAttribute("style", `color: var(--neon-${neons[i]});`);
     await expect(page.locator(`.ao-tab[data-tab="${side.tabs[i].id}"] .ao-i`)).toHaveAttribute("style", `color: var(--neon-${neons[i]});`);
   }
-  // A one-tab row shows its single square too.
+  // A one-tab row is one line with no squares; its icon edge wears its tab's neon (task 8.77).
   await page.getByRole("button", { name: "Add a side tab" }).click();
-  await expect(page.locator(".ao-st").nth(1).locator(".ao-cell")).toHaveCount(1);
+  const single = page.locator(".ao-st").nth(1);
+  await expect(single).toHaveClass(/single/);
+  await expect(single.locator(".ao-cell")).toHaveCount(0);
+  const accent = (await workspace(page)).windows[0].sideTabs[1].tabs[0].accent;
+  expect(await single.getAttribute("style")).toContain(`--st-accent: var(--neon-${accent})`);
 });
 
 // Task 8.29: each tab in the tab bar washes its neon into its background and shows its own icon.

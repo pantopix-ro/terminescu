@@ -590,3 +590,14 @@ html[data-see-through] :is(.ctx-pinned, .ao-ctx-over) .ctx-sec-head { background
 /* Task 8.65: every control in the context panel takes the amber line under the mouse too; a
    button that fills its row leaves the line to the row. */
 :is(.ctx-pinned, .ao-ctx-over) :is(button, input, textarea, select, a, [role="button"]):not(.ctx-pin-open, .ctx-list > li .link-plain, :disabled):hover { outline: 2px solid var(--focus); outline-offset: -2px; }
+
+/* Task 8.77: a row with one tab is one line at a folder tab's height: icon, name, subtitle,
+   and a status chip only when one is set. */
+.app-side .ao-st.single { display: flex; align-items: center; gap: var(--space-2); height: 24px; padding: 0 var(--space-2) 0 calc(var(--space-2) + 4px); font-size: 12px; }
+.app-side .ao-st.single > .ao-i:first-child { width: 8px; height: 8px; }
+.app-side .ao-st.single .t { flex: 0 1 auto; min-width: 0; font-weight: 400; color: var(--dim); }
+.app-side .ao-st.single.active .t { color: var(--fg); }
+.app-side .ao-st.single .st-sub { flex: 1 1 0; margin-left: -2px; }
+.app-side .ao-st.single .side-trail:empty { display: none; }
+.app-side .ao-st.single .single-chip { flex: none; display: flex; }
+.app-side .ao-st.single:not(:hover, :focus-within) .single-chip.unset { display: none; }

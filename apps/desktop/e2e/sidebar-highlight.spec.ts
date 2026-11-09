@@ -85,7 +85,8 @@ test("a selected row's status and chord stay in line with the other rows", async
   await expect(kids).toHaveCount(3);
   const ends = await kids.evaluateAll((els) => els.map((el) => Math.round((el.lastElementChild as HTMLElement).getBoundingClientRect().right)));
   expect(new Set(ends).size).toBe(1);
+  // The selected one-line row's chip, shown under the mouse, ends where the folder's does.
   await page.locator(".ao-st").first().click();
-  const chips = page.locator(".ao-st .m > :last-child");
-  expect(await right(chips.nth(0))).toBe(await right(chips.nth(1)));
+  await page.locator(".ao-st").first().hover();
+  expect(await right(page.locator(".ao-st.single .single-chip"))).toBe(await right(page.locator(".ao-st .m > :last-child")));
 });

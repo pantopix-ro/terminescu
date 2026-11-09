@@ -70,7 +70,7 @@ card("SideTab","Navigation",470,'''
 
 One row in the sidebar. A side tab is a terminal window that lives inside the app: it holds one or more tabs, and one context (variables, pins, links, prompts) shared by all of them.
 
-- One tab: a single row with the tab's command or cwd on the meta line.
+- One tab: one line at a folder tab's height (`.ao-st.single`): icon, name, the cwd beside it, and the status chip only when one is set or under the mouse.
 - Two or more tabs: a folder. The meta line shows a BlockStrip with one cell per tab and the tab count. The chevron or a click opens the folder and lists its tabs as `.ao-st-kid` rows, with `⌘1` to `⌘9` hints.
 - Accent: a 4px left edge in the hue the person picked (`--st-accent`). Background: one of the `tint-*` tokens (`--st-bg`). Both live in the StatusEditor. Defaults are `line-strong` and `panel`.
 - Status: an `.ao-stat` label. Auto statuses come from the sessions (Running, Waiting, Done, Failed, Idle). A status set by hand gets `.manual` (a 4px square before the word) and stays until the person clears it.

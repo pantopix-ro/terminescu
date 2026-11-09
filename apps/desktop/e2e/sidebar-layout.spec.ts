@@ -199,3 +199,20 @@ test("the sidebar makes text side tabs and folder tabs, and the toggle sits on i
   expect(Math.abs(toggle.x + toggle.width / 2 - (side.x + side.width - 1))).toBeLessThanOrEqual(1);
   expect(toggle.y).toBeLessThan(34);
 });
+
+test("a one-tab row is one line, as tall as a folder's tab, with a subtitle beside its name", async ({ page }) => {
+  // Task 8.77.
+  await start(page);
+  await page.getByRole("button", { name: "Add a side tab" }).click();
+  await page.getByRole("button", { name: "New tab", exact: true }).click();
+  await expect(page.locator(".ao-st-kid")).toHaveCount(2);
+  const single = page.locator(".ao-st.single");
+  await expect(single).toHaveCount(1);
+  const height = (l: ReturnType<Page["locator"]>) => l.evaluate((e) => Math.round(e.getBoundingClientRect().height));
+  expect(await height(single)).toBe(await height(page.locator(".ao-st-kid").first()));
+  await expect(single.locator(".st-sub")).toHaveText("~");
+  // A folder's header keeps its two lines and its squares.
+  const folder = page.locator(".ao-st:not(.single)");
+  expect(await height(folder)).toBeGreaterThan(await height(single));
+  await expect(folder.locator(".ao-cell")).toHaveCount(2);
+});
