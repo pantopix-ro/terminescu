@@ -18,6 +18,7 @@ export {
   dragSide,
   dropGap,
   dropInto,
+  KidIcon,
   SideTabList,
   sideTabName,
   tabChord,

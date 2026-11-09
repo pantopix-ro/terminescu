@@ -59,28 +59,29 @@ const varsOf = (page: Page, side: string) =>
     side,
   );
 
-test("a listed tab dropped on a pane's edge leaves its folder as a row beside, with its plain variables", async ({ page }) => {
+test("a listed tab dropped on a pane's edge shows beside and stays in its folder, both marked open", async ({ page }) => {
+  // Task 8.75.
   const [a, b] = await folder(page, 2);
   const [side] = await sideIds(page);
-  await setVar(page, side!, "repo", "acme/api");
-  await page.evaluate(
-    (side) =>
-      (window as any).__terminescu.host.addVariable(side, { name: "token", value: "hidden", mode: "secret", ttlSecs: null, source: "typed", originTabId: null }),
-    side,
-  );
   const pane = (await page.locator(".app-pane .ao-tp").first().getAttribute("data-pane"))!;
   const box = (await page.locator(`.app-pane .ao-tp[data-pane="${pane}"]`).boundingBox())!;
   await drag(page, `[data-kid="${b}"]`, { x: box.x + box.width * 0.95, y: box.y + box.height / 2 }, async () => {
     await expect(page.locator(".dock-preview")).toHaveAttribute("data-side", "right");
   });
   await expect(page.locator(".app-pane .ao-tp")).toHaveCount(2);
-  await expect.poll(() => sideIds(page)).toHaveLength(2);
-  const [, beside] = await sideIds(page);
-  expect(await tabsOf(page, side!)).toEqual([a]);
-  expect(await tabsOf(page, beside!)).toEqual([b]);
-  // A secret never reaches the window, so it stays with the folder.
-  await expect.poll(() => varsOf(page, beside!)).toEqual(["repo=acme/api"]);
-  await expect(page.locator(".side-item[data-open]")).toHaveCount(2);
+  expect(await sideIds(page)).toEqual([side]);
+  expect(await tabsOf(page, side!)).toEqual([a, b]);
+  // The folder and both its tabs are marked open; the dropped one is selected, in orange.
+  await expect(page.locator(".side-item[data-open]")).toHaveCount(1);
+  await expect(page.locator(".ao-st-kid[data-open]")).toHaveCount(2);
+  await expect(page.locator(".ao-st-kid.active")).toHaveAttribute("data-kid", b!);
+  expect(await page.locator(".ao-st-kid.active").evaluate((e) => getComputedStyle(e).boxShadow)).toContain("rgb(229, 163, 58)");
+  // Each open tab's background reaches the sidebar's right edge.
+  const edge = await page.locator(".app-side").evaluate((e) => Math.round(e.getBoundingClientRect().right));
+  for (const id of [a, b]) {
+    const right = await page.locator(`[data-kid="${id}"]`).evaluate((e) => Math.round(e.getBoundingClientRect().right));
+    expect(right).toBe(edge);
+  }
 });
 
 test("a listed tab reorders inside its folder, a line showing where it lands", async ({ page }) => {

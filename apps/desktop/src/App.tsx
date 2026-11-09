@@ -61,10 +61,13 @@ import {
 import {
   Tip,
   useTip,
+  KidIcon,
+  tabAgent,
   composeView,
   fitView,
   folderLines,
   hideRow,
+  replaceRow,
   rowsOf,
   showBeside,
   viewSplitId,
@@ -218,6 +221,13 @@ function loadView(windowId: string): View | undefined {
     return undefined;
   }
 }
+/** A view saved before task 8.75 holds row ids; each becomes that row's first tab. */
+function savedTabs(v: View | undefined, sides: readonly SideTab[]): View | undefined {
+  return rowsOf(v).reduce<View | undefined>((out, id) => {
+    const tab = sides.find((s) => s.id === id)?.tabs[0];
+    return out && tab ? replaceRow(out, id, tab.id) : out;
+  }, v);
+}
 function saveView(windowId: string, v: View | undefined) {
   try {
     if (v && v.type === "split") localStorage.setItem(viewKey(windowId), JSON.stringify(v));
@@ -296,19 +306,19 @@ const TEXT_CHORDS = new Set(["find", "find_next", "find_previous", "prompt_previ
 const paletteActions = (actions: readonly ActionDef[]) => actions.filter((a) => !selectable.has(a.id) && !/^(tab|side)_\d$/.test(a.id));
 
 /**
- * Where a tab or row dragged over the panes would land (tasks 8.32, 8.71): beside the shown
- * row `row`, the one holding `pane`; `small` means it would not fit.
+ * Where a tab or row dragged over the panes would land (tasks 8.32, 8.75): beside the shown
+ * tab `area`, the one holding `pane`; `small` means it would not fit.
  */
 interface Dock {
   pane: string;
-  row: string;
+  area: string;
   side: DockSide | "center";
   box: Box;
   small: boolean;
 }
 const sameDock = (a: Dock | undefined, b: Dock | undefined) =>
   a === b ||
-  (!!a && !!b && a.pane === b.pane && a.row === b.row && a.side === b.side && a.small === b.small && JSON.stringify(a.box) === JSON.stringify(b.box));
+  (!!a && !!b && a.pane === b.pane && a.area === b.area && a.side === b.side && a.small === b.small && JSON.stringify(a.box) === JSON.stringify(b.box));
 
 /** Where a pane dragged to the tab bar becomes a tab: before the tab at `index`. */
 interface TabGap {
@@ -362,33 +372,43 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     saveSort(mode);
   };
 
-  // A window opens on the first row of its saved view.
-  const [sideTabId, setSideTabId] = useState<string | undefined>(() => rowsOf(loadView(windowId))[0]);
+  // Task 8.75: the tabs shown side by side, saved per window. A window opens on the first one.
+  const [view, setView] = useState<View | undefined>(() => savedTabs(loadView(windowId), win?.sideTabs ?? []));
+  const firstShown = () => {
+    const tab = rowsOf(view)[0];
+    const side = win?.sideTabs.find((s) => s.tabs.some((t) => t.id === tab));
+    return side && tab ? { side: side.id, tab } : undefined;
+  };
+  const [sideTabId, setSideTabId] = useState<string | undefined>(() => firstShown()?.side);
   const activeSide = sideTabs.find((s) => s.id === pick(sideTabs.map((s) => s.id), sideTabId));
   const tabs = activeSide?.tabs ?? [];
-  const [tabBySide, setTabBySide] = useState<Record<string, string>>({});
+  const [tabBySide, setTabBySide] = useState<Record<string, string>>(() => {
+    const f = firstShown();
+    return f ? { [f.side]: f.tab } : {};
+  });
   const activeTab = tabs.find((t) => t.id === pick(tabs.map((t) => t.id), activeSide && tabBySide[activeSide.id]));
   const panes = activeTab ? panesOf(activeTab.layout) : [];
   const focused = pick(panes, activeTab && focusByTab[activeTab.id]);
-  // Task 8.71: the rows shown side by side. The selected row is always one of them; a row
-  // picked in the sidebar takes the place of the one selected before.
-  const [view, setView] = useState<View | undefined>(() => loadView(windowId));
-  const prevSide = useRef<string | undefined>(undefined);
-  const sideIds = sideTabs.map((s) => s.id);
-  const shownView = sideIds.length ? fitView(view, sideIds, activeSide?.id, prevSide.current) : view;
-  const openRows = rowsOf(shownView);
+  // The selected tab is always shown; a tab picked in the sidebar or the tab bar takes the
+  // place of the one selected before.
+  const prevTab = useRef<{ tab: string; side: string } | undefined>(undefined);
+  const tabIds = allTabs.map((t) => t.id);
+  const shownView = tabIds.length ? fitView(view, tabIds, activeTab?.id, prevTab.current?.tab) : view;
+  const openTabs = rowsOf(shownView);
   useEffect(() => {
-    // The selected row closed: the next shown row takes the selection, not its place.
-    const prev = prevSide.current;
-    if (prev && !sideIds.includes(prev) && activeSide && !rowsOf(view).includes(activeSide.id)) {
-      const left = rowsOf(fitView(view, sideIds, undefined, undefined));
-      if (left.length) {
-        setSideTabId(left[0]);
+    // The selected tab closed with its row: the next shown tab takes the selection, not its
+    // place. One closed in a folder leaves its place to the folder's next tab.
+    const prev = prevTab.current;
+    if (prev && !tabIds.includes(prev.tab) && activeSide?.id !== prev.side && activeTab && !rowsOf(view).includes(activeTab.id)) {
+      const left = rowsOf(fitView(view, tabIds, undefined, undefined))[0];
+      const side = left && sideTabs.find((s) => s.tabs.some((t) => t.id === left));
+      if (side && left) {
+        selectTab(side.id, left);
         return;
       }
     }
-    prevSide.current = activeSide?.id;
-    if (sideIds.length && JSON.stringify(shownView) !== JSON.stringify(view)) {
+    prevTab.current = activeTab && activeSide && { tab: activeTab.id, side: activeSide.id };
+    if (tabIds.length && JSON.stringify(shownView) !== JSON.stringify(view)) {
       setView(shownView);
       saveView(windowId, shownView);
     }
@@ -396,7 +416,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   // The pixel tooltip under an area's head (task 8.73); it goes when the areas change, so it
   // never stays over a head that left.
   const areaTip = useTip();
-  const openKey = openRows.join(" ");
+  const openKey = openTabs.join(" ");
   useEffect(() => areaTip.hide(), [openKey]);
   const changeView = (f: (v: View | undefined) => View | undefined) =>
     setView((v) => {
@@ -404,14 +424,15 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       saveView(windowId, next);
       return next;
     });
-  // Each shown row's current tab, the selected row's being `activeTab`.
-  const shownTabOf = (s: SideTab) => (s.id === activeSide?.id ? activeTab : s.tabs.find((t) => t.id === pick(s.tabs.map((x) => x.id), tabBySide[s.id])));
-  const areas = openRows.flatMap((id) => {
-    const side = sideTabs.find((s) => s.id === id);
-    const tab = side && shownTabOf(side);
+  // Each shown tab with its row.
+  const areas = openTabs.flatMap((id) => {
+    const side = sideTabs.find((s) => s.tabs.some((t) => t.id === id));
+    const tab = side?.tabs.find((t) => t.id === id);
     return side && tab ? [{ side, tab }] : [];
   });
   const areaOfPane = (paneId: string) => areas.find((a) => panesOf(a.tab.layout).includes(paneId));
+  /** A shown tab's name: a folder's tab as "Folder › tab". */
+  const areaName = (x: { side: SideTab; tab: Tab }) => (x.side.tabs.length > 1 ? `${sideTabName(x.side, docs)} › ${tabName(x.tab, docs)}` : sideTabName(x.side, docs));
   // The pane each tab shows alone (task 8.39), for this session only; a pane that left the tab
   // shows the whole layout again.
   const [maxByTab, setMaxByTab] = useState<Record<string, string>>({});
@@ -517,10 +538,10 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     setTabBySide((m) => ({ ...m, [sideId]: tabId }));
   };
   const focusIn = (tabId: string, paneId: string) => setFocusByTab((m) => ({ ...m, [tabId]: paneId }));
-  // A pane of another shown row selects that row (task 8.71).
+  // A pane of another shown tab selects that tab (tasks 8.71, 8.75).
   const focusArea = (tabId: string, paneId: string) => {
     const side = sideTabs.find((s) => s.tabs.some((t) => t.id === tabId));
-    if (side && side.id !== activeSide?.id) selectTab(side.id, tabId);
+    if (side && tabId !== activeTab?.id) selectTab(side.id, tabId);
     focusIn(tabId, paneId);
   };
   // The terminal each tab focused last: where "Send to pane" pastes (D29).
@@ -1662,9 +1683,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     // along (task 8.70); a gap moves the whole side tab in the core.
     const from = ws.windows.flatMap((w) => w.sideTabs).find((s) => s.tabs.some((t) => t.id === p.tabId));
     const only = from?.tabs.length === 1;
-    // On a pane's edge it shows beside that row (task 8.71).
+    // On a pane's edge it shows beside that tab (task 8.75).
     const docked = dockAt(p.tabId, p.x, p.y);
-    if (docked && docked.side !== "center" && !docked.small) return placeBeside(p.tabId, docked.row, docked.side);
+    if (docked && docked.side !== "center" && !docked.small) return placeBeside(p.tabId, docked.area, docked.side);
     const target = remoteTarget(p.x, p.y);
     // Anywhere else in the panes, a window's only row joins this window as a row and shows.
     if (only && from && !target) {
@@ -1728,14 +1749,17 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const [tabGap, setTabGap] = useState<TabGap>();
   const tabGapRef = useRef(tabGap);
   tabGapRef.current = tabGap;
-  /** What a drag carries: a row (`side:<id>`) or a tab, from this window or another. */
+  /**
+   * What a drag carries: a row (`side:<id>`), with all its tabs, or a tab, from this window or
+   * another; `lone` when that is the row's every tab.
+   */
   const dragSource = (dragId: string) => {
     if (dragId.startsWith("side:")) {
       const side = anySide(dragId.slice(5));
-      return side && { side, tabId: undefined, lone: true };
+      return side && { side, tabs: side.tabs.map((t) => t.id), lone: true };
     }
     const side = ws.windows.flatMap((w) => w.sideTabs).find((s) => s.tabs.some((t) => t.id === dragId));
-    return side && { side, tabId: dragId, lone: side.tabs.length === 1 };
+    return side && { side, tabs: [dragId], lone: side.tabs.length === 1 };
   };
   const dockAt = (dragId: string, x: number, y: number): Dock | undefined => {
     const el = document
@@ -1746,9 +1770,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     const area = pane ? areaOfPane(pane) : undefined;
     const src = dragSource(dragId);
     if (!pane || !area || !src) return undefined;
-    // A row, or a row's only tab, cannot go beside itself; a tab of a folder can leave it.
-    if (src.lone && src.side.id === area.side.id) return undefined;
-    // The drop splits the row's whole area, so the area is the box.
+    // A tab cannot go beside itself, nor a folder beside one of its tabs.
+    if (src.tabs.includes(area.tab.id)) return undefined;
+    // The drop splits the tab's whole area, so the area is the box.
     const rects = panesOf(area.tab.layout).flatMap((p) => {
       const at = document.querySelector<HTMLElement>(`.app-pane .ao-tp[data-pane="${p}"]`);
       return at ? [at.getBoundingClientRect()] : [];
@@ -1758,9 +1782,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     const box = { left, top, width: Math.max(...rects.map((r) => r.right)) - left, height: Math.max(...rects.map((r) => r.bottom)) - top };
     const side = dockZone(box, x, y);
     if (!side) return undefined;
-    if (side === "center") return { pane, row: area.side.id, side, box, small: false };
-    const row = src.lone ? src.side.id : "new";
-    return { pane, row: area.side.id, side, box, small: !showBeside(shownView, area.side.id, row, side, "preview") };
+    if (side === "center") return { pane, area: area.tab.id, side, box, small: false };
+    return { pane, area: area.tab.id, side, box, small: !showBeside(shownView, area.tab.id, src.tabs, side, "preview") };
   };
   const dockAtRef = useRef(dockAt);
   dockAtRef.current = dockAt;
@@ -1800,7 +1823,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       refocus();
     });
   };
-  /** A folder's plain variables go with its tab into a new row; secrets and pins stay. */
+  /** A folder's plain variables go with its tab from another window into a new row; secrets and pins stay. */
   const copyVariables = (from: string, to: string) =>
     void host
       .variables(from)
@@ -1824,34 +1847,32 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       )
       .catch(report);
   /**
-   * Task 8.71: a row, or a row's only tab, shows beside the shown row `target`, keeping its
-   * context; one from another window moves here first. A tab of a folder leaves it as a new
-   * row, with the folder's plain variables.
+   * Task 8.75: a tab, or a row with all its tabs, shows beside the shown tab `target`; a tab of
+   * this window stays in its folder. One from another window moves here first: a window's only
+   * row as it is, a folder's tab as a new row with the folder's plain variables.
    */
   const placeBeside = (dragId: string, target: string, side: DockSide) => {
     const src = dragSource(dragId);
     if (!src) return refocus();
-    const show = (row: string, tabId?: string) => {
-      changeView((v) => showBeside(v ?? shownView, target, row, side, viewSplitId()) ?? v);
-      if (tabId) selectTab(row, tabId);
-      else setSideTabId(row);
+    const show = (row: string) => {
+      changeView((v) => showBeside(v ?? shownView, target, src.tabs, side, viewSplitId()) ?? v);
+      selectTab(row, src.tabs[0]!);
       refocus();
     };
-    const here = sideTabs.findIndex((s) => s.id === src.side.id);
-    if (src.lone && here >= 0) return show(src.side.id);
+    if (sideTabs.some((s) => s.id === src.side.id)) return show(src.side.id);
     if (src.lone) {
       setFollow((w) => sidesOf(w).some((s) => s.id === src.side.id) && (show(src.side.id), true));
       return void send({ type: "MoveSideTab", sideTabId: src.side.id, windowId, index: sideTabs.length });
     }
-    const tabId = src.tabId!;
+    const tabId = src.tabs[0]!;
     setFollow((w) => {
       const row = sidesOf(w).find((s) => s.id !== src.side.id && s.tabs.some((t) => t.id === tabId));
       if (!row) return false;
-      show(row.id, tabId);
+      show(row.id);
       copyVariables(src.side.id, row.id);
       return true;
     });
-    void send({ type: "MoveTabToNewSideTab", tabId, windowId, index: here >= 0 ? here + 1 : sideTabs.length });
+    void send({ type: "MoveTabToNewSideTab", tabId, windowId, index: sideTabs.length });
   };
   /** A pane of the active tab becomes a tab at `index`, and that tab opens. */
   const paneToTab = (paneId: string, index: number) => {
@@ -1886,7 +1907,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     }
     const beside = docked && docked.side !== "center" && !docked.small ? docked : undefined;
     // A merge may open its dialog, which takes the focus; it gives it back when it closes.
-    if (tabId.startsWith("side:") && beside) return placeBeside(tabId, beside.row, beside.side as DockSide);
+    if (tabId.startsWith("side:") && beside) return placeBeside(tabId, beside.area, beside.side as DockSide);
     if (tabId.startsWith("side:") && at?.startsWith("into:")) return startMerge(tabId.slice(5), at.slice(5));
     if (tabId.startsWith("side:")) return refocus();
     // The core saw where the cursor was (task 8.1): only a release over this window drops here.
@@ -1901,7 +1922,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       (end) => {
         if (end.kind !== "local" && end.kind !== "cancelled") refocus();
         // The middle of a pane, or a pane too small to halve, cancels.
-        else if (beside) placeBeside(tabId, beside.row, beside.side as DockSide);
+        else if (beside) placeBeside(tabId, beside.area, beside.side as DockSide);
         else if (docked) refocus();
         else dropHere(tabId, at);
       },
@@ -1964,13 +1985,13 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
             })),
         )
       : []),
-    // Task 8.71: back to one row, or one row fewer on screen.
-    ...(activeSide && openRows.length > 1
+    // Tasks 8.71, 8.75: back to one tab, or one tab fewer on screen.
+    ...(activeTab && openTabs.length > 1
       ? [
-          { id: "view:alone", label: "Show only this side tab", group: "Actions", run: () => changeView(() => ({ type: "pane", id: activeSide.id })) },
+          { id: "view:alone", label: "Show only this tab", group: "Actions", run: () => changeView(() => ({ type: "pane", id: activeTab.id })) },
           ...areas
-            .filter((x) => x.side.id !== activeSide.id)
-            .map((x) => ({ id: `view:hide:${x.side.id}`, label: sideTabName(x.side, docs), group: "Hide from the window…", run: () => changeView((v) => hideRow(v, x.side.id)) })),
+            .filter((x) => x.tab.id !== activeTab.id)
+            .map((x) => ({ id: `view:hide:${x.tab.id}`, label: areaName(x), group: "Hide from the window…", run: () => changeView((v) => hideRow(v, x.tab.id)) })),
         ]
       : []),
     ...SORTS.map((m) => ({ id: `sort:${m}`, label: m === sort ? `${m} (now)` : m, group: "Sort side tabs", run: () => changeSort(m) })),
@@ -1986,7 +2007,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const dragPane = dragging?.startsWith("pane:") ? dragging.slice(5) : undefined;
   const dragSideTab = dragging?.startsWith("side:") ? sideTabs.find((s) => s.id === dragging.slice(5)) : undefined;
   // Every shown row's panes in one tree; a maximized pane shows alone (task 8.39).
-  const screen = maxPane && activeTab ? leaf(activeTab.layout, maxPane) : shownView && composeView(shownView, (row) => areas.find((x) => x.side.id === row)?.tab.layout);
+  const screen = maxPane && activeTab ? leaf(activeTab.layout, maxPane) : shownView && composeView(shownView, (id) => areas.find((x) => x.tab.id === id)?.tab.layout);
   /** A folder's tabs for a pixel tip: each with its directory, the shown one marked (task 8.74). */
   const tabLines = (side: SideTab, shown: string | undefined) =>
     folderLines(side.tabs, shown, (id) => tabName(side.tabs.find((t) => t.id === id)!, docs), subtitles);
@@ -2088,7 +2109,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               dragging={!!dragging || !!remote}
               draggingSide={dragSideTab?.id}
               draggingTab={dragTab?.id}
-              open={openRows}
+              open={openTabs}
               agents={agents}
               onSelect={(id) => {
                 setSideTabId(id);
@@ -2197,7 +2218,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                     changeView(() => next);
                     return Promise.resolve(true);
                   }}
-                  // Task 8.73: with two rows or more on screen, each area carries its row's name.
+                  // Tasks 8.73, 8.75: with two tabs or more on screen, each area carries its
+                  // tab's name and coloured icon; a folder's tab also the folder's.
                   frame={
                     areas.length > 1 && !maxPane
                       ? (id, body) => {
@@ -2207,7 +2229,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                           const folder = side.tabs.length > 1;
                           const accent = (!folder && tab.accent) || side.accent;
                           return (
-                            <div className={`view-area${side.id === activeSide?.id ? " on" : ""}`} data-area={side.id}>
+                            <div className={`view-area${tab.id === activeTab?.id ? " on" : ""}`} data-area={tab.id}>
                               <div
                                 className="view-head"
                                 style={accent ? ({ "--st-accent": `var(--neon-${accent})` } as React.CSSProperties) : undefined}
@@ -2220,20 +2242,17 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                                 // lists the folder's tabs, the shown one marked.
                                 onMouseEnter={(e) =>
                                   folder
-                                    ? areaTip.below(
-                                        e.currentTarget,
-                                        `${sideTabName(side, docs)} › ${tabName(tab, docs)}`,
-                                        `folder of ${side.tabs.length}`,
-                                        undefined,
-                                        tabLines(side, tab.id),
-                                      )
+                                    ? areaTip.below(e.currentTarget, areaName(area), `folder of ${side.tabs.length}`, undefined, tabLines(side, tab.id))
                                     : areaTip.below(e.currentTarget, sideTabName(side, docs), subtitles[tab.id])
                                 }
                                 onMouseLeave={areaTip.hide}
                               >
                                 {folder && <i className="ao-i ao-i-folder view-folder" aria-label="folder" />}
-                                <span className="view-name">{sideTabName(side, docs)}</span>
-                                {folder && <span className="view-tab">{tabName(tab, docs)}</span>}
+                                {folder && <span className="view-name">{sideTabName(side, docs)}</span>}
+                                <span className="view-tab">
+                                  <KidIcon agent={tabAgent(tab, agents)} icon={tab.icon} accent={tab.accent} act={activity[tab.id]} />
+                                  <span className="view-tab-name">{tabName(tab, docs)}</span>
+                                </span>
                               </div>
                               <div className="view-body">{body}</div>
                             </div>

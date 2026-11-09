@@ -1,8 +1,8 @@
 import { dockPlace, panesOf, removePane, rescale, splitAt, type DockSide, type Layout } from "@terminescu/host";
 
 /**
- * The rows a window shows side by side (task 8.71): a split tree whose leaves are side tab ids.
- * Each leaf shows that row's current tab; the window keeps it, the core never sees it.
+ * The tabs a window shows side by side (tasks 8.71, 8.75): a split tree whose leaves are tab
+ * ids, so two tabs of one folder can show at once. The window keeps it; the core never sees it.
  */
 export type View = Layout;
 
@@ -24,28 +24,29 @@ export function hideRow(v: View | undefined, row: string): View | undefined {
 }
 
 /**
- * The view fitted to the window's rows: rows that left the window leave it, and the selected
- * row, when not shown, takes the place of `prev`, the row selected before (else the first).
+ * The view fitted to the window's tabs: the selected tab, when not shown, takes the place of
+ * `prev`, the tab selected before (else the first), even when `prev` just closed; then tabs
+ * that left the window leave it.
  */
 export function fitView(v: View | undefined, ids: readonly string[], active: string | undefined, prev: string | undefined): View | undefined {
   let out = v;
-  for (const row of rowsOf(v)) if (!ids.includes(row)) out = hideRow(out, row);
-  if (!active) return out;
-  const rows = rowsOf(out);
-  if (rows.includes(active)) return out;
-  if (!out) return one(active);
-  return replaceRow(out, prev && rows.includes(prev) ? prev : rows[0]!, active);
+  const rows = rowsOf(v);
+  if (active && out && !rows.includes(active)) out = replaceRow(out, prev && rows.includes(prev) ? prev : rows[0]!, active);
+  for (const row of rowsOf(out)) if (!ids.includes(row)) out = hideRow(out, row);
+  return out ?? (active ? one(active) : undefined);
 }
 
 /**
- * The view with `row` on `side` of the area showing `target`, half of its share. A row already
- * shown moves there. Undefined when `target` is not shown, is `row`, or is too small to halve.
+ * The view with `rows` on `side` of the area showing `target`, sharing half of its share; a
+ * folder's tabs come as several (task 8.75). A tab already shown moves there. Undefined when
+ * `target` is not shown, is one of `rows`, or is too small to halve.
  */
-export function showBeside(v: View | undefined, target: string, row: string, side: DockSide, splitId: string): View | undefined {
-  if (row === target) return undefined;
-  const base = hideRow(v, row) ?? one(target);
+export function showBeside(v: View | undefined, target: string, rows: readonly string[], side: DockSide, splitId: string): View | undefined {
+  if (!rows.length || rows.includes(target)) return undefined;
+  const base = rows.reduce<View | undefined>(hideRow, v) ?? one(target);
   const [dir, before] = dockPlace(side);
-  const out = splitAt(base, target, dir, before, one(row), splitId);
+  const added: View = rows.length === 1 ? one(rows[0]!) : { type: "split", id: `${splitId}-in`, dir, children: rows.map(one), sizes: rescale(rows.map(() => 1)) };
+  const out = splitAt(base, target, dir, before, added, splitId);
   return out === "small" ? undefined : out;
 }
 

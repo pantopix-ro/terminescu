@@ -1,8 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// Task 8.32: a tab dropped on a side of the panes shows there, taking the half; since task 8.71
-// it leaves its folder as a row of its own. A pane header dragged to the tab bar makes the pane
-// a tab again.
+// Task 8.32: a tab dropped on a side of the panes shows there, taking the half; since task 8.75
+// it stays in its folder. A pane header dragged to the tab bar makes the pane a tab again.
 
 async function start(page: Page) {
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -65,11 +64,12 @@ for (const [side, fx, fy, dir, order] of [
   ["down", 0.5, 0.95, "column", "after"],
   ["up", 0.5, 0.05, "column", "before"],
 ] as const) {
-  test(`a tab dropped on the ${side} edge shows as its own row ${dir === "row" ? "side by side" : "top and bottom"}`, async ({ page }) => {
+  test(`a tab dropped on the ${side} edge shows in its folder ${dir === "row" ? "side by side" : "top and bottom"}`, async ({ page }) => {
     const { pane, first, second, otherPane } = await twoTabs(page);
     await drag(page, `.ao-tabs [data-tab="${second}"]`, await at(page, pane, fx, fy), side);
     await expect(page.locator(".dock-preview")).toHaveCount(0);
-    await expect.poll(() => rows(page)).toEqual([[first], [second]]);
+    await expect.poll(() => shownPanes(page)).toHaveLength(2);
+    expect(await rows(page)).toEqual([[first, second]]);
     await expect.poll(() => shownPanes(page)).toEqual(order === "after" ? [pane, otherPane] : [otherPane, pane]);
     const [a, b] = await page.locator(".app-pane .ao-tp").all();
     const [ba, bb] = [(await a!.boundingBox())!, (await b!.boundingBox())!];
