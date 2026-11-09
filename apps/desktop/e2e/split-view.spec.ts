@@ -49,6 +49,9 @@ test("rows shown side by side are open, and the selected one follows the pane cl
   await expect.poll(() => openIds(page)).toEqual([first!, second].sort());
   await expect(page.locator(".ao-side.split")).toHaveCount(1);
   await expect.poll(() => selected(page)).toBe(first);
+  // Each area is headed by its row, the selected one underlined (task 8.73).
+  await expect(page.locator(".view-head")).toHaveCount(2);
+  await expect(page.locator(".view-area.on")).toHaveAttribute("data-area", first!);
   // The orange outline is the focus colour.
   const ring = await page.locator(`[data-side="${first}"]`).evaluate((e) => getComputedStyle(e).boxShadow);
   expect(ring).toContain("rgb(229, 163, 58)");
@@ -71,6 +74,29 @@ test("rows shown side by side are open, and the selected one follows the pane cl
   await page.keyboard.press("Enter");
   await expect(page.locator(".app-pane .ao-tp")).toHaveCount(1);
   await expect(page.locator(".side-item[data-open]")).toHaveCount(0);
+  await expect(page.locator(".view-head")).toHaveCount(0);
+});
+
+test("a group's area head names the group and its tab, and its pixel tip lists the group", async ({ page }) => {
+  await start(page);
+  const [first] = await sideIds(page);
+  await page.keyboard.press("Meta+t");
+  await expect(page.locator(".ao-st-kids [data-kid]")).toHaveCount(2);
+  const second = await addRow(page);
+  await rowToRight(page, first!);
+  const head = page.locator(`.view-area[data-area="${first}"] > .view-head`);
+  await expect(head.locator(".view-group")).toHaveCount(1);
+  await expect(head.locator(".view-tab")).toHaveCount(1);
+  await expect(page.locator(`.view-area[data-area="${second}"] > .view-head .view-group`)).toHaveCount(0);
+
+  await head.hover();
+  const tip = page.locator(".px-tip");
+  await expect(tip).toBeVisible();
+  await expect(tip.locator(".px-tip-name")).toContainText("›");
+  await expect(tip.locator(".px-tip-sub")).toContainText("group of 2");
+  // A click on the other head selects that row, and the tip goes.
+  await page.locator(`.view-area[data-area="${second}"] > .view-head`).click();
+  await expect.poll(() => selected(page)).toBe(second);
 });
 
 test("closing the selected shown row selects the other one", async ({ page }) => {

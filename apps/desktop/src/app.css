@@ -75,6 +75,17 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 /* A wider grip than the 2px line. */
 .split-bar::before { content: ""; position: absolute; inset: -3px; }
 .app-pane .ao-tp { flex: 1; position: relative; }
+/* Task 8.73: each shown row's area is headed by the row's name, in its neon; the selected
+   row's head is underlined in the focus orange, as its sidebar row is outlined. */
+.view-area { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.view-body { flex: 1; display: flex; min-width: 0; min-height: 0; }
+.view-head { flex: none; display: flex; align-items: center; gap: var(--space-2); height: 22px; padding: 0 var(--space-2) 0 calc(var(--space-2) + 4px); font-size: 12px; line-height: 16px; color: var(--faint); background: var(--panel-2); box-shadow: inset 4px 0 0 0 var(--st-accent, var(--line-strong)), inset 0 -2px 0 0 var(--line); white-space: nowrap; overflow: hidden; cursor: default; }
+.view-head .view-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.view-head .view-tab { color: var(--faint); min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.view-head .view-tab::before { content: "› "; }
+/* A group's head starts with two stacked squares, the group mark. */
+.view-head .view-group { flex: none; width: 8px; height: 8px; background: var(--st-accent, var(--line-strong)); box-shadow: 3px -3px 0 0 color-mix(in srgb, var(--st-accent, var(--line-strong)) 55%, transparent); margin-top: 3px; }
+.view-area.on > .view-head { color: var(--fg); box-shadow: inset 4px 0 0 0 var(--st-accent, var(--line-strong)), inset 0 -2px 0 0 var(--focus); }
 .app-pane .ao-tp-body { padding: 0; position: relative; }
 .tp-close { width: 16px; height: 16px; display: grid; place-items: center; color: var(--faint); }
 .resume-bar .ao-btn { height: 24px; }

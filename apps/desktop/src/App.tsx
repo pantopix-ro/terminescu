@@ -59,6 +59,8 @@ import {
   MERGE_UNDO_MS,
 } from "@terminescu/host";
 import {
+  Tip,
+  useTip,
   composeView,
   fitView,
   hideRow,
@@ -390,6 +392,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       saveView(windowId, shownView);
     }
   });
+  // The pixel tooltip under an area's head (task 8.73).
+  const areaTip = useTip();
   const changeView = (f: (v: View | undefined) => View | undefined) =>
     setView((v) => {
       const next = f(v);
@@ -2181,6 +2185,48 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                     changeView(() => next);
                     return Promise.resolve(true);
                   }}
+                  // Task 8.73: with two rows or more on screen, each area carries its row's name.
+                  frame={
+                    areas.length > 1 && !maxPane
+                      ? (id, body) => {
+                          const area = areas.find((x) => x.tab.layout.id === id);
+                          if (!area) return body;
+                          const { side, tab } = area;
+                          const group = side.tabs.length > 1;
+                          const accent = (!group && tab.accent) || side.accent;
+                          return (
+                            <div className={`view-area${side.id === activeSide?.id ? " on" : ""}`} data-area={side.id}>
+                              <div
+                                className="view-head"
+                                style={accent ? ({ "--st-accent": `var(--neon-${accent})` } as React.CSSProperties) : undefined}
+                                onPointerDown={() => {
+                                  areaTip.hide();
+                                  focusArea(tab.id, pick(panesOf(tab.layout), focusByTab[tab.id])!);
+                                  refocus();
+                                }}
+                                // A group's head names the group and the tab it shows; the tip
+                                // lists the group's tabs, the shown one marked.
+                                onMouseEnter={(e) =>
+                                  areaTip.below(
+                                    e.currentTarget,
+                                    group ? `${sideTabName(side, docs)} › ${tabName(tab, docs)}` : sideTabName(side, docs),
+                                    group
+                                      ? `group of ${side.tabs.length}: ${side.tabs.map((t) => (t.id === tab.id ? `▸${tabName(t, docs)}` : tabName(t, docs))).join(" · ")}`
+                                      : undefined,
+                                  )
+                                }
+                                onMouseLeave={areaTip.hide}
+                              >
+                                {group && <i className="view-group" aria-label="group" />}
+                                <span className="view-name">{sideTabName(side, docs)}</span>
+                                {group && <span className="view-tab">{tabName(tab, docs)}</span>}
+                              </div>
+                              <div className="view-body">{body}</div>
+                            </div>
+                          );
+                        }
+                      : undefined
+                  }
                   renderPane={(paneId, resume, slot, transcript) => {
                     const own = areaOfPane(paneId)?.tab ?? activeTab;
                     return (
@@ -2380,6 +2426,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
             style={dock.side === "center" ? undefined : dockBox(dock.box, dock.side)}
           />
         )}
+        <Tip tip={areas.length > 1 ? areaTip.tip : undefined} />
         {tabGap && <div className="tab-gap" style={{ left: tabGap.left - 1, top: tabGap.top + 4, height: tabGap.height - 8 }} />}
       </DndContext>
       {/* Every pane of the window keeps its terminal; the shown tabs' panes show (D33). */}
