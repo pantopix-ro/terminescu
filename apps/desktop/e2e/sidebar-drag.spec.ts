@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { addTab } from "./add-tab";
 
 // Task 8.70: a tab listed under its folder drags as a tab of the tab bar does, and the only tab
 // of a side tab takes its side tab, with its variables, wherever it goes.
@@ -40,7 +41,7 @@ async function drag(page: Page, from: string, to: Point | (() => Promise<Point>)
 /** A folder of `n` tabs, the first one shown. */
 async function folder(page: Page, n: number) {
   await start(page);
-  for (let i = 1; i < n; i++) await page.keyboard.press("Meta+t");
+  for (let i = 1; i < n; i++) await addTab(page);
   await expect.poll(() => kids(page)).toHaveLength(n);
   const ids = await kids(page);
   await page.locator(`[data-kid="${ids[0]}"]`).click();
@@ -100,7 +101,7 @@ test("a listed tab reorders inside its folder, a line showing where it lands", a
 test("a listed tab moves into another row, to a new side tab and to a new window", async ({ page }) => {
   const [, b, c, d] = await folder(page, 4);
   const [first] = await sideIds(page);
-  await page.getByRole("button", { name: "Add a side tab" }).click();
+  await page.keyboard.press("Meta+n");
   await expect.poll(() => sideIds(page)).toHaveLength(2);
   const [, second] = await sideIds(page);
   await page.locator(`[data-side="${first}"]`).click();
@@ -129,7 +130,7 @@ test("a listed tab moves into another row, to a new side tab and to a new window
 
 test("a side tab's only tab merges its variables into the row it joins, and Undo splits them again", async ({ page }) => {
   await start(page, "/?top-tabs");
-  await page.getByRole("button", { name: "Add a side tab" }).click();
+  await page.keyboard.press("Meta+n");
   await expect.poll(() => sideIds(page)).toHaveLength(2);
   const [first, second] = await sideIds(page);
   await setVar(page, second!, "repo", "acme/api");
@@ -148,7 +149,7 @@ test("a side tab's only tab merges its variables into the row it joins, and Undo
 
 test("a side tab's only tab dropped on a gap moves its side tab, variables and all", async ({ page }) => {
   await start(page, "/?top-tabs");
-  await page.getByRole("button", { name: "Add a side tab" }).click();
+  await page.keyboard.press("Meta+n");
   await expect.poll(() => sideIds(page)).toHaveLength(2);
   const [first, second] = await sideIds(page);
   await setVar(page, second!, "repo", "acme/api");
@@ -163,7 +164,7 @@ test("a side tab's only tab dropped on a gap moves its side tab, variables and a
 
 test("a tab from another window, its side tab's only one, shows beside as its row, variables kept", async ({ page }) => {
   await start(page, "/?top-tabs");
-  await page.keyboard.press("Meta+t");
+  await addTab(page);
   await expect.poll(() => tabIds(page)).toHaveLength(2);
   const [a, b] = await tabIds(page);
   await page.evaluate((b) => (window as any).__terminescu.host.send({ type: "MoveTabToNewWindow", tabId: b }), b);

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { addTab } from "./add-tab";
 
 // Task 8.71: a window shows two or more sidebar rows side by side. Each shown row is marked
 // open, the selected one carries the orange outline, and a window's only row joins another
@@ -22,7 +23,7 @@ const tabOf = async (page: Page, side: string) => (await firstTab(page, side)).i
 
 async function addRow(page: Page) {
   const before = (await sideIds(page)).length;
-  await page.getByRole("button", { name: "Add a side tab" }).click();
+  await page.keyboard.press("Meta+n");
   await expect.poll(async () => (await sideIds(page)).length).toBe(before + 1);
   return (await sideIds(page)).at(-1)!;
 }
@@ -84,7 +85,7 @@ test("a folder dropped on a pane's edge shows all its tabs; each head names the 
   // Tasks 8.73, 8.75.
   await start(page);
   const [first] = await sideIds(page);
-  await page.keyboard.press("Meta+t");
+  await addTab(page);
   await expect(page.locator(".ao-st-kids [data-kid]")).toHaveCount(2);
   const second = await addRow(page);
   await rowToRight(page, first!);
@@ -127,8 +128,8 @@ test("closing the selected shown row selects the other one", async ({ page }) =>
 test("two tabs of one folder show side by side; closing the selected one gives its place to the folder's next tab", async ({ page }) => {
   // Task 8.75.
   await start(page);
-  await page.keyboard.press("Meta+t");
-  await page.keyboard.press("Meta+t");
+  await addTab(page);
+  await addTab(page);
   const kids = page.locator(".ao-st-kids [data-kid]");
   await expect(kids).toHaveCount(3);
   const [a, b, c] = await kids.evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.kid!));
@@ -155,7 +156,7 @@ test("a window's only row dropped on another window joins it as a simple row", a
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/?top-tabs");
   await page.locator(".term-pane").first().click();
-  await page.keyboard.press("Meta+t");
+  await addTab(page);
   await expect(page.locator(".ao-tabs [role=tab]")).toHaveCount(2);
   const b = await page.locator(".ao-tabs [role=tab]").nth(1).getAttribute("data-tab");
   await page.evaluate((b) => (window as any).__terminescu.host.send({ type: "MoveTabToNewWindow", tabId: b }), b);
@@ -178,7 +179,7 @@ test("the tab bar starts with the selected folder's name, and its pixel tip list
   await page.goto("/?top-tabs");
   await page.locator(".term-pane").first().click();
   await expect(page.locator(".ao-tabs-folder")).toHaveCount(0);
-  await page.keyboard.press("Meta+t");
+  await addTab(page);
   await expect(page.locator(".ao-tabs [role=tab]")).toHaveCount(2);
   const [side] = await sideIds(page);
   const folder = page.locator(".ao-tabs-folder");

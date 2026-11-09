@@ -752,6 +752,10 @@ buffers once per sheet.
       class, with a pixel folder icon in the design system. Saved `group` icons become
       `folder` (migration 0012); new tabs never pick the folder icon. Verify: core `db`
       tests, the whole e2e suite.
+- [x] 8.79 New terminals at the selected row's level. `⌘T` and the sidebar's `+` add a
+      one-tab row right below a selected one-tab row, or a tab to the selected folder; only a
+      drag of a row onto a row makes a folder. `⌘N` still adds a row at the end, and the tab
+      bar's `+` adds to the tabs it shows. Verify: `windows.spec.ts`, the whole e2e suite.
 - [ ] 8.72 Sidebar drags, part 3. A row dragged between rows reorders (hand-sorted only), and
       out of every window opens a new one; the cross-window drag carries a row, not only a tab.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with

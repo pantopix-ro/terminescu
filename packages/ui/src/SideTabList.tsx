@@ -631,7 +631,8 @@ export function SideTabList({
         ))}
         <Gap index={sideTabs.length} dragging={dragging && !draggingSide && sort === "manual"} />
         <Gap index={sideTabs.length} dragging={dragging && !draggingSide} end />
-        {/* The empty space under the last row: hovering it shows a + that adds a side tab. */}
+        {/* The empty space under the last row: hovering it shows a + that adds a terminal at the
+            selected row's level (task 8.79). */}
         {!dragging && (
           <div
             className="side-fill"
@@ -642,11 +643,11 @@ export function SideTabList({
               onMenu(menuAt(e), { kind: "list" });
             }}
           >
-            <button type="button" className="side-add" aria-label="Add a side tab" title="New side tab (⌘N)" onClick={onNew}>
+            <button type="button" className="side-add" aria-label="Add a side tab" title="New terminal (⌘T)" onClick={onNew}>
               <i className="ao-i ao-i-plus" />
             </button>
             {onNewText && (
-              <NewMenu onNew={onNew} onNewText={() => onNewText()} hints={["⌘N"]} textTitle="A new side tab with an untitled text" className="side-add more" label="Choose side tab kind" />
+              <NewMenu onNew={onNew} onNewText={() => onNewText()} hints={["⌘T"]} textTitle="A new side tab with an untitled text" className="side-add more" label="Choose side tab kind" />
             )}
           </div>
         )}

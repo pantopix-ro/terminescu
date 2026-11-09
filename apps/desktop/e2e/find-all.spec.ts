@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { addTab } from "./add-tab";
 
 // Task 8.46 on the mock host: ⌘⇧F finds in every terminal of the window, history included, and
 // a hit shows its tab, focuses its pane and selects the line.
@@ -18,7 +19,7 @@ test("⌘⇧F finds in all panes and a hit shows the line in its tab", async ({ 
   await expect.poll(() => focusedPane(page)).not.toBeNull();
   const first = await focusedPane(page);
   await write(page, first!, "error: deploy acme/api failed\r\n" + Array.from({ length: 100 }, (_, i) => `line ${i}\r\n`).join(""));
-  await page.keyboard.press("Meta+T");
+  await addTab(page);
   await expect(page.getByRole("tab")).toHaveCount(2);
   await expect.poll(() => focusedPane(page)).not.toBe(first);
   const second = (await focusedPane(page))!;
