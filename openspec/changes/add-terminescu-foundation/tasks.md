@@ -739,9 +739,9 @@ buffers once per sheet.
       the selected one wears the orange outline. An open row's background reaches the
       sidebar's right edge. An area head shows the tab's coloured icon left of its name.
       Verify: `split-view.spec.ts`, `dock.spec.ts`, `sidebar-drag.spec.ts`, ui `view` tests.
-- [ ] 8.76 Sidebar drop zones. A tab dragged from this window or another lands where it
+- [x] 8.76 Sidebar drop zones. A tab dragged from this window or another lands where it
       drops: a gap between rows makes it a row, a folder or a row takes it in, a spot between
-      a folder's tabs puts it there. The zone under the cursor lights orange. Verify:
+      a folder's tabs puts it there. The zone under the cursor lights orange. While a tab drags, the gaps between rows grow over the rows' edges, so nothing moves. Verify:
       `sidebar-drag.spec.ts`.
 - [x] 8.77 One-line rows. A row with one tab shows as a folder's tab does, one line at its
       height: icon, name, subtitle, and a status chip only when one is set or the row needs

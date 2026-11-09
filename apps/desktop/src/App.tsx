@@ -279,7 +279,8 @@ const collide: CollisionDetection = (args) => {
 
 /**
  * The drop target at a point, for a tab dragged from another window: the sidebar's end, a gap,
- * a side tab row, or a tab in the tab bar. Undefined means the window itself.
+ * a side tab row, a tab listed in a folder (task 8.76), or a tab in the tab bar. Undefined
+ * means the window itself.
  */
 function remoteTarget(
   x: number,
@@ -288,12 +289,17 @@ function remoteTarget(
   | { el: HTMLElement; kind: "end" }
   | { el: HTMLElement; kind: "gap"; index: number }
   | { el: HTMLElement; kind: "side" | "tab"; id: string }
+  | { el: HTMLElement; kind: "kid"; id: string; folder: string }
   | undefined {
   const hit = document.elementFromPoint(x, y);
-  const el = hit?.closest<HTMLElement>(".side-end, [data-gap], [data-side], .ao-tabs [data-tab]");
+  const el = hit?.closest<HTMLElement>(".side-end, [data-gap], [data-kid], [data-side], .ao-tabs [data-tab]");
   if (!el) return undefined;
   if (el.classList.contains("side-end")) return { el, kind: "end" };
   if (el.dataset.gap !== undefined) return { el, kind: "gap", index: Number(el.dataset.gap) };
+  if (el.dataset.kid) {
+    const folder = el.closest(".side-item")?.querySelector<HTMLElement>("[data-side]")?.dataset.side;
+    return folder ? { el, kind: "kid", id: el.dataset.kid, folder } : undefined;
+  }
   if (el.dataset.side) return { el, kind: "side", id: el.dataset.side };
   return { el, kind: "tab", id: el.dataset.tab! };
 }
@@ -1694,6 +1700,15 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     }
     if (only && from && target?.kind !== "end" && target?.kind !== "gap") {
       if (target?.kind === "side") return startMerge(from.id, target.id);
+      // Dropped on a tab listed in a folder, it takes that tab's place there (task 8.76).
+      if (target?.kind === "kid") {
+        const index = anySide(target.folder)?.tabs.findIndex((t) => t.id === target.id) ?? -1;
+        const run = () => {
+          followTab(p.tabId);
+          send({ type: "MoveTab", tabId: p.tabId, toSideTabId: target.folder, index }).then(refocus, report);
+        };
+        return startMerge(from.id, target.folder, { run });
+      }
       // Dropped on a tab of the tab bar, it takes that tab's place once merged in.
       const into = activeSide;
       const index = target?.kind === "tab" ? tabs.findIndex((t) => t.id === target.id) : -1;
@@ -1710,6 +1725,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           ? { type: "MoveTabToNewSideTab", tabId: p.tabId, windowId, index: target.index }
           : target?.kind === "side"
             ? { type: "MoveTab", tabId: p.tabId, toSideTabId: target.id, index: sideTabs.find((s) => s.id === target.id)?.tabs.length ?? 0 }
+            : target?.kind === "kid"
+              ? { type: "MoveTab", tabId: p.tabId, toSideTabId: target.folder, index: anySide(target.folder)?.tabs.findIndex((t) => t.id === target.id) ?? 0 }
             : activeSide
               ? {
                   type: "MoveTab",

@@ -375,6 +375,36 @@ test("a tab from another window lights the row under it and drops into it; its w
   expect(ws.windows[0].sideTabs.find((s: any) => s.id === firstSide).tabs.map((t: any) => t.id)).toEqual([b, a]);
 });
 
+// Task 8.76: a tab from another window lands where it drops: on a folder's tab it takes that
+// tab's place, on a gap between rows it becomes a row. The spot lights orange.
+test("a tab from another window drops between a folder's tabs or into a gap", async ({ page }) => {
+  await start(page);
+  for (let i = 0; i < 3; i++) await page.keyboard.press("Meta+t");
+  await expect.poll(() => tabIds(page)).toHaveLength(4);
+  const [a, b, c, d] = await tabIds(page);
+  for (const t of [c, d]) await page.evaluate((t) => (window as any).__terminescu.host.send({ type: "MoveTabToNewWindow", tabId: t }), t);
+  await page.keyboard.press("Control+Meta+1");
+  await expect.poll(() => tabIds(page)).toEqual([a, b]);
+  const folder = (await page.locator(".ao-st").first().getAttribute("data-side"))!;
+
+  const kid = page.locator(`[data-kid="${b}"]`);
+  const onKid = await center(page, `[data-kid="${b}"]`);
+  await page.evaluate(({ c, onKid }) => (window as any).__terminescu.host.dragHover({ tabId: c, ...onKid }), { c, onKid });
+  await expect(kid).toHaveClass(/remote-hot/);
+  expect(await kid.evaluate((el) => getComputedStyle(el).boxShadow)).toContain("rgb(229, 163, 58)");
+  // The gaps between rows grow while a tab drags.
+  expect(Math.round((await page.locator(".side-gap").first().boundingBox())!.height)).toBe(10);
+  await page.evaluate(({ c, onKid }) => (window as any).__terminescu.host.dragDrop({ tabId: c, ...onKid }), { c, onKid });
+  await expect.poll(async () => (await mock(page)).ws.windows[0].sideTabs.find((s: any) => s.id === folder).tabs.map((t: any) => t.id)).toEqual([a, c, b]);
+
+  const gap = await center(page, '.side-gap[data-gap="0"]');
+  await page.evaluate(({ d, gap }) => (window as any).__terminescu.host.dragHover({ tabId: d, ...gap }), { d, gap });
+  await expect(page.locator('.side-gap[data-gap="0"]')).toHaveClass(/remote-hot/);
+  await page.evaluate(({ d, gap }) => (window as any).__terminescu.host.dragDrop({ tabId: d, ...gap }), { d, gap });
+  await expect.poll(async () => (await mock(page)).ws.windows[0].sideTabs.map((s: any) => s.tabs.map((t: any) => t.id))).toEqual([[d], [a, c, b]]);
+  expect((await mock(page)).ws.windows, "the emptied windows close").toHaveLength(1);
+});
+
 // Codebase review: closing a terminal that runs a program asks first, as Terminal.app does.
 test("closing a tab that runs a program asks; Cancel keeps it, Close ends it", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
