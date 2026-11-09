@@ -728,6 +728,10 @@ buffers once per sheet.
       shows the group mark, the group and the tab it shows; its pixel tip lists the group's
       tabs, the shown one marked. A click on a head selects its row. Verify:
       `split-view.spec.ts`.
+- [x] 8.74 Group names in tips and the tab bar. A group's pixel tip lists its tabs one per
+      line with each tab's folder, the shown one marked. With top tabs, the bar starts with
+      the selected group's mark and name, whose tip lists the same lines. Verify:
+      `split-view.spec.ts`, ui `view` tests.
 - [ ] 8.72 Sidebar drags, part 3. A row dragged between rows reorders (hand-sorted only), and
       out of every window opens a new one; the cross-window drag carries a row, not only a tab.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with

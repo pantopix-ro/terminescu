@@ -7,6 +7,8 @@ export interface TipAt {
   sub?: string;
   /** The status label, shown under the name. */
   status?: string;
+  /** More plain lines under the rest, one per item, as a group's tabs (task 8.74). */
+  lines?: readonly string[];
   rect: DOMRect;
   /** Lay it over the element, as a name's expansion, instead of beside it. */
   over?: boolean;
@@ -24,7 +26,8 @@ export function useTip() {
     tip,
     show: (el: Element, name: string, status?: string) => setTip({ name, status, rect: el.getBoundingClientRect() }),
     /** Under the element: the name, a plain second line and the status. */
-    below: (el: Element, name: string, sub?: string, status?: string) => setTip({ name, sub, status, rect: el.getBoundingClientRect(), below: true }),
+    below: (el: Element, name: string, sub?: string, status?: string, lines?: readonly string[]) =>
+      setTip({ name, sub, status, lines, rect: el.getBoundingClientRect(), below: true }),
     /** The whole of a name its box cuts short, laid over it; nothing when it fits. */
     expand: (el: HTMLElement, name: string) => {
       if (!truncated(el)) return false;
@@ -71,6 +74,11 @@ export function Tip({ tip }: { tip: TipAt | undefined }) {
       <span className="px-tip-name">{tip.name}</span>
       {tip.sub && <span className="px-tip-sub">{tip.sub}</span>}
       {tip.status && <span className="px-tip-status">{tip.status}</span>}
+      {tip.lines?.map((l, i) => (
+        <span key={i} className="px-tip-sub px-tip-line">
+          {l}
+        </span>
+      ))}
     </div>
   );
 }

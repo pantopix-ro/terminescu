@@ -83,9 +83,12 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 .view-head .view-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .view-head .view-tab { color: var(--faint); min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .view-head .view-tab::before { content: "› "; }
-/* A group's head starts with two stacked squares, the group mark. */
-.view-head .view-group { flex: none; width: 8px; height: 8px; background: var(--st-accent, var(--line-strong)); box-shadow: 3px -3px 0 0 color-mix(in srgb, var(--st-accent, var(--line-strong)) 55%, transparent); margin-top: 3px; }
+/* A group's head, and the tab bar of a group (task 8.74), start with two stacked squares, the
+   group mark. */
+.view-head .view-group, .ao-tabs-group .view-group { flex: none; width: 8px; height: 8px; background: var(--st-accent, var(--line-strong)); box-shadow: 3px -3px 0 0 color-mix(in srgb, var(--st-accent, var(--line-strong)) 55%, transparent); margin-top: 3px; }
 .view-area.on > .view-head { color: var(--fg); box-shadow: inset 4px 0 0 0 var(--st-accent, var(--line-strong)), inset 0 -2px 0 0 var(--focus); }
+.ao-tabs-group { flex: none; display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-3) 0 calc(var(--space-2) + 4px); font-size: 12px; color: var(--fg); box-shadow: inset 4px 0 0 0 var(--st-accent, var(--line-strong)); white-space: nowrap; max-width: 180px; overflow: hidden; }
+.ao-tabs-group .view-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .app-pane .ao-tp-body { padding: 0; position: relative; }
 .tp-close { width: 16px; height: 16px; display: grid; place-items: center; color: var(--faint); }
 .resume-bar .ao-btn { height: 24px; }
@@ -400,6 +403,8 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 .px-tip { position: fixed; z-index: 60; pointer-events: none; display: flex; flex-direction: column; gap: 4px; max-width: min(360px, calc(100vw - 8px)); padding: 4px 6px; background: var(--panel-2); color: var(--fg); font-size: 12px; line-height: 16px; box-shadow: 0 -2px 0 0 var(--line-strong), 0 2px 0 0 var(--line-strong), -2px 0 0 0 var(--line-strong), 2px 0 0 0 var(--line-strong), var(--shadow-hard-sm); overflow-wrap: anywhere; }
 .px-tip-name { font-weight: 600; }
 .px-tip-sub { color: var(--dim); font-size: 11px; }
+/* A group's tab lines keep their leading mark column (task 8.74). */
+.px-tip-line { white-space: pre; }
 .px-tip-status { font-family: var(--font-pixel); font-size: 8px; line-height: 1; text-transform: uppercase; letter-spacing: .04em; color: var(--dim); }
 
 /* Task 8.28: a bigger icon over two lines, the status under the name, and a row's shells beside it. */

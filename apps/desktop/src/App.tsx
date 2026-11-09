@@ -63,6 +63,7 @@ import {
   useTip,
   composeView,
   fitView,
+  groupLines,
   hideRow,
   rowsOf,
   showBeside,
@@ -1983,6 +1984,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const dragSideTab = dragging?.startsWith("side:") ? sideTabs.find((s) => s.id === dragging.slice(5)) : undefined;
   // Every shown row's panes in one tree; a maximized pane shows alone (task 8.39).
   const screen = maxPane && activeTab ? leaf(activeTab.layout, maxPane) : shownView && composeView(shownView, (row) => areas.find((x) => x.side.id === row)?.tab.layout);
+  /** A group's tabs for a pixel tip: each with its folder, the shown one marked (task 8.74). */
+  const tabLines = (side: SideTab, shown: string | undefined) =>
+    groupLines(side.tabs, shown, (id) => tabName(side.tabs.find((t) => t.id === id)!, docs), subtitles);
   const multi = panes.length > 1 || (screen ? panesOf(screen).length : 0) > 1;
 
   /** A split pane's header text: the document, the transcript or the shell's live subtitle. */
@@ -2146,6 +2150,11 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           <main className={`app-main${appSettings.topTabs ? "" : " bare"}`}>
             {appSettings.topTabs && <TabBar
               tabs={appSettings.topTabs ? tabs : []}
+              group={
+                activeSide && activeSide.tabs.length > 1
+                  ? { name: sideTabName(activeSide, docs), accent: activeSide.accent, lines: tabLines(activeSide, activeTab?.id) }
+                  : undefined
+              }
               activeId={activeTab?.id}
               agents={agents}
               statuses={statuses}
@@ -2207,13 +2216,15 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                                 // A group's head names the group and the tab it shows; the tip
                                 // lists the group's tabs, the shown one marked.
                                 onMouseEnter={(e) =>
-                                  areaTip.below(
-                                    e.currentTarget,
-                                    group ? `${sideTabName(side, docs)} › ${tabName(tab, docs)}` : sideTabName(side, docs),
-                                    group
-                                      ? `group of ${side.tabs.length}: ${side.tabs.map((t) => (t.id === tab.id ? `▸${tabName(t, docs)}` : tabName(t, docs))).join(" · ")}`
-                                      : undefined,
-                                  )
+                                  group
+                                    ? areaTip.below(
+                                        e.currentTarget,
+                                        `${sideTabName(side, docs)} › ${tabName(tab, docs)}`,
+                                        `group of ${side.tabs.length}`,
+                                        undefined,
+                                        tabLines(side, tab.id),
+                                      )
+                                    : areaTip.below(e.currentTarget, sideTabName(side, docs), subtitles[tab.id])
                                 }
                                 onMouseLeave={areaTip.hide}
                               >
