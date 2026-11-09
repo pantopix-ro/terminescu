@@ -530,6 +530,11 @@ html[data-see-through] :is(.ctx-pinned, .ao-ctx-over) .ctx-sec-head { background
 /* The selected outline: a thin line in the group's neon at half strength. */
 .app-side .ao-st, .app-side .ao-st-kids { --sel-line: color-mix(in srgb, var(--st-accent, var(--line-strong)) 55%, transparent); }
 .ao-side.collapsed .ao-st.active { padding-right: 0; }
+/* Task 8.71: rows shown side by side carry a bar on their right edge; the selected one an
+   orange outline, the colour of the focused pane. */
+.app-side .ao-side.split .side-item.open .ao-st:not(.active) { box-shadow: inset 4px 0 0 0 var(--st-accent, transparent), inset -3px 0 0 0 var(--dim); }
+.app-side .ao-side.split .side-item.active .ao-st, .app-side .ao-side.split .side-item.active .ao-st-kids { --sel-line: var(--focus); }
+.app-side .ao-side.split .side-item.active .ao-st.active:not(.drop-into):not(.remote-hot) { box-shadow: inset 4px 0 0 0 var(--st-accent), inset 0 0 0 2px var(--focus); }
 
 /* add-public-release: first run, About, Licenses, Privacy, Feedback and Uninstall. */
 .app-sheet { width: min(560px, calc(100% - 32px)); max-height: 84vh; display: flex; flex-direction: column; }

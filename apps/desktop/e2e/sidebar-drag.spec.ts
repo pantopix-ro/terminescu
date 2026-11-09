@@ -59,17 +59,28 @@ const varsOf = (page: Page, side: string) =>
     side,
   );
 
-test("a listed tab dropped on a pane's edge shows beside it", async ({ page }) => {
+test("a listed tab dropped on a pane's edge leaves its group as a row beside, with its plain variables", async ({ page }) => {
   const [a, b] = await group(page, 2);
+  const [side] = await sideIds(page);
+  await setVar(page, side!, "repo", "acme/api");
+  await page.evaluate(
+    (side) =>
+      (window as any).__terminescu.host.addVariable(side, { name: "token", value: "hidden", mode: "secret", ttlSecs: null, source: "typed", originTabId: null }),
+    side,
+  );
   const pane = (await page.locator(".app-pane .ao-tp").first().getAttribute("data-pane"))!;
   const box = (await page.locator(`.app-pane .ao-tp[data-pane="${pane}"]`).boundingBox())!;
   await drag(page, `[data-kid="${b}"]`, { x: box.x + box.width * 0.95, y: box.y + box.height / 2 }, async () => {
     await expect(page.locator(".dock-preview")).toHaveAttribute("data-side", "right");
   });
   await expect(page.locator(".app-pane .ao-tp")).toHaveCount(2);
-  const side = (await workspace(page)).windows[0].sideTabs[0];
-  expect(side.tabs.map((t: any) => t.id)).toEqual([a]);
-  expect(side.tabs[0].layout).toMatchObject({ type: "split", dir: "row", children: [{ id: pane }, {}] });
+  await expect.poll(() => sideIds(page)).toHaveLength(2);
+  const [, beside] = await sideIds(page);
+  expect(await tabsOf(page, side!)).toEqual([a]);
+  expect(await tabsOf(page, beside!)).toEqual([b]);
+  // A secret never reaches the window, so it stays with the group.
+  await expect.poll(() => varsOf(page, beside!)).toEqual(["repo=acme/api"]);
+  await expect(page.locator(".side-item[data-open]")).toHaveCount(2);
 });
 
 test("a listed tab reorders inside its group, a line showing where it lands", async ({ page }) => {
@@ -149,7 +160,7 @@ test("a side tab's only tab dropped on a gap moves its side tab, variables and a
   await expect(page.locator(".toast")).toHaveCount(0);
 });
 
-test("a tab from another window, its side tab's only one, docks with its variables", async ({ page }) => {
+test("a tab from another window, its side tab's only one, shows beside as its row, variables kept", async ({ page }) => {
   await start(page, "/?top-tabs");
   await page.keyboard.press("Meta+t");
   await expect.poll(() => tabIds(page)).toHaveLength(2);
@@ -165,8 +176,11 @@ test("a tab from another window, its side tab's only one, docks with its variabl
   await page.evaluate(({ b, edge }) => (window as any).__terminescu.host.dragDrop({ tabId: b, ...edge }), { b, edge });
   await expect(page.locator(".app-pane .ao-tp")).toHaveCount(2);
   await expect.poll(async () => (await workspace(page)).windows.length).toBe(1);
-  expect(await varsOf(page, first!)).toEqual(["repo=acme/api"]);
-  // The docked tab is gone, so the merge offers no Undo.
-  await expect(page.locator(".toast")).toContainText("Merged");
-  await expect(page.locator(".toast").getByRole("button", { name: "Undo" })).toHaveCount(0);
+  await expect.poll(() => sideIds(page)).toEqual([first, away]);
+  expect(await tabsOf(page, away)).toEqual([b]);
+  expect(await varsOf(page, away)).toEqual(["repo=acme/api"]);
+  expect(await varsOf(page, first!)).toEqual([]);
+  // Nothing merged: no toast, and the arrival is selected.
+  await expect(page.locator(".toast")).toHaveCount(0);
+  await expect(page.locator(`[data-side="${away}"]`)).toHaveAttribute("aria-current", "true");
 });

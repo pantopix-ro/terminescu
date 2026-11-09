@@ -21,8 +21,10 @@ import {
   stepZoom,
   withBindings,
   docOf,
+  hasSplit,
   leaf,
   panesOf,
+  resizeSplit,
   terminalsOf,
   transcriptOf,
   type AgentUpdate,
@@ -57,6 +59,13 @@ import {
   MERGE_UNDO_MS,
 } from "@terminescu/host";
 import {
+  composeView,
+  fitView,
+  hideRow,
+  rowsOf,
+  showBeside,
+  viewSplitId,
+  type View,
   ContextPanel,
   EXTRACT_EVENT,
   INSERT_EVENT,
@@ -196,6 +205,24 @@ function saveSort(mode: SortMode) {
     // Storage can be off; the sort then lasts until the window closes.
   }
 }
+// The rows a window shows side by side (task 8.71), kept per window across restarts.
+const viewKey = (windowId: string) => `terminescu.view.${windowId}`;
+function loadView(windowId: string): View | undefined {
+  try {
+    const v = JSON.parse(localStorage.getItem(viewKey(windowId)) ?? "null") as View | null;
+    return v && (v.type === "pane" || v.type === "split") ? v : undefined;
+  } catch {
+    return undefined;
+  }
+}
+function saveView(windowId: string, v: View | undefined) {
+  try {
+    if (v && v.type === "split") localStorage.setItem(viewKey(windowId), JSON.stringify(v));
+    else localStorage.removeItem(viewKey(windowId));
+  } catch {
+    // Storage can be off; the split then lasts until the window closes.
+  }
+}
 
 type Dir = "left" | "right" | "up" | "down";
 
@@ -265,16 +292,20 @@ const FIELD_CHORDS = new Set(["save", "save_as", "return_edit", "send_to_pane", 
 const TEXT_CHORDS = new Set(["find", "find_next", "find_previous", "prompt_previous", "prompt_next", "select_all"]);
 const paletteActions = (actions: readonly ActionDef[]) => actions.filter((a) => !selectable.has(a.id) && !/^(tab|side)_\d$/.test(a.id));
 
-/** Where a tab dragged over the panes would land (task 8.32); `small` means it would not fit. */
+/**
+ * Where a tab or row dragged over the panes would land (tasks 8.32, 8.71): beside the shown
+ * row `row`, the one holding `pane`; `small` means it would not fit.
+ */
 interface Dock {
   pane: string;
+  row: string;
   side: DockSide | "center";
   box: Box;
   small: boolean;
 }
 const sameDock = (a: Dock | undefined, b: Dock | undefined) =>
   a === b ||
-  (!!a && !!b && a.pane === b.pane && a.side === b.side && a.small === b.small && JSON.stringify(a.box) === JSON.stringify(b.box));
+  (!!a && !!b && a.pane === b.pane && a.row === b.row && a.side === b.side && a.small === b.small && JSON.stringify(a.box) === JSON.stringify(b.box));
 
 /** Where a pane dragged to the tab bar becomes a tab: before the tab at `index`. */
 interface TabGap {
@@ -328,13 +359,51 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     saveSort(mode);
   };
 
-  const [sideTabId, setSideTabId] = useState<string>();
+  // A window opens on the first row of its saved view.
+  const [sideTabId, setSideTabId] = useState<string | undefined>(() => rowsOf(loadView(windowId))[0]);
   const activeSide = sideTabs.find((s) => s.id === pick(sideTabs.map((s) => s.id), sideTabId));
   const tabs = activeSide?.tabs ?? [];
   const [tabBySide, setTabBySide] = useState<Record<string, string>>({});
   const activeTab = tabs.find((t) => t.id === pick(tabs.map((t) => t.id), activeSide && tabBySide[activeSide.id]));
   const panes = activeTab ? panesOf(activeTab.layout) : [];
   const focused = pick(panes, activeTab && focusByTab[activeTab.id]);
+  // Task 8.71: the rows shown side by side. The selected row is always one of them; a row
+  // picked in the sidebar takes the place of the one selected before.
+  const [view, setView] = useState<View | undefined>(() => loadView(windowId));
+  const prevSide = useRef<string | undefined>(undefined);
+  const sideIds = sideTabs.map((s) => s.id);
+  const shownView = sideIds.length ? fitView(view, sideIds, activeSide?.id, prevSide.current) : view;
+  const openRows = rowsOf(shownView);
+  useEffect(() => {
+    // The selected row closed: the next shown row takes the selection, not its place.
+    const prev = prevSide.current;
+    if (prev && !sideIds.includes(prev) && activeSide && !rowsOf(view).includes(activeSide.id)) {
+      const left = rowsOf(fitView(view, sideIds, undefined, undefined));
+      if (left.length) {
+        setSideTabId(left[0]);
+        return;
+      }
+    }
+    prevSide.current = activeSide?.id;
+    if (sideIds.length && JSON.stringify(shownView) !== JSON.stringify(view)) {
+      setView(shownView);
+      saveView(windowId, shownView);
+    }
+  });
+  const changeView = (f: (v: View | undefined) => View | undefined) =>
+    setView((v) => {
+      const next = f(v);
+      saveView(windowId, next);
+      return next;
+    });
+  // Each shown row's current tab, the selected row's being `activeTab`.
+  const shownTabOf = (s: SideTab) => (s.id === activeSide?.id ? activeTab : s.tabs.find((t) => t.id === pick(s.tabs.map((x) => x.id), tabBySide[s.id])));
+  const areas = openRows.flatMap((id) => {
+    const side = sideTabs.find((s) => s.id === id);
+    const tab = side && shownTabOf(side);
+    return side && tab ? [{ side, tab }] : [];
+  });
+  const areaOfPane = (paneId: string) => areas.find((a) => panesOf(a.tab.layout).includes(paneId));
   // The pane each tab shows alone (task 8.39), for this session only; a pane that left the tab
   // shows the whole layout again.
   const [maxByTab, setMaxByTab] = useState<Record<string, string>>({});
@@ -440,6 +509,12 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     setTabBySide((m) => ({ ...m, [sideId]: tabId }));
   };
   const focusIn = (tabId: string, paneId: string) => setFocusByTab((m) => ({ ...m, [tabId]: paneId }));
+  // A pane of another shown row selects that row (task 8.71).
+  const focusArea = (tabId: string, paneId: string) => {
+    const side = sideTabs.find((s) => s.tabs.some((t) => t.id === tabId));
+    if (side && side.id !== activeSide?.id) selectTab(side.id, tabId);
+    focusIn(tabId, paneId);
+  };
   // The terminal each tab focused last: where "Send to pane" pastes (D29).
   const lastTerminal = useRef<Record<string, string>>({});
   useEffect(() => {
@@ -1579,13 +1654,15 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     // along (task 8.70); a gap moves the whole side tab in the core.
     const from = ws.windows.flatMap((w) => w.sideTabs).find((s) => s.tabs.some((t) => t.id === p.tabId));
     const only = from?.tabs.length === 1;
+    // On a pane's edge it shows beside that row (task 8.71).
     const docked = dockAt(p.tabId, p.x, p.y);
-    if (docked && docked.side !== "center" && !docked.small) {
-      const { pane, side } = docked;
-      if (only && from && activeSide) return startMerge(from.id, activeSide.id, { run: () => dockTab(p.tabId, pane, side), undo: false });
-      return dockTab(p.tabId, docked.pane, docked.side);
-    }
+    if (docked && docked.side !== "center" && !docked.small) return placeBeside(p.tabId, docked.row, docked.side);
     const target = remoteTarget(p.x, p.y);
+    // Anywhere else in the panes, a window's only row joins this window as a row and shows.
+    if (only && from && !target) {
+      setFollow((w) => sidesOf(w).some((s) => s.id === from.id) && (setSideTabId(from.id), refocus(), true));
+      return void send({ type: "MoveSideTab", sideTabId: from.id, windowId, index: sideTabs.length });
+    }
     if (only && from && target?.kind !== "end" && target?.kind !== "gap") {
       if (target?.kind === "side") return startMerge(from.id, target.id);
       // Dropped on a tab of the tab bar, it takes that tab's place once merged in.
@@ -1643,29 +1720,44 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const [tabGap, setTabGap] = useState<TabGap>();
   const tabGapRef = useRef(tabGap);
   tabGapRef.current = tabGap;
-  const dockAt = (tabId: string, x: number, y: number): Dock | undefined => {
-    // The tab on screen cannot dock into itself.
-    if (!activeTab || tabId === activeTab.id) return undefined;
+  /** What a drag carries: a row (`side:<id>`) or a tab, from this window or another. */
+  const dragSource = (dragId: string) => {
+    if (dragId.startsWith("side:")) {
+      const side = anySide(dragId.slice(5));
+      return side && { side, tabId: undefined, lone: true };
+    }
+    const side = ws.windows.flatMap((w) => w.sideTabs).find((s) => s.tabs.some((t) => t.id === dragId));
+    return side && { side, tabId: dragId, lone: side.tabs.length === 1 };
+  };
+  const dockAt = (dragId: string, x: number, y: number): Dock | undefined => {
     const el = document
       .elementsFromPoint(x, y)
       .map((e) => e.closest<HTMLElement>(".app-pane .ao-tp[data-pane]"))
       .find(Boolean);
     const pane = el?.dataset.pane;
-    if (!el || !pane || !panesOf(activeTab.layout).includes(pane)) return undefined;
-    const r = el.getBoundingClientRect();
-    const box = { left: r.left, top: r.top, width: r.width, height: r.height };
+    const area = pane ? areaOfPane(pane) : undefined;
+    const src = dragSource(dragId);
+    if (!pane || !area || !src) return undefined;
+    // A row, or a row's only tab, cannot go beside itself; a tab of a group can leave it.
+    if (src.lone && src.side.id === area.side.id) return undefined;
+    // The drop splits the row's whole area, so the area is the box.
+    const rects = panesOf(area.tab.layout).flatMap((p) => {
+      const at = document.querySelector<HTMLElement>(`.app-pane .ao-tp[data-pane="${p}"]`);
+      return at ? [at.getBoundingClientRect()] : [];
+    });
+    const left = Math.min(...rects.map((r) => r.left));
+    const top = Math.min(...rects.map((r) => r.top));
+    const box = { left, top, width: Math.max(...rects.map((r) => r.right)) - left, height: Math.max(...rects.map((r) => r.bottom)) - top };
     const side = dockZone(box, x, y);
     if (!side) return undefined;
-    if (side === "center") return { pane, side, box, small: false };
-    const moving = ws.windows.flatMap((w) => w.sideTabs.flatMap((s) => s.tabs)).find((t) => t.id === tabId);
-    if (!moving) return undefined;
-    const [dir, before] = dockPlace(side);
-    return { pane, side, box, small: splitAt(activeTab.layout, pane, dir, before, moving.layout, "preview") === "small" };
+    if (side === "center") return { pane, row: area.side.id, side, box, small: false };
+    const row = src.lone ? src.side.id : "new";
+    return { pane, row: area.side.id, side, box, small: !showBeside(shownView, area.side.id, row, side, "preview") };
   };
   const dockAtRef = useRef(dockAt);
   dockAtRef.current = dockAt;
   useEffect(() => {
-    if (!dragging || dragging.startsWith("side:")) return;
+    if (!dragging) return;
     const pane = dragging.startsWith("pane:");
     const move = (e: PointerEvent) => {
       if (pane) {
@@ -1700,6 +1792,59 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       refocus();
     });
   };
+  /** A group's plain variables go with its tab into a new row; secrets and pins stay. */
+  const copyVariables = (from: string, to: string) =>
+    void host
+      .variables(from)
+      .then((vars) =>
+        Promise.all(
+          vars.flatMap((v) =>
+            v.value === null
+              ? []
+              : [
+                  host.addVariable(to, {
+                    name: v.name,
+                    value: v.value,
+                    mode: v.mode,
+                    ttlSecs: v.expiresAt ? Math.max(1, Math.round((v.expiresAt - Date.now()) / 1000)) : null,
+                    source: v.source ?? "typed",
+                    originTabId: null,
+                  }),
+                ],
+          ),
+        ),
+      )
+      .catch(report);
+  /**
+   * Task 8.71: a row, or a row's only tab, shows beside the shown row `target`, keeping its
+   * context; one from another window moves here first. A tab of a group leaves it as a new
+   * row, with the group's plain variables.
+   */
+  const placeBeside = (dragId: string, target: string, side: DockSide) => {
+    const src = dragSource(dragId);
+    if (!src) return refocus();
+    const show = (row: string, tabId?: string) => {
+      changeView((v) => showBeside(v ?? shownView, target, row, side, viewSplitId()) ?? v);
+      if (tabId) selectTab(row, tabId);
+      else setSideTabId(row);
+      refocus();
+    };
+    const here = sideTabs.findIndex((s) => s.id === src.side.id);
+    if (src.lone && here >= 0) return show(src.side.id);
+    if (src.lone) {
+      setFollow((w) => sidesOf(w).some((s) => s.id === src.side.id) && (show(src.side.id), true));
+      return void send({ type: "MoveSideTab", sideTabId: src.side.id, windowId, index: sideTabs.length });
+    }
+    const tabId = src.tabId!;
+    setFollow((w) => {
+      const row = sidesOf(w).find((s) => s.id !== src.side.id && s.tabs.some((t) => t.id === tabId));
+      if (!row) return false;
+      show(row.id, tabId);
+      copyVariables(src.side.id, row.id);
+      return true;
+    });
+    void send({ type: "MoveTabToNewSideTab", tabId, windowId, index: here >= 0 ? here + 1 : sideTabs.length });
+  };
   /** A pane of the active tab becomes a tab at `index`, and that tab opens. */
   const paneToTab = (paneId: string, index: number) => {
     setFollow((w) => {
@@ -1731,7 +1876,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       else refocus();
       return;
     }
+    const beside = docked && docked.side !== "center" && !docked.small ? docked : undefined;
     // A merge may open its dialog, which takes the focus; it gives it back when it closes.
+    if (tabId.startsWith("side:") && beside) return placeBeside(tabId, beside.row, beside.side as DockSide);
     if (tabId.startsWith("side:") && at?.startsWith("into:")) return startMerge(tabId.slice(5), at.slice(5));
     if (tabId.startsWith("side:")) return refocus();
     // The core saw where the cursor was (task 8.1): only a release over this window drops here.
@@ -1746,7 +1893,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       (end) => {
         if (end.kind !== "local" && end.kind !== "cancelled") refocus();
         // The middle of a pane, or a pane too small to halve, cancels.
-        else if (docked) docked.side === "center" || docked.small ? refocus() : dockTab(tabId, docked.pane, docked.side);
+        else if (beside) placeBeside(tabId, beside.row, beside.side as DockSide);
+        else if (docked) refocus();
         else dropHere(tabId, at);
       },
       (e: unknown) => {
@@ -1808,6 +1956,15 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
             })),
         )
       : []),
+    // Task 8.71: back to one row, or one row fewer on screen.
+    ...(activeSide && openRows.length > 1
+      ? [
+          { id: "view:alone", label: "Show only this side tab", group: "Actions", run: () => changeView(() => ({ type: "pane", id: activeSide.id })) },
+          ...areas
+            .filter((x) => x.side.id !== activeSide.id)
+            .map((x) => ({ id: `view:hide:${x.side.id}`, label: sideTabName(x.side, docs), group: "Hide from the window…", run: () => changeView((v) => hideRow(v, x.side.id)) })),
+        ]
+      : []),
     ...SORTS.map((m) => ({ id: `sort:${m}`, label: m === sort ? `${m} (now)` : m, group: "Sort side tabs", run: () => changeSort(m) })),
     ...sideTabs.map((s) => ({ id: `go:${s.id}`, label: sideTabName(s), group: "Go to side tab", run: () => setSideTabId(s.id) })),
     ...(activeSide
@@ -1820,12 +1977,15 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const dragTab = dragging ? allTabs.find((t) => t.id === tabOfDrag(dragging)) : undefined;
   const dragPane = dragging?.startsWith("pane:") ? dragging.slice(5) : undefined;
   const dragSideTab = dragging?.startsWith("side:") ? sideTabs.find((s) => s.id === dragging.slice(5)) : undefined;
-  const multi = panes.length > 1;
+  // Every shown row's panes in one tree; a maximized pane shows alone (task 8.39).
+  const screen = maxPane && activeTab ? leaf(activeTab.layout, maxPane) : shownView && composeView(shownView, (row) => areas.find((x) => x.side.id === row)?.tab.layout);
+  const multi = panes.length > 1 || (screen ? panesOf(screen).length : 0) > 1;
 
   /** A split pane's header text: the document, the transcript or the shell's live subtitle. */
   const paneHeadName = (paneId: string, transcript: boolean) => {
     if (transcript) return "transcript";
-    const docId = activeTab ? docOf(activeTab.layout, paneId) : undefined;
+    const own = areaOfPane(paneId)?.tab;
+    const docId = own ? docOf(own.layout, paneId) : undefined;
     if (docId) return docs[docId]?.title ?? "text";
     return paneSubtitle(labels[paneId], !!agents[paneId]) ?? "shell";
   };
@@ -1917,6 +2077,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               dragging={!!dragging || !!remote}
               draggingSide={dragSideTab?.id}
               draggingTab={dragTab?.id}
+              open={openRows}
               agents={agents}
               onSelect={(id) => {
                 setSideTabId(id);
@@ -2008,20 +2169,29 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               }
             />}
             <section className="app-pane">
-              {activeTab && (
+              {activeTab && screen && (
                 <SplitView
-                  key={activeTab.id}
-                  layout={(maxPane && leaf(activeTab.layout, maxPane)) || activeTab.layout}
-                  onResize={(splitId, sizes) => send({ type: "ResizeSplit", splitId, sizes })}
-                  renderPane={(paneId, resume, slot, transcript) => (
+                  key={areas.map((x) => x.tab.id).join(" ")}
+                  layout={screen}
+                  onResize={(splitId, sizes) => {
+                    // The borders between rows are the window's own; the rest are the core's.
+                    if (!shownView || !hasSplit(shownView, splitId)) return send({ type: "ResizeSplit", splitId, sizes });
+                    const next = resizeSplit(shownView, splitId, sizes);
+                    if (typeof next === "string") return Promise.resolve(false);
+                    changeView(() => next);
+                    return Promise.resolve(true);
+                  }}
+                  renderPane={(paneId, resume, slot, transcript) => {
+                    const own = areaOfPane(paneId)?.tab ?? activeTab;
+                    return (
                     <section
                       className={`ao-tp${multi && paneId === focused ? " focused" : ""}${dock?.pane === paneId && dock.side !== "center" ? ` dock-target${dock.small ? " too-small" : ""}` : ""}`}
                       data-pane={paneId}
-                      onPointerDown={() => focusIn(activeTab.id, paneId)}
+                      onPointerDown={() => focusArea(own.id, paneId)}
                     >
                       {multi && (
                         <PaneHead paneId={paneId} name={paneHeadName(paneId, !!transcript)}>
-                          <i className={`ao-i x1 ${transcript ? "ao-i-agent" : docOf(activeTab.layout, paneId) ? "ao-i-doc" : "ao-i-term"}`} />
+                          <i className={`ao-i x1 ${transcript ? "ao-i-agent" : docOf(own.layout, paneId) ? "ao-i-doc" : "ao-i-term"}`} />
                           <span className="tp-name">{paneHeadName(paneId, !!transcript)}</span>
                           <span className="grow" />
                           <button
@@ -2031,9 +2201,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                             title={`${maxPane === paneId ? "Restore panes" : "Maximize pane"} (${chordLabel(withBindings(ACTIONS, keyBindings).find((a) => a.id === "maximize_pane")!.accel)})`}
                             onPointerDown={(e) => e.stopPropagation()}
                             onClick={() => {
-                              focusIn(activeTab.id, paneId);
-                              if (maxPane === paneId) restore(activeTab.id);
-                              else setMaxByTab((m) => ({ ...m, [activeTab.id]: paneId }));
+                              focusArea(own.id, paneId);
+                              if (maxPane === paneId) restore(own.id);
+                              else setMaxByTab((m) => ({ ...m, [own.id]: paneId }));
                             }}
                           >
                             {maxPane === paneId ? "▣" : "□"}
@@ -2091,12 +2261,12 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                             session={transcript}
                             read={(offset) => host.readTranscript(transcript, offset)}
                             pin={(entry, range) => {
-                              const side = sideOfTab(activeTab.id);
+                              const side = sideOfTab(own.id);
                               if (!side) return Promise.resolve();
                               const q = range ? quoteOf(entry.text, ...range) : undefined;
                               return host.addPin({
                                 sideTabId: side,
-                                originTabId: activeTab.id,
+                                originTabId: own.id,
                                 session: transcript,
                                 entryId: entry.id,
                                 paneId: null,
@@ -2109,20 +2279,21 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                                 end: range?.[1] ?? null,
                               });
                             }}
-                            extract={(value) => startExtract(activeTab.id, value, "transcript")}
+                            extract={(value) => startExtract(own.id, value, "transcript")}
                             savePrompt={(text) => {
                               setToSave(text);
                               setSheet("save-prompt");
                             }}
                             reveal={reveal?.session === transcript ? reveal : undefined}
-                            onFocus={() => focusIn(activeTab.id, paneId)}
+                            onFocus={() => focusArea(own.id, paneId)}
                           />
                         ) : (
                           slot
                         )}
                       </div>
                     </section>
-                  )}
+                    );
+                  }}
                 />
               )}
               {!activeTab && <p className="small app-empty">No side tabs. Press + in the sidebar.</p>}
@@ -2211,7 +2382,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         )}
         {tabGap && <div className="tab-gap" style={{ left: tabGap.left - 1, top: tabGap.top + 4, height: tabGap.height - 8 }} />}
       </DndContext>
-      {/* Every pane of the window keeps its terminal; the active tab's panes show (D33). */}
+      {/* Every pane of the window keeps its terminal; the shown tabs' panes show (D33). */}
       {sideTabs.flatMap((side) =>
         side.tabs.flatMap((tab) =>
           terminalsOf(tab.layout).map((paneId) => (
@@ -2225,9 +2396,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               opacity={terminalOpacity}
               onBell={ringBell}
               confirmPaste={confirmPaste}
-              visible={tab.id === activeTab?.id}
+              visible={areas.some((x) => x.tab.id === tab.id)}
               focused={paneId === focused}
-              onFocus={() => focusIn(tab.id, paneId)}
+              onFocus={() => focusArea(tab.id, paneId)}
               open={(cols, rows, onOutput) => host.openPane(paneId, cols, rows, onOutput)}
               openUrl={(url) => void host.openUrl(url).catch((e: unknown) => setError(String(e)))}
               onLinkClick={copyLink}
@@ -2254,9 +2425,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                     key={paneId}
                     paneId={paneId}
                     docId={docId}
-                    visible={tab.id === activeTab?.id}
+                    visible={areas.some((x) => x.tab.id === tab.id)}
                     focused={paneId === focused}
-                    onFocus={() => focusIn(tab.id, paneId)}
+                    onFocus={() => focusArea(tab.id, paneId)}
                     host={host}
                     onDoc={noteDoc}
                     variables={side.id === sideId ? chipVars : undefined}

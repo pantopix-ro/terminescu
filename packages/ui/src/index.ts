@@ -68,3 +68,4 @@ export { attentionCounts, StatusLine, type StatusLineProps } from "./StatusLine"
 export { playChime } from "./chime";
 export { CommandsSection, TARGET_LABEL, launcherUp, type CommandDraft, type CommandsSectionProps } from "./CommandsSection";
 export { nextStop, tabStops, topModal, trapModalFocus } from "./modal";
+export { composeView, fitView, hideRow, replaceRow, rowsOf, showBeside, viewSplitId, type View } from "./view";

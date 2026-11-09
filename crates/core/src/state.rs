@@ -1802,6 +1802,34 @@ mod tests {
     }
 
     #[test]
+    fn a_window_s_only_side_tab_moves_to_another_window_and_its_window_closes() {
+        let mut c = core();
+        c.handle(Command::CreateSideTab {
+            window_id: "id1".into(),
+            index: None,
+        })
+        .unwrap();
+        c.handle(Command::MoveSideTabToNewWindow {
+            side_tab_id: "id4".into(),
+        })
+        .unwrap();
+        let away = c.workspace().windows[1].id.clone();
+        let moving = c.workspace().side_tab("id4").unwrap().clone();
+        let home = c.workspace().windows[0].id.clone();
+        let b = c
+            .handle(Command::MoveSideTab {
+                side_tab_id: "id4".into(),
+                window_id: home.clone(),
+                index: 1,
+            })
+            .unwrap();
+        assert_ne!(away, home);
+        assert!(b.patches.contains(&Patch::WindowClosed { window_id: away }));
+        assert_eq!(c.workspace().windows.len(), 1);
+        assert_eq!(c.workspace().windows[0].side_tabs[1], moving);
+    }
+
+    #[test]
     fn the_only_tab_of_a_side_tab_moves_its_side_tab() {
         let mut c = core();
         c.handle(Command::CreateSideTab {

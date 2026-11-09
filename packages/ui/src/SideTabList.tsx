@@ -30,6 +30,11 @@ export interface SideTabListProps {
   draggingSide?: string;
   /** The tab being dragged, from the tab bar or a group, for where a listed tab's drop line goes. */
   draggingTab?: string;
+  /**
+   * The rows the main area shows side by side (task 8.71). With two or more, each is marked
+   * open and the selected one takes the focus border.
+   */
+  open?: readonly string[];
   /** Claude sessions by pane: a side tab with one waiting gets the amber marker (D34). */
   agents?: Agents;
   /** Shown statuses by tab and side tab id (D15). */
@@ -530,6 +535,7 @@ export function SideTabList({
   dragging,
   draggingSide,
   draggingTab,
+  open = [],
   agents = {},
   statuses = {},
   builtins = {},
@@ -559,10 +565,14 @@ export function SideTabList({
   useEffect(hideAll, [dragging, renaming, collapsed, sideTabs.length]);
   const picked = picker.at && sideTabs.find((s) => s.id === picker.at!.sideId);
   return (
-    <nav className={`ao-side${collapsed ? " collapsed" : ""}`} aria-label="Side tabs">
+    <nav className={`ao-side${collapsed ? " collapsed" : ""}${open.length > 1 ? " split" : ""}`} aria-label="Side tabs">
       <div className="side-list" onScroll={hideAll}>
         {sideTabs.map((s, i) => (
-          <div key={s.id} className={`side-item${s.id === activeId ? " active" : ""}`}>
+          <div
+            key={s.id}
+            className={`side-item${s.id === activeId ? " active" : ""}${open.length > 1 && open.includes(s.id) ? " open" : ""}`}
+            data-open={open.length > 1 && open.includes(s.id) ? "true" : undefined}
+          >
             <Gap index={i} dragging={dragging && !draggingSide && sort === "manual"} />
             <Row
               side={s}
