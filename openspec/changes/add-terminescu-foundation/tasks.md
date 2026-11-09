@@ -723,6 +723,11 @@ buffers once per sheet.
       window's only row dropped in another window's panes joins it as a row, unmerged. The
       palette shows one row again or hides one. Verify: `split-view.spec.ts`,
       `dock.spec.ts`, `sidebar-drag.spec.ts`, ui `view` tests, core `state` tests.
+- [x] 8.73 Area heads. With two rows or more on screen, each area is headed by its row's
+      name in the row's neon, the selected one underlined in the focus orange. A group's head
+      shows the group mark, the group and the tab it shows; its pixel tip lists the group's
+      tabs, the shown one marked. A click on a head selects its row. Verify:
+      `split-view.spec.ts`.
 - [ ] 8.72 Sidebar drags, part 3. A row dragged between rows reorders (hand-sorted only), and
       out of every window opens a new one; the cross-window drag carries a row, not only a tab.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with

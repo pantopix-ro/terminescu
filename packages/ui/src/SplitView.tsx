@@ -11,6 +11,11 @@ export interface SplitViewProps {
   renderPane(paneId: string, resume: string | undefined, slot: ReactNode, transcript?: string): ReactNode;
   /** Resolves `false` when the resize was refused, so the preview snaps back. */
   onResize(splitId: string, sizes: number[]): void | Promise<boolean>;
+  /**
+   * Wraps the subtree under the node `id`, a pane or a split, or returns `body` as is. A
+   * window showing several rows heads each row's area this way (task 8.73).
+   */
+  frame?(id: string, body: ReactNode): ReactNode;
 }
 
 /** Where a pane's terminal shows. The element moves in and out, the terminal stays (D33). */
@@ -34,7 +39,7 @@ export function dragSizes(sizes: number[], i: number, delta: number): number[] {
   return out;
 }
 
-function Split({ node, renderPane, onResize }: { node: Extract<Layout, { type: "split" }> } & Omit<SplitViewProps, "layout">) {
+function Split({ node, renderPane, onResize, frame }: { node: Extract<Layout, { type: "split" }> } & Omit<SplitViewProps, "layout">) {
   const ref = useRef<HTMLDivElement>(null);
   const [preview, setPreview] = useState<number[] | null>(null);
   useEffect(() => setPreview(null), [node.sizes]);
@@ -80,7 +85,7 @@ function Split({ node, renderPane, onResize }: { node: Extract<Layout, { type: "
             />
           )}
           <div className="split-child" style={{ flex: `${sizes[i]!} 1 0px` }}>
-            <Node node={child} renderPane={renderPane} onResize={onResize} />
+            <Node node={child} renderPane={renderPane} onResize={onResize} frame={frame} />
           </div>
         </Fragment>
       ))}
@@ -88,19 +93,23 @@ function Split({ node, renderPane, onResize }: { node: Extract<Layout, { type: "
   );
 }
 
-function Node({ node, renderPane, onResize }: { node: Layout } & Omit<SplitViewProps, "layout">) {
-  if (node.type === "pane") {
-    if (node.transcript) return <>{renderPane(node.id, undefined, null, node.transcript)}</>;
-    return <>{renderPane(node.id, node.resume, <PaneSlot paneId={node.id} />)}</>;
-  }
-  return <Split node={node} renderPane={renderPane} onResize={onResize} />;
+function Node({ node, renderPane, onResize, frame }: { node: Layout } & Omit<SplitViewProps, "layout">) {
+  const body =
+    node.type === "split" ? (
+      <Split node={node} renderPane={renderPane} onResize={onResize} frame={frame} />
+    ) : node.transcript ? (
+      renderPane(node.id, undefined, null, node.transcript)
+    ) : (
+      renderPane(node.id, node.resume, <PaneSlot paneId={node.id} />)
+    );
+  return <>{frame ? frame(node.id, body) : body}</>;
 }
 
 /** A tab's split tree as nested flex boxes with draggable borders (D3, D19). */
-export function SplitView({ layout, renderPane, onResize }: SplitViewProps) {
+export function SplitView({ layout, renderPane, onResize, frame }: SplitViewProps) {
   return (
     <div className="split-root">
-      <Node node={layout} renderPane={renderPane} onResize={onResize} />
+      <Node node={layout} renderPane={renderPane} onResize={onResize} frame={frame} />
     </div>
   );
 }
