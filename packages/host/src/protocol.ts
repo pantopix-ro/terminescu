@@ -61,7 +61,7 @@ export type Neon = (typeof NEONS)[number];
 
 /** The icons a side tab or tab can pick; each is an `ao-i-*` class. Mirrors `ICONS` in state.rs. */
 export const ICONS = [
-  "term", "agent", "group", "tab", "window", "split", "doc", "tpl", "prompt", "var", "link",
+  "term", "agent", "folder", "tab", "window", "split", "doc", "tpl", "prompt", "var", "link",
   "pin", "play", "check", "bp", "pr", "merge", "save", "in", "out",
 ] as const;
 export type Icon = (typeof ICONS)[number];

@@ -58,7 +58,7 @@ test("reduced motion keeps the icons still", async ({ page }) => {
   await expect(icon).toHaveCSS("animation-name", "none");
 });
 
-test("a group row keeps its icon still while its shells blink", async ({ page }) => {
+test("a folder row keeps its icon still while its shells blink", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/?top-tabs");
   await page.locator(".term-pane").first().click();

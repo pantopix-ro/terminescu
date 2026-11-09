@@ -37,7 +37,7 @@ test("a double click on a side tab's icon picks another and resets it", async ({
   expect((await workspace(page)).windows[0].sideTabs[0].icon).toBeUndefined();
 });
 
-test("a tab's icon shows in the group and the tab bar; arrows and Enter pick, Esc closes", async ({ page }) => {
+test("a tab's icon shows in the folder and the tab bar; arrows and Enter pick, Esc closes", async ({ page }) => {
   await start(page);
   const side = (await workspace(page)).windows[0].sideTabs[0];
   await mock(page, "send", { type: "CreateTab", sideTabId: side.id });

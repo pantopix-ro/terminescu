@@ -15,7 +15,7 @@ ICONS = {
   "tpl":   ["XXXXXXXX","X......X","X.XXXX.X","X......X","X.XX.X.X","X......X","X.XXX..X","XXXXXXXX"],
   "agent": ["...XX...","X..XX..X",".X.XX.X.","..XXXX..","..XXXX..",".X.XX.X.","X..XX..X","...XX..."],
   "tab":   ["XXXX....","X..X....","X..XXXXX","X......X","X......X","X......X","X......X","XXXXXXXX"],
-  "group": ["..XXXXXX","..X....X","XXXXXX.X","X....X.X","X....XXX","X....X..","XXXXXX..","........"],
+  "folder":[".XXX....","X...X...","XXXXXXXX","X......X","X......X","X......X","X......X","XXXXXXXX"],
   "split": ["XXXXXXXX","X..X...X","X..X...X","X..XXXXX","X..X...X","X..X...X","X..X...X","XXXXXXXX"],
   "window":["XXXXXXXX","XXXXXXXX","X......X","X......X","X......X","X......X","X......X","XXXXXXXX"],
   "var":   [".XX..XX.",".X....X.",".X....X.","X......X",".X....X.",".X....X.",".XX..XX.","........"],
@@ -45,14 +45,14 @@ def card(name, group, height, body, readme, subtitle=None):
 card("SideTab","Navigation",470,'''
 <div style="display:grid;grid-template-columns:272px 1fr;gap:24px;padding:16px;align-items:start">
 <nav class="ao-side" aria-label="Side tabs" style="width:272px">
- <div class="ao-st active need" style="--st-accent:var(--blue);--st-bg:var(--tint-blue)">{{i:group}}<span class="t">PROJ-482 audit export</span><span class="ao-stat need">Waiting</span>
+ <div class="ao-st active need" style="--st-accent:var(--blue);--st-bg:var(--tint-blue)">{{i:folder}}<span class="t">PROJ-482 audit export</span><span class="ao-stat need">Waiting</span>
   <span class="m"><span class="ao-strip"><i class="ao-cell wait"></i><i class="ao-cell run"></i><i class="ao-cell"></i></span>3 tabs · ~/work/api</span></div>
  <div class="ao-st-kids" style="--st-accent:var(--blue);--st-bg:var(--tint-blue)">
   <div class="ao-st-kid active"><span class="ao-dot need"></span>{{i:agent}}<span class="grow">claude · plan</span><span>⌘1</span></div>
   <div class="ao-st-kid"><span class="ao-dot run"></span>{{i:term}}<span class="grow">pnpm dev</span><span>⌘2</span></div>
   <div class="ao-st-kid"><span class="ao-dot idle"></span>{{i:term}}<span class="grow">zsh · ~/work/web</span><span>⌘3</span></div>
  </div>
- <div class="ao-st" style="--st-accent:var(--magenta);--st-bg:var(--tint-magenta)">{{i:group}}<span class="t">PROJ-477 rate limit</span><span class="ao-stat manual" style="--s-fg:var(--magenta);--s-edge:var(--magenta)">Review</span>
+ <div class="ao-st" style="--st-accent:var(--magenta);--st-bg:var(--tint-magenta)">{{i:folder}}<span class="t">PROJ-477 rate limit</span><span class="ao-stat manual" style="--s-fg:var(--magenta);--s-edge:var(--magenta)">Review</span>
   <span class="m"><span class="ao-strip"><i class="ao-cell done"></i><i class="ao-cell"></i></span>2 tabs</span></div>
  <div class="ao-st" style="--st-accent:var(--green)">{{i:term}}<span class="t">dev servers</span><span class="ao-stat" style="--s-fg:var(--blue)">Running</span>
   <span class="m">docker compose up · 3h</span></div>
@@ -71,7 +71,7 @@ card("SideTab","Navigation",470,'''
 One row in the sidebar. A side tab is a terminal window that lives inside the app: it holds one or more tabs, and one context (variables, pins, links, prompts) shared by all of them.
 
 - One tab: a single row with the tab's command or cwd on the meta line.
-- Two or more tabs: a group. The meta line shows a BlockStrip with one cell per tab and the tab count. The chevron or a click opens the group and lists its tabs as `.ao-st-kid` rows, with `⌘1` to `⌘9` hints.
+- Two or more tabs: a folder. The meta line shows a BlockStrip with one cell per tab and the tab count. The chevron or a click opens the folder and lists its tabs as `.ao-st-kid` rows, with `⌘1` to `⌘9` hints.
 - Accent: a 4px left edge in the hue the person picked (`--st-accent`). Background: one of the `tint-*` tokens (`--st-bg`). Both live in the StatusEditor. Defaults are `line-strong` and `panel`.
 - Status: an `.ao-stat` label. Auto statuses come from the sessions (Running, Waiting, Done, Failed, Idle). A status set by hand gets `.manual` (a 4px square before the word) and stays until the person clears it.
 - Needs you: `.need` on the row adds the amber corner square and flashes the row three times. Amber always shows when a Claude session waits, even when the person set their own status. The person can't hide it.
@@ -148,9 +148,9 @@ One terminal inside a tab. A tab splits into panes like iTerm or tmux: `⌘D` sp
 card("DropZone","Layout",300,'''
 <div style="display:grid;grid-template-columns:272px 1fr;gap:28px;padding:16px;align-items:start">
 <nav class="ao-side" style="width:272px">
- <div class="ao-st" style="--st-accent:var(--blue)">{{i:group}}<span class="t">PROJ-482 audit export</span><span></span><span class="m">3 tabs</span></div>
+ <div class="ao-st" style="--st-accent:var(--blue)">{{i:folder}}<span class="t">PROJ-482 audit export</span><span></span><span class="m">3 tabs</span></div>
  <div class="ao-drop-line"></div>
- <div class="ao-st drop-into" style="--st-accent:var(--magenta)">{{i:group}}<span class="t">PROJ-477 rate limit</span><span></span><span class="m">drop to add as a tab</span></div>
+ <div class="ao-st drop-into" style="--st-accent:var(--magenta)">{{i:folder}}<span class="t">PROJ-477 rate limit</span><span></span><span class="m">drop to add as a tab</span></div>
  <div class="ao-st">{{i:term}}<span class="t">scratch</span><span></span><span class="m">zsh · ~</span></div>
  <div class="ao-drop">{{i:plus}}New side tab from “pnpm dev”</div>
 </nav>
@@ -263,7 +263,7 @@ card("StatusEditor","Status",420,'''
  </div>
 </div>
 <div style="display:grid;gap:8px;width:272px"><span class="small ao-dim">preview</span>
- <div class="ao-st" style="--st-accent:var(--magenta);--st-bg:var(--tint-magenta)">{{i:group}}<span class="t">PROJ-477 rate limit</span><span class="ao-stat manual" style="--s-fg:var(--magenta);--s-edge:var(--magenta)">Review</span><span class="m">2 tabs</span></div>
+ <div class="ao-st" style="--st-accent:var(--magenta);--st-bg:var(--tint-magenta)">{{i:folder}}<span class="t">PROJ-477 rate limit</span><span class="ao-stat manual" style="--s-fg:var(--magenta);--s-edge:var(--magenta)">Review</span><span class="m">2 tabs</span></div>
 </div></div>''','''
 # StatusEditor
 
@@ -287,7 +287,7 @@ card("BlockStrip","Status",150,'''
 </div>''','''
 # BlockStrip
 
-A side tab's tabs as a row of blocks, one per tab, left to right in tab order. It shows on group rows in the sidebar, in palette results and in the MergeDialog.
+A side tab's tabs as a row of blocks, one per tab, left to right in tab order. It shows on folder rows in the sidebar, in palette results and in the MergeDialog.
 
 - Cell states: `faint` idle shell, `blue` running (blinks in two steps), `amber` a Claude session waiting on you, `green` last command or turn done, `red` failed.
 - Sizes: `lg` (18x22) in dialogs, default (10x14) in sidebar rows.
@@ -385,7 +385,7 @@ card("StatusLine","Feedback",80,'''
 <div class="ao-status">
  <span class="need">{{i:bp}}<span class="ao-pixel">1 needs you</span></span>
  <span class="seg" style="color:var(--blue)">{{i:play}} 3 running</span>
- <span class="seg">{{i:group}} 5 side tabs · 9 tabs</span>
+ <span class="seg">{{i:folder}} 5 side tabs · 9 tabs</span>
  <span class="seg">{{i:agent}} claude · plan · ~/work/api</span>
  <span class="spacer"></span>
  <span class="seg"><span class="ao-key">⌘</span><span class="ao-key">K</span></span>
@@ -584,7 +584,7 @@ The app's own icon set: 8x8 bitmaps drawn as SVG squares with `shape-rendering: 
 Set: '''+", ".join(ICONS)+'''.
 
 - In markup, `<i class="ao-i ao-i-<name>"></i>` paints the same bitmap as a CSS mask.
-- `agent` marks a tab or pane running a Claude session. `group` a side tab with several tabs, `term` one with a single shell.
+- `agent` marks a tab or pane running a Claude session. `folder` a side tab with several tabs, `term` one with a single shell.
 - Draw new icons on the same 8x8 grid, one-pixel strokes, no anti-aliasing. Never mix in a stroke icon library. No emoji, no logos.
 ''')
 

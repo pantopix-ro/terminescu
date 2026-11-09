@@ -15,6 +15,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (9, include_str!("../migrations/0009_tab_accents.sql")),
     (10, include_str!("../migrations/0010_tab_names.sql")),
     (11, include_str!("../migrations/0011_side_tab_names.sql")),
+    (12, include_str!("../migrations/0012_folder_icon.sql")),
 ];
 
 pub const SCHEMA_VERSION: u32 = MIGRATIONS[MIGRATIONS.len() - 1].0;
@@ -229,6 +230,31 @@ mod tests {
             .query_row("SELECT count(*) FROM owners", [], |r| r.get(0))
             .unwrap();
         assert_eq!(n, 1);
+    }
+
+    #[test]
+    fn a_saved_group_icon_becomes_the_folder_icon() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        for (version, sql) in MIGRATIONS.iter().filter(|(v, _)| *v <= 11) {
+            conn.execute_batch(sql).unwrap();
+            conn.pragma_update(None, "user_version", version).unwrap();
+        }
+        conn.execute_batch(
+            "INSERT INTO owners (id, name, created_at) VALUES ('o', 'me', 0);
+             INSERT INTO windows (id, owner_id, position, created_at) VALUES ('w', 'o', 0, 0);
+             INSERT INTO side_tabs (id, owner_id, window_id, position, created_at, icon) VALUES ('s', 'o', 'w', 0, 0, 'group');
+             INSERT INTO tabs (id, owner_id, side_tab_id, position, layout_json, created_at, icon) VALUES ('t', 'o', 's', 0, '{}', 0, 'group');",
+        )
+        .unwrap();
+        migrate(&mut conn).unwrap();
+        let icons: (String, String) = conn
+            .query_row(
+                "SELECT s.icon, t.icon FROM side_tabs s JOIN tabs t ON t.side_tab_id = s.id",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(icons, ("folder".into(), "folder".into()));
     }
 
     #[test]

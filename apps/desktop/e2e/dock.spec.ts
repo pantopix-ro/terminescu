@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 // Task 8.32: a tab dropped on a side of the panes shows there, taking the half; since task 8.71
-// it leaves its group as a row of its own. A pane header dragged to the tab bar makes the pane
+// it leaves its folder as a row of its own. A pane header dragged to the tab bar makes the pane
 // a tab again.
 
 async function start(page: Page) {

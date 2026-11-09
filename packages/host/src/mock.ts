@@ -537,7 +537,7 @@ export function createMockHost(initial?: Workspace): MockHost {
   }
   function pickIcon(tabId: string): Icon {
     return pickUnused(
-      ICONS.filter((i) => i !== "agent"),
+      ICONS.filter((i) => i !== "agent" && i !== "folder"),
       tabId,
       (s) => s!.tabs.map((t) => t.icon),
     );

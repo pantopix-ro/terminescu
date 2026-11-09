@@ -6,7 +6,7 @@ import { usePopover } from "./popover";
 export const ICON_LABELS: Record<Icon, string> = {
   term: "Terminal",
   agent: "Agent",
-  group: "Group",
+  folder: "Folder",
   tab: "Tab",
   window: "Window",
   split: "Split",

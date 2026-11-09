@@ -40,10 +40,10 @@ export interface TabBarProps {
   /** A right-click on a tab: open its edit dialog (task 8.34). */
   onEdit?(tabId: string): void;
   /**
-   * The group these tabs belong to, when the selected row holds two tabs or more (task 8.74):
+   * The folder these tabs belong to, when the selected row holds two tabs or more (task 8.74):
    * its name and neon start the bar, and its pixel tip lists the tabs.
    */
-  group?: { name: string; accent?: string; lines: readonly string[] };
+  folder?: { name: string; accent?: string; lines: readonly string[] };
 }
 
 function TabItem({
@@ -166,20 +166,20 @@ function TabItem({
 
 /** The active side tab's tabs, across the top like browser tabs. Drag one to reorder it. */
 
-export function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNewText, agents = {}, statuses = {}, builtins = {}, docs = {}, subtitles = {}, activity = {}, renaming, onRenameStart, onRename, onRenameEnd, onIconPick, onEdit, group }: TabBarProps) {
+export function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNewText, agents = {}, statuses = {}, builtins = {}, docs = {}, subtitles = {}, activity = {}, renaming, onRenameStart, onRename, onRenameEnd, onIconPick, onEdit, folder }: TabBarProps) {
   const tips = useTip();
   return (
     <div className="ao-tabs" role="tablist" data-tauri-drag-region>
-      {group && (
+      {folder && (
         <span
-          className="ao-tabs-group"
+          className="ao-tabs-folder"
           role="presentation"
-          style={group.accent ? ({ "--st-accent": `var(--neon-${group.accent})` } as React.CSSProperties) : undefined}
-          onMouseEnter={(e) => tips.below(e.currentTarget, group.name, `group of ${tabs.length}`, undefined, group.lines)}
+          style={folder.accent ? ({ "--st-accent": `var(--neon-${folder.accent})` } as React.CSSProperties) : undefined}
+          onMouseEnter={(e) => tips.below(e.currentTarget, folder.name, `folder of ${tabs.length}`, undefined, folder.lines)}
           onMouseLeave={tips.hide}
         >
-          <i className="view-group" aria-hidden="true" />
-          <span className="view-name">{group.name}</span>
+          <i className="ao-i ao-i-folder view-folder" aria-hidden="true" />
+          <span className="view-name">{folder.name}</span>
         </span>
       )}
       <SortableContext items={tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
