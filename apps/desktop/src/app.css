@@ -404,7 +404,7 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 .px-tip-name { font-weight: 600; }
 .px-tip-sub { color: var(--dim); font-size: 11px; }
 /* A group's tab lines keep their leading mark column (task 8.74). */
-.px-tip-line { white-space: pre; }
+.px-tip-line { white-space: pre-wrap; }
 .px-tip-status { font-family: var(--font-pixel); font-size: 8px; line-height: 1; text-transform: uppercase; letter-spacing: .04em; color: var(--dim); }
 
 /* Task 8.28: a bigger icon over two lines, the status under the name, and a row's shells beside it. */
