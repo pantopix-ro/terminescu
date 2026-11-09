@@ -158,6 +158,12 @@ export type Command =
   | { type: "CloseSideTab"; sideTabId: Id }
   /** A new window holding the side tab, its tabs and its context (task 8.7). */
   | { type: "MoveSideTabToNewWindow"; sideTabId: Id }
+  /**
+   * A side tab with its tabs and context to the gap before side tab `index` of a window,
+   * counted before it leaves its place (task 8.70). The only tab of a side tab dropped on a
+   * gap or outside every window moves its side tab this way, so the context stays.
+   */
+  | { type: "MoveSideTab"; sideTabId: Id; windowId: Id; index: number }
   | { type: "SplitPane"; paneId: Id; dir: Dir }
   /** A tab dropped on a side of a pane (task 8.32): its panes join that tab, and it closes. */
   | { type: "DockTab"; tabId: Id; paneId: Id; side: DockSide }

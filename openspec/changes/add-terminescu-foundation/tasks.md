@@ -707,6 +707,15 @@ buffers once per sheet.
       command list deletes with the same Undo. The e2e waits for a slide, a split and a drop
       poll a condition instead of sleeping. `docs/releasing.md` gains a first-run check by
       hand. Verify: `windows.spec.ts`, `settings.spec.ts`, `dock.spec.ts`.
+- [x] 8.70 Sidebar drags, part 1. A tab listed under its group drags as a tab of the tab bar
+      does: beside a pane, into a row, to a gap, to another window or out to a new one, and
+      within its group, where a line shows where it lands. The only tab of a side tab takes
+      its side tab along (`MoveSideTab`, new): a gap or a new window moves the side tab with
+      its context, and a row, the tab bar or a pane merges it in first. A dock after a merge
+      has no Undo. Verify: `sidebar-drag.spec.ts`, core `state` tests.
+- [ ] 8.71 Sidebar drags, part 2. A row dragged between rows reorders (hand-sorted only), out
+      of every window opens a new one, onto another window moves there with its context, and
+      a one-tab row docks beside a pane; a group is no pane target.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

@@ -328,7 +328,11 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 .merge-clashes td { padding: 2px var(--space-1); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .merge-clashes .mono { font-family: var(--font-mono, inherit); }
 .merge-clashes input { width: 100%; }
-.ao-st.lifted { opacity: 0.5; }
+.ao-st.lifted, .ao-st-kid.lifted { opacity: 0.5; }
+/* Task 8.70: where a tab dropped on a listed tab lands, before or after it. */
+.app-side .ao-st-kid.drop-before::after, .app-side .ao-st-kid.drop-after::after { content: ""; position: absolute; left: 0; right: 0; height: 2px; z-index: 5; background: var(--focus); pointer-events: none; }
+.app-side .ao-st-kid.drop-before::after { top: -1px; }
+.app-side .ao-st-kid.drop-after::after { bottom: -1px; }
 .toast { position: fixed; left: 50%; bottom: var(--space-4); transform: translateX(-50%); z-index: 21; display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2); max-width: calc(100vw - 32px); }
 /* Task 8.1: the target under a tab dragged from another window. */
 .ao-st.remote-hot { box-shadow: inset 4px 0 0 0 var(--st-accent), inset 0 0 0 2px var(--amber); background: var(--tint-amber); }

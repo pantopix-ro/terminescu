@@ -28,6 +28,8 @@ export interface SideTabListProps {
   dragging: boolean;
   /** The side tab being dragged onto another to merge (D5); rows become the only targets. */
   draggingSide?: string;
+  /** The tab being dragged, from the tab bar or a group, for where a listed tab's drop line goes. */
+  draggingTab?: string;
   /** Claude sessions by pane: a side tab with one waiting gets the amber marker (D34). */
   agents?: Agents;
   /** Shown statuses by tab and side tab id (D15). */
@@ -172,6 +174,13 @@ export const dropGap = (index: number) => `gap:${index}`;
 /** Drag id of a side tab row, dropped onto another row to merge (D5). */
 export const dragSide = (sideTabId: string) => `side:${sideTabId}`;
 export const DROP_END = "gap:end";
+/**
+ * Drag and drop id of a tab listed under its group (task 8.70). It differs from the tab id the
+ * tab bar uses, since the active group shows the same tab in both places.
+ */
+export const dragKid = (tabId: string) => `kid:${tabId}`;
+/** The tab a drag or drop id stands for: a listed tab's, or the tab bar's own tab id. */
+export const tabOfDrag = (id: string) => (id.startsWith("kid:") ? id.slice(4) : id);
 
 function Gap({ index, dragging, end }: { index: number; dragging: boolean; end?: boolean }) {
   const { setNodeRef, isOver } = useDroppable({ id: end ? DROP_END : dropGap(index), disabled: !dragging });
@@ -197,6 +206,7 @@ function Row(props: {
   activeTabId: string | undefined;
   dragging: boolean;
   draggingSide: string | undefined;
+  draggingTab: string | undefined;
   agents: Agents;
   statuses: Readonly<Record<string, Shown>>;
   builtins: Builtins;
@@ -223,11 +233,13 @@ function Row(props: {
   const shown = statuses[side.id];
   const need = shown?.waiting || side.tabs.some((t) => tabAgent(t, agents)?.state === "waiting" || tabRequest(t, docs));
   const chip = chipOf(shown, builtins);
-  const { draggingSide } = props;
-  // A tab drops into any other row; a side tab merges into any row but itself.
+  const { draggingSide, draggingTab } = props;
+  // A tab drops into any row but its own; one from another window into any but the active
+  // one. A side tab merges into any row but itself.
+  const own = draggingTab ? side.tabs.some((t) => t.id === draggingTab) : active;
   const { setNodeRef, isOver } = useDroppable({
     id: dropInto(side.id),
-    disabled: !dragging || (draggingSide ? draggingSide === side.id : active),
+    disabled: !dragging || (draggingSide ? draggingSide === side.id : own),
   });
   const drag = useDraggable({ id: dragSide(side.id) });
   const group = side.tabs.length > 1;
@@ -367,69 +379,7 @@ function Row(props: {
       {open && (
         <div className="ao-st-kids" style={style}>
           {side.tabs.map((t, i) => (
-            <div
-              key={t.id}
-              role="button"
-              tabIndex={-1}
-              className={`ao-st-kid${active && t.id === props.activeTabId ? " active" : ""}`}
-              style={kidStyle(t, statuses[t.id])}
-              data-kid={t.id}
-              onClick={() => props.onSelectTab(t.id)}
-              onContextMenu={(e) => {
-                if (!props.onMenu) return;
-                e.preventDefault();
-                props.onMenu(menuAt(e), { kind: "tab", sideTabId: side.id, tabId: t.id });
-              }}
-              onKeyDown={(e) => {
-                if (menuKey(e) && props.onMenu) {
-                  e.preventDefault();
-                  props.onMenu(menuAt(e), { kind: "tab", sideTabId: side.id, tabId: t.id });
-                }
-              }}
-            >
-              <KidIcon
-                agent={tabAgent(t, agents)}
-                icon={t.icon}
-                accent={t.accent}
-                act={props.activity[t.id]}
-                onDoubleClick={(e) => {
-                  e.stopPropagation();
-                  props.onIconPick?.(t.id, pickAt(e));
-                }}
-              />
-              {props.renaming === t.id ? (
-                <RenameInput
-                  value={t.title ?? tabName(t, docs)}
-                  label="Tab name"
-                  onDone={(v) => props.onRename?.(t.id, v.trim() || null)}
-                  onCancel={() => props.onRenameEnd?.()}
-                />
-              ) : (
-                <span
-                  className="grow"
-                  title="Double-click to rename"
-                  onMouseEnter={(e) => (e.currentTarget.title = tips.expand(e.currentTarget, withSub(tabName(t, docs), props.subtitles[t.id])) ? "" : "Double-click to rename")}
-                  onMouseLeave={tips.hide}
-                  onDoubleClick={(e) => {
-                    e.stopPropagation();
-                    tips.hide();
-                    props.onRenameStart?.(t.id);
-                  }}
-                >
-                  {props.activity[t.id] === "wait" && <AskMark />}
-                  <span className="kid-n">{tabName(t, docs)}</span>
-                  {props.subtitles[t.id] && <span className="kid-sub">{props.subtitles[t.id]}</span>}
-                </span>
-              )}
-              {statuses[t.id]?.look && (
-                <ChipButton
-                  chip={chipOf(statuses[t.id], builtins)}
-                  label={`Status ${chipOf(statuses[t.id], builtins).label}: edit the status of ${tabName(t, docs)}`}
-                  onClick={props.onStatus && ((at) => props.onStatus!(side.id, t.id, at))}
-                />
-              )}
-              {active && <span>{tabChord(i, side.tabs.length)}</span>}
-            </div>
+            <Kid key={t.id} {...props} tab={t} index={i} />
           ))}
           {props.onNewTab && (
             <button
@@ -456,6 +406,86 @@ function Row(props: {
  * tabs under the row. Each group starts open, and its chevron opens or closes it; switching
  * rows never closes one (D3, task 8.57).
  */
+/** A tab listed under its group. It drags as a tab of the tab bar does (task 8.70). */
+function Kid(props: Parameters<typeof Row>[0] & { tab: Tab; index: number }) {
+  const { side, tab: t, index: i, active, dragging, draggingSide, draggingTab, agents, statuses, builtins, docs, tips } = props;
+  const id = dragKid(t.id);
+  const drag = useDraggable({ id, disabled: props.renaming === t.id });
+  const drop = useDroppable({ id, disabled: !dragging || !!draggingSide || draggingTab === t.id });
+  // The dropped tab takes this one's place: below it when it comes from above in this group.
+  const from = draggingTab ? side.tabs.findIndex((x) => x.id === draggingTab) : -1;
+  const line = drop.isOver ? (from >= 0 && from < i ? " drop-after" : " drop-before") : "";
+  return (
+    <div
+      ref={(n) => {
+        drag.setNodeRef(n);
+        drop.setNodeRef(n);
+      }}
+      {...drag.listeners}
+      role="button"
+      tabIndex={-1}
+      className={`ao-st-kid${active && t.id === props.activeTabId ? " active" : ""}${drag.isDragging ? " lifted" : ""}${line}`}
+      style={kidStyle(t, statuses[t.id])}
+      data-kid={t.id}
+      onClick={() => props.onSelectTab(t.id)}
+      onContextMenu={(e) => {
+        if (!props.onMenu) return;
+        e.preventDefault();
+        props.onMenu(menuAt(e), { kind: "tab", sideTabId: side.id, tabId: t.id });
+      }}
+      onKeyDown={(e) => {
+        if (menuKey(e) && props.onMenu) {
+          e.preventDefault();
+          props.onMenu(menuAt(e), { kind: "tab", sideTabId: side.id, tabId: t.id });
+        }
+      }}
+    >
+      <KidIcon
+        agent={tabAgent(t, agents)}
+        icon={t.icon}
+        accent={t.accent}
+        act={props.activity[t.id]}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          props.onIconPick?.(t.id, pickAt(e));
+        }}
+      />
+      {props.renaming === t.id ? (
+        <RenameInput
+          value={t.title ?? tabName(t, docs)}
+          label="Tab name"
+          onDone={(v) => props.onRename?.(t.id, v.trim() || null)}
+          onCancel={() => props.onRenameEnd?.()}
+        />
+      ) : (
+        <span
+          className="grow"
+          title="Double-click to rename"
+          onMouseEnter={(e) => (e.currentTarget.title = tips.expand(e.currentTarget, withSub(tabName(t, docs), props.subtitles[t.id])) ? "" : "Double-click to rename")}
+          onMouseLeave={tips.hide}
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            tips.hide();
+            props.onRenameStart?.(t.id);
+          }}
+        >
+          {props.activity[t.id] === "wait" && <AskMark />}
+          <span className="kid-n">{tabName(t, docs)}</span>
+          {props.subtitles[t.id] && <span className="kid-sub">{props.subtitles[t.id]}</span>}
+        </span>
+      )}
+      {statuses[t.id]?.look && (
+        <ChipButton
+          chip={chipOf(statuses[t.id], builtins)}
+          label={`Status ${chipOf(statuses[t.id], builtins).label}: edit the status of ${tabName(t, docs)}`}
+          onClick={props.onStatus && ((at) => props.onStatus!(side.id, t.id, at))}
+        />
+      )}
+      {active && <span>{tabChord(i, side.tabs.length)}</span>}
+    </div>
+  );
+}
+
 /** A tab's row under its group (task 8.51): its own status background, washed with its neon. */
 function kidStyle(t: Tab, shown: Shown | undefined): React.CSSProperties {
   const ground = rowStyle(shown?.look, "st")["--st-bg"] ?? "var(--panel)";
@@ -499,6 +529,7 @@ export function SideTabList({
   onNewTab,
   dragging,
   draggingSide,
+  draggingTab,
   agents = {},
   statuses = {},
   builtins = {},
@@ -541,6 +572,7 @@ export function SideTabList({
               activeTabId={activeTabId}
               dragging={dragging}
               draggingSide={draggingSide}
+              draggingTab={draggingTab}
               agents={agents}
               statuses={statuses}
               builtins={builtins}
