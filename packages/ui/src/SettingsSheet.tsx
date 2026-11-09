@@ -132,6 +132,10 @@ export interface SettingsSheetProps {
   sideTabName(id: Id): string | undefined;
   onError(message: string): void;
   onClose(): void;
+  /** Deletes a command, with an undo; without it the command goes at once. */
+  onDeleteCommand?(command: SavedCommand): Promise<unknown>;
+  /** Commands deleted but still waiting on their undo, left out of the list. */
+  hiddenCommands?: readonly string[];
 }
 
 /** The Settings screen (D25): one sheet, a section list on the left. `⌘,` opens it. */
@@ -219,7 +223,7 @@ function useAppSettings(host: Api, onError: (m: string) => void) {
   return [settings, save] as const;
 }
 
-function CommandsSettings({ host, sideTabName, onError }: SettingsSheetProps) {
+function CommandsSettings({ host, sideTabName, onError, onDeleteCommand, hiddenCommands = [] }: SettingsSheetProps) {
   const [commands, setCommands] = useState<SavedCommand[]>([]);
   useEffect(() => {
     let gone = false;
@@ -232,17 +236,20 @@ function CommandsSettings({ host, sideTabName, onError }: SettingsSheetProps) {
       off?.();
     };
   }, [host, onError]);
+  const shown = commands.filter((c) => !hiddenCommands.includes(c.id));
+  const remove = (c: SavedCommand) => (onDeleteCommand ? onDeleteCommand(c) : host.deleteCommand(c.id));
   return (
     <section aria-label="Commands">
       <h3 className="ao-pixel ao-dim">Commands</h3>
-      {commands.length === 0 && <p className="small ao-dim">No commands yet. Add one with + in the sidebar's Commands section.</p>}
-      {commands.map((c) => (
+      {shown.length === 0 && <p className="small ao-dim">No commands yet. Add one with + in the sidebar's Commands section.</p>}
+      {shown.map((c) => (
         <CommandEditRow
           key={c.id}
           command={c}
           scope={c.sideTabId === null ? "global" : (sideTabName(c.sideTabId) ?? "side tab")}
           host={host}
           onError={onError}
+          onDelete={() => remove(c)}
         />
       ))}
       <p className="small ao-dim">A launcher command runs in its own tab when its side tab opens and after a reboot.</p>
@@ -250,7 +257,19 @@ function CommandsSettings({ host, sideTabName, onError }: SettingsSheetProps) {
   );
 }
 
-function CommandEditRow({ command: c, scope, host, onError }: { command: SavedCommand; scope: string; host: Api; onError(m: string): void }) {
+function CommandEditRow({
+  command: c,
+  scope,
+  host,
+  onError,
+  onDelete,
+}: {
+  command: SavedCommand;
+  scope: string;
+  host: Api;
+  onError(m: string): void;
+  onDelete(): Promise<unknown>;
+}) {
   const [draft, setDraft] = useState({ name: c.name, body: c.body, target: c.target, launcher: c.launcher });
   useEffect(() => setDraft({ name: c.name, body: c.body, target: c.target, launcher: c.launcher }), [c]);
   const dirty = draft.name !== c.name || draft.body !== c.body || draft.target !== c.target || draft.launcher !== c.launcher;
@@ -279,7 +298,7 @@ function CommandEditRow({ command: c, scope, host, onError }: { command: SavedCo
       <button type="submit" className="ao-btn" disabled={!dirty}>
         Save
       </button>
-      <button type="button" className="ao-btn ghost" aria-label={`Delete ${c.name}`} onClick={() => void host.deleteCommand(c.id).catch((e: unknown) => onError(String(e)))}>
+      <button type="button" className="ao-btn ghost" aria-label={`Delete ${c.name}`} onClick={() => void onDelete().catch((e: unknown) => onError(String(e)))}>
         ×
       </button>
     </form>
