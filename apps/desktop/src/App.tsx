@@ -160,17 +160,17 @@ export interface AppProps {
   terminals?: Map<string, Terminal>;
 }
 
-/** Keeps a selection valid: the previous id while it still exists, else the first one. */
 /** Foreground processes that mean a terminal sits at its prompt, with nothing to lose. */
 const LOGIN_SHELLS = new Set(["zsh", "bash", "fish", "sh", "dash", "tcsh", "csh", "ksh", "nu", "login"]);
 
+/** What follows a merge a dragged tab started (task 8.70): the tab takes its place. */
+type AfterMerge = { run(): void };
 /** The undo toast: `undo` on its button, `done` when it goes without one. */
-/** What follows a merge a dragged tab started (task 8.70); a dock leaves nothing to undo. */
-type AfterMerge = { run(): void; undo: boolean };
-type Toast = { text: string; undo?(): void; done?(): Promise<unknown> | void; removes?: Removal };
+type Toast = { text: string; undo(): void; done?(): Promise<unknown> | void; removes?: Removal };
 /** Something removed in the sidebars that waits on its undo toast before it is deleted. */
 type Removal = { kind: "variable"; side: string; name: string } | { kind: "pin" | "command"; id: string };
 
+/** Keeps a selection valid: the previous id while it still exists, else the first one. */
 function pick(ids: string[], previous: string | undefined): string | undefined {
   return previous && ids.includes(previous) ? previous : ids[0];
 }
@@ -393,8 +393,11 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       saveView(windowId, shownView);
     }
   });
-  // The pixel tooltip under an area's head (task 8.73).
+  // The pixel tooltip under an area's head (task 8.73); it goes when the areas change, so it
+  // never stays over a head that left.
   const areaTip = useTip();
+  const openKey = openRows.join(" ");
+  useEffect(() => areaTip.hide(), [openKey]);
   const changeView = (f: (v: View | undefined) => View | undefined) =>
     setView((v) => {
       const next = f(v);
@@ -446,7 +449,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     const t = toastRef.current;
     toastRef.current = undefined;
     setToast(undefined);
-    if (undo) t?.undo?.();
+    if (undo) t?.undo();
     else return t?.done?.();
   };
   const showToast = (next: Toast) => {
@@ -1603,7 +1606,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       setMerging(undefined);
       const renamed = done.renames.map(([a, b]) => `${a} → ${b}`).join(", ");
       const text = `Merged ${fromName} into ${intoName}${renamed ? `; kept ${renamed}` : ""}.`;
-      showToast(after?.undo === false ? { text } : { text, undo: () => host.undoMerge(done.undoId).then(refocus, report) });
+      showToast({ text, undo: () => host.undoMerge(done.undoId).then(refocus, report) });
       if (activeSide?.id === from.id) setSideTabId(into.id);
       if (after) after.run();
       else refocus();
@@ -1677,7 +1680,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         followTab(p.tabId);
         send({ type: "MoveTab", tabId: p.tabId, toSideTabId: into!.id, index }).then(refocus, report);
       };
-      if (into) return startMerge(from.id, into.id, index >= 0 ? { run: place, undo: true } : undefined);
+      if (into) return startMerge(from.id, into.id, index >= 0 ? { run: place } : undefined);
     }
     const cmd: Command | undefined =
       target?.kind === "end"
@@ -1931,7 +1934,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       if (!to || target === tabId) return;
       const index = to.tabs.findIndex((t) => t.id === target);
       const place = () => void send({ type: "MoveTab", tabId, toSideTabId: to.id, index }).then(refocus, report);
-      if (to.id !== from.id && only) return startMerge(from.id, to.id, { run: place, undo: true });
+      if (to.id !== from.id && only) return startMerge(from.id, to.id, { run: place });
       if (to.id !== from.id) followTab(tabId);
       void send({ type: "MoveTab", tabId, toSideTabId: to.id, index });
     }
@@ -2844,11 +2847,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       {toast && (
         <div className="ao-frame toast" role="status">
           <span className="small">{toast.text}</span>
-          {toast.undo && (
-            <button type="button" className="ao-btn ghost" onClick={() => endToast(true)}>
-              Undo
-            </button>
-          )}
+          <button type="button" className="ao-btn ghost" onClick={() => endToast(true)}>
+            Undo
+          </button>
         </div>
       )}
       {findingAll && (
