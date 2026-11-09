@@ -81,8 +81,10 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 .view-body { flex: 1; display: flex; min-width: 0; min-height: 0; }
 .view-head { flex: none; display: flex; align-items: center; gap: var(--space-2); height: 22px; padding: 0 var(--space-2) 0 calc(var(--space-2) + 4px); font-size: 12px; line-height: 16px; color: var(--faint); background: var(--panel-2); box-shadow: inset 4px 0 0 0 var(--st-accent, var(--line-strong)), inset 0 -2px 0 0 var(--line); white-space: nowrap; overflow: hidden; cursor: default; }
 .view-head .view-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.view-head .view-tab { color: var(--faint); min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.view-head .view-tab::before { content: "› "; }
+.view-head .view-tab { display: flex; align-items: center; gap: 6px; color: var(--faint); min-width: 0; overflow: hidden; }
+.view-head .view-name + .view-tab::before { content: "›"; }
+.view-head .view-tab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.view-area.on > .view-head .view-tab { color: var(--fg); }
 /* A folder's head, and the tab bar of a folder (task 8.74), start with the folder icon in the
    folder's neon (task 8.78). */
 .view-head .view-folder, .ao-tabs-folder .view-folder { color: var(--st-accent, var(--dim)); }
@@ -546,11 +548,15 @@ html[data-see-through] :is(.ctx-pinned, .ao-ctx-over) .ctx-sec-head { background
 /* The selected outline: a thin line in the folder's neon at half strength. */
 .app-side .ao-st, .app-side .ao-st-kids { --sel-line: color-mix(in srgb, var(--st-accent, var(--line-strong)) 55%, transparent); }
 .ao-side.collapsed .ao-st.active { padding-right: 0; }
-/* Task 8.71: rows shown side by side carry a bar on their right edge; the selected one an
-   orange outline, the colour of the focused pane. */
-.app-side .ao-side.split .side-item.open .ao-st:not(.active) { box-shadow: inset 4px 0 0 0 var(--st-accent, transparent), inset -3px 0 0 0 var(--dim); }
-.app-side .ao-side.split .side-item.active .ao-st, .app-side .ao-side.split .side-item.active .ao-st-kids { --sel-line: var(--focus); }
-.app-side .ao-side.split .side-item.active .ao-st.active:not(.drop-into):not(.remote-hot) { box-shadow: inset 4px 0 0 0 var(--st-accent), inset 0 0 0 2px var(--focus); }
+/* Tasks 8.71, 8.75: with tabs side by side, each shown one, a one-line row, a closed folder or
+   a tab in an open folder, reaches the panes as the selected row does; the selected one wears
+   an orange outline, the colour of the focused pane. */
+.app-side .ao-side.split .side-list > .side-item.open:not(:has(.ao-st-kids)) { margin-right: 0; position: relative; z-index: 4; }
+.app-side .ao-side.split .side-item.open:not(:has(.ao-st-kids)) .ao-st { padding-right: calc(2 * var(--space-2)); }
+.app-side .ao-side.split .ao-st-kid.open { margin-right: calc(-1 * var(--space-2)); padding-right: calc(2 * var(--space-2)); position: relative; z-index: 4; }
+.app-side .ao-side.split .side-item.active:not(:has(.ao-st-kids)) .ao-st, .app-side .ao-side.split .side-item.active .ao-st-kids { --sel-line: var(--focus); }
+.app-side .ao-side.split .side-item.active:not(:has(.ao-st-kids)) .ao-st.active:not(.drop-into):not(.remote-hot) { box-shadow: inset 4px 0 0 0 var(--st-accent), inset 0 0 0 2px var(--focus); }
+.app-side .ao-side.split .side-item.active .ao-st-kid.active { box-shadow: inset 0 0 0 2px var(--focus); }
 
 /* add-public-release: first run, About, Licenses, Privacy, Feedback and Uninstall. */
 .app-sheet { width: min(560px, calc(100% - 32px)); max-height: 84vh; display: flex; flex-direction: column; }

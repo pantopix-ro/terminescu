@@ -31,8 +31,8 @@ export interface SideTabListProps {
   /** The tab being dragged, from the tab bar or a folder, for where a listed tab's drop line goes. */
   draggingTab?: string;
   /**
-   * The rows the main area shows side by side (task 8.71). With two or more, each is marked
-   * open and the selected one takes the focus border.
+   * The tabs the main area shows side by side (tasks 8.71, 8.75). With two or more, each, and
+   * the row holding it, is marked open and the selected one takes the focus border.
    */
   open?: readonly string[];
   /** Claude sessions by pane: a side tab with one waiting gets the amber marker (D34). */
@@ -209,6 +209,8 @@ function Row(props: {
   active: boolean;
   expanded: boolean;
   activeTabId: string | undefined;
+  /** The tabs shown side by side, when two or more are. */
+  shown: readonly string[];
   dragging: boolean;
   draggingSide: string | undefined;
   draggingTab: string | undefined;
@@ -446,9 +448,10 @@ function Kid(props: Parameters<typeof Row>[0] & { tab: Tab; index: number }) {
       {...drag.listeners}
       role="button"
       tabIndex={-1}
-      className={`ao-st-kid${active && t.id === props.activeTabId ? " active" : ""}${drag.isDragging ? " lifted" : ""}${line}`}
+      className={`ao-st-kid${active && t.id === props.activeTabId ? " active" : ""}${props.shown.includes(t.id) ? " open" : ""}${drag.isDragging ? " lifted" : ""}${line}`}
       style={kidStyle(t, statuses[t.id])}
       data-kid={t.id}
+      data-open={props.shown.includes(t.id) ? "true" : undefined}
       onClick={() => props.onSelectTab(t.id)}
       onContextMenu={(e) => {
         if (!props.onMenu) return;
@@ -581,14 +584,16 @@ export function SideTabList({
   // A drag, a rename, a scroll or a width change moves the rows from under the tooltip.
   useEffect(hideAll, [dragging, renaming, collapsed, sideTabs.length]);
   const picked = picker.at && sideTabs.find((s) => s.id === picker.at!.sideId);
+  // Open marks show only while two tabs or more share the window.
+  const shown = open.length > 1 ? open : [];
   return (
-    <nav className={`ao-side${collapsed ? " collapsed" : ""}${open.length > 1 ? " split" : ""}`} aria-label="Side tabs">
+    <nav className={`ao-side${collapsed ? " collapsed" : ""}${shown.length ? " split" : ""}`} aria-label="Side tabs">
       <div className="side-list" onScroll={hideAll}>
         {sideTabs.map((s, i) => (
           <div
             key={s.id}
-            className={`side-item${s.id === activeId ? " active" : ""}${open.length > 1 && open.includes(s.id) ? " open" : ""}`}
-            data-open={open.length > 1 && open.includes(s.id) ? "true" : undefined}
+            className={`side-item${s.id === activeId ? " active" : ""}${shown.some((t) => s.tabs.some((x) => x.id === t)) ? " open" : ""}`}
+            data-open={shown.some((t) => s.tabs.some((x) => x.id === t)) ? "true" : undefined}
           >
             <Gap index={i} dragging={dragging && !draggingSide && sort === "manual"} />
             <Row
@@ -597,6 +602,7 @@ export function SideTabList({
               active={s.id === activeId}
               expanded={expanded[s.id] ?? true}
               activeTabId={activeTabId}
+              shown={shown}
               dragging={dragging}
               draggingSide={draggingSide}
               draggingTab={draggingTab}

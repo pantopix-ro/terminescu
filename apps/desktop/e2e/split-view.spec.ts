@@ -16,8 +16,9 @@ const sideIds = (page: Page) => page.locator(".ao-st").evaluateAll((els) => els.
 const openIds = (page: Page) =>
   page.locator(".side-item[data-open] .ao-st").evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.side!).sort());
 const selected = (page: Page) => page.locator('.ao-st[aria-current="true"]').getAttribute("data-side");
-const paneOf = async (page: Page, side: string) =>
-  ((await workspace(page)).windows[0].sideTabs.find((s: any) => s.id === side).tabs[0].layout.id as string);
+const firstTab = async (page: Page, side: string) => (await workspace(page)).windows[0].sideTabs.find((s: any) => s.id === side).tabs[0];
+const paneOf = async (page: Page, side: string) => (await firstTab(page, side)).layout.id as string;
+const tabOf = async (page: Page, side: string) => (await firstTab(page, side)).id as string;
 
 async function addRow(page: Page) {
   const before = (await sideIds(page)).length;
@@ -51,7 +52,9 @@ test("rows shown side by side are open, and the selected one follows the pane cl
   await expect.poll(() => selected(page)).toBe(first);
   // Each area is headed by its row, the selected one underlined (task 8.73).
   await expect(page.locator(".view-head")).toHaveCount(2);
-  await expect(page.locator(".view-area.on")).toHaveAttribute("data-area", first!);
+  await expect(page.locator(".view-area.on")).toHaveAttribute("data-area", await tabOf(page, first!));
+  // Each area head shows its tab's coloured icon left of the name.
+  await expect(page.locator(".view-head .view-tab > .ao-i")).toHaveCount(2);
   // The orange outline is the focus colour.
   const ring = await page.locator(`[data-side="${first}"]`).evaluate((e) => getComputedStyle(e).boxShadow);
   expect(ring).toContain("rgb(229, 163, 58)");
@@ -70,25 +73,33 @@ test("rows shown side by side are open, and the selected one follows the pane cl
 
   // The palette shows one row again.
   await page.keyboard.press("Meta+p");
-  await page.keyboard.type("show only this side tab");
+  await page.keyboard.type("show only this tab");
   await page.keyboard.press("Enter");
   await expect(page.locator(".app-pane .ao-tp")).toHaveCount(1);
   await expect(page.locator(".side-item[data-open]")).toHaveCount(0);
   await expect(page.locator(".view-head")).toHaveCount(0);
 });
 
-test("a folder's area head names the folder and its tab, and its pixel tip lists the folder", async ({ page }) => {
+test("a folder dropped on a pane's edge shows all its tabs; each head names the folder and its tab", async ({ page }) => {
+  // Tasks 8.73, 8.75.
   await start(page);
   const [first] = await sideIds(page);
   await page.keyboard.press("Meta+t");
   await expect(page.locator(".ao-st-kids [data-kid]")).toHaveCount(2);
   const second = await addRow(page);
   await rowToRight(page, first!);
-  const head = page.locator(`.view-area[data-area="${first}"] > .view-head`);
-  await expect(head.locator(".view-folder")).toHaveCount(1);
-  await expect(head.locator(".view-tab")).toHaveCount(1);
-  await expect(page.locator(`.view-area[data-area="${second}"] > .view-head .view-folder`)).toHaveCount(0);
+  await expect(page.locator(".app-pane .ao-tp")).toHaveCount(3);
+  const heads = page.locator(".view-head:has(.view-folder)");
+  await expect(heads).toHaveCount(2);
+  await expect(heads.locator(".view-name")).toHaveCount(2);
+  await expect(heads.locator(".view-tab")).toHaveCount(2);
+  await expect(page.locator(`.view-area[data-area="${await tabOf(page, second)}"] > .view-head .view-folder`)).toHaveCount(0);
+  // The folder's tabs share the half the drop took.
+  const widths = await page.locator(".view-area").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().width)));
+  expect(Math.abs(widths[1]! - widths[2]!)).toBeLessThan(3);
+  expect(Math.abs(widths[0]! - (widths[1]! + widths[2]!))).toBeLessThan(6);
 
+  const head = heads.first();
   await head.hover();
   const tip = page.locator(".px-tip");
   await expect(tip).toBeVisible();
@@ -98,7 +109,7 @@ test("a folder's area head names the folder and its tab, and its pixel tip lists
   await expect(tip.locator(".px-tip-line")).toHaveCount(2);
   await expect(tip.locator(".px-tip-line", { hasText: "▸" })).toHaveCount(1);
   // A click on the other head selects that row, and the tip goes.
-  await page.locator(`.view-area[data-area="${second}"] > .view-head`).click();
+  await page.locator(`.view-area[data-area="${await tabOf(page, second)}"] > .view-head`).click();
   await expect.poll(() => selected(page)).toBe(second);
 });
 
@@ -111,6 +122,33 @@ test("closing the selected shown row selects the other one", async ({ page }) =>
   await page.evaluate((id) => (window as any).__terminescu.host.send({ type: "CloseSideTab", sideTabId: id }), first);
   await expect.poll(() => selected(page)).toBe(second);
   await expect(page.locator(".app-pane .ao-tp")).toHaveCount(1);
+});
+
+test("two tabs of one folder show side by side; closing the selected one gives its place to the folder's next tab", async ({ page }) => {
+  // Task 8.75.
+  await start(page);
+  await page.keyboard.press("Meta+t");
+  await page.keyboard.press("Meta+t");
+  const kids = page.locator(".ao-st-kids [data-kid]");
+  await expect(kids).toHaveCount(3);
+  const [a, b, c] = await kids.evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.kid!));
+  const from = (await page.locator(`[data-kid="${b}"]`).boundingBox())!;
+  const to = (await page.locator(".app-pane").boundingBox())!;
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(from.x + from.width / 2 + 10, from.y + from.height / 2, { steps: 3 });
+  await page.mouse.move(to.x + to.width * 0.97, to.y + to.height / 2, { steps: 8 });
+  await expect(page.locator(".dock-preview")).toHaveAttribute("data-side", "right");
+  await page.mouse.up();
+  const open = () => page.locator(".ao-st-kid[data-open]").evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.kid!));
+  await expect.poll(open).toEqual([b, c]);
+  await expect(page.locator(".ao-st-kid.active")).toHaveAttribute("data-kid", b!);
+  await expect(page.locator(".view-area").first()).toHaveAttribute("data-area", c!);
+
+  await page.evaluate((id) => (window as any).__terminescu.host.send({ type: "CloseTab", tabId: id }), b);
+  await expect.poll(open).toEqual([a, c]);
+  await expect(page.locator(".view-area").nth(1)).toHaveAttribute("data-area", a!);
+  await expect(page.locator(".ao-st-kid.active")).toHaveAttribute("data-kid", a!);
 });
 
 test("a window's only row dropped on another window joins it as a simple row", async ({ page }) => {

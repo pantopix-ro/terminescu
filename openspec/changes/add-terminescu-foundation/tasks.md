@@ -732,7 +732,7 @@ buffers once per sheet.
       line with each tab's folder, the shown one marked. With top tabs, the bar starts with
       the selected group's mark and name, whose tip lists the same lines. Verify:
       `split-view.spec.ts`, ui `view` tests.
-- [ ] 8.75 Areas show tabs. Each area of the split shows one tab, so two tabs of one folder
+- [x] 8.75 Areas show tabs. Each area of the split shows one tab, so two tabs of one folder
       show side by side and docking never takes a tab out of its folder. A folder header
       dropped on a pane's edge shows all its tabs there. A tab from another window joins as
       its own row beside. A folder with a shown tab is marked open, and so is each shown tab;
