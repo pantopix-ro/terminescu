@@ -353,6 +353,13 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 /* Task 8.1: the target under a tab dragged from another window. */
 .ao-st.remote-hot { box-shadow: inset 4px 0 0 0 var(--st-accent), inset 0 0 0 2px var(--amber); background: var(--tint-amber); }
 .side-gap.remote-hot { height: 6px; background: var(--amber); }
+/* Task 8.76: while a tab drags, the gaps between rows grow over the rows' edges, so a drop there
+   is easy to hit and no row moves; a tab listed in a folder shows an orange line where the
+   dropped tab goes. */
+.ao-side.dragging .side-gap { height: 10px; margin: -3px 0; position: relative; z-index: 6; }
+.ao-side.dragging .side-gap.remote-hot { height: 10px; background: none; box-shadow: inset 0 4px 0 0 var(--amber), inset 0 -4px 0 0 var(--amber); }
+.app-side .ao-st-kids .ao-st-kid.remote-hot { box-shadow: inset 0 0 0 2px var(--amber); }
+.app-side .ao-st-kid.remote-hot::after { content: ""; position: absolute; left: 0; right: 0; top: -1px; height: 2px; z-index: 5; background: var(--amber); pointer-events: none; }
 .side-end.remote-hot { outline: 2px solid var(--amber); }
 .ao-tab.remote-hot { box-shadow: inset 2px 0 0 0 var(--amber); }
 /* The ghost window that follows a tab dragged outside every window. */

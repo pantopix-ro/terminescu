@@ -587,7 +587,7 @@ export function SideTabList({
   // Open marks show only while two tabs or more share the window.
   const shown = open.length > 1 ? open : [];
   return (
-    <nav className={`ao-side${collapsed ? " collapsed" : ""}${shown.length ? " split" : ""}`} aria-label="Side tabs">
+    <nav className={`ao-side${collapsed ? " collapsed" : ""}${shown.length ? " split" : ""}${dragging ? " dragging" : ""}`} aria-label="Side tabs">
       <div className="side-list" onScroll={hideAll}>
         {sideTabs.map((s, i) => (
           <div
