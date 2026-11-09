@@ -13,6 +13,8 @@ export { findPaths, type FoundPath } from "./paths";
 export { linkActions, type LinkKind, type TerminalLink } from "./links";
 export {
   DROP_END,
+  dragKid,
+  tabOfDrag,
   dragSide,
   dropGap,
   dropInto,

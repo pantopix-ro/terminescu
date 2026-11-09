@@ -659,7 +659,8 @@ export function createMockHost(initial?: Workspace): MockHost {
         return [{ type: "TabMoved", tabId: c.tabId, toSideTabId: c.toSideTabId, index: c.index }, ...closed];
       }
       case "MoveTabToNewSideTab": {
-        holder(c.tabId);
+        const from = holder(c.tabId);
+        if (from.tabs.length === 1) return plan({ type: "MoveSideTab", sideTabId: from.id, windowId: c.windowId, index: c.index });
         inRange(c.index, window(c.windowId).sideTabs.length);
         const closed = closesSource(c.tabId);
         const sid = id();
@@ -671,7 +672,8 @@ export function createMockHost(initial?: Workspace): MockHost {
         ];
       }
       case "MoveTabToNewWindow": {
-        holder(c.tabId);
+        const from = holder(c.tabId);
+        if (from.tabs.length === 1) return plan({ type: "MoveSideTabToNewWindow", sideTabId: from.id });
         const closed = closesSource(c.tabId);
         const windowId = id();
         const sid = id();
@@ -697,6 +699,18 @@ export function createMockHost(initial?: Workspace): MockHost {
           { type: "WindowCreated", windowId },
           { type: "SideTabClosed", sideTabId: c.sideTabId },
           { type: "SideTabCreated", windowId, index: 0, sideTab: moved },
+        ];
+      }
+      case "MoveSideTab": {
+        const moved = structuredClone(sideTab(c.sideTabId));
+        const w = window(c.windowId);
+        inRange(c.index, w.sideTabs.length);
+        const at = w.sideTabs.findIndex((s) => s.id === c.sideTabId);
+        const index = at >= 0 && at < c.index ? c.index - 1 : c.index;
+        if (at === index) return [];
+        return [
+          { type: "SideTabClosed", sideTabId: c.sideTabId },
+          { type: "SideTabCreated", windowId: c.windowId, index, sideTab: moved },
         ];
       }
       case "RenameTab": {

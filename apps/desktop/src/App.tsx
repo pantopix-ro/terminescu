@@ -88,6 +88,7 @@ import {
   withLiveNames,
   type Reveal,
   DROP_END,
+  tabOfDrag,
   focusPane,
   Palette,
   FileFinder,
@@ -152,7 +153,9 @@ export interface AppProps {
 const LOGIN_SHELLS = new Set(["zsh", "bash", "fish", "sh", "dash", "tcsh", "csh", "ksh", "nu", "login"]);
 
 /** The undo toast: `undo` on its button, `done` when it goes without one. */
-type Toast = { text: string; undo(): void; done?(): Promise<unknown> | void; removes?: Removal };
+/** What follows a merge a dragged tab started (task 8.70); a dock leaves nothing to undo. */
+type AfterMerge = { run(): void; undo: boolean };
+type Toast = { text: string; undo?(): void; done?(): Promise<unknown> | void; removes?: Removal };
 /** Something removed in the sidebars that waits on its undo toast before it is deleted. */
 type Removal = { kind: "variable"; side: string; name: string } | { kind: "pin" | "command"; id: string };
 
@@ -318,6 +321,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const [statusConfig, setStatusConfig] = useState<StatusConfig>({ statuses: [], rules: [], builtins: {} });
   const [sort, setSort] = useState<SortMode>(loadSort);
   // The sidebar order; ⌃⌘1 to ⌃⌘9 follow what the person sees.
+  const allTabs = useMemo(() => sideTabs.flatMap((s) => s.tabs), [sideTabs]);
   const shownSides = sortSideTabs(sideTabs, statuses, sort, sideTabName);
   const changeSort = (mode: SortMode) => {
     setSort(mode);
@@ -359,7 +363,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const [mode, setMode] = useState<ContextMode>(loadMode);
   const [dragging, setDragging] = useState<string>();
   // A side tab merge waiting on the clash dialog (D5).
-  const [merging, setMerging] = useState<{ from: SideTab; into: SideTab; clashes: MergeClash[] }>();
+  const [merging, setMerging] = useState<{ from: SideTab; into: SideTab; clashes: MergeClash[]; after?: AfterMerge }>();
   // The undo toast for the last merge or removed variable. `done` runs once the toast goes
   // without Undo: a removed variable is deleted only then.
   const [toast, setToast] = useState<Toast>();
@@ -368,7 +372,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     const t = toastRef.current;
     toastRef.current = undefined;
     setToast(undefined);
-    if (undo) t?.undo();
+    if (undo) t?.undo?.();
     else return t?.done?.();
   };
   const showToast = (next: Toast) => {
@@ -1298,6 +1302,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     if ("side" in target) {
       const to = sideTabs.find((s) => s.id === target.side);
       if (!to) return;
+      // A side tab's only tab merges its side tab in, so its variables and pins come along.
+      const from = sideTabs.find((s) => s.tabs.some((t) => t.id === tabId));
+      if (from && from.id !== to.id && from.tabs.length === 1) return startMerge(from.id, to.id);
       followTab(tabId);
       return void send({ type: "MoveTab", tabId, toSideTabId: to.id, index: to.tabs.length });
     }
@@ -1482,16 +1489,22 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   };
 
   // Drop a side tab onto another (D5): straight in without a clash, else the dialog asks.
-  const startMerge = (fromId: string, intoId: string) => {
-    const from = sideTabs.find((s) => s.id === fromId);
-    const into = sideTabs.find((s) => s.id === intoId);
+  // A side tab of any window: a tab dragged from another one may bring its side tab along.
+  const anySide = (id: string) => sideTabs.find((s) => s.id === id) ?? ws.windows.flatMap((w) => w.sideTabs).find((s) => s.id === id);
+  /**
+   * Merges side tab `fromId` into `intoId` (D5). `after` runs once the merge is done, as the
+   * dock or the move into place that follows when a side tab's only tab is dropped (task 8.70).
+   */
+  const startMerge = (fromId: string, intoId: string, after?: AfterMerge) => {
+    const from = anySide(fromId);
+    const into = anySide(intoId);
     if (!from || !into || from.id === into.id) return;
     // A removal still on its toast is done first: the merge moves what it would delete.
     void Promise.resolve(endToast(false)).then(() => host.mergePreview(from.id, into.id, sideTabName(from, docs)).then(
       (clashes) => {
-        if (clashes.length) setMerging({ from, into, clashes });
+        if (clashes.length) setMerging({ from, into, clashes, after });
         else
-          finishMerge(from, into, { keepBoth: false }).catch((e: unknown) => {
+          finishMerge(from, into, { keepBoth: false }, after).catch((e: unknown) => {
             report(e);
             refocus();
           });
@@ -1503,18 +1516,17 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     ));
   };
   // Rejects when the merge fails, so an open dialog keeps itself and shows why.
-  const finishMerge = (from: SideTab, into: SideTab, resolution: MergeResolution) => {
+  const finishMerge = (from: SideTab, into: SideTab, resolution: MergeResolution, after?: AfterMerge) => {
     const fromName = sideTabName(from, docs);
     const intoName = sideTabName(into, docs);
     return host.mergeSideTabs(from.id, into.id, fromName, resolution).then((done) => {
       setMerging(undefined);
       const renamed = done.renames.map(([a, b]) => `${a} → ${b}`).join(", ");
-      showToast({
-        text: `Merged ${fromName} into ${intoName}${renamed ? `; kept ${renamed}` : ""}.`,
-        undo: () => host.undoMerge(done.undoId).then(refocus, report),
-      });
+      const text = `Merged ${fromName} into ${intoName}${renamed ? `; kept ${renamed}` : ""}.`;
+      showToast(after?.undo === false ? { text } : { text, undo: () => host.undoMerge(done.undoId).then(refocus, report) });
       if (activeSide?.id === from.id) setSideTabId(into.id);
-      refocus();
+      if (after) after.run();
+      else refocus();
     });
   };
   useEffect(() => {
@@ -1563,9 +1575,28 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const remoteRef = useRef<(p: DragPoint) => void>(() => {});
   remoteRef.current = (p: DragPoint) => {
     setRemote(null);
+    // A side tab's only tab merges its side tab in first, so its variables and pins come
+    // along (task 8.70); a gap moves the whole side tab in the core.
+    const from = ws.windows.flatMap((w) => w.sideTabs).find((s) => s.tabs.some((t) => t.id === p.tabId));
+    const only = from?.tabs.length === 1;
     const docked = dockAt(p.tabId, p.x, p.y);
-    if (docked && docked.side !== "center" && !docked.small) return dockTab(p.tabId, docked.pane, docked.side);
+    if (docked && docked.side !== "center" && !docked.small) {
+      const { pane, side } = docked;
+      if (only && from && activeSide) return startMerge(from.id, activeSide.id, { run: () => dockTab(p.tabId, pane, side), undo: false });
+      return dockTab(p.tabId, docked.pane, docked.side);
+    }
     const target = remoteTarget(p.x, p.y);
+    if (only && from && target?.kind !== "end" && target?.kind !== "gap") {
+      if (target?.kind === "side") return startMerge(from.id, target.id);
+      // Dropped on a tab of the tab bar, it takes that tab's place once merged in.
+      const into = activeSide;
+      const index = target?.kind === "tab" ? tabs.findIndex((t) => t.id === target.id) : -1;
+      const place = () => {
+        followTab(p.tabId);
+        send({ type: "MoveTab", tabId: p.tabId, toSideTabId: into!.id, index }).then(refocus, report);
+      };
+      if (into) return startMerge(from.id, into.id, index >= 0 ? { run: place, undo: true } : undefined);
+    }
     const cmd: Command | undefined =
       target?.kind === "end"
         ? { type: "MoveTabToNewSideTab", tabId: p.tabId, windowId, index: sideTabs.length }
@@ -1641,7 +1672,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         const g = tabGapAt(e.clientX, e.clientY);
         setTabGap((p) => (JSON.stringify(p) === JSON.stringify(g) ? p : g));
       } else {
-        const d = dockAtRef.current(dragging, e.clientX, e.clientY);
+        const d = dockAtRef.current(tabOfDrag(dragging), e.clientX, e.clientY);
         setDock((p) => (sameDock(p, d) ? p : d));
       }
     };
@@ -1693,7 +1724,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     const docked = dockRef.current;
     const gap = tabGapRef.current;
     setDragging(undefined);
-    const tabId = String(active.id);
+    const tabId = tabOfDrag(String(active.id));
     const at = over && String(over.id);
     if (tabId.startsWith("pane:")) {
       if (gap) paneToTab(tabId.slice(5), gap.index);
@@ -1726,22 +1757,30 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   };
   const dropHere = (tabId: string, at: string | null) => {
     refocus();
-    if (!at || !activeSide) return;
+    const from = sideTabs.find((s) => s.tabs.some((t) => t.id === tabId));
+    if (!at || !from) return;
+    // A side tab's only tab takes its side tab along: to a gap the side tab moves, and into
+    // another side tab it merges, so its variables and pins stay (task 8.70).
+    const only = from.tabs.length === 1;
     // The only tab of a side tab dropped next to it would make the same sidebar again.
-    const idx = sideTabs.findIndex((s) => s.id === activeSide.id);
+    const idx = sideTabs.findIndex((s) => s.id === from.id);
     const gap = at === DROP_END ? sideTabs.length : at.startsWith("gap:") ? Number(at.slice(4)) : -1;
-    if (activeSide.tabs.length === 1 && (gap === idx || gap === idx + 1)) return;
+    if (only && (gap === idx || gap === idx + 1)) return;
     if (at.startsWith("into:")) {
       const side = at.slice(5);
-      if (side !== activeSide.id) moveTab(tabId, { side });
-    } else if (at === DROP_END) {
-      moveTab(tabId, { newAt: sideTabs.length });
-    } else if (at.startsWith("gap:")) {
-      moveTab(tabId, { newAt: Number(at.slice(4)) });
+      if (side !== from.id) moveTab(tabId, { side });
+    } else if (gap >= 0) {
+      moveTab(tabId, { newAt: gap });
     } else {
-      const from = tabs.findIndex((t) => t.id === tabId);
-      const to = tabs.findIndex((t) => t.id === at);
-      if (from >= 0 && to >= 0 && from !== to) void send({ type: "MoveTab", tabId, toSideTabId: activeSide.id, index: to });
+      // A tab in the tab bar, or one listed under a group: the dropped tab takes its place.
+      const target = tabOfDrag(at);
+      const to = sideTabs.find((s) => s.tabs.some((t) => t.id === target));
+      if (!to || target === tabId) return;
+      const index = to.tabs.findIndex((t) => t.id === target);
+      const place = () => void send({ type: "MoveTab", tabId, toSideTabId: to.id, index }).then(refocus, report);
+      if (to.id !== from.id && only) return startMerge(from.id, to.id, { run: place, undo: true });
+      if (to.id !== from.id) followTab(tabId);
+      void send({ type: "MoveTab", tabId, toSideTabId: to.id, index });
     }
   };
 
@@ -1778,7 +1817,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       : []),
   ];
 
-  const dragTab = dragging ? tabs.find((t) => t.id === dragging) : undefined;
+  const dragTab = dragging ? allTabs.find((t) => t.id === tabOfDrag(dragging)) : undefined;
   const dragPane = dragging?.startsWith("pane:") ? dragging.slice(5) : undefined;
   const dragSideTab = dragging?.startsWith("side:") ? sideTabs.find((s) => s.id === dragging.slice(5)) : undefined;
   const multi = panes.length > 1;
@@ -1800,7 +1839,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         onDragStart={({ active }) => {
           const id = String(active.id);
           setDragging(id);
-          const tab = tabs.find((t) => t.id === id);
+          // A tab of the tab bar, or one listed under a group in the sidebar (task 8.70).
+          const tab = allTabs.find((t) => t.id === tabOfDrag(id));
           dragBegun.current = tab
             ? host.dragBegin(tab.id, tabName(tab, docs)).catch((e: unknown) => {
                 report(e);
@@ -1876,6 +1916,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               activeTabId={activeTab?.id}
               dragging={!!dragging || !!remote}
               draggingSide={dragSideTab?.id}
+              draggingTab={dragTab?.id}
               agents={agents}
               onSelect={(id) => {
                 setSideTabId(id);
@@ -2534,7 +2575,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           fromName={sideTabName(merging.from, docs)}
           intoName={sideTabName(merging.into, docs)}
           clashes={merging.clashes}
-          onMerge={(r) => finishMerge(merging.from, merging.into, r)}
+          onMerge={(r) => finishMerge(merging.from, merging.into, r, merging.after)}
           onCancel={() => {
             setMerging(undefined);
             refocus();
@@ -2574,9 +2615,11 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       {toast && (
         <div className="ao-frame toast" role="status">
           <span className="small">{toast.text}</span>
-          <button type="button" className="ao-btn ghost" onClick={() => endToast(true)}>
-            Undo
-          </button>
+          {toast.undo && (
+            <button type="button" className="ao-btn ghost" onClick={() => endToast(true)}>
+              Undo
+            </button>
+          )}
         </div>
       )}
       {findingAll && (

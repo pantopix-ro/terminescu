@@ -261,13 +261,15 @@ pub enum Command {
         to_side_tab_id: Id,
         index: usize,
     },
-    /// Drop on a sidebar gap: a new side tab at `index` holding the tab (D5).
+    /// Drop on a sidebar gap: a new side tab at `index` holding the tab (D5). The only tab of
+    /// a side tab moves its side tab instead, as [`Command::MoveSideTab`], so its context stays.
     MoveTabToNewSideTab {
         tab_id: Id,
         window_id: Id,
         index: usize,
     },
-    /// Drop outside every window (D20): a new window with one new side tab holding the tab.
+    /// Drop outside every window (D20): a new window with one new side tab holding the tab. The
+    /// only tab of a side tab takes its side tab along, as [`Command::MoveSideTabToNewWindow`].
     MoveTabToNewWindow {
         tab_id: Id,
     },
@@ -297,6 +299,13 @@ pub enum Command {
     /// A new window holding the side tab, its tabs and its context (task 8.7).
     MoveSideTabToNewWindow {
         side_tab_id: Id,
+    },
+    /// A side tab, its tabs and its context to the gap before side tab `index` of a window,
+    /// counted before it leaves its place; its own window or another (task 8.70).
+    MoveSideTab {
+        side_tab_id: Id,
+        window_id: Id,
+        index: usize,
     },
     /// Drop a side tab onto another (D5): its tabs move to the end of `into` and it closes.
     /// The contexts merge outside the workspace, in [`crate::merge`].
@@ -908,8 +917,17 @@ impl Core {
                 window_id,
                 index,
             } => {
-                ws.locate_tab(&tab_id)
+                let (from, _) = ws
+                    .locate_tab(&tab_id)
                     .ok_or(CommandError::UnknownTab(tab_id.clone()))?;
+                if from.tabs.len() == 1 {
+                    let side_tab_id = from.id.clone();
+                    return self.plan(Command::MoveSideTab {
+                        side_tab_id,
+                        window_id,
+                        index,
+                    });
+                }
                 let w = ws
                     .windows
                     .iter()
@@ -948,8 +966,13 @@ impl Core {
                 .collect()
             }
             Command::MoveTabToNewWindow { tab_id } => {
-                ws.locate_tab(&tab_id)
+                let (from, _) = ws
+                    .locate_tab(&tab_id)
                     .ok_or(CommandError::UnknownTab(tab_id.clone()))?;
+                if from.tabs.len() == 1 {
+                    let side_tab_id = from.id.clone();
+                    return self.plan(Command::MoveSideTabToNewWindow { side_tab_id });
+                }
                 let closed = source_empties(&tab_id, None);
                 let window_id = (self.new_id)();
                 let id = (self.new_id)();
@@ -1167,6 +1190,42 @@ impl Core {
                     Patch::SideTabCreated {
                         window_id,
                         index: 0,
+                        side_tab,
+                    },
+                ]
+            }
+            Command::MoveSideTab {
+                side_tab_id,
+                window_id,
+                index,
+            } => {
+                let side_tab = ws
+                    .side_tab(&side_tab_id)
+                    .ok_or(CommandError::UnknownSideTab(side_tab_id.clone()))?
+                    .clone();
+                let w = ws
+                    .windows
+                    .iter()
+                    .find(|w| w.id == window_id)
+                    .ok_or(CommandError::UnknownWindow(window_id.clone()))?;
+                if index > w.side_tabs.len() {
+                    return Err(CommandError::IndexOutOfRange(index));
+                }
+                // Counted after it left: a gap below it in its own window moves up one.
+                let at = w.side_tabs.iter().position(|s| s.id == side_tab_id);
+                let index = match at {
+                    Some(i) if i < index => index - 1,
+                    _ => index,
+                };
+                if at == Some(index) {
+                    return Ok(vec![]);
+                }
+                // The same side tab, id and all, so its saved context follows it.
+                vec![
+                    Patch::SideTabClosed { side_tab_id },
+                    Patch::SideTabCreated {
+                        window_id,
+                        index,
                         side_tab,
                     },
                 ]
@@ -1698,6 +1757,87 @@ mod tests {
         })
         .unwrap();
         assert_eq!(shape(&c), vec![vec![vec!["id2", "id5"]]]);
+    }
+
+    fn side_ids(c: &Core, w: usize) -> Vec<String> {
+        c.workspace().windows[w]
+            .side_tabs
+            .iter()
+            .map(|s| s.id.clone())
+            .collect()
+    }
+
+    #[test]
+    fn a_side_tab_moves_to_a_gap_and_keeps_its_id() {
+        let mut c = core();
+        c.handle(Command::CreateSideTab {
+            window_id: "id1".into(),
+            index: None,
+        })
+        .unwrap();
+        let before = c.workspace().side_tab("id7").unwrap().clone();
+        let to = |c: &mut Core, index| {
+            c.handle(Command::MoveSideTab {
+                side_tab_id: "id7".into(),
+                window_id: "id1".into(),
+                index,
+            })
+            .unwrap()
+        };
+        to(&mut c, 0);
+        assert_eq!(side_ids(&c, 0), ["id7", "id4"]);
+        assert_eq!(c.workspace().side_tab("id7"), Some(&before));
+        // The gaps on either side of it leave it where it is.
+        assert!(to(&mut c, 1).patches.is_empty());
+        to(&mut c, 2);
+        assert_eq!(side_ids(&c, 0), ["id4", "id7"]);
+        assert!(
+            c.handle(Command::MoveSideTab {
+                side_tab_id: "id7".into(),
+                window_id: "id1".into(),
+                index: 3,
+            })
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn the_only_tab_of_a_side_tab_moves_its_side_tab() {
+        let mut c = core();
+        c.handle(Command::CreateSideTab {
+            window_id: "id1".into(),
+            index: None,
+        })
+        .unwrap();
+        // Tab id5 is side tab id7's only one: a gap moves id7, so its context stays.
+        c.handle(Command::MoveTabToNewSideTab {
+            tab_id: "id5".into(),
+            window_id: "id1".into(),
+            index: 0,
+        })
+        .unwrap();
+        assert_eq!(side_ids(&c, 0), ["id7", "id4"]);
+        // Outside every window, id7 opens a window of its own.
+        c.handle(Command::MoveTabToNewWindow {
+            tab_id: "id5".into(),
+        })
+        .unwrap();
+        assert_eq!(side_ids(&c, 1), ["id7"]);
+        // Back into the first window: the second, emptied, closes.
+        let b = c
+            .handle(Command::MoveSideTab {
+                side_tab_id: "id7".into(),
+                window_id: "id1".into(),
+                index: 1,
+            })
+            .unwrap();
+        assert_eq!(c.workspace().windows.len(), 1);
+        assert_eq!(side_ids(&c, 0), ["id4", "id7"]);
+        assert!(
+            b.patches
+                .iter()
+                .any(|p| matches!(p, Patch::WindowClosed { .. }))
+        );
     }
 
     #[test]
