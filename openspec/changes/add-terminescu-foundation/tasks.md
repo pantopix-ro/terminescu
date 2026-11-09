@@ -743,9 +743,11 @@ buffers once per sheet.
       drops: a gap between rows makes it a row, a folder or a row takes it in, a spot between
       a folder's tabs puts it there. The zone under the cursor lights orange. Verify:
       `sidebar-drag.spec.ts`.
-- [ ] 8.77 One-line rows. A row with one tab shows as a folder's tab does, one line at its
-      height: icon, name, subtitle, and a status chip only when one is set. Folder rows keep
-      two lines and the squares strip. Verify: `sidebar-layout.spec.ts`.
+- [x] 8.77 One-line rows. A row with one tab shows as a folder's tab does, one line at its
+      height: icon, name, subtitle, and a status chip only when one is set or the row needs
+      the person; under the mouse the chip shows, so the quick pick stays one click away.
+      Folder rows keep two lines and the squares strip. Verify: `sidebar-layout.spec.ts`,
+      `sidebar-status.spec.ts`, `sidebar-neon.spec.ts`.
 - [x] 8.78 Folders. A side tab with two tabs or more is a folder in every label, tip and
       class, with a pixel folder icon in the design system. Saved `group` icons become
       `folder` (migration 0012); new tabs never pick the folder icon. Verify: core `db`

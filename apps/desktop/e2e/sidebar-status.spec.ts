@@ -24,6 +24,9 @@ test("a click on a side tab's status opens the quick pick with the box focused",
   await mock(page, "saveStatus", side.id, look("PROJ-482 review"));
 
   const row = page.locator(".ao-side .ao-st").first();
+  // A one-line row shows an unset status only under the mouse (task 8.77).
+  await expect(row.locator(".ao-stat")).toBeHidden();
+  await row.hover();
   await row.getByRole("button", { name: /^Status Idle: edit the status of / }).click();
   const quick = page.getByRole("dialog", { name: /^Status of / });
   await expect(quick.getByLabel("New status")).toBeFocused();
