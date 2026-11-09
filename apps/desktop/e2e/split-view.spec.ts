@@ -93,7 +93,10 @@ test("a group's area head names the group and its tab, and its pixel tip lists t
   const tip = page.locator(".px-tip");
   await expect(tip).toBeVisible();
   await expect(tip.locator(".px-tip-name")).toContainText("›");
-  await expect(tip.locator(".px-tip-sub")).toContainText("group of 2");
+  await expect(tip.locator(".px-tip-sub").first()).toHaveText("group of 2");
+  // One line per tab, the shown one marked (task 8.74).
+  await expect(tip.locator(".px-tip-line")).toHaveCount(2);
+  await expect(tip.locator(".px-tip-line", { hasText: "▸" })).toHaveCount(1);
   // A click on the other head selects that row, and the tip goes.
   await page.locator(`.view-area[data-area="${second}"] > .view-head`).click();
   await expect.poll(() => selected(page)).toBe(second);
@@ -130,4 +133,28 @@ test("a window's only row dropped on another window joins it as a simple row", a
   await expect.poll(() => selected(page)).toBe(away);
   await expect(page.locator(".ao-st-kids")).toHaveCount(0);
   await expect(page.locator(".toast")).toHaveCount(0);
+});
+
+test("the tab bar starts with the selected group's name, and its pixel tip lists the tabs", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/?top-tabs");
+  await page.locator(".term-pane").first().click();
+  await expect(page.locator(".ao-tabs-group")).toHaveCount(0);
+  await page.keyboard.press("Meta+t");
+  await expect(page.locator(".ao-tabs [role=tab]")).toHaveCount(2);
+  const [side] = await sideIds(page);
+  const group = page.locator(".ao-tabs-group");
+  await expect(group).toHaveCount(1);
+  // The bar names the group as the sidebar does.
+  const name = (await group.innerText()).trim();
+  expect(name.length).toBeGreaterThan(0);
+  await expect(page.locator(`[data-side="${side}"]`)).toContainText(name);
+  await group.hover();
+  const tip = page.locator(".ao-tabs .px-tip");
+  await expect(tip.locator(".px-tip-line")).toHaveCount(2);
+  await expect(tip.locator(".px-tip-line", { hasText: "▸" })).toHaveCount(1);
+  // Back to one tab, the bar has no group to name.
+  await page.keyboard.press("Meta+w");
+  await expect(page.locator(".ao-tabs [role=tab]")).toHaveCount(1);
+  await expect(group).toHaveCount(0);
 });

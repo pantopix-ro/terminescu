@@ -39,6 +39,11 @@ export interface TabBarProps {
   onIconPick?(tabId: string, at: { x: number; y: number }): void;
   /** A right-click on a tab: open its edit dialog (task 8.34). */
   onEdit?(tabId: string): void;
+  /**
+   * The group these tabs belong to, when the selected row holds two tabs or more (task 8.74):
+   * its name and neon start the bar, and its pixel tip lists the tabs.
+   */
+  group?: { name: string; accent?: string; lines: readonly string[] };
 }
 
 function TabItem({
@@ -161,10 +166,22 @@ function TabItem({
 
 /** The active side tab's tabs, across the top like browser tabs. Drag one to reorder it. */
 
-export function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNewText, agents = {}, statuses = {}, builtins = {}, docs = {}, subtitles = {}, activity = {}, renaming, onRenameStart, onRename, onRenameEnd, onIconPick, onEdit }: TabBarProps) {
+export function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNewText, agents = {}, statuses = {}, builtins = {}, docs = {}, subtitles = {}, activity = {}, renaming, onRenameStart, onRename, onRenameEnd, onIconPick, onEdit, group }: TabBarProps) {
   const tips = useTip();
   return (
     <div className="ao-tabs" role="tablist" data-tauri-drag-region>
+      {group && (
+        <span
+          className="ao-tabs-group"
+          role="presentation"
+          style={group.accent ? ({ "--st-accent": `var(--neon-${group.accent})` } as React.CSSProperties) : undefined}
+          onMouseEnter={(e) => tips.below(e.currentTarget, group.name, `group of ${tabs.length}`, undefined, group.lines)}
+          onMouseLeave={tips.hide}
+        >
+          <i className="view-group" aria-hidden="true" />
+          <span className="view-name">{group.name}</span>
+        </span>
+      )}
       <SortableContext items={tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
         {tabs.map((t) => (
           <TabItem
