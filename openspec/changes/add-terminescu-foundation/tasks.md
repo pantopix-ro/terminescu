@@ -732,6 +732,24 @@ buffers once per sheet.
       line with each tab's folder, the shown one marked. With top tabs, the bar starts with
       the selected group's mark and name, whose tip lists the same lines. Verify:
       `split-view.spec.ts`, ui `view` tests.
+- [ ] 8.75 Areas show tabs. Each area of the split shows one tab, so two tabs of one folder
+      show side by side and docking never takes a tab out of its folder. A folder header
+      dropped on a pane's edge shows all its tabs there. A tab from another window joins as
+      its own row beside. A folder with a shown tab is marked open, and so is each shown tab;
+      the selected one wears the orange outline. An open row's background reaches the
+      sidebar's right edge. An area head shows the tab's coloured icon left of its name.
+      Verify: `split-view.spec.ts`, `dock.spec.ts`, `sidebar-drag.spec.ts`, ui `view` tests.
+- [ ] 8.76 Sidebar drop zones. A tab dragged from this window or another lands where it
+      drops: a gap between rows makes it a row, a folder or a row takes it in, a spot between
+      a folder's tabs puts it there. The zone under the cursor lights orange. Verify:
+      `sidebar-drag.spec.ts`.
+- [ ] 8.77 One-line rows. A row with one tab shows as a folder's tab does, one line at its
+      height: icon, name, subtitle, and a status chip only when one is set. Folder rows keep
+      two lines and the squares strip. Verify: `sidebar-layout.spec.ts`.
+- [x] 8.78 Folders. A side tab with two tabs or more is a folder in every label, tip and
+      class, with a pixel folder icon in the design system. Saved `group` icons become
+      `folder` (migration 0012); new tabs never pick the folder icon. Verify: core `db`
+      tests, the whole e2e suite.
 - [ ] 8.72 Sidebar drags, part 3. A row dragged between rows reorders (hand-sorted only), and
       out of every window opens a new one; the cross-window drag carries a row, not only a tab.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with

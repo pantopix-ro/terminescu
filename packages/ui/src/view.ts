@@ -65,9 +65,9 @@ export function composeView(v: View, layoutOf: (row: string) => Layout | undefin
 export const viewSplitId = () => `view-${Math.random().toString(36).slice(2, 10)}`;
 
 /**
- * A group's tabs for its pixel tip (task 8.74), one line each: the shown one marked `▸`, then
- * its name and its folder, so two tabs both named `zsh` tell apart.
+ * A folder's tabs for its pixel tip (task 8.74), one line each: the shown one marked `▸`, then
+ * its name and its directory, so two tabs both named `zsh` tell apart.
  */
-export function groupLines(tabs: readonly { id: string }[], shown: string | undefined, name: (id: string) => string, sub: Readonly<Record<string, string>>): string[] {
+export function folderLines(tabs: readonly { id: string }[], shown: string | undefined, name: (id: string) => string, sub: Readonly<Record<string, string>>): string[] {
   return tabs.map((t) => [`${t.id === shown ? "▸" : " "} ${name(t.id)}`, sub[t.id]].filter(Boolean).join("  "));
 }

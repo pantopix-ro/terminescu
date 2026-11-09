@@ -7,7 +7,7 @@ export interface TipAt {
   sub?: string;
   /** The status label, shown under the name. */
   status?: string;
-  /** More plain lines under the rest, one per item, as a group's tabs (task 8.74). */
+  /** More plain lines under the rest, one per item, as a folder's tabs (task 8.74). */
   lines?: readonly string[];
   rect: DOMRect;
   /** Lay it over the element, as a name's expansion, instead of beside it. */

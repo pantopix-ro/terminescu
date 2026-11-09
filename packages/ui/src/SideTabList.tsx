@@ -22,13 +22,13 @@ export interface SideTabListProps {
   onNew(): void;
   /** The + menu's Text: a new side tab that holds an untitled text (task 8.59). */
   onNewText?(): void;
-  /** The small + under a group's last tab: a new tab in that group (task 8.59). */
+  /** The small + under a folder's last tab: a new tab in that folder (task 8.59). */
   onNewTab?(sideTabId: string): void;
   /** A tab is being dragged: show the drop targets (task 3.2). */
   dragging: boolean;
   /** The side tab being dragged onto another to merge (D5); rows become the only targets. */
   draggingSide?: string;
-  /** The tab being dragged, from the tab bar or a group, for where a listed tab's drop line goes. */
+  /** The tab being dragged, from the tab bar or a folder, for where a listed tab's drop line goes. */
   draggingTab?: string;
   /**
    * The rows the main area shows side by side (task 8.71). With two or more, each is marked
@@ -180,8 +180,8 @@ export const dropGap = (index: number) => `gap:${index}`;
 export const dragSide = (sideTabId: string) => `side:${sideTabId}`;
 export const DROP_END = "gap:end";
 /**
- * Drag and drop id of a tab listed under its group (task 8.70). It differs from the tab id the
- * tab bar uses, since the active group shows the same tab in both places.
+ * Drag and drop id of a tab listed under its folder (task 8.70). It differs from the tab id the
+ * tab bar uses, since the active folder shows the same tab in both places.
  */
 export const dragKid = (tabId: string) => `kid:${tabId}`;
 /** The tab a drag or drop id stands for: a listed tab's, or the tab bar's own tab id. */
@@ -247,17 +247,17 @@ function Row(props: {
     disabled: !dragging || (draggingSide ? draggingSide === side.id : own),
   });
   const drag = useDraggable({ id: dragSide(side.id) });
-  const group = side.tabs.length > 1;
-  // A group stays open or closed as the person left it; it starts open (task 8.57).
-  const open = group && expanded && !collapsed;
+  const folder = side.tabs.length > 1;
+  // A folder stays open or closed as the person left it; it starts open (task 8.57).
+  const open = folder && expanded && !collapsed;
   // A status background tints the row; otherwise the active row takes the raised panel. The
   // row's own neon (task 8.25) paints the edge and the icon and washes 12% into that
   // background (the Wash board); the status keeps its chip.
   const look = rowStyle(shown?.look, "st");
   const ground = look["--st-bg"] ?? (active ? "var(--panel-2)" : "var(--panel)");
-  // A row with one tab wears that tab's neon, so it matches the tab bar (task 8.51); a group
+  // A row with one tab wears that tab's neon, so it matches the tab bar (task 8.51); a folder
   // keeps its own and each tab under it wears its own.
-  const accent = (!group && side.tabs[0]?.accent) || side.accent;
+  const accent = (!folder && side.tabs[0]?.accent) || side.accent;
   const neon = accent && `var(--neon-${accent})`;
   const style = {
     ...look,
@@ -282,16 +282,16 @@ function Row(props: {
         aria-label={collapsed ? `${name}, ${chip.label}` : undefined}
         // A rest on the row lists its shells beside it (task 8.28); collapsed, every row does.
         onMouseEnter={(e) => {
-          if ((collapsed || group) && !dragging && props.renaming !== side.id) picker.enter(side.id, e.currentTarget);
+          if ((collapsed || folder) && !dragging && props.renaming !== side.id) picker.enter(side.id, e.currentTarget);
         }}
         onMouseLeave={() => {
           tips.hide();
           picker.leave();
         }}
-        // A click on the selected group opens or closes its tabs; on another one it selects
+        // A click on the selected folder opens or closes its tabs; on another one it selects
         // that one and opens it (task 8.61).
         onClick={() => {
-          if (group && !collapsed && (active ? true : !expanded)) props.onToggle();
+          if (folder && !collapsed && (active ? true : !expanded)) props.onToggle();
           props.onSelect();
         }}
         onContextMenu={(e) => {
@@ -302,11 +302,11 @@ function Row(props: {
         onKeyDown={(e) => {
           // Keys on a button inside the row, as the chevron, are that button's.
           if (e.target !== e.currentTarget) return;
-          // Enter does what a click does; → opens a group and ← closes it.
+          // Enter does what a click does; → opens a folder and ← closes it.
           if (e.key === "Enter") {
-            if (group && !collapsed && (active ? true : !expanded)) props.onToggle();
+            if (folder && !collapsed && (active ? true : !expanded)) props.onToggle();
             props.onSelect();
-          } else if (group && !collapsed && ((e.key === "ArrowRight" && !expanded) || (e.key === "ArrowLeft" && expanded))) {
+          } else if (folder && !collapsed && ((e.key === "ArrowRight" && !expanded) || (e.key === "ArrowLeft" && expanded))) {
             e.preventDefault();
             props.onToggle();
           } else if (menuKey(e) && props.onMenu) {
@@ -316,7 +316,7 @@ function Row(props: {
         }}
       >
         <i
-          className={`ao-i ao-i-${side.icon ?? (group ? "group" : (side.tabs[0]?.icon ?? (side.tabs[0] && tabAgent(side.tabs[0], agents) ? "agent" : "term")))}${actClass(group ? undefined : props.activity[side.tabs[0]?.id ?? ""])}`}
+          className={`ao-i ao-i-${side.icon ?? (folder ? "folder" : (side.tabs[0]?.icon ?? (side.tabs[0] && tabAgent(side.tabs[0], agents) ? "agent" : "term")))}${actClass(folder ? undefined : props.activity[side.tabs[0]?.id ?? ""])}`}
           title={collapsed ? undefined : "Double-click to change the icon"}
           onDoubleClick={(e) => {
             e.stopPropagation();
@@ -348,7 +348,7 @@ function Row(props: {
           </span>
         )}
         <span className="side-trail">
-        {group && (
+        {folder && (
           <button
             type="button"
             className="side-chev"
@@ -364,15 +364,15 @@ function Row(props: {
         )}
         </span>
         <span className="m">
-          {/* One square per tab, in the tab's neon (task 8.26). A closed group's squares blink
+          {/* One square per tab, in the tab's neon (task 8.26). A closed folder's squares blink
               for their tabs, since its shell list is hidden (task 8.54). */}
           <span className="ao-strip" aria-hidden="true">
             {side.tabs.map((t) => (
-              <i key={t.id} className={`ao-cell${group && !open ? actClass(props.activity[t.id]) : ""}`} data-cell={t.id} style={t.accent && { background: `var(--neon-${t.accent})` }} />
+              <i key={t.id} className={`ao-cell${folder && !open ? actClass(props.activity[t.id]) : ""}`} data-cell={t.id} style={t.accent && { background: `var(--neon-${t.accent})` }} />
             ))}
           </span>
-          {/* A one-tab row shows its tab's live subtitle here; a group's tabs show theirs below (task 8.30). */}
-          <span className="grow st-sub">{!group && side.tabs[0] && props.subtitles[side.tabs[0].id]}</span>
+          {/* A one-tab row shows its tab's live subtitle here; a folder's tabs show theirs below (task 8.30). */}
+          <span className="grow st-sub">{!folder && side.tabs[0] && props.subtitles[side.tabs[0].id]}</span>
           {/* The status sits under the name, so the name has the row's width (task 8.28). */}
           <ChipButton
             chip={chip}
@@ -391,7 +391,7 @@ function Row(props: {
               type="button"
               className="kid-add"
               aria-label={`New tab in ${name}`}
-              title="New tab in this group"
+              title="New tab in this folder"
               onClick={(e) => {
                 e.stopPropagation();
                 props.onNewTab!(side.id);
@@ -407,17 +407,17 @@ function Row(props: {
 }
 
 /**
- * The sidebar: one row per side tab. A side tab with more than one tab is a group and lists its
- * tabs under the row. Each group starts open, and its chevron opens or closes it; switching
+ * The sidebar: one row per side tab. A side tab with more than one tab is a folder and lists its
+ * tabs under the row. Each folder starts open, and its chevron opens or closes it; switching
  * rows never closes one (D3, task 8.57).
  */
-/** A tab listed under its group. It drags as a tab of the tab bar does (task 8.70). */
+/** A tab listed under its folder. It drags as a tab of the tab bar does (task 8.70). */
 function Kid(props: Parameters<typeof Row>[0] & { tab: Tab; index: number }) {
   const { side, tab: t, index: i, active, dragging, draggingSide, draggingTab, agents, statuses, builtins, docs, tips } = props;
   const id = dragKid(t.id);
   const drag = useDraggable({ id, disabled: props.renaming === t.id });
   const drop = useDroppable({ id, disabled: !dragging || !!draggingSide || draggingTab === t.id });
-  // The dropped tab takes this one's place: below it when it comes from above in this group.
+  // The dropped tab takes this one's place: below it when it comes from above in this folder.
   const from = draggingTab ? side.tabs.findIndex((x) => x.id === draggingTab) : -1;
   const line = drop.isOver ? (from >= 0 && from < i ? " drop-after" : " drop-before") : "";
   return (
@@ -491,7 +491,7 @@ function Kid(props: Parameters<typeof Row>[0] & { tab: Tab; index: number }) {
   );
 }
 
-/** A tab's row under its group (task 8.51): its own status background, washed with its neon. */
+/** A tab's row under its folder (task 8.51): its own status background, washed with its neon. */
 function kidStyle(t: Tab, shown: Shown | undefined): React.CSSProperties {
   const ground = rowStyle(shown?.look, "st")["--st-bg"] ?? "var(--panel)";
   const bg = t.accent ? `color-mix(in srgb, var(--neon-${t.accent}) 12%, ${ground})` : ground;
@@ -637,7 +637,7 @@ export function SideTabList({
         <ShellPicker at={picker.at} label={`Shells in ${sideTabName(picked, docs)}`} onEnter={picker.keep} onLeave={picker.leave}>
           <div className="px-pick-head">
             <span className="px-tip-name">{sideTabName(picked, docs)}</span>
-            {/* A renamed group still shows its animal, so it can be told apart (task 8.62). */}
+            {/* A renamed folder still shows its animal, so it can be told apart (task 8.62). */}
             {picked.title && picked.tabs.length > 1 && picked.name && <span className="px-tip-alias">{picked.name}</span>}
             <span className="px-tip-status">{chipOf(statuses[picked.id], builtins).label}</span>
           </div>

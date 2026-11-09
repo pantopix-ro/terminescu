@@ -124,8 +124,8 @@ test("a row puts its status under the name and lists its shells on hover, one cl
 });
 
 // Task 8.57 and 8.58: tabs show only in the sidebar until Settings turns the top bar on, and a
-// group stays open or closed as the person leaves it.
-test("tabs live in the sidebar by default and groups stay as left", async ({ page }) => {
+// folder stays open or closed as the person leaves it.
+test("tabs live in the sidebar by default and folders stay as left", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");
   await page.locator(".term-pane").first().click();
@@ -133,19 +133,19 @@ test("tabs live in the sidebar by default and groups stay as left", async ({ pag
   await expect(page.locator(".ao-tabs .ao-tab")).toHaveCount(0);
   await expect(page.locator(".ao-st-kid")).toHaveCount(2);
 
-  // Another row keeps this group open; the chevron closes it. A click on the group selects it
-  // and opens it, and a click on the selected group closes and opens it (task 8.61).
+  // Another row keeps this folder open; the chevron closes it. A click on the folder selects it
+  // and opens it, and a click on the selected folder closes and opens it (task 8.61).
   await page.getByRole("button", { name: "Add a side tab", exact: true }).click();
   await expect(page.locator(".ao-st-kid")).toHaveCount(2);
   await page.getByLabel("Collapse side tab").click();
   await expect(page.locator(".ao-st-kid")).toHaveCount(0);
-  const group = page.locator(".ao-st").first();
-  await group.click();
-  await expect(group).toHaveClass(/active/);
+  const folder = page.locator(".ao-st").first();
+  await folder.click();
+  await expect(folder).toHaveClass(/active/);
   await expect(page.locator(".ao-st-kid")).toHaveCount(2);
-  await group.click();
+  await folder.click();
   await expect(page.locator(".ao-st-kid")).toHaveCount(0);
-  await group.click();
+  await folder.click();
   await expect(page.locator(".ao-st-kid")).toHaveCount(2);
 
   // Settings › Terminal › Show tabs in the top bar brings them back.
@@ -157,8 +157,8 @@ test("tabs live in the sidebar by default and groups stay as left", async ({ pag
 });
 
 // Task 8.59: with no tabs on top there is no top bar; the sidebar's + ▾ makes a text side tab,
-// a group's small + adds a tab to it, and the sidebar toggle sits on the sidebar's line.
-test("the sidebar makes text side tabs and group tabs, and the toggle sits on its line", async ({ page }) => {
+// a folder's small + adds a tab to it, and the sidebar toggle sits on the sidebar's line.
+test("the sidebar makes text side tabs and folder tabs, and the toggle sits on its line", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");
   await page.locator(".term-pane").first().click();
@@ -176,7 +176,7 @@ test("the sidebar makes text side tabs and group tabs, and the toggle sits on it
   await expect(page.locator(".app-pane .term-pane:not(:has(.text-pane))")).toHaveCount(0);
   await expect.poll(async () => (await page.evaluate(() => (window as any).__terminescu.host.workspace())).windows[0].sideTabs[1].tabs.length).toBe(1);
 
-  // The first row becomes a group; its small + adds a third tab there.
+  // The first row becomes a folder; its small + adds a third tab there.
   await page.locator(".ao-st").first().click();
   await page.keyboard.press("Meta+t");
   await expect(page.locator(".ao-st-kid")).toHaveCount(2);

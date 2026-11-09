@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// Group 3 on the mock host: splits, keys, side tab groups, tab drags, the palette and the
+// Group 3 on the mock host: splits, keys, side tab folders, tab drags, the palette and the
 // context panel. Chords arrive as key events here; in the app the menu sends the same ids.
 
 
@@ -123,7 +123,7 @@ test("⌘T, ⌘N, ⌘1-⌘9 and ⌃⌘1-⌃⌘9 select; a side tab with tabs lis
   await page.keyboard.press("Meta+n");
   await expect(page.locator(".ao-st")).toHaveCount(2);
   await expect(page.locator(".ao-st").last()).toHaveClass(/active/);
-  // The other group stays open (task 8.57); its chevron closes it and opens it again.
+  // The other folder stays open (task 8.57); its chevron closes it and opens it again.
   await expect(page.locator(".ao-st-kid")).toHaveCount(3);
   await page.getByLabel("Collapse side tab").click();
   await expect(page.locator(".ao-st-kid")).toHaveCount(0);

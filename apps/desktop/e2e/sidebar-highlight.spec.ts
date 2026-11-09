@@ -47,7 +47,7 @@ test("a selected one-tab row reaches the panes, the others keep a gap", async ({
   expect(await atEdge(page, other)).toBe(false);
 });
 
-test("in a group only the selected tab reaches the panes, and each tab wears its colour", async ({ page }) => {
+test("in a folder only the selected tab reaches the panes, and each tab wears its colour", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/?top-tabs");
   await page.locator(".term-pane").first().click();

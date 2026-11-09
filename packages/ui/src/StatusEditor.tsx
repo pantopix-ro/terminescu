@@ -213,7 +213,7 @@ export function StatusEditor(props: StatusEditorProps) {
                       props.onPickIcon?.(owner.id, { x: r.left, y: r.bottom + 4 });
                     }}
                   >
-                    <i className={`ao-i ao-i-${owner.icon ?? (target === "tab" ? "term" : side.tabs.length > 1 ? "group" : (side.tabs[0]?.icon ?? "term"))}`} style={owner.accent ? { color: `var(--neon-${owner.accent})` } : undefined} />
+                    <i className={`ao-i ao-i-${owner.icon ?? (target === "tab" ? "term" : side.tabs.length > 1 ? "folder" : (side.tabs[0]?.icon ?? "term"))}`} style={owner.accent ? { color: `var(--neon-${owner.accent})` } : undefined} />
                   </button>
                 </div>
               )}

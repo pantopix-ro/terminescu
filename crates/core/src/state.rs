@@ -14,15 +14,20 @@ pub type Id = String;
 /// The icons a side tab or tab can pick instead of its default one (task 8.16). Each name is
 /// an `ao-i-*` class of the design system.
 pub const ICONS: &[&str] = &[
-    "term", "agent", "group", "tab", "window", "split", "doc", "tpl", "prompt", "var", "link",
+    "term", "agent", "folder", "tab", "window", "split", "doc", "tpl", "prompt", "var", "link",
     "pin", "play", "check", "bp", "pr", "merge", "save", "in", "out",
 ];
 
 /// The icon a new tab opens with (task 8.20): one no other tab uses yet, picked from the tab
-/// id so it looks random but replays the same in tests. The agent icon stays for Claude.
+/// id so it looks random but replays the same in tests. The agent icon stays for Claude and
+/// the folder icon for folders.
 /// When every icon is taken it reuses one.
 pub fn pick_icon(ws: &Workspace, tab_id: &str, also: &[Option<String>]) -> String {
-    let pool: Vec<&str> = ICONS.iter().copied().filter(|i| *i != "agent").collect();
+    let pool: Vec<&str> = ICONS
+        .iter()
+        .copied()
+        .filter(|i| !matches!(*i, "agent" | "folder"))
+        .collect();
     let used: Vec<&str> = ws
         .windows
         .iter()

@@ -77,7 +77,7 @@ test("rows shown side by side are open, and the selected one follows the pane cl
   await expect(page.locator(".view-head")).toHaveCount(0);
 });
 
-test("a group's area head names the group and its tab, and its pixel tip lists the group", async ({ page }) => {
+test("a folder's area head names the folder and its tab, and its pixel tip lists the folder", async ({ page }) => {
   await start(page);
   const [first] = await sideIds(page);
   await page.keyboard.press("Meta+t");
@@ -85,15 +85,15 @@ test("a group's area head names the group and its tab, and its pixel tip lists t
   const second = await addRow(page);
   await rowToRight(page, first!);
   const head = page.locator(`.view-area[data-area="${first}"] > .view-head`);
-  await expect(head.locator(".view-group")).toHaveCount(1);
+  await expect(head.locator(".view-folder")).toHaveCount(1);
   await expect(head.locator(".view-tab")).toHaveCount(1);
-  await expect(page.locator(`.view-area[data-area="${second}"] > .view-head .view-group`)).toHaveCount(0);
+  await expect(page.locator(`.view-area[data-area="${second}"] > .view-head .view-folder`)).toHaveCount(0);
 
   await head.hover();
   const tip = page.locator(".px-tip");
   await expect(tip).toBeVisible();
   await expect(tip.locator(".px-tip-name")).toContainText("›");
-  await expect(tip.locator(".px-tip-sub").first()).toHaveText("group of 2");
+  await expect(tip.locator(".px-tip-sub").first()).toHaveText("folder of 2");
   // One line per tab, the shown one marked (task 8.74).
   await expect(tip.locator(".px-tip-line")).toHaveCount(2);
   await expect(tip.locator(".px-tip-line", { hasText: "▸" })).toHaveCount(1);
@@ -135,26 +135,26 @@ test("a window's only row dropped on another window joins it as a simple row", a
   await expect(page.locator(".toast")).toHaveCount(0);
 });
 
-test("the tab bar starts with the selected group's name, and its pixel tip lists the tabs", async ({ page }) => {
+test("the tab bar starts with the selected folder's name, and its pixel tip lists the tabs", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/?top-tabs");
   await page.locator(".term-pane").first().click();
-  await expect(page.locator(".ao-tabs-group")).toHaveCount(0);
+  await expect(page.locator(".ao-tabs-folder")).toHaveCount(0);
   await page.keyboard.press("Meta+t");
   await expect(page.locator(".ao-tabs [role=tab]")).toHaveCount(2);
   const [side] = await sideIds(page);
-  const group = page.locator(".ao-tabs-group");
-  await expect(group).toHaveCount(1);
-  // The bar names the group as the sidebar does.
-  const name = (await group.innerText()).trim();
+  const folder = page.locator(".ao-tabs-folder");
+  await expect(folder).toHaveCount(1);
+  // The bar names the folder as the sidebar does.
+  const name = (await folder.innerText()).trim();
   expect(name.length).toBeGreaterThan(0);
   await expect(page.locator(`[data-side="${side}"]`)).toContainText(name);
-  await group.hover();
+  await folder.hover();
   const tip = page.locator(".ao-tabs .px-tip");
   await expect(tip.locator(".px-tip-line")).toHaveCount(2);
   await expect(tip.locator(".px-tip-line", { hasText: "▸" })).toHaveCount(1);
-  // Back to one tab, the bar has no group to name.
+  // Back to one tab, the bar has no folder to name.
   await page.keyboard.press("Meta+w");
   await expect(page.locator(".ao-tabs [role=tab]")).toHaveCount(1);
-  await expect(group).toHaveCount(0);
+  await expect(folder).toHaveCount(0);
 });

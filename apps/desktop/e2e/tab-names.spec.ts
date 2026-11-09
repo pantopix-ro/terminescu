@@ -22,7 +22,7 @@ test("tabs are named after their terminal, and only a row with two tabs or more 
   expect(sides.map((s) => s.tabs.length)).toEqual([3, 1]);
   expect(sides[0]!.name).toMatch(/^[A-Z][a-z]+$/);
   expect(sides[0]!.name).not.toBe(sides[1]!.name);
-  // The group shows its animal; the single row shows its tab's name.
+  // The folder shows its animal; the single row shows its tab's name.
   await expect(page.locator(".ao-st .t")).toHaveText([sides[0]!.name, "zsh"]);
   const tab = sides[1]!.tabs[0]!.id;
   await expect(page.locator(`.ao-tab[data-tab="${tab}"] .n`)).toHaveText("zsh");
@@ -34,7 +34,7 @@ test("tabs are named after their terminal, and only a row with two tabs or more 
   await host(page, "send", { type: "RenameTab", tabId: tab, title: null });
   await expect(page.locator(`.ao-tab[data-tab="${tab}"] .n`)).toHaveText("zsh");
 
-  // A renamed group still shows its animal in the list its row shows on hover.
+  // A renamed folder still shows its animal in the list its row shows on hover.
   await host(page, "send", { type: "RenameSideTab", sideTabId: sides[0]!.id, title: "work" });
   await page.locator(".ao-st").first().hover();
   await expect(page.getByRole("group", { name: "Shells in work" }).locator(".px-tip-alias")).toHaveText(sides[0]!.name);
@@ -53,7 +53,7 @@ test("tabs are named after their terminal, and only a row with two tabs or more 
   await host(page, "runCommand", pane, "claude", 0);
   await expect(page.locator(`.ao-tab[data-tab="${tab}"] .n`)).toHaveText("zsh");
 
-  // A group left with one tab shows that tab's name again.
+  // A folder left with one tab shows that tab's name again.
   for (const t of sides[0]!.tabs.slice(1)) await host(page, "send", { type: "CloseTab", tabId: t.id });
   await expect(page.locator(".ao-st .t").first()).toHaveText("zsh");
 });
@@ -100,7 +100,7 @@ test("the name follows the program and the subtitle keeps the path and Claude's 
   await expect(sub).toHaveText("~/work/api");
 });
 
-test("a split tab's subtitle follows its focused terminal, also in the group and the shell list", async ({ page }) => {
+test("a split tab's subtitle follows its focused terminal, also in the folder and the shell list", async ({ page }) => {
   await start(page);
   await page.getByRole("button", { name: "New tab", exact: true }).click();
   const made = (await workspace(page)).windows[0].sideTabs[0].tabs[1];
@@ -116,7 +116,7 @@ test("a split tab's subtitle follows its focused terminal, also in the group and
   await expect(sub).toHaveText("~/work/api");
   await page.locator(`.app-pane .ao-tp[data-pane="${left}"]`).click();
   await expect(sub).toHaveText("~/work/web");
-  // The open group lists the same subtitle beside the tab's name.
+  // The open folder lists the same subtitle beside the tab's name.
   await expect(page.locator(`.ao-st-kid[data-kid="${tab.id}"] .kid-sub`)).toHaveText("~/work/web");
   await expect(page.locator(`.ao-st-kid[data-kid="${tab.id}"] .kid-n`)).toHaveText("zsh");
 });

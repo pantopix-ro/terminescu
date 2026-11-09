@@ -63,7 +63,7 @@ import {
   useTip,
   composeView,
   fitView,
-  groupLines,
+  folderLines,
   hideRow,
   rowsOf,
   showBeside,
@@ -1746,7 +1746,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     const area = pane ? areaOfPane(pane) : undefined;
     const src = dragSource(dragId);
     if (!pane || !area || !src) return undefined;
-    // A row, or a row's only tab, cannot go beside itself; a tab of a group can leave it.
+    // A row, or a row's only tab, cannot go beside itself; a tab of a folder can leave it.
     if (src.lone && src.side.id === area.side.id) return undefined;
     // The drop splits the row's whole area, so the area is the box.
     const rects = panesOf(area.tab.layout).flatMap((p) => {
@@ -1800,7 +1800,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       refocus();
     });
   };
-  /** A group's plain variables go with its tab into a new row; secrets and pins stay. */
+  /** A folder's plain variables go with its tab into a new row; secrets and pins stay. */
   const copyVariables = (from: string, to: string) =>
     void host
       .variables(from)
@@ -1825,8 +1825,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       .catch(report);
   /**
    * Task 8.71: a row, or a row's only tab, shows beside the shown row `target`, keeping its
-   * context; one from another window moves here first. A tab of a group leaves it as a new
-   * row, with the group's plain variables.
+   * context; one from another window moves here first. A tab of a folder leaves it as a new
+   * row, with the folder's plain variables.
    */
   const placeBeside = (dragId: string, target: string, side: DockSide) => {
     const src = dragSource(dragId);
@@ -1928,7 +1928,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     } else if (gap >= 0) {
       moveTab(tabId, { newAt: gap });
     } else {
-      // A tab in the tab bar, or one listed under a group: the dropped tab takes its place.
+      // A tab in the tab bar, or one listed under a folder: the dropped tab takes its place.
       const target = tabOfDrag(at);
       const to = sideTabs.find((s) => s.tabs.some((t) => t.id === target));
       if (!to || target === tabId) return;
@@ -1987,9 +1987,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const dragSideTab = dragging?.startsWith("side:") ? sideTabs.find((s) => s.id === dragging.slice(5)) : undefined;
   // Every shown row's panes in one tree; a maximized pane shows alone (task 8.39).
   const screen = maxPane && activeTab ? leaf(activeTab.layout, maxPane) : shownView && composeView(shownView, (row) => areas.find((x) => x.side.id === row)?.tab.layout);
-  /** A group's tabs for a pixel tip: each with its folder, the shown one marked (task 8.74). */
+  /** A folder's tabs for a pixel tip: each with its directory, the shown one marked (task 8.74). */
   const tabLines = (side: SideTab, shown: string | undefined) =>
-    groupLines(side.tabs, shown, (id) => tabName(side.tabs.find((t) => t.id === id)!, docs), subtitles);
+    folderLines(side.tabs, shown, (id) => tabName(side.tabs.find((t) => t.id === id)!, docs), subtitles);
   const multi = panes.length > 1 || (screen ? panesOf(screen).length : 0) > 1;
 
   /** A split pane's header text: the document, the transcript or the shell's live subtitle. */
@@ -2010,7 +2010,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         onDragStart={({ active }) => {
           const id = String(active.id);
           setDragging(id);
-          // A tab of the tab bar, or one listed under a group in the sidebar (task 8.70).
+          // A tab of the tab bar, or one listed under a folder in the sidebar (task 8.70).
           const tab = allTabs.find((t) => t.id === tabOfDrag(id));
           dragBegun.current = tab
             ? host.dragBegin(tab.id, tabName(tab, docs)).catch((e: unknown) => {
@@ -2153,7 +2153,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           <main className={`app-main${appSettings.topTabs ? "" : " bare"}`}>
             {appSettings.topTabs && <TabBar
               tabs={appSettings.topTabs ? tabs : []}
-              group={
+              folder={
                 activeSide && activeSide.tabs.length > 1
                   ? { name: sideTabName(activeSide, docs), accent: activeSide.accent, lines: tabLines(activeSide, activeTab?.id) }
                   : undefined
@@ -2204,8 +2204,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                           const area = areas.find((x) => x.tab.layout.id === id);
                           if (!area) return body;
                           const { side, tab } = area;
-                          const group = side.tabs.length > 1;
-                          const accent = (!group && tab.accent) || side.accent;
+                          const folder = side.tabs.length > 1;
+                          const accent = (!folder && tab.accent) || side.accent;
                           return (
                             <div className={`view-area${side.id === activeSide?.id ? " on" : ""}`} data-area={side.id}>
                               <div
@@ -2216,14 +2216,14 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                                   focusArea(tab.id, pick(panesOf(tab.layout), focusByTab[tab.id])!);
                                   refocus();
                                 }}
-                                // A group's head names the group and the tab it shows; the tip
-                                // lists the group's tabs, the shown one marked.
+                                // A folder's head names the folder and the tab it shows; the tip
+                                // lists the folder's tabs, the shown one marked.
                                 onMouseEnter={(e) =>
-                                  group
+                                  folder
                                     ? areaTip.below(
                                         e.currentTarget,
                                         `${sideTabName(side, docs)} › ${tabName(tab, docs)}`,
-                                        `group of ${side.tabs.length}`,
+                                        `folder of ${side.tabs.length}`,
                                         undefined,
                                         tabLines(side, tab.id),
                                       )
@@ -2231,9 +2231,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                                 }
                                 onMouseLeave={areaTip.hide}
                               >
-                                {group && <i className="view-group" aria-label="group" />}
+                                {folder && <i className="ao-i ao-i-folder view-folder" aria-label="folder" />}
                                 <span className="view-name">{sideTabName(side, docs)}</span>
-                                {group && <span className="view-tab">{tabName(tab, docs)}</span>}
+                                {folder && <span className="view-tab">{tabName(tab, docs)}</span>}
                               </div>
                               <div className="view-body">{body}</div>
                             </div>

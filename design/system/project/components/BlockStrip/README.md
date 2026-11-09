@@ -1,6 +1,6 @@
 # BlockStrip
 
-A side tab's tabs as a row of blocks, one per tab, left to right in tab order. It shows on group rows in the sidebar, in palette results and in the MergeDialog.
+A side tab's tabs as a row of blocks, one per tab, left to right in tab order. It shows on folder rows in the sidebar, in palette results and in the MergeDialog.
 
 - Cell states: `faint` idle shell, `blue` running (blinks in two steps), `amber` a Claude session waiting on you, `green` last command or turn done, `red` failed.
 - Sizes: `lg` (18x22) in dialogs, default (10x14) in sidebar rows.

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// Task 8.70: a tab listed under its group drags as a tab of the tab bar does, and the only tab
+// Task 8.70: a tab listed under its folder drags as a tab of the tab bar does, and the only tab
 // of a side tab takes its side tab, with its variables, wherever it goes.
 
 type Point = { x: number; y: number };
@@ -37,8 +37,8 @@ async function drag(page: Page, from: string, to: Point | (() => Promise<Point>)
   await page.mouse.up();
 }
 
-/** A group of `n` tabs, the first one shown. */
-async function group(page: Page, n: number) {
+/** A folder of `n` tabs, the first one shown. */
+async function folder(page: Page, n: number) {
   await start(page);
   for (let i = 1; i < n; i++) await page.keyboard.press("Meta+t");
   await expect.poll(() => kids(page)).toHaveLength(n);
@@ -59,8 +59,8 @@ const varsOf = (page: Page, side: string) =>
     side,
   );
 
-test("a listed tab dropped on a pane's edge leaves its group as a row beside, with its plain variables", async ({ page }) => {
-  const [a, b] = await group(page, 2);
+test("a listed tab dropped on a pane's edge leaves its folder as a row beside, with its plain variables", async ({ page }) => {
+  const [a, b] = await folder(page, 2);
   const [side] = await sideIds(page);
   await setVar(page, side!, "repo", "acme/api");
   await page.evaluate(
@@ -78,13 +78,13 @@ test("a listed tab dropped on a pane's edge leaves its group as a row beside, wi
   const [, beside] = await sideIds(page);
   expect(await tabsOf(page, side!)).toEqual([a]);
   expect(await tabsOf(page, beside!)).toEqual([b]);
-  // A secret never reaches the window, so it stays with the group.
+  // A secret never reaches the window, so it stays with the folder.
   await expect.poll(() => varsOf(page, beside!)).toEqual(["repo=acme/api"]);
   await expect(page.locator(".side-item[data-open]")).toHaveCount(2);
 });
 
-test("a listed tab reorders inside its group, a line showing where it lands", async ({ page }) => {
-  const [a, b, c] = await group(page, 3);
+test("a listed tab reorders inside its folder, a line showing where it lands", async ({ page }) => {
+  const [a, b, c] = await folder(page, 3);
   await drag(page, `[data-kid="${c}"]`, await center(page, `[data-kid="${a}"]`), async () => {
     await expect(page.locator(`[data-kid="${a}"]`)).toHaveClass(/drop-before/);
   });
@@ -97,7 +97,7 @@ test("a listed tab reorders inside its group, a line showing where it lands", as
 });
 
 test("a listed tab moves into another row, to a new side tab and to a new window", async ({ page }) => {
-  const [, b, c, d] = await group(page, 4);
+  const [, b, c, d] = await folder(page, 4);
   const [first] = await sideIds(page);
   await page.getByRole("button", { name: "Add a side tab" }).click();
   await expect.poll(() => sideIds(page)).toHaveLength(2);

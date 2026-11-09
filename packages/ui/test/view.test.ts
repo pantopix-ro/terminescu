@@ -1,6 +1,6 @@
 import type { Layout } from "@terminescu/host";
 import { describe, expect, it } from "vitest";
-import { composeView, fitView, groupLines, hideRow, rowsOf, showBeside } from "../src/view";
+import { composeView, fitView, folderLines, hideRow, rowsOf, showBeside } from "../src/view";
 
 // Task 8.71: the rows a window shows side by side.
 
@@ -37,9 +37,9 @@ describe("the window's view", () => {
     expect(composeView(pair, (row) => (row === "a" ? tab : undefined))).toEqual(tab);
   });
 
-  it("lists a group's tabs with their folders, the shown one marked", () => {
-    const lines = groupLines([{ id: "t1" }, { id: "t2" }], "t2", () => "zsh", { t1: "~/work/api", t2: "~/work/web · npm" });
+  it("lists a folder's tabs with their directories, the shown one marked", () => {
+    const lines = folderLines([{ id: "t1" }, { id: "t2" }], "t2", () => "zsh", { t1: "~/work/api", t2: "~/work/web · npm" });
     expect(lines).toEqual(["  zsh  ~/work/api", "▸ zsh  ~/work/web · npm"]);
-    expect(groupLines([{ id: "t1" }], undefined, () => "zsh", {})).toEqual(["  zsh"]);
+    expect(folderLines([{ id: "t1" }], undefined, () => "zsh", {})).toEqual(["  zsh"]);
   });
 });

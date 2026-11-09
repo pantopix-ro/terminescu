@@ -35,7 +35,7 @@ test("a double click on a tab's name in the tab bar renames only there", async (
   expect((await workspace(page)).windows[0].sideTabs[0].tabs[0].title).toBe("logs");
 });
 
-test("a double click on a tab's name in an open group renames it; Escape keeps the old name", async ({ page }) => {
+test("a double click on a tab's name in an open folder renames it; Escape keeps the old name", async ({ page }) => {
   await start(page);
   const side = (await workspace(page)).windows[0].sideTabs[0];
   await mock(page, "send", { type: "CreateTab", sideTabId: side.id });
