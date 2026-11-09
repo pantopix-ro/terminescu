@@ -610,6 +610,17 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       return !!added;
     });
   };
+  // A new terminal sits at the selected row's level (task 8.79): inside its folder, or as a
+  // row of its own right below a one-tab row. Only a drag makes a folder.
+  const newBeside = () => {
+    if (!activeSide) return;
+    if (activeSide.tabs.length > 1) {
+      followNewTab(activeSide.id);
+      return void send({ type: "CreateTab", sideTabId: activeSide.id });
+    }
+    followNewSide();
+    void send({ type: "CreateSideTab", windowId, index: sideTabs.findIndex((s) => s.id === activeSide.id) + 1 });
+  };
   const followNewPane = (tabId: string) => {
     const before = new Set(panes);
     setFollow((w) => {
@@ -866,9 +877,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     }
     switch (id) {
       case "new_tab":
-        if (!activeSide) return;
-        followNewTab(activeSide.id);
-        return void send({ type: "CreateTab", sideTabId: activeSide.id });
+        return newBeside();
       case "new_side_tab":
         followNewSide();
         return void send({ type: "CreateSideTab", windowId });
@@ -2136,7 +2145,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                 selectTab(side, tab);
                 refocus();
               }}
-              onNew={() => act("new_side_tab")}
+              onNew={newBeside}
               onNewText={newTextSide}
               onNewTab={(sideId) => {
                 followNewTab(sideId);
@@ -2217,7 +2226,12 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                 refocus();
               }}
               onClose={closeTab}
-              onNew={() => act("new_tab")}
+              // The tab bar's + adds to the tabs it shows, so it can make a folder (task 8.79).
+              onNew={() => {
+                if (!activeSide) return;
+                followNewTab(activeSide.id);
+                void send({ type: "CreateTab", sideTabId: activeSide.id });
+              }}
               onNewText={(beside) =>
                 activeSide && void host.newText(activeSide.id, beside ? (focused ?? null) : null).then((d) => revealDoc(d.id), (e: unknown) => setError(String(e)))
               }

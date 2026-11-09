@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { addTab } from "./add-tab";
 
 // Task 8.23 on the mock host: the sidebar's edge drags its width, a button on hover collapses
 // it to the rows' icons, and pixel tooltips show a hovered icon's name and status, or a name the
@@ -88,7 +89,7 @@ test("a name the row cuts short shows whole in a tooltip; one that fits does not
 // Task 8.28: a bigger icon, the status under the name, no tab count, and a row's shells beside it.
 test("a row puts its status under the name and lists its shells on hover, one click away", async ({ page }) => {
   await start(page);
-  await page.keyboard.press("Meta+t");
+  await addTab(page);
   await expect(page.locator(".ao-tab")).toHaveCount(2);
   const first = page.locator(".ao-st").first();
   await expect(first).not.toContainText(/\d tabs?\b/);
@@ -98,7 +99,7 @@ test("a row puts its status under the name and lists its shells on hover, one cl
   expect(icon.width).toBe(24);
   expect(chip.top).toBeGreaterThanOrEqual(name.bottom - 1);
 
-  await page.getByRole("button", { name: "Add a side tab" }).click();
+  await page.keyboard.press("Meta+n");
   await expect(page.locator(".ao-st")).toHaveCount(2);
   await expect(page.locator(".ao-st").nth(1)).toHaveClass(/active/);
 
@@ -129,13 +130,14 @@ test("tabs live in the sidebar by default and folders stay as left", async ({ pa
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");
   await page.locator(".term-pane").first().click();
-  await page.keyboard.press("Meta+t");
+  await addTab(page);
   await expect(page.locator(".ao-tabs .ao-tab")).toHaveCount(0);
   await expect(page.locator(".ao-st-kid")).toHaveCount(2);
 
   // Another row keeps this folder open; the chevron closes it. A click on the folder selects it
   // and opens it, and a click on the selected folder closes and opens it (task 8.61).
-  await page.getByRole("button", { name: "Add a side tab", exact: true }).click();
+  await page.keyboard.press("Meta+n");
+  await expect(page.locator(".ao-st")).toHaveCount(2);
   await expect(page.locator(".ao-st-kid")).toHaveCount(2);
   await page.getByLabel("Collapse side tab").click();
   await expect(page.locator(".ao-st-kid")).toHaveCount(0);
@@ -178,7 +180,7 @@ test("the sidebar makes text side tabs and folder tabs, and the toggle sits on i
 
   // The first row becomes a folder; its small + adds a third tab there.
   await page.locator(".ao-st").first().click();
-  await page.keyboard.press("Meta+t");
+  await addTab(page);
   await expect(page.locator(".ao-st-kid")).toHaveCount(2);
   await page.locator(".ao-st-kids").hover();
   await page.getByRole("button", { name: /^New tab in / }).click();
@@ -203,7 +205,7 @@ test("the sidebar makes text side tabs and folder tabs, and the toggle sits on i
 test("a one-tab row is one line, as tall as a folder's tab, with a subtitle beside its name", async ({ page }) => {
   // Task 8.77.
   await start(page);
-  await page.getByRole("button", { name: "Add a side tab" }).click();
+  await page.keyboard.press("Meta+n");
   await page.getByRole("button", { name: "New tab", exact: true }).click();
   await expect(page.locator(".ao-st-kid")).toHaveCount(2);
   const single = page.locator(".ao-st.single");

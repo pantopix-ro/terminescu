@@ -9,9 +9,13 @@ row, with two or more as a group that expands to list its tabs. A tab SHALL spli
 right (`⌘D`) and down (`⌘⇧D`), each pane a terminal, a transcript or a text editor, with
 resizable dividers. A side tab SHALL hold any mix of pane kinds.
 
-#### Scenario: Second tab makes a group
-- **WHEN** a side tab with one tab gets a new tab with `⌘T`
-- **THEN** its sidebar row becomes a group of 2 tabs with a two-cell block strip
+#### Scenario: A new terminal sits at the selected row's level
+- **WHEN** the person presses `⌘T` with a one-tab row selected, and again with a tab of a folder selected
+- **THEN** the first opens a one-tab row right below the selected row, and the second adds a tab to that folder; `⌘N` always adds a row at the end
+
+#### Scenario: A row dropped on a row makes a folder
+- **WHEN** the person drags a one-tab row onto another one-tab row
+- **THEN** the two rows become one folder of 2 tabs
 
 #### Scenario: Text tab next to terminal tabs
 - **WHEN** the person presses `⌥⌘T` in a side tab with two terminal tabs
@@ -19,7 +23,7 @@ resizable dividers. A side tab SHALL hold any mix of pane kinds.
 
 #### Scenario: Add a side tab from the empty space
 - **WHEN** the pointer rests on the empty sidebar space under the last side tab
-- **THEN** a `+` shows there, and a click on it adds a side tab
+- **THEN** a `+` shows there, and a click on it adds a terminal at the selected row's level, as `⌘T` does
 
 #### Scenario: Rename with a double click
 - **WHEN** the person double-clicks the name of a side tab or of a tab, in the sidebar or the tab bar, types `PROJ-482` and presses Enter

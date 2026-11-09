@@ -17,7 +17,7 @@ async function start(page: Page) {
 test("tabs are named after their terminal, and only a row with two tabs or more takes an animal name", async ({ page }) => {
   await start(page);
   for (let i = 0; i < 2; i++) await page.getByRole("button", { name: "New tab", exact: true }).click();
-  await page.getByRole("button", { name: "Add a side tab" }).click();
+  await page.keyboard.press("Meta+n");
   const sides: { id: string; name: string; tabs: { id: string }[] }[] = (await workspace(page)).windows[0].sideTabs;
   expect(sides.map((s) => s.tabs.length)).toEqual([3, 1]);
   expect(sides[0]!.name).toMatch(/^[A-Z][a-z]+$/);

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { addTab } from "./add-tab";
 
 // Task 8.32: a tab dropped on a side of the panes shows there, taking the half; since task 8.75
 // it stays in its folder. A pane header dragged to the tab bar makes the pane a tab again.
@@ -24,7 +25,7 @@ const shownPanes = (page: Page) =>
 async function twoTabs(page: Page) {
   await start(page);
   const [pane] = await shownPanes(page);
-  await page.keyboard.press("Meta+t");
+  await addTab(page);
   await expect.poll(() => tabIds(page)).toHaveLength(2);
   const [first, second] = await tabIds(page);
   await page.locator(`.ao-tabs [data-tab="${first}"]`).click();
