@@ -144,3 +144,18 @@ test("Keys: set ⇧↵ as the terminal's new line, refuse ⌘P, turn ⌘⌫ off"
   await again.getByRole("button", { name: "Reset Delete to line start" }).click();
   await expect(again.getByRole("button", { name: "Shortcut for Delete to line start" })).toHaveText("⌘⌫");
 });
+
+test("a command deleted in Settings comes back with Undo", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".term-pane")).toHaveCount(1);
+  await mock(page, "createCommand", { sideTabId: null, name: "status", body: "git status", target: "focused", launcher: false });
+  const dialog = await openSettings(page, "Commands");
+  const row = dialog.locator('.cmd-edit[data-command="status"]');
+  await row.getByLabel("Delete status").click();
+  await expect(row).toHaveCount(0);
+  await expect(page.locator(".toast")).toContainText("Deleted status.");
+  // The toast sits over the Settings backdrop and takes the click.
+  await page.locator(".toast").getByRole("button", { name: "Undo" }).click();
+  await expect(dialog).toBeVisible();
+  await expect(row).toHaveCount(1);
+});

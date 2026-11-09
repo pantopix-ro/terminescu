@@ -329,7 +329,7 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 .merge-clashes .mono { font-family: var(--font-mono, inherit); }
 .merge-clashes input { width: 100%; }
 .ao-st.lifted { opacity: 0.5; }
-.toast { position: fixed; left: 50%; bottom: var(--space-4); transform: translateX(-50%); z-index: 20; display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2); max-width: calc(100vw - 32px); }
+.toast { position: fixed; left: 50%; bottom: var(--space-4); transform: translateX(-50%); z-index: 21; display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2); max-width: calc(100vw - 32px); }
 /* Task 8.1: the target under a tab dragged from another window. */
 .ao-st.remote-hot { box-shadow: inset 4px 0 0 0 var(--st-accent), inset 0 0 0 2px var(--amber); background: var(--tint-amber); }
 .side-gap.remote-hot { height: 6px; background: var(--amber); }

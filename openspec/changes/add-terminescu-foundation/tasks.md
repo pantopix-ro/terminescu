@@ -702,6 +702,11 @@ buffers once per sheet.
       message. One thread lists the panes once a second for the foreground names and reads
       the cwds from the same list every 5 s. Verify: `context.spec.ts`,
       `sidebar-menu.spec.ts`, `server.rs` tests.
+- [x] 8.69 Review follow-up 3. A removal still on its toast is done before a merge or a side
+      tab close, so the merge cannot carry it along and the late delete cannot fail. Settings'
+      command list deletes with the same Undo. The e2e waits for a slide, a split and a drop
+      poll a condition instead of sleeping. `docs/releasing.md` gains a first-run check by
+      hand. Verify: `windows.spec.ts`, `settings.spec.ts`, `dock.spec.ts`.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

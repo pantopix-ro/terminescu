@@ -85,10 +85,13 @@ test("the preview covers the half the tab takes", async ({ page }) => {
   await page.mouse.move(tab.x + tab.width / 2 + 10, tab.y + tab.height / 2, { steps: 3 });
   await page.mouse.move(p.x, p.y, { steps: 8 });
   await expect(page.locator(".dock-preview")).toHaveAttribute("data-side", "right");
-  await page.waitForTimeout(150);
-  const shown = (await page.locator(".dock-preview").boundingBox())!;
-  expect(Math.abs(shown.x - (box.x + box.width / 2))).toBeLessThan(2);
-  expect(Math.abs(shown.width - box.width / 2)).toBeLessThan(2);
+  // The preview slides into place: wait for where it ends, not for a fixed time.
+  await expect
+    .poll(async () => {
+      const shown = (await page.locator(".dock-preview").boundingBox())!;
+      return Math.max(Math.abs(shown.x - (box.x + box.width / 2)), Math.abs(shown.width - box.width / 2));
+    })
+    .toBeLessThan(2);
   await page.keyboard.press("Escape");
   await page.mouse.up();
 });
@@ -107,7 +110,17 @@ test("a pane too small to halve shows red and refuses the drop", async ({ page }
   // Split the shown pane until the core refuses: the last pane cannot halve again.
   for (let i = 0; i < 8; i++) await page.keyboard.press("Meta+d");
   await expect.poll(async () => (await shownPanes(page)).length).toBeGreaterThan(3);
-  await page.waitForTimeout(200);
+  // The splits settle when the last pane keeps its place between two reads.
+  let last = "";
+  await expect
+    .poll(async () => {
+      const panes = await shownPanes(page);
+      const now = JSON.stringify([panes, await page.locator(`.app-pane .ao-tp[data-pane="${panes.at(-1)}"]`).boundingBox()]);
+      const same = now === last;
+      last = now;
+      return same;
+    })
+    .toBe(true);
   const thin = (await shownPanes(page)).at(-1)!;
   await drag(page, `.ao-tabs [data-tab="${second}"]`, await at(page, thin, 0.9, 0.5), "right", "drop", true);
   await expect(page.locator(".dock-preview.small")).toHaveCount(0);

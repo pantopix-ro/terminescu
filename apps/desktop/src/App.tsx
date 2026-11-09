@@ -152,7 +152,7 @@ export interface AppProps {
 const LOGIN_SHELLS = new Set(["zsh", "bash", "fish", "sh", "dash", "tcsh", "csh", "ksh", "nu", "login"]);
 
 /** The undo toast: `undo` on its button, `done` when it goes without one. */
-type Toast = { text: string; undo(): void; done?(): void; removes?: Removal };
+type Toast = { text: string; undo(): void; done?(): Promise<unknown> | void; removes?: Removal };
 /** Something removed in the sidebars that waits on its undo toast before it is deleted. */
 type Removal = { kind: "variable"; side: string; name: string } | { kind: "pin" | "command"; id: string };
 
@@ -369,7 +369,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     toastRef.current = undefined;
     setToast(undefined);
     if (undo) t?.undo();
-    else t?.done?.();
+    else return t?.done?.();
   };
   const showToast = (next: Toast) => {
     toastRef.current?.done?.();
@@ -1369,10 +1369,10 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   };
   const closeSide = (side: SideTab) => {
     setClosingSide(undefined);
-    void closeWith(
+    void Promise.resolve(endToast(false)).then(() => closeWith(
       side.tabs.flatMap((t) => panesOf(t.layout)),
       { type: "CloseSideTab", sideTabId: side.id },
-    );
+    ));
   };
   const editStatus = (side: string, tab?: string) => {
     if (tab) selectTab(side, tab);
@@ -1484,7 +1484,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     const from = sideTabs.find((s) => s.id === fromId);
     const into = sideTabs.find((s) => s.id === intoId);
     if (!from || !into || from.id === into.id) return;
-    host.mergePreview(from.id, into.id, sideTabName(from, docs)).then(
+    // A removal still on its toast is done first: the merge moves what it would delete.
+    void Promise.resolve(endToast(false)).then(() => host.mergePreview(from.id, into.id, sideTabName(from, docs)).then(
       (clashes) => {
         if (clashes.length) setMerging({ from, into, clashes });
         else
@@ -1497,7 +1498,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         report(e);
         refocus();
       },
-    );
+    ));
   };
   // Rejects when the merge fails, so an open dialog keeps itself and shows why.
   const finishMerge = (from: SideTab, into: SideTab, resolution: MergeResolution) => {
@@ -1530,7 +1531,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       undo: forget,
       done: () => {
         forget();
-        remove().catch(report);
+        return remove().catch(report);
       },
     });
     return Promise.resolve();
@@ -2348,6 +2349,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           }}
           onError={setError}
           onClose={closeSheet}
+          hiddenCommands={removing.flatMap((r) => (r.kind === "command" ? [r.id] : []))}
+          onDeleteCommand={(c) => removeLater({ kind: "command", id: c.id }, `Deleted ${c.name}.`, () => host.deleteCommand(c.id))}
         />
       )}
       {picking &&

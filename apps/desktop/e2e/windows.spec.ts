@@ -294,13 +294,16 @@ test("a clash asks: keep both renames the source's variable", async ({ page }) =
   await expect(dialog.getByRole("row", { name: "Clash branch" })).toBeVisible();
   await expect(dialog.getByRole("textbox")).toHaveValue("branch_2");
   // The field has the focus: type over the suggestion as a person would.
-  const retype = async (text: string) => {
-    await page.keyboard.press("Meta+a");
-    await page.keyboard.type(text);
-  };
+  // dnd-kit keeps its document listeners for 50 ms after a drop and input in that time is
+  // lost: type again until the field holds the text, not after a fixed wait.
+  const field = dialog.getByRole("textbox");
+  const retype = (text: string) =>
+    expect(async () => {
+      await page.keyboard.press("Meta+a");
+      await page.keyboard.type(text);
+      await expect(field).toHaveValue(text, { timeout: 200 });
+    }).toPass();
   await expect(dialog.getByRole("textbox")).toBeFocused();
-  // dnd-kit keeps its document listeners for 50 ms after a drop; keys in that time are lost.
-  await page.waitForTimeout(100);
   await retype("2bad");
   await expect(dialog.getByRole("alert")).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Keep both" })).toBeDisabled();
@@ -401,4 +404,23 @@ test("closing a tab that runs a program asks; Cancel keeps it, Close ends it", a
   await page.keyboard.press("Meta+w");
   await expect(page.locator(".ao-tab")).toHaveCount(1);
   await expect(ask).toHaveCount(0);
+});
+
+test("a removal still on its toast is done before a merge, so the merge does not bring it along", async ({ page }) => {
+  await start(page);
+  await page.getByRole("button", { name: "Add a side tab" }).click();
+  await expect.poll(() => sideIds(page)).toHaveLength(2);
+  const [first, second] = await sideIds(page);
+  await setVar(page, second!, "stale", "old");
+  await page.locator(`[data-side="${second}"]`).click();
+  await page.keyboard.press("Meta+Backslash");
+  const row = page.locator('aside.ctx-pinned .ctx-var[data-var="stale"]');
+  await row.getByLabel("Remove stale").click();
+  await expect(page.locator(".toast")).toContainText("Removed stale.");
+  await page.keyboard.press("Meta+Backslash");
+
+  await drag(page, `[data-side="${second}"]`, await center(page, `[data-side="${first}"]`));
+  await expect(page.locator(".toast")).toContainText("Merged");
+  await expect.poll(() => varsOf(page, first!)).toEqual([]);
+  await expect(page.locator(".app-error")).toHaveCount(0);
 });

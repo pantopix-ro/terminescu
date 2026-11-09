@@ -65,6 +65,26 @@ Run this before the first public release and after any change to `updates.rs`.
 4. Change one byte of the `.sig` and check again from 0.1.0. The app refuses the update, stays
    on 0.1.0, and `app.log` says `update 0.1.1 refused`.
 
+## Checking the first run by hand
+
+Run this before the first public release and after any change to the first-run sheet or
+`hook_install.rs`. It needs a Mac user account with Claude Code, where losing the app's data
+does not matter. Quit Terminescu first.
+
+1. Back up `~/.claude/settings.json`, then move away the app data:
+   `~/Library/Application Support/ro.pantopix.terminescu` and `~/Library/WebKit/ro.pantopix.terminescu`.
+2. Open the release build. "Welcome to Terminescu" shows, with the hook box ticked. Tab moves
+   only between its controls.
+3. Pick Continue. `~/.claude/settings.json` now holds a `terminescu hook` entry for each hook
+   event, with the CLI path quoted, and every other hook in it is unchanged.
+4. In a pane, run `claude` and send a prompt. The side tab shows Claude working, then turns
+   amber when Claude asks for permission, and the transcript pane follows the session.
+5. Quit and open the app again. The welcome screen does not come back.
+6. Settings › Shell › turn the hook off. The entries leave `settings.json`; other hooks stay.
+7. Turn it on again, then Help › Uninstall Terminescu Helpers. The entries leave
+   `settings.json`, the shells end, and `~/Library/Application Support/Terminescu` is gone.
+8. Restore the `settings.json` backup and the app data.
+
 ## Later: Developer ID and notarization
 
 Once PANTOPIX RO has an Apple Developer account, add these secrets. The same workflow then
