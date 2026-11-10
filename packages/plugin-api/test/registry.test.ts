@@ -96,4 +96,18 @@ describe("compose", () => {
   it("lists panel sections with their plugin", () => {
     expect(all.panelSections.map((s) => `${s.plugin}.${s.id}`)).toEqual(["claude.usage"]);
   });
+
+  it("marks + menu actions and lists the enabled plugins' close hooks in order", () => {
+    const hook = async () => true;
+    const a = definePlugin({ id: "a", name: "A", beforeRowClose: hook, actions: [{ id: "row", label: "Row", newMenu: true, run: noop }] });
+    const b = definePlugin({ id: "b", name: "B", beforeRowClose: hook, actions: [{ id: "plain", label: "Plain", run: noop }] });
+    const both = compose({ plugins: [a, b], enabled: new Set(["a", "b"]), decorations: [], appActions: app });
+    expect(both.actions.map((x) => [x.id, x.newMenu])).toEqual([
+      ["a.row", true],
+      ["b.plain", false],
+    ]);
+    expect(both.beforeRowClose.map((h) => h.plugin)).toEqual(["a", "b"]);
+    const one = compose({ plugins: [a, b], enabled: new Set(["b"]), decorations: [], appActions: app });
+    expect(one.beforeRowClose.map((h) => h.plugin)).toEqual(["b"]);
+  });
 });

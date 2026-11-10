@@ -707,6 +707,82 @@ impl GitPlugin {
         Ok(json!(list))
     }
 
+    /// A row for each of the repository's worktrees that no row shows yet, below the pane's
+    /// row in git's order. A row shows a worktree when one of its shells is in it or the row is
+    /// marked for it. Each row but the main working tree's is marked, so its close asks.
+    fn open_worktrees(&self, args: &Value, cx: &dyn PluginCx) -> Result<Value, PluginError> {
+        let (at_pane, facts) = self.pane_facts(args, cx)?;
+        let main = facts.main_root();
+        let list: Vec<_> = self
+            .vcs
+            .worktrees(&facts.root)
+            .map_err(failed)?
+            .into_iter()
+            .filter(|w| !w.bare)
+            .collect();
+        let real = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+        let trees: Vec<PathBuf> = list.iter().map(|w| real(&w.path)).collect();
+        // A folder lies in the worktree with the longest path it starts with, so a worktree
+        // inside the main one counts as itself.
+        let owner = |dir: &Path| {
+            trees
+                .iter()
+                .filter(|t| dir.starts_with(t))
+                .max_by_key(|t| t.as_os_str().len())
+                .cloned()
+        };
+        let panes = cx.panes();
+        let mut shown: HashSet<PathBuf> = panes
+            .iter()
+            .filter_map(|p| p.cwd.as_deref())
+            .filter_map(|cwd| owner(&real(Path::new(cwd))))
+            .collect();
+        let mut rows: HashSet<Id> = panes.iter().map(|p| p.side_tab.clone()).collect();
+        rows.extend(cx.side_tabs(&at_pane.window));
+        for row in &rows {
+            let marked = cx.row_data(row, WORKTREE_ROW);
+            if let Some(w) = marked.as_ref().and_then(|m| m.get("worktree")?.as_str()) {
+                shown.insert(real(Path::new(w)));
+            }
+        }
+        let mut after = at_pane.side_tab.clone();
+        let mut opened = Vec::new();
+        for (w, tree) in list.iter().zip(&trees) {
+            if shown.contains(tree) || !tree.is_dir() {
+                continue;
+            }
+            let title = w.branch.clone().unwrap_or_else(|| {
+                let name = tree.file_name().map(|n| n.to_string_lossy().into_owned());
+                name.unwrap_or_else(|| tree.to_string_lossy().into_owned())
+            });
+            let cwd = tree.to_string_lossy();
+            let row = cx.new_row(&at_pane.window, Some(&after), &title, &cwd)?;
+            if !w.main {
+                let mark = json!({ "worktree": tree, "repo": main });
+                cx.set_row_data(&row, WORKTREE_ROW, Some(mark))?;
+            }
+            opened.push(json!({ "row": row, "path": tree, "title": title }));
+            after = row;
+        }
+        Ok(json!({ "opened": opened }))
+    }
+
+    /// The row's worktree mark and how many files changed in it; null for an unmarked row.
+    /// `changed` is null when git cannot read the worktree, as after it was deleted by hand.
+    fn row_worktree(&self, args: &Value, cx: &dyn PluginCx) -> Result<Value, PluginError> {
+        let row = arg(args, "row")?;
+        let Some(mark) = cx.row_data(row, WORKTREE_ROW) else {
+            return Ok(Value::Null);
+        };
+        let Some(worktree) = mark.get("worktree").and_then(Value::as_str) else {
+            return Err(PluginError::Failed(
+                "the row's worktree mark is broken".into(),
+            ));
+        };
+        let changed = self.vcs.changes(Path::new(worktree)).map(|c| c.len()).ok();
+        Ok(json!({ "worktree": worktree, "repo": mark.get("repo"), "changed": changed }))
+    }
+
     /// Only for a row this plugin marked, never with a branch delete.
     fn worktree_remove(&self, args: &Value, cx: &dyn PluginCx) -> Result<Value, PluginError> {
         let row = arg(args, "row")?;
@@ -946,6 +1022,8 @@ impl Plugin for GitPlugin {
             "worktreeAdd" => self.worktree_add(&args, cx),
             "worktrees" => self.worktrees(&args, cx),
             "worktreeRemove" => self.worktree_remove(&args, cx),
+            "openWorktrees" => self.open_worktrees(&args, cx),
+            "rowWorktree" => self.row_worktree(&args, cx),
             other => Err(PluginError::UnknownMethod(other.into())),
         }
     }

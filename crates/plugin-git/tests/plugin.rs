@@ -61,8 +61,11 @@ impl PluginCx for Cx {
     fn workspace(&self) -> Value {
         Value::Null
     }
+    /// The rows of the panes, then the rows `new_row` made.
     fn side_tabs(&self, _: &str) -> Vec<Id> {
-        Vec::new()
+        let mut rows: Vec<Id> = self.panes().into_iter().map(|p| p.side_tab).collect();
+        rows.extend((0..self.rows.lock().unwrap().len()).map(|n| format!("s{}", n + 2)));
+        rows
     }
     fn add_context_item(&self, _: &str, _: &str) -> Result<(), PluginError> {
         Ok(())
@@ -620,6 +623,86 @@ fn a_new_worktree_row_from_a_real_repository() {
     assert!(at.join("a.txt").is_file());
     let branch = common::git(&at, &["branch", "--show-current"]);
     assert_eq!(branch.trim(), "PROJ-490-refunds");
+}
+
+#[test]
+fn open_worktrees_opens_a_row_for_each_one_no_row_shows_and_marks_it() {
+    let dir = common::repo("shop-api");
+    let parent = dir.parent().unwrap();
+    for b in ["PROJ-490-refunds", "PROJ-491-tax"] {
+        let at = parent.join(format!("shop-api-{b}"));
+        common::git(&dir, &["worktree", "add", "-b", b, at.to_str().unwrap()]);
+    }
+    let plugin = GitPlugin::with_vcs(Arc::new(common::git_cli()));
+    let cx = Cx::default();
+    let tax = parent.join("shop-api-PROJ-491-tax");
+    // The main tree's row, and a row whose shell is in a folder of the second worktree.
+    *cx.panes.lock().unwrap() = vec![
+        pane("p1", "t1", dir.to_str().unwrap()),
+        PaneInfo {
+            side_tab: "s9".into(),
+            ..pane("p2", "t2", tax.join("src").to_str().unwrap())
+        },
+    ];
+    std::fs::create_dir_all(tax.join("src")).unwrap();
+    plugin.on_event(&CoreEvent::AppLaunched, &cx);
+    let got = plugin
+        .call("openWorktrees", json!({ "pane": "p1" }), &cx)
+        .unwrap();
+    let refunds = parent.join("shop-api-PROJ-490-refunds");
+    assert_eq!(got["opened"].as_array().unwrap().len(), 1, "{got}");
+    let rows = cx.rows.lock().unwrap().clone();
+    assert_eq!(
+        rows,
+        [(
+            "w1".into(),
+            Some("s1".into()),
+            "PROJ-490-refunds".into(),
+            refunds.to_string_lossy().into_owned()
+        )]
+    );
+    let row = got["opened"][0]["row"].as_str().unwrap();
+    assert_eq!(
+        cx.row_data(row, WORKTREE_ROW),
+        Some(json!({ "worktree": refunds, "repo": dir }))
+    );
+    // The new row's mark counts as showing it, though no shell of it is there yet.
+    let again = plugin
+        .call("openWorktrees", json!({ "pane": "p1" }), &cx)
+        .unwrap();
+    assert_eq!(again["opened"], json!([]));
+}
+
+#[test]
+fn row_worktree_names_the_mark_and_counts_its_changes() {
+    let (plugin, fake, cx) = setup(vec![pane("p1", "t1", "/code/shop-api")]);
+    assert_eq!(
+        plugin
+            .call("rowWorktree", json!({ "row": "s1" }), &cx)
+            .unwrap(),
+        Value::Null
+    );
+    let mark = json!({ "worktree": "/code/shop-api-x", "repo": "/code/shop-api" });
+    cx.set_row_data("s2", WORKTREE_ROW, Some(mark)).unwrap();
+    let change = Change {
+        path: "a".into(),
+        from: None,
+        staged: false,
+        unstaged: true,
+        untracked: false,
+        conflicted: false,
+        added: None,
+        removed: None,
+        binary: false,
+    };
+    *fake.changes.lock().unwrap() = vec![change; 2];
+    let got = plugin
+        .call("rowWorktree", json!({ "row": "s2" }), &cx)
+        .unwrap();
+    assert_eq!(
+        got,
+        json!({ "worktree": "/code/shop-api-x", "repo": "/code/shop-api", "changed": 2 })
+    );
 }
 
 /// A forge that answers one pull request per branch and counts its lookups.

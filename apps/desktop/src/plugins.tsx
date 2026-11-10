@@ -92,20 +92,77 @@ const fakeOn = () => asked("fake");
 
 /**
  * What the fake git half answers, as a test sets it on `window.__fakeGit`: by pane for
- * `changes`, by working tree root for `baseText` (a path missing there is a new file).
+ * `changes` and the branches `openWorktrees` finds without a row, by working tree root for
+ * `baseText` (a path missing there is a new file), by row for a worktree's `changed` files.
  */
 interface FakeGit {
-  changes?: Record<string, unknown>;
+  changes?: { root: string };
   base?: Record<string, string>;
+  worktrees?: string[];
+  changed?: number;
+}
+
+/** What the fake did with worktrees, for the tests to read on `window.__fakeGitDone`. */
+interface FakeGitDone {
+  added: { branch: string; base: string | null }[];
+  removed: { row: string; force: boolean }[];
+  /** The marked rows: a worktree row's id and its folder. */
+  marks: Record<string, string>;
 }
 
 const fakeGit = (): FakePlugin => ({
   id: "git",
   name: "Git",
   description: "Plays the git plugin's Rust half, for the tests.",
-  call(method, args) {
-    const a = (args ?? {}) as { pane?: string; root?: string; path?: string };
-    const answers = ((globalThis as { __fakeGit?: Record<string, FakeGit> }).__fakeGit ?? {})[a.pane ?? a.root ?? ""];
+  async call(method, args, host) {
+    const a = (args ?? {}) as { pane?: string; root?: string; path?: string; row?: string; branch?: string; base?: string | null; force?: boolean };
+    const all = (globalThis as { __fakeGit?: Record<string, FakeGit> }).__fakeGit ?? {};
+    const answers = all[a.pane ?? a.root ?? a.row ?? ""];
+    const done = ((globalThis as { __fakeGitDone?: FakeGitDone }).__fakeGitDone ??= { added: [], removed: [], marks: {} });
+    // A row below the pane's, as the core's `new_row` makes it, marked as a worktree row.
+    const newRow = async (title: string, folder: string) => {
+      const ws = host.workspace();
+      const win = ws.windows.find((w) => w.sideTabs.some((sd) => sd.tabs.some((t) => JSON.stringify(t.layout).includes(`"${a.pane}"`))));
+      if (!win) throw new Error(`no pane ${a.pane}`);
+      const at = win.sideTabs.findIndex((sd) => sd.tabs.some((t) => JSON.stringify(t.layout).includes(`"${a.pane}"`)));
+      const before = new Set(win.sideTabs.map((sd) => sd.id));
+      await host.send({ type: "CreateSideTab", windowId: win.id, index: at + 1 });
+      const row = host.workspace().windows.find((w) => w.id === win.id)!.sideTabs.find((sd) => !before.has(sd.id))!;
+      await host.send({ type: "RenameSideTab", sideTabId: row.id, title });
+      done.marks[row.id] = folder;
+      return row.id;
+    };
+    const repo = () => {
+      if (!answers?.changes) throw new Error("the pane is not in a git repository");
+      return answers.changes.root;
+    };
+    if (method === "changes") {
+      if (!answers?.changes) throw new Error("the pane is not in a git repository");
+      return answers.changes;
+    }
+    if (method === "worktreeAdd") {
+      const path = `${repo()}-${a.branch}`;
+      done.added.push({ branch: a.branch ?? "", base: a.base ?? null });
+      return { row: await newRow(a.branch ?? "", path), path, branch: a.branch };
+    }
+    if (method === "openWorktrees") {
+      const root = repo();
+      const opened = [];
+      for (const b of answers?.worktrees ?? []) opened.push({ row: await newRow(b, `${root}-${b}`), title: b });
+      return { opened };
+    }
+    if (method === "rowWorktree") {
+      const worktree = done.marks[a.row ?? ""];
+      return worktree ? { worktree, changed: answers?.changed ?? 0 } : null;
+    }
+    if (method === "worktreeRemove") {
+      if (!done.marks[a.row ?? ""]) throw new Error("the row is not a worktree row");
+      const changed = answers?.changed ?? 0;
+      if (changed > 0 && !a.force) return { removed: false, changed };
+      done.removed.push({ row: a.row ?? "", force: a.force === true });
+      delete done.marks[a.row ?? ""];
+      return { removed: true };
+    }
     if (method === "changes") {
       if (!answers?.changes) throw new Error("the pane is not in a git repository");
       return answers.changes;

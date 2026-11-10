@@ -6,7 +6,7 @@ import { actClass, type Activities, type Activity } from "./activity";
 import { DOT, tabAgent, type Agents } from "./agents";
 import { StatusChip } from "./StatusChip";
 import { chipOf, rowStyle, type Builtins, type Chip, type SortMode } from "./status";
-import { NewMenu } from "./NewMenu";
+import { NewMenu, type NewMenuItem } from "./NewMenu";
 import { PluginItems } from "./PluginItems";
 import type { RenderItem } from "@terminescu/plugin-api";
 import { ShellPicker, usePicker } from "./ShellPicker";
@@ -24,6 +24,8 @@ export interface SideTabListProps {
   onNew(): void;
   /** The + menu's Text: a new side tab that holds an untitled text (task 8.59). */
   onNewText?(): void;
+  /** The plugins' entries in the + menu, after Terminal and Text. */
+  newExtra?: readonly NewMenuItem[];
   /** The small + under a folder's last tab: a new tab in that folder (task 8.59). */
   onNewTab?(sideTabId: string): void;
   /** A tab is being dragged: show the drop targets (task 3.2). */
@@ -567,6 +569,7 @@ export function SideTabList({
   onSelectTab,
   onNew,
   onNewText,
+  newExtra,
   onNewTab,
   dragging,
   draggingSide,
@@ -669,7 +672,7 @@ export function SideTabList({
               <i className="ao-i ao-i-plus" />
             </button>
             {onNewText && (
-              <NewMenu onNew={onNew} onNewText={() => onNewText()} hints={["⌘T"]} textTitle="A new side tab with an untitled text" className="side-add more" label="Choose side tab kind" />
+              <NewMenu onNew={onNew} onNewText={() => onNewText()} hints={["⌘T"]} textTitle="A new side tab with an untitled text" className="side-add more" label="Choose side tab kind" extra={newExtra} />
             )}
           </div>
         )}

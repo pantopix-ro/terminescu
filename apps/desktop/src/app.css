@@ -33,6 +33,7 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 .side-fill > .tab-new-menu { flex: none; }
 .side-add.more { width: 22px; font-size: 9px; }
 .side-fill .tab-menu { left: auto; right: 0; top: auto; bottom: calc(100% + 2px); }
+.side-fill .tab-menu[data-down] { top: calc(100% + 2px); bottom: auto; }
 .side-fill > .tab-new-menu:has([aria-expanded="true"]) .side-add { opacity: 1; }
 /* A small + on a folder's bottom line adds a tab to the folder (task 8.59). */
 .ao-st-kids { position: relative; }
@@ -180,6 +181,8 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 .x-row { display: grid; grid-template-columns: 56px minmax(0, 1fr); align-items: center; gap: var(--space-2); }
 .x-name { display: flex; align-items: center; gap: 2px; }
 .x-name .ao-input { flex: 1; min-width: 0; color: var(--magenta); }
+.ask-text { margin: 0; }
+.ask-detail { overflow-wrap: anywhere; }
 .x-value { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--dim); }
 .x-value.masked, .ctx-value.masked { letter-spacing: 2px; }
 .x-modes { display: flex; gap: var(--space-1); flex-wrap: wrap; }
@@ -301,8 +304,8 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 .close-actions { display: flex; gap: var(--space-2); margin-top: var(--space-3); }
 .tab-new-menu { position: relative; display: flex; }
 .ao-tab-new.more { width: 16px; font-size: 9px; }
-.tab-menu { position: absolute; top: 100%; left: 0; z-index: 30; min-width: 160px; display: flex; flex-direction: column; padding: var(--space-1) 0; }
-.tab-menu button { display: flex; align-items: center; gap: var(--space-2); height: 26px; padding: 0 var(--space-3); font-size: 12px; color: var(--fg); background: none; border: 0; text-align: left; }
+.tab-menu { position: absolute; top: 100%; left: 0; z-index: 30; min-width: 160px; width: max-content; display: flex; flex-direction: column; padding: var(--space-1) 0; }
+.tab-menu button { display: flex; align-items: center; gap: var(--space-2); height: 26px; white-space: nowrap; padding: 0 var(--space-3); font-size: 12px; color: var(--fg); background: none; border: 0; text-align: left; }
 .tab-menu button:hover, .tab-menu button:focus-visible { background: var(--panel-2); }
 .finder-foot { padding: var(--space-2) var(--space-3); border-top: 1px solid var(--line); }
 /* Side tab merge (D5): the clash dialog and the undo toast. */

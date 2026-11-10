@@ -149,12 +149,13 @@ import {
   isLight,
   LIGHT_TINT,
   type Decorate,
+  AskDialog,
 } from "@terminescu/ui";
 import type { Terminal } from "@xterm/xterm";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { useStore } from "zustand";
-import type { PaneApp, PaneReveal, TextView } from "@terminescu/plugin-api";
+import type { Answer, PaneApp, PaneReveal, Question, TextView } from "@terminescu/plugin-api";
 import { usePlugins, type Plugins } from "./plugins";
 
 export interface AppProps {
@@ -830,9 +831,29 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     if (label?.program) return label.program;
     return label?.process && !LOGIN_SHELLS.has(label.process.replace(/^-/, "")) ? label.process : undefined;
   };
+  // A row's close runs the plugins' close hooks last, after every question of the app's own,
+  // so a Cancel there cannot leave a row whose worktree a hook removed (add-git-plugin 3.3).
+  // Any hook may keep the row; a throw keeps it too and shows why.
+  const sendClose = async (command: Command) => {
+    if (command.type === "CloseSideTab") {
+      const side = sideTabs.find((sd) => sd.id === command.sideTabId);
+      const title = side ? sideTabName(side, docs) : "the side tab";
+      for (const hook of plugins.composed.beforeRowClose) {
+        let go: boolean;
+        try {
+          go = await hook.run({ sideTabId: command.sideTabId, title, bridge: plugins.bridge(hook.plugin), ask });
+        } catch (e) {
+          setError(`Close ${title}: ${e instanceof Error ? e.message : String(e)}`);
+          go = false;
+        }
+        if (!go) return refocus();
+      }
+    }
+    await send(command);
+  };
   const closeIfIdle = (panes: string[], command: Command) => {
     const names = [...new Set(panes.map(runningIn).filter((n): n is string => !!n))];
-    if (!names.length) return void send(command);
+    if (!names.length) return void sendClose(command);
     setClosingRunning({ names, command });
   };
   const closeWith = async (panes: string[], command: Command) => {
@@ -864,7 +885,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const finishCloseRunning = (close: boolean) => {
     const c = closingRunning;
     setClosingRunning(undefined);
-    if (c && close) void send(c.command);
+    if (c && close) void sendClose(c.command);
     else refocus();
   };
 
@@ -1387,10 +1408,31 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     }),
     [plugins.composed, tabBySide],
   );
+  // A plugin's questions, one dialog at a time: a second waits for the first's answer.
+  const [asking, setAsking] = useState<{ n: number; question: Question; answer(a: Answer): void }>();
+  const askQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const askCount = useRef(0);
+  const ask = (question: Question): Promise<Answer> => {
+    const next = askQueue.current.then(() => new Promise<Answer>((resolve) => setAsking({ n: ++askCount.current, question, answer: resolve })));
+    askQueue.current = next.catch(() => undefined);
+    return next;
+  };
+  const answerAsk = (a: Answer) => {
+    asking?.answer(a);
+    setAsking(undefined);
+    refocus();
+  };
   const runPluginAction = (id: string) => {
     const a = plugins.composed.actions.find((x) => x.id === id);
     if (!a) return;
-    const cx = { windowId, bridge: plugins.bridge(a.plugin), ...(activeSide ? { sideTabId: activeSide.id } : {}), ...(focused ? { paneId: focused } : {}) };
+    const cx = {
+      windowId,
+      bridge: plugins.bridge(a.plugin),
+      ask,
+      ...(activeSide ? { sideTabId: activeSide.id } : {}),
+      ...(focused ? { paneId: focused } : {}),
+      ...(shellPane ? { shellPaneId: shellPane } : {}),
+    };
     void Promise.resolve()
       .then(() => a.run(cx))
       .catch((e: unknown) => setError(`${a.label}: ${String(e)}`));
@@ -2335,6 +2377,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               }}
               onNew={newBeside}
               onNewText={newTextBeside}
+              newExtra={plugins.composed.actions
+                .filter((a) => a.newMenu)
+                .map((a) => ({ id: a.id, label: a.label, ...(a.accel ? { hint: chordLabel(a.accel) } : {}), run: () => runPluginAction(a.id) }))}
               onNewTab={(sideId) => {
                 followNewTab(sideId);
                 void send({ type: "CreateTab", sideTabId: sideId });
@@ -2961,6 +3006,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           onClose={() => setMenu(undefined)}
         />
       )}
+      {asking && <AskDialog key={asking.n} question={asking.question} onAnswer={answerAsk} />}
       {closingSide && (
         <div className="sheet-back" onPointerDown={() => setClosingSide(undefined)}>
           <div

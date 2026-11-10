@@ -29,7 +29,7 @@
 - [x] 3.2 Diff tab pane view with `@codemirror/merge` 6.12.3, both modes, save on the working
       side, binary notice. Verify: `e2e/git.spec.ts` "a diff tab edits and saves"; vitest for
       the mode toggle.
-- [ ] 3.3 "New row from worktree…", "Open worktrees as rows", the close question for worktree
+- [x] 3.3 "New row from worktree…", "Open worktrees as rows", the close question for worktree
       rows. Verify: `e2e/git.spec.ts` "a worktree row opens below the selected one" and
       "closing a worktree row with changes asks twice".
 - [ ] 3.4 GitHub items: "Open pull request", "Check out pull request as a row…". Verify:

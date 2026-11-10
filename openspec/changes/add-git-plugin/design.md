@@ -68,7 +68,12 @@ Default `<parent of repo root>/<repo name>-<branch slug>`; with a folder set,
 `<folder>/<repo name>/<branch slug>`. The slug replaces `/` and anything outside
 `[A-Za-z0-9._-]` with `-`. An existing path gets `-2`, `-3`. The row stores
 `{ worktree: path, repo: main root }` in `plugin_side_tab_data`, so the close question only
-shows for rows the plugin made or opened as worktree rows.
+shows for rows the plugin made or opened as worktree rows. The question comes from the plugin's
+`beforeRowClose` hook, a chain the app runs in plugin order through the `ask` facade, after
+its own questions (unsaved text, running commands) and just before the close command. A Cancel
+of the app's then never leaves a row whose worktree went. A row that closes on its own, when
+its last shell exits, asks nothing and keeps the worktree. "Open worktrees as rows" counts a
+worktree as shown when a shell of any row is inside it or a row carries its mark.
 
 ### D6. The diff tab is a decorated text tab
 The pane view `git-diff` wraps the text editor with `@codemirror/merge` (MergeView side by

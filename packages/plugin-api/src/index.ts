@@ -127,12 +127,51 @@ export interface PaneViewDef {
   render: ComponentType<PaneViewProps>;
 }
 
+/** A question the app asks for a plugin, as a dialog: a message, text fields and buttons. */
+export interface Question {
+  title: string;
+  text?: string;
+  /** A line in the terminal font, such as the command the answer runs. */
+  detail?: string;
+  fields?: readonly { id: string; label: string; value?: string; placeholder?: string }[];
+  /** The first is the default and answers Enter; `danger` paints it red. */
+  choices: readonly { id: string; label: string; danger?: boolean }[];
+}
+
+/** The button picked, or null for Escape and a click outside; the fields' text by id. */
+export interface Answer {
+  choice: string | null;
+  values: Record<string, string>;
+}
+
+/** Asks the person, one question at a time. */
+export type Ask = (question: Question) => Promise<Answer>;
+
 export interface ActionContext {
   windowId: Id;
   sideTabId?: Id;
+  /** The focused pane, of any kind. */
   paneId?: Id;
+  /** The selected row's shell: the focused one, else the one focused last, else the first. */
+  shellPaneId?: Id;
   bridge: PluginBridge;
+  ask: Ask;
 }
+
+/** A row about to close, after the person confirmed the close. */
+export interface RowCloseContext {
+  sideTabId: Id;
+  /** The row's name as the sidebar shows it. */
+  title: string;
+  bridge: PluginBridge;
+  ask: Ask;
+}
+
+/**
+ * Runs before a row closes, in plugin order (Chain of Responsibility). False keeps the row
+ * open and stops the chain; a throw keeps it open too, and the app shows the error.
+ */
+export type BeforeRowClose = (cx: RowCloseContext) => Promise<boolean>;
 
 export interface PluginAction {
   /** Unique within the plugin; the app's id is `plugin.id`. */
@@ -142,6 +181,8 @@ export interface PluginAction {
   menu?: string;
   /** Asked for, as actions.json spells it; the app or the person may already use it. */
   accel?: string;
+  /** Also in the sidebar's + menu, after Terminal and Text. */
+  newMenu?: boolean;
   run(cx: ActionContext): void | Promise<void>;
 }
 
@@ -158,6 +199,7 @@ export interface UiPlugin {
   panelSections?: readonly PanelSection[];
   paneViews?: readonly PaneViewDef[];
   actions?: readonly PluginAction[];
+  beforeRowClose?: BeforeRowClose;
   settingsPage?: ComponentType<SettingsPageProps>;
 }
 
@@ -195,6 +237,7 @@ export interface ComposedAction extends ActionDef {
   plugin: string;
   /** The chord the plugin asked for, when it lost it to the app or the person. */
   lostAccel?: string;
+  newMenu: boolean;
   run: PluginAction["run"];
 }
 
@@ -207,6 +250,8 @@ export interface Composed {
   /** Kinds an installed but disabled plugin draws, for the missing-view notice. */
   offKinds: ReadonlySet<string>;
   actions: readonly ComposedAction[];
+  /** The enabled plugins' close hooks, in plugin order. */
+  beforeRowClose: readonly { plugin: string; run: BeforeRowClose }[];
   settingsPages: readonly { plugin: string; name: string; render: ComponentType<SettingsPageProps> }[];
 }
 
@@ -247,6 +292,7 @@ export function compose({ plugins, enabled, decorations, appActions }: ComposeIn
         menu: a.menu ?? "Plugins",
         accel: free ? a.accel! : "",
         plugin: p.id,
+        newMenu: a.newMenu === true,
         run: a.run,
         ...(a.accel && !free ? { lostAccel: a.accel } : {}),
       });
@@ -263,6 +309,7 @@ export function compose({ plugins, enabled, decorations, appActions }: ComposeIn
     paneView: (kind) => views.get(kind),
     offKinds,
     actions,
+    beforeRowClose: on.flatMap((p) => (p.beforeRowClose ? [{ plugin: p.id, run: p.beforeRowClose }] : [])),
     settingsPages: on.flatMap((p) => (p.settingsPage ? [{ plugin: p.id, name: p.name, render: p.settingsPage }] : [])),
   };
 }

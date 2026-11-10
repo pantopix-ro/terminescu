@@ -154,3 +154,91 @@ test("a new file's diff tab compares with nothing", async ({ page }) => {
   await expect(page.locator(".git-diff-note")).toHaveText("New file: not in HEAD.");
   await expect(page.locator(".cm-mergeView .cm-editor").nth(1)).toContainText("export const added = true;");
 });
+
+const titles = async (page: Page) =>
+  (await page.evaluate(() => (window as any).__terminescu.host.workspace())).windows[0].sideTabs.map((s: { title: string | null }) => s.title);
+
+const done = (page: Page) => page.evaluate(() => (window as any).__fakeGitDone);
+
+test("a worktree row opens below the selected one", async ({ page }) => {
+  const { pane, side } = await start(page);
+  await page.evaluate((pane) => ((window as any).__fakeGit = { [pane]: { changes: { root: "/code/shop-api", total: 0, changes: [] }, worktrees: ["PROJ-491-tax"] } }), pane);
+  // A second row, then back to the first: the worktree row goes between them.
+  await page.getByRole("button", { name: "New terminal" }).click();
+  await expect(page.locator(".ao-side .ao-st")).toHaveCount(2);
+  await page.locator(`.ao-st[data-side="${side}"]`).click();
+  await page.getByRole("button", { name: "Choose side tab kind" }).click();
+  await page.getByRole("menuitem", { name: /New Row from Worktree/ }).click();
+  const dialog = page.getByRole("alertdialog", { name: "New row from worktree" });
+  await expect(dialog).toContainText("git worktree add -b");
+  await dialog.getByRole("textbox", { name: "Branch" }).fill("PROJ-490-refunds");
+  await page.keyboard.press("Enter");
+  await expect(dialog).toBeHidden();
+  await expect.poll(() => titles(page)).toEqual([null, "PROJ-490-refunds", null]);
+  expect((await done(page)).added).toEqual([{ branch: "PROJ-490-refunds", base: null }]);
+  // ⌥⇧⌘N opens the worktrees no row shows, below the selected row.
+  await page.locator(".term-pane").first().click();
+  await page.keyboard.press("Meta+Alt+Shift+KeyN");
+  await expect.poll(() => titles(page)).toEqual([null, "PROJ-491-tax", "PROJ-490-refunds", null]);
+  // Escape asks nothing more and makes nothing.
+  await page.keyboard.press("Meta+Alt+KeyN");
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  expect((await done(page)).added).toHaveLength(1);
+});
+
+test("closing a worktree row with changes asks twice", async ({ page }) => {
+  const { pane } = await start(page);
+  await page.evaluate((pane) => ((window as any).__fakeGit = { [pane]: { changes: { root: "/code/shop-api", total: 0, changes: [] } } }), pane);
+  await page.locator(".term-pane").first().click();
+  await page.keyboard.press("Meta+Alt+KeyN");
+  await page.getByRole("textbox", { name: "Branch" }).fill("PROJ-490-refunds");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => titles(page)).toEqual([null, "PROJ-490-refunds"]);
+  const row = Object.keys((await done(page)).marks)[0]!;
+  await page.evaluate((row) => ((window as any).__fakeGit[row] = { changed: 2 }), row);
+
+  const close = async () => {
+    await page.locator(`.ao-st[data-side="${row}"]`).click({ button: "right" });
+    await page.getByRole("dialog", { name: "Edit" }).getByRole("button", { name: "Close side tab…" }).click();
+    await page.getByRole("alertdialog", { name: "Close side tab" }).getByRole("button", { name: "Close side tab" }).click();
+  };
+  const first = page.getByRole("alertdialog", { name: "Close worktree row" });
+  const second = page.getByRole("alertdialog", { name: "Remove worktree with changes" });
+
+  // Remove, then Cancel on the second question: the row, the worktree and the branch stay.
+  await close();
+  await expect(first).toContainText("/code/shop-api-PROJ-490-refunds");
+  await first.getByRole("button", { name: "Remove worktree" }).click();
+  await expect(second).toContainText("2 changed files in the worktree would be lost.");
+  await second.getByRole("button", { name: "Cancel" }).click();
+  await expect(second).toBeHidden();
+  expect(await titles(page)).toEqual([null, "PROJ-490-refunds"]);
+  expect((await done(page)).removed).toEqual([]);
+
+  // Remove anyway: the worktree goes, then the row.
+  await close();
+  await first.getByRole("button", { name: "Remove worktree" }).click();
+  await second.getByRole("button", { name: "Remove anyway" }).click();
+  await expect.poll(() => titles(page)).toEqual([null]);
+  expect((await done(page)).removed).toEqual([{ row, force: true }]);
+});
+
+test("closing a worktree row keeps the worktree by default", async ({ page }) => {
+  const { pane } = await start(page);
+  await page.evaluate((pane) => ((window as any).__fakeGit = { [pane]: { changes: { root: "/code/shop-api", total: 0, changes: [] } } }), pane);
+  await page.locator(".term-pane").first().click();
+  await page.keyboard.press("Meta+Alt+KeyN");
+  await page.getByRole("textbox", { name: "Branch" }).fill("PROJ-490-refunds");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => titles(page)).toEqual([null, "PROJ-490-refunds"]);
+  const row = Object.keys((await done(page)).marks)[0]!;
+  await page.locator(`.ao-st[data-side="${row}"]`).click({ button: "right" });
+  await page.getByRole("dialog", { name: "Edit" }).getByRole("button", { name: "Close side tab…" }).click();
+  await page.getByRole("alertdialog", { name: "Close side tab" }).getByRole("button", { name: "Close side tab" }).click();
+  await expect(page.getByRole("alertdialog", { name: "Close worktree row" })).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect.poll(() => titles(page)).toEqual([null]);
+  expect((await done(page)).removed).toEqual([]);
+});

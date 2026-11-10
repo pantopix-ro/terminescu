@@ -55,6 +55,8 @@ export { eolOf, exactState, separatorOf, textOf, type Eol } from "./text";
 export { varOptions, varRefs, type VarInfo } from "./varchips";
 export { clearTerminal, finderOf, selectAllIn, promptAction, REVEAL_ROWS_EVENT, TerminalPane, terminalSelection, type FindOptions, type FindResults, type TerminalPaneProps } from "./TerminalPane";
 export { SearchBar, type SearchBarHandle, type SearchBarProps } from "./SearchBar";
+export { AskDialog, type AskDialogProps } from "./AskDialog";
+export { NewMenu, type NewMenuItem } from "./NewMenu";
 export { ExtractDialog, type ExtractDialogProps } from "./ExtractDialog";
 export { MergeDialog, type MergeDialogProps } from "./MergeDialog";
 export { WEBGL_LIMIT, webglBudget } from "./webgl-budget";
