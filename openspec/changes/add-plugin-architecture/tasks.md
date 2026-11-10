@@ -5,7 +5,7 @@
 - [x] 1.1 `crates/plugin-api`: `Plugin`, `Manifest`, `CoreEvent`, `PluginCx`, `Decoration`,
       `Helper`, `AgentAdapter` and the moved `AgentState`, `AgentView`, `AgentUpdate`. Verify:
       `cargo test -p terminescu-plugin-api` (a fake plugin and adapter compile and run).
-- [ ] 1.2 Core plugin host: registry, a worker and bounded queue per plugin, budgets,
+- [x] 1.2 Core plugin host: registry, a worker and bounded queue per plugin, budgets,
       `catch_unwind`, pause after 5 failures a minute, switches. Verify: core tests
       `a_hanging_plugin_does_not_block_patches`, `a_panicking_plugin_is_paused`,
       `a_disabled_plugin_gets_no_events`.
