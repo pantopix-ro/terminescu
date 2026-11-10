@@ -89,7 +89,41 @@ test("a pane view without its plugin keeps its place and names the plugin", asyn
   await expect(notice).toContainText("Needs the Viewer plugin");
   expect(await widths()).toEqual(before);
   await notice.getByRole("button", { name: "Open Settings" }).click();
-  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByRole("dialog").locator("#ss-t")).toHaveText("Settings › Plugins");
+});
+
+test("switching a plugin off clears what it shows", async ({ page }) => {
+  const { side } = await start(page);
+  await host(page, "decorate", deco("fake", "sideTab", side, "row", "row-chip"));
+  await page.keyboard.press("Meta+Backslash");
+  await expect(page.locator('section[data-section="fake.notes"]')).toBeVisible();
+  await page.keyboard.press("Meta+Comma");
+  const settings = page.getByRole("dialog");
+  await settings.getByRole("button", { name: "Plugins", exact: true }).click();
+  await expect(settings.locator(".fake-settings")).toBeVisible();
+  await settings.getByLabel("Plugin Fake").uncheck();
+  await expect(page.locator(".pl-item")).toHaveCount(0);
+  await expect(page.locator('section[data-section="fake.notes"]')).toHaveCount(0);
+  await expect(settings.locator(".fake-settings")).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__terminescu.host.pluginActions().length)).toBe(0);
+  // Back on, it starts clean: what it showed went with it.
+  await settings.getByLabel("Plugin Fake").check();
+  await expect(page.locator('section[data-section="fake.notes"]')).toBeVisible();
+  await expect(page.locator(".pl-item")).toHaveCount(0);
+});
+
+test("a plugin stopped after errors says so until switched off and on", async ({ page }) => {
+  await start(page);
+  await host(page, "pausePlugin", "fake");
+  await page.keyboard.press("Meta+Comma");
+  const settings = page.getByRole("dialog");
+  await settings.getByRole("button", { name: "Plugins", exact: true }).click();
+  const row = settings.locator('.plugin-set[data-plugin="fake"]');
+  await expect(row.getByRole("status")).toHaveText(/stopped after errors/);
+  await expect(page.locator('section[data-section="fake.notes"]')).toHaveCount(0);
+  await settings.getByLabel("Plugin Fake").uncheck();
+  await settings.getByLabel("Plugin Fake").check();
+  await expect(row.getByRole("status")).toHaveCount(0);
 });
 
 test("the row selection reaches plugins and a plugin variable shows read-only", async ({ page }) => {

@@ -35,10 +35,11 @@ import {
   type CommandTarget,
   type Host,
   type Id,
+  type PluginInfo,
   type SavedCommand,
   type StatusConfig,
 } from "@terminescu/host";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { MODE_HINT, MODE_LABEL } from "./ExtractDialog";
 import { EXTRACTION_RULES, parseTtl, ttlText } from "./names";
 import { ANSI_SLOTS, schemeTheme, terminalFontOptions } from "./xterm-theme";
@@ -54,6 +55,7 @@ export const SETTINGS_SECTIONS = [
   { id: "shell", label: "Shell" },
   { id: "keys", label: "Keys" },
   { id: "notifications", label: "Notifications" },
+  { id: "plugins", label: "Plugins" },
 ] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number]["id"];
 
@@ -136,6 +138,11 @@ export interface SettingsSheetProps {
   onDeleteCommand?(command: SavedCommand): Promise<unknown>;
   /** Commands deleted but still waiting on their undo, left out of the list. */
   hiddenCommands?: readonly string[];
+  /** Settings › Plugins (add-plugin-architecture D1): the plugins built in, in plugin order. */
+  plugins?: readonly PluginInfo[];
+  /** Each enabled plugin's own settings page, drawn by the plugin. */
+  pluginPages?: readonly { plugin: string; body: ReactNode }[];
+  onPluginSwitch?(plugin: string, enabled: boolean): void;
 }
 
 /** The Settings screen (D25): one sheet, a section list on the left. `⌘,` opens it. */
@@ -190,6 +197,7 @@ export function SettingsSheet(props: SettingsSheetProps) {
             {section === "shell" && <ShellSettings {...props} />}
             {section === "keys" && <KeysSettings {...props} />}
             {section === "notifications" && <NotificationSettings {...props} />}
+            {section === "plugins" && <PluginSettings {...props} />}
           </div>
         </div>
         <div className="ao-frame-foot">
@@ -863,6 +871,33 @@ function KeysSettings({ host, onError }: SettingsSheetProps) {
           A focused terminal turns these into the keys a shell reads. The new line chord sends what ⌥↵ sends, a line break in Claude&apos;s prompt; ⇧↵ is a common pick.
         </span>
       </div>
+    </section>
+  );
+}
+
+function PluginSettings({ plugins = [], pluginPages = [], onPluginSwitch }: SettingsSheetProps) {
+  if (!plugins.length) return <p className="small ao-dim">This build has no plugins.</p>;
+  return (
+    <section aria-label="Plugins">
+      <p className="small ao-dim">A plugin that is off gets no events and shows nothing; it keeps its settings for when it comes back.</p>
+      {plugins.map((p) => {
+        const page = p.enabled && !p.paused ? pluginPages.find((x) => x.plugin === p.id)?.body : undefined;
+        return (
+          <div key={p.id} className="plugin-set" data-plugin={p.id}>
+            <label className="srow">
+              <input type="checkbox" aria-label={`Plugin ${p.name}`} checked={p.enabled} onChange={(e) => onPluginSwitch?.(p.id, e.target.checked)} />
+              <span>{p.name}</span>
+              <span className="small ao-dim grow">{p.description}</span>
+              {p.paused && (
+                <span className="small plugin-stopped" role="status">
+                  stopped after errors: switch it off and on
+                </span>
+              )}
+            </label>
+            {page && <div className="plugin-page">{page}</div>}
+          </div>
+        );
+      })}
     </section>
   );
 }

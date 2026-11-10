@@ -627,3 +627,6 @@ html[data-see-through] :is(.ctx-pinned, .ao-ctx-over) .ctx-sec-head { background
 .ao-tab .n, .ao-st .n, .ao-st-kid .n { min-width: min(6ch, 100%); }
 .plugin-missing { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-3); height: 100%; color: var(--dim); }
 .ctx-var.provided .ctx-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plugin-set + .plugin-set { border-top: 1px solid var(--line); }
+.plugin-set .plugin-stopped { color: var(--red); }
+.plugin-set .plugin-page { padding: 0 0 var(--space-3) var(--space-5, 24px); }

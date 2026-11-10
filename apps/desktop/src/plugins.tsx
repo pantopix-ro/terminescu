@@ -126,6 +126,7 @@ const FAKE_HALVES: readonly UiPlugin[] = [
     id: "fake",
     name: "Fake",
     panelSections: [{ id: "notes", title: "Fake Notes", render: FakeSection }],
+    settingsPage: () => <p className="fake-settings small">Fake settings</p>,
     actions: [
       { id: "hello", label: "Fake Hello", accel: "Cmd+Alt+J", run: (cx) => void cx.bridge.call("hello", { sideTabId: cx.sideTabId ?? null }) },
       { id: "steal", label: "Fake New Tab", accel: "Cmd+T", run: () => undefined },

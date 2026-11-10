@@ -2526,7 +2526,10 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                             sideTabId={sideOfTab(own.id) ?? ""}
                             focused={focused === paneId}
                             plugins={plugins}
-                            openSettings={() => setSheet("settings")}
+                            openSettings={() => {
+                              setSettingsSection("plugins");
+                              setSheet("settings");
+                            }}
                           />
                         ) : transcript ? (
                           <TranscriptPane
@@ -2855,6 +2858,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           onClose={closeSheet}
           hiddenCommands={removing.flatMap((r) => (r.kind === "command" ? [r.id] : []))}
           onDeleteCommand={(c) => removeLater({ kind: "command", id: c.id }, `Deleted ${c.name}.`, () => host.deleteCommand(c.id))}
+          plugins={plugins.infos}
+          pluginPages={plugins.composed.settingsPages.map((p) => ({ plugin: p.plugin, body: <p.render bridge={plugins.bridge(p.plugin)} /> }))}
+          onPluginSwitch={(id, on) => void host.setPluginEnabled(id, on).catch((e: unknown) => setError(String(e)))}
         />
       )}
       {picking &&

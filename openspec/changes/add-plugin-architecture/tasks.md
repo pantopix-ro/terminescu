@@ -32,7 +32,7 @@
       menus and the palette; the UI reports row selection as `SideTabSelected`; plugin
       variables (`plugin:` ids) show read-only; Settings › Statuses offers fact rules. Verify: `e2e/plugins.spec.ts` with a fake plugin (chip, section,
       action, chord clash, missing view).
-- [ ] 2.4 Settings › Plugins: a switch per plugin and the stopped-after-errors state. Verify:
+- [x] 2.4 Settings › Plugins: a switch per plugin and the stopped-after-errors state. Verify:
       `e2e/plugins.spec.ts` "switching a plugin off clears what it shows".
 
 ## 3. The Claude plugin
