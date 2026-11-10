@@ -185,6 +185,7 @@ mod tests {
                 session: "sess-0b5c".into(),
                 state,
                 last_message: None,
+                reason: None,
             }),
         }
     }

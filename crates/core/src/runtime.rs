@@ -2020,6 +2020,7 @@ mod adapter_tests {
                 transcript: Some(PathBuf::from("/tmp/terminescu-fake.log")),
                 state,
                 last_message: None,
+                reason: None,
             });
             a.state = state;
             Some(a)

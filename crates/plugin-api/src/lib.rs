@@ -350,6 +350,7 @@ mod tests {
                 transcript: None,
                 state: AgentState::Running,
                 last_message: None,
+                reason: None,
             })
         }
         fn on_line(&self, agent: &mut Agent, line: &[u8]) -> bool {

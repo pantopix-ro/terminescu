@@ -242,6 +242,8 @@ export interface AgentView {
   state: AgentState;
   /** Claude's last reply from `Stop`, cut to a preview. */
   lastMessage: string | null;
+  /** While it waits: what for, as "Bash: npm publish" (add-claude-insights 2.3). */
+  reason?: string | null;
 }
 
 /** One pane's agent changed; `agent: null` means the pane shows its shell again. */

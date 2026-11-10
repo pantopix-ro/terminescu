@@ -106,7 +106,10 @@ function TabItem({
       // The whole name, the path and program and the status, as the sidebar rows show them (task 8.48).
       onMouseEnter={(e) => {
         if (renaming || isDragging) return;
-        const chip = shown?.look || shown?.waiting ? chipOf(shown, builtins).label : undefined;
+        const label = shown?.look || shown?.waiting ? chipOf(shown, builtins).label : undefined;
+        // A waiting agent names what it waits on (add-claude-insights 2.3).
+        const why = agent?.state === "waiting" ? agent.reason : undefined;
+        const chip = [label, why].filter(Boolean).join(" · ") || undefined;
         tips.below(e.currentTarget, tabName(tab, docs), sub, chip);
       }}
       onMouseLeave={tips.hide}

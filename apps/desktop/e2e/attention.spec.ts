@@ -70,3 +70,23 @@ test("the chime is off by default and plays once per new wait when on", async ({
   await setAgent(page, a, "waiting");
   expect(await host()).toBe(1);
 });
+
+test("a waiting tab names what it waits on in its tip and on the amber chip", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/?top-tabs");
+  const [[pane]] = (await panes(page)) as [[string]];
+  const tab = await page.evaluate(() => (window as any).__terminescu.host.workspace().windows[0].sideTabs[0].tabs[0].id);
+  // The Claude adapter's reason, as the core passes it on.
+  await page.evaluate(
+    (pane) => (window as any).__terminescu.host.setAgent(pane, { session: "sess-1", state: "waiting", lastMessage: null, reason: "Bash: npm publish --access public" }),
+    pane,
+  );
+  await page.locator(`.ao-tab[data-tab="${tab}"]`).hover();
+  await expect(page.getByRole("tooltip").locator(".px-tip-status")).toContainText("Bash: npm publish --access public");
+  await page.mouse.move(900, 600);
+  const chip = page.locator(".ao-st[data-side] .chip-btn").first();
+  await expect(chip).toHaveAttribute("title", "Bash: npm publish --access public");
+  // Answered: the reason goes with the wait.
+  await setAgent(page, pane, "running");
+  await expect(chip).toHaveAttribute("title", "Set status");
+});

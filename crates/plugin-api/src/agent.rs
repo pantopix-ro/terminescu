@@ -24,6 +24,8 @@ pub struct Agent {
     pub state: AgentState,
     /// The agent's last reply, cut to a preview.
     pub last_message: Option<String>,
+    /// While it waits: what for, as "Bash: npm publish" (add-claude-insights 2.3).
+    pub reason: Option<String>,
 }
 
 /// What the UI gets per pane.
@@ -33,6 +35,8 @@ pub struct AgentView {
     pub session: String,
     pub state: AgentState,
     pub last_message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 /// One pane's agent changed; `agent: None` means the pane shows its shell again.
@@ -48,6 +52,7 @@ impl Agent {
             session: self.session.clone(),
             state: self.state,
             last_message: self.last_message.clone(),
+            reason: self.reason.clone(),
         }
     }
 }

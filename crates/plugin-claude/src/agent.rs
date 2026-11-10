@@ -45,6 +45,7 @@ pub fn on_hook(agent: Option<Agent>, event: &Value) -> Option<Agent> {
             transcript: None,
             state: AgentState::Idle,
             last_message: None,
+            reason: None,
         },
     };
     if let Some(t) = transcript_of(event) {
@@ -56,7 +57,10 @@ pub fn on_hook(agent: Option<Agent>, event: &Value) -> Option<Agent> {
             a.state = AgentState::Running;
             a.last_message = None;
         }
-        "PermissionRequest" => a.state = AgentState::Waiting,
+        "PermissionRequest" => {
+            a.state = AgentState::Waiting;
+            a.reason = Some(reason_of(event));
+        }
         "Notification" => {
             // `idle_prompt` comes 60 s after Stop: a finished session is not a request.
             // `permission_prompt` follows `PermissionRequest` by seconds and often lands after
@@ -79,7 +83,48 @@ pub fn on_hook(agent: Option<Agent>, event: &Value) -> Option<Agent> {
         }
         _ => {}
     }
+    if a.state != AgentState::Waiting {
+        a.reason = None;
+    }
     Some(a)
+}
+
+/// Longest waiting reason, in characters (add-claude-insights 2.3).
+const REASON_CHARS: usize = 60;
+
+/// What a permission request waits on, as "Bash: npm publish" or "Edit: src/retry.ts" (D7):
+/// the tool and its main argument, a path inside the session's folder relative to it.
+pub fn reason_of(event: &Value) -> String {
+    let Some(tool) = str_of(event, "tool_name").filter(|t| !t.is_empty()) else {
+        return "Waiting for you".into();
+    };
+    let input = event.get("tool_input");
+    let arg = ["command", "file_path", "notebook_path", "url", "pattern"]
+        .iter()
+        .find_map(|k| input.and_then(|i| str_of(i, k)))
+        .or_else(|| {
+            input
+                .and_then(Value::as_object)
+                .and_then(|m| m.values().find_map(Value::as_str))
+        });
+    let arg = arg.map(|a| {
+        let cwd = str_of(event, "cwd").filter(|c| Path::new(c).is_absolute());
+        match cwd.and_then(|c| Path::new(a).strip_prefix(c).ok()) {
+            Some(rel) if !rel.as_os_str().is_empty() => rel.display().to_string(),
+            _ => a.split_whitespace().collect::<Vec<_>>().join(" "),
+        }
+    });
+    let text = match arg.filter(|a| !a.is_empty()) {
+        Some(a) => format!("{tool}: {a}"),
+        None => tool.to_string(),
+    };
+    if text.chars().count() <= REASON_CHARS {
+        text
+    } else {
+        let mut cut: String = text.chars().take(REASON_CHARS - 1).collect();
+        cut.push('…');
+        cut
+    }
 }
 
 /// What a hook event says besides the state: Claude's reply at the end of a turn (D13), and the
@@ -143,6 +188,7 @@ pub fn on_entry(agent: &mut Agent, entry: &Entry) -> bool {
     };
     if ends {
         agent.state = AgentState::Done;
+        agent.reason = None;
         return true;
     }
     false
@@ -210,5 +256,45 @@ mod tests {
         let mut idle = on_hook(None, &ev("SessionStart", json!({}))).unwrap();
         assert!(!entries.iter().any(|e| on_entry(&mut idle, e)));
         assert_eq!(idle.state, AgentState::Idle);
+    }
+
+    #[test]
+    fn a_permission_request_names_what_it_waits_on() {
+        let fixture = |name: &str| -> Value {
+            let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/hooks/");
+            serde_json::from_str(&std::fs::read_to_string(format!("{path}{name}")).unwrap())
+                .unwrap()
+        };
+        assert_eq!(
+            reason_of(&fixture("permissionrequest-bash.json")),
+            "Bash: touch made-by-bash.txt"
+        );
+        assert_eq!(
+            reason_of(&fixture("permissionrequest-edit.json")),
+            "Edit: hello.txt"
+        );
+        let publish = ev(
+            "PermissionRequest",
+            json!({ "tool_name": "Bash", "tool_input": { "command": "npm  publish\n --access public" } }),
+        );
+        assert_eq!(reason_of(&publish), "Bash: npm publish --access public");
+        let long = ev(
+            "PermissionRequest",
+            json!({ "tool_name": "WebFetch", "tool_input": { "url": format!("https://example.com/{}", "a".repeat(80)) } }),
+        );
+        let r = reason_of(&long);
+        assert_eq!(r.chars().count(), 60);
+        assert!(r.starts_with("WebFetch: https://example.com/") && r.ends_with('…'));
+        assert_eq!(
+            reason_of(&ev("PermissionRequest", json!({}))),
+            "Waiting for you"
+        );
+        let a = on_hook(None, &publish).unwrap();
+        assert_eq!(
+            a.reason.as_deref(),
+            Some("Bash: npm publish --access public")
+        );
+        let a = on_hook(Some(a), &ev("PostToolUse", json!({}))).unwrap();
+        assert_eq!(a.reason, None, "an answered request drops its reason");
     }
 }

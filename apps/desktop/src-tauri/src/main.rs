@@ -825,7 +825,13 @@ fn watch_attention(
                     .notification()
                     .builder()
                     .title(format!("{} › {}", place.side_name, place.tab_name))
-                    .body("Claude is waiting for you")
+                    // The adapter names what the agent waits on (add-claude-insights 2.3).
+                    .body(
+                        u.agent
+                            .as_ref()
+                            .and_then(|a| a.reason.as_deref())
+                            .unwrap_or("Waiting for you"),
+                    )
                     .show();
                 if let Err(e) = shown {
                     eprintln!("terminescu: notification not posted: {e}");

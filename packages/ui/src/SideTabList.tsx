@@ -89,14 +89,14 @@ export const pickAt = (e: MouseEvent) => {
  * A status chip that opens the quick status list. It stops the pointer and key events so the
  * row neither starts a drag nor selects itself.
  */
-function ChipButton({ chip, label, onClick }: { chip: Chip; label: string; onClick?(at: { x: number; y: number }): void }) {
-  if (!onClick) return <StatusChip chip={chip} />;
+function ChipButton({ chip, label, why, onClick }: { chip: Chip; label: string; why?: string; onClick?(at: { x: number; y: number }): void }) {
+  if (!onClick) return <StatusChip chip={chip} title={why} />;
   return (
     <button
       type="button"
       className="chip-btn"
       aria-label={label}
-      title="Set status"
+      title={why ?? "Set status"}
       onPointerDown={(e) => e.stopPropagation()}
       onKeyDown={(e) => e.stopPropagation()}
       onClick={(e) => {
@@ -255,6 +255,8 @@ function Row(props: {
   const shown = statuses[side.id];
   const need = shown?.waiting || side.tabs.some((t) => tabAgent(t, agents)?.state === "waiting" || tabRequest(t, docs));
   const chip = chipOf(shown, builtins);
+  // What a waiting agent waits on, for the amber chip's tip.
+  const why = side.tabs.map((t) => tabAgent(t, agents)).find((a) => a?.state === "waiting")?.reason ?? undefined;
   const { draggingSide, draggingTab } = props;
   // A tab drops into any row but its own; one from another window into any but the active
   // one. A side tab merges into any row but itself.
@@ -392,6 +394,7 @@ function Row(props: {
           <span className={`single-chip${chip.set || chip.need ? "" : " unset"}`}>
             <ChipButton
               chip={chip}
+              why={why}
               label={`Status ${chip.label}: edit the status of ${name}`}
               onClick={props.onStatus && ((at) => props.onStatus!(side.id, undefined, at))}
             />
@@ -411,6 +414,7 @@ function Row(props: {
           {/* The status sits under the name, so the name has the row's width (task 8.28). */}
           <ChipButton
             chip={chip}
+            why={why}
             label={`Status ${chip.label}: edit the status of ${name}`}
             onClick={props.onStatus && ((at) => props.onStatus!(side.id, undefined, at))}
           />
@@ -689,6 +693,11 @@ export function SideTabList({
             {/* A renamed folder still shows its animal, so it can be told apart (task 8.62). */}
             {picked.title && picked.tabs.length > 1 && picked.name && <span className="px-tip-alias">{picked.name}</span>}
             <span className="px-tip-status">{chipOf(statuses[picked.id], builtins).label}</span>
+            {/* What a waiting agent in the row waits on (add-claude-insights 2.3). */}
+            {(() => {
+              const why = picked.tabs.map((t) => tabAgent(t, agents)).find((a) => a?.state === "waiting")?.reason;
+              return why ? <span className="px-tip-sub px-tip-why">{why}</span> : null;
+            })()}
           </div>
           {picked.tabs.map((t) => (
             <button
