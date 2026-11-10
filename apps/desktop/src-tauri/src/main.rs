@@ -1729,16 +1729,123 @@ fn cascade_spot(app: &AppHandle, new_id: &str) -> Option<(f64, f64)> {
     Some(cascade((at.x, at.y), WINDOW_SIZE, area))
 }
 
+/// A frame as (x, y, width, height) in points.
+type Rect = (f64, f64, f64, f64);
+
+/// The height of the strip a window is dragged by, and how much of it must lie on a screen.
+const TITLE_STRIP: f64 = 34.0;
+const ON_SCREEN: f64 = 100.0;
+
+/// Where a saved frame reopens (task 8.85). A frame whose title strip still lies on one of the
+/// screens' work areas keeps its place; one off every screen, as after a screen goes, moves to
+/// the main screen's top left and shrinks to fit it. All in points.
+fn fit_frame(frame: Rect, screens: &[Rect], main: Rect) -> Rect {
+    let (x, y, w, h) = frame;
+    let reachable = screens.iter().any(|&(sx, sy, sw, sh)| {
+        let across = (x + w).min(sx + sw) - x.max(sx);
+        let down = (y + TITLE_STRIP).min(sy + sh) - y.max(sy);
+        across >= ON_SCREEN && down >= TITLE_STRIP / 2.0
+    });
+    if reachable {
+        return frame;
+    }
+    let (mx, my, mw, mh) = main;
+    (
+        mx + CASCADE,
+        my + CASCADE,
+        w.min(mw - 2.0 * CASCADE).max(640.0),
+        h.min(mh - 2.0 * CASCADE).max(400.0),
+    )
+}
+
+/// A monitor's work area in points.
+fn work_area(m: &tauri::Monitor) -> Rect {
+    let (wa, s) = (m.work_area(), m.scale_factor());
+    (
+        f64::from(wa.position.x) / s,
+        f64::from(wa.position.y) / s,
+        f64::from(wa.size.width) / s,
+        f64::from(wa.size.height) / s,
+    )
+}
+
+/// The saved frame of a window, fitted to the screens there are now.
+fn saved_frame(app: &AppHandle, window_id: &str) -> Option<Rect> {
+    let f = persist::window_frame(&lock(&app.state::<AppState>().db), window_id).ok()??;
+    let screens: Vec<Rect> = app
+        .available_monitors()
+        .ok()?
+        .iter()
+        .map(work_area)
+        .collect();
+    let main = app
+        .primary_monitor()
+        .ok()?
+        .map(|m| work_area(&m))
+        .or(screens.first().copied())?;
+    Some(fit_frame((f.x, f.y, f.width, f.height), &screens, main))
+}
+
+/// Each window's latest move or resize; a save waits until it is 500 ms old (task 8.85).
+static FRAME_MOVES: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
+
+fn frame_moved(app: &AppHandle, label: &str) {
+    let moves = FRAME_MOVES.get_or_init(Default::default);
+    let generation = {
+        let mut m = lock(moves);
+        let g = m.entry(label.to_string()).or_default();
+        *g += 1;
+        *g
+    };
+    let (app, label) = (app.clone(), label.to_string());
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(500));
+        if lock(moves).get(&label) != Some(&generation) {
+            return;
+        }
+        let Some(w) = app.get_webview_window(&label) else {
+            return;
+        };
+        // A full-screen or minimised window keeps the frame it had before.
+        if w.is_fullscreen().unwrap_or(false) || w.is_minimized().unwrap_or(false) {
+            return;
+        }
+        let (Ok(scale), Ok(at), Ok(size)) = (w.scale_factor(), w.outer_position(), w.inner_size())
+        else {
+            return;
+        };
+        let (at, size) = (at.to_logical::<f64>(scale), size.to_logical::<f64>(scale));
+        let frame = persist::WindowFrame {
+            x: at.x,
+            y: at.y,
+            width: size.width,
+            height: size.height,
+        };
+        if let Some(state) = app.try_state::<AppState>()
+            && let Err(e) = persist::save_window_frame(&lock(&state.db), &label, &frame)
+        {
+            eprintln!("window frame not saved: {e}");
+        }
+    });
+}
+
 fn open_window(app: &AppHandle, window_id: &str, at: Option<(f64, f64, f64)>) -> tauri::Result<()> {
     let builder = WebviewWindowBuilder::new(app, window_id, WebviewUrl::App("index.html".into()))
         .title("Terminescu")
         .inner_size(WINDOW_SIZE.0, WINDOW_SIZE.1)
         .min_inner_size(640.0, 400.0)
         .visible(at.is_none());
-    // A window not dropped by a drag opens cascaded from the focused one (task 8.82).
-    let builder = match (at, cascade_spot(app, window_id)) {
-        (None, Some((x, y))) => builder.position(x, y),
-        _ => builder,
+    // A drag's drop point wins, then the window's saved frame (task 8.85), then the cascade
+    // from the focused window (task 8.82).
+    let builder = match at {
+        Some(_) => builder,
+        None => match saved_frame(app, window_id) {
+            Some((x, y, w, h)) => builder.position(x, y).inner_size(w, h),
+            None => match cascade_spot(app, window_id) {
+                Some((x, y)) => builder.position(x, y),
+                None => builder,
+            },
+        },
     };
     #[cfg(target_os = "macos")]
     let builder = builder
@@ -2087,6 +2194,15 @@ fn main() {
     app.run(|app, event| {
         if let RunEvent::WindowEvent {
             label,
+            event: tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_),
+            ..
+        } = &event
+            && label != drag::GHOST
+        {
+            frame_moved(app, label);
+        }
+        if let RunEvent::WindowEvent {
+            label,
             event: tauri::WindowEvent::Destroyed,
             ..
         } = &event
@@ -2133,6 +2249,37 @@ mod tests {
         assert_eq!(cascade((500.0, 60.0), WINDOW_SIZE, area), (528.0, 88.0));
         assert_eq!(cascade((501.0, 60.0), WINDOW_SIZE, area), (28.0, 53.0));
         assert_eq!(cascade((100.0, 400.0), WINDOW_SIZE, area), (28.0, 53.0));
+    }
+
+    #[test]
+    fn a_saved_frame_fits_the_screens() {
+        let laptop = (0.0, 25.0, 1728.0, 1080.0);
+        let external = (1728.0, 0.0, 2560.0, 1415.0);
+        let on_external = (2000.0, 200.0, 1400.0, 900.0);
+        assert_eq!(
+            fit_frame(on_external, &[laptop, external], laptop),
+            on_external
+        );
+        // The external screen is gone: the frame moves to the laptop and shrinks to fit.
+        assert_eq!(
+            fit_frame(on_external, &[laptop], laptop),
+            (28.0, 53.0, 1400.0, 900.0)
+        );
+        let tall = (2000.0, 100.0, 1600.0, 1300.0);
+        assert_eq!(
+            fit_frame(tall, &[laptop], laptop),
+            (28.0, 53.0, 1600.0, 1024.0)
+        );
+        // A title strip above the screen's top cannot be grabbed.
+        assert_eq!(
+            fit_frame((100.0, -200.0, 800.0, 600.0), &[laptop], laptop).1,
+            53.0
+        );
+        // 60 points of a strip on screen is too little to grab.
+        assert_eq!(
+            fit_frame((1668.0, 100.0, 800.0, 600.0), &[laptop], laptop).0,
+            28.0
+        );
     }
 
     #[test]

@@ -779,9 +779,9 @@ buffers once per sheet.
       other window's rows to the end of this one, in window order, as rows; the emptied windows
       close. With one window it does nothing and the palette hides it. Verify: core test `merge_windows_moves_every_row`;
       `windows.spec.ts` "merge all windows".
-- [ ] 8.85 Window placement on relaunch. Each window saves its frame in points with its screen
-      (windows.frame_json), 500 ms after a move or resize, and reopens there; a frame off every
-      screen moves into the main screen's work area. A drag's drop point, then the saved frame,
+- [x] 8.85 Window placement on relaunch. Each window saves its frame in points
+      (windows.frame_json), 500 ms after a move or resize, and reopens there; a frame whose title
+      strip is off every screen moves into the main screen's work area and shrinks to fit. A drag's drop point, then the saved frame,
       then the cascade. Verify: desktop unit test `a_saved_frame_fits_the_screens`; core test
       `window_frames_persist`; manual: move two windows, ⌘Q, reopen.
 - [ ] 8.86 Folder drag across windows. The core drag carries a row or a tab; a folder row

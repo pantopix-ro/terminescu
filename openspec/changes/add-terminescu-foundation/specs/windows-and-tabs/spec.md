@@ -92,6 +92,10 @@ each drag SHALL have a palette equivalent.
 - **WHEN** three windows are open and the person presses `⌃⌘M` in the first
 - **THEN** every row of the other two joins the end of the first window's sidebar with its context, and the other two windows close
 
+#### Scenario: Windows reopen where they were
+- **WHEN** the person moves one window to the external screen, quits, unplugs that screen and reopens Terminescu
+- **THEN** the other window reopens where it was, and the moved one opens at the main screen's top left, shrunk to fit it
+
 #### Scenario: Drag a window's only row back
 - **WHEN** a second window holds one side tab with one tab and the person drags that row from its sidebar into the first window and releases
 - **THEN** the row joins the first window with its context and the second window closes

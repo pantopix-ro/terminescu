@@ -232,6 +232,39 @@ fn adopt(tx: &rusqlite::Transaction<'_>, owner: &str, old: &str, tab: &str) -> R
 
 /// The saved layout, or `None` when nothing was saved yet. A tab whose layout no longer parses
 /// gets one pane, so a bad row costs that tab's split, not the start.
+/// A window's place on screen, in points: the outer top left and the inner size (task 8.85).
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct WindowFrame {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+/// Saves where a window is. A window the layout no longer has is left alone: its row is gone.
+pub fn save_window_frame(db: &Db, window_id: &str, frame: &WindowFrame) -> Result<()> {
+    let json = serde_json::to_string(frame).expect("a frame serializes");
+    db.conn().execute(
+        "UPDATE windows SET frame_json = ?1 WHERE owner_id = ?2 AND id = ?3",
+        params![json, db.local_owner()?, window_id],
+    )?;
+    Ok(())
+}
+
+/// Where a window was last, if it was saved and still reads.
+pub fn window_frame(db: &Db, window_id: &str) -> Result<Option<WindowFrame>> {
+    let json: Option<String> = db
+        .conn()
+        .query_row(
+            "SELECT frame_json FROM windows WHERE owner_id = ?1 AND id = ?2",
+            params![db.local_owner()?, window_id],
+            |r| r.get(0),
+        )
+        .optional()?
+        .flatten();
+    Ok(json.and_then(|j| serde_json::from_str(&j).ok()))
+}
+
 pub fn load(db: &Db) -> Result<Option<Saved>> {
     let owner = db.local_owner()?;
     let conn = db.conn();
@@ -367,6 +400,25 @@ pub fn load(db: &Db) -> Result<Option<Saved>> {
 mod tests {
     use super::*;
     use crate::layout::Dir;
+
+    #[test]
+    fn window_frames_persist() {
+        let db = Db::open_in_memory().unwrap();
+        let saved = sample();
+        save(&db, &saved).unwrap();
+        assert_eq!(window_frame(&db, "w1").unwrap(), None);
+        let frame = WindowFrame {
+            x: 140.0,
+            y: 90.0,
+            width: 1100.0,
+            height: 700.0,
+        };
+        save_window_frame(&db, "w1", &frame).unwrap();
+        // A layout save keeps it.
+        save(&db, &saved).unwrap();
+        assert_eq!(window_frame(&db, "w1").unwrap(), Some(frame));
+        assert_eq!(window_frame(&db, "gone").unwrap(), None);
+    }
 
     fn sample() -> Saved {
         let layout = Layout::pane("p1")
