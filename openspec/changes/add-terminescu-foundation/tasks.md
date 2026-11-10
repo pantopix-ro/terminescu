@@ -775,9 +775,9 @@ buffers once per sheet.
 - [ ] 8.72 Sidebar drags, part 3. A row dragged between rows reorders (hand-sorted only), and
       a folder row carries all its tabs to another window or out to a new one (8.83 did one-tab
       rows; 8.86 does folders).
-- [ ] 8.84 Merge all windows. Window › Merge All Windows and the palette move every other
-      window's rows to the end of this one, in window order, as rows; the emptied windows
-      close. Disabled with one window. Verify: core test `merge_windows_moves_every_row`;
+- [x] 8.84 Merge all windows. Window › Merge All Windows (⌃⌘M) and the palette move every
+      other window's rows to the end of this one, in window order, as rows; the emptied windows
+      close. With one window it does nothing and the palette hides it. Verify: core test `merge_windows_moves_every_row`;
       `windows.spec.ts` "merge all windows".
 - [ ] 8.85 Window placement on relaunch. Each window saves its frame in points with its screen
       (windows.frame_json), 500 ms after a move or resize, and reopens there; a frame off every

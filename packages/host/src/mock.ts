@@ -720,6 +720,16 @@ export function createMockHost(initial?: Workspace): MockHost {
           { type: "SideTabCreated", windowId: c.windowId, index, sideTab: moved },
         ];
       }
+      case "MergeAllWindows": {
+        let index = window(c.windowId).sideTabs.length;
+        return ws.windows
+          .filter((w) => w.id !== c.windowId)
+          .flatMap((w) => w.sideTabs)
+          .flatMap((s): Patch[] => [
+            { type: "SideTabClosed", sideTabId: s.id },
+            { type: "SideTabCreated", windowId: c.windowId, index: index++, sideTab: structuredClone(s) },
+          ]);
+      }
       case "RenameTab": {
         holder(c.tabId);
         const title = c.title?.trim() || null;

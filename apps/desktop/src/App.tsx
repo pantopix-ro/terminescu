@@ -895,6 +895,10 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       // ⌘N opens a window with one new tab (task 8.81).
       case "new_window":
         return void send({ type: "CreateWindow" });
+      // Every other window's rows join this one (task 8.84).
+      case "merge_windows":
+        if (ws.windows.length < 2) return;
+        return void send({ type: "MergeAllWindows", windowId }).then(refocus, report);
       case "new_side_tab":
         followNewSide();
         return void send({ type: "CreateSideTab", windowId });
@@ -2040,7 +2044,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   };
 
   const paletteItems: PaletteItem[] = [
-    ...paletteActions(withBindings(ACTIONS, keyBindings)).map((a) => ({ id: a.id, label: a.label, group: "Actions", hint: chordLabel(a.accel), run: () => act(a.id) })),
+    ...paletteActions(withBindings(ACTIONS, keyBindings))
+      .filter((a) => a.id !== "merge_windows" || ws.windows.length > 1)
+      .map((a) => ({ id: a.id, label: a.label, group: "Actions", hint: chordLabel(a.accel), run: () => act(a.id) })),
     ...(activeTab
       ? [
           { id: "move:new", label: "New side tab", group: "Move tab to…", run: () => moveTab(activeTab.id, { newAt: sideTabs.length }) },

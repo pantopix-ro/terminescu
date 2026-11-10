@@ -302,6 +302,12 @@
    "accel": "Ctrl+Cmd+9"
   },
   {
+   "id": "merge_windows",
+   "label": "Merge All Windows",
+   "menu": "Window",
+   "accel": "Ctrl+Cmd+M"
+  },
+  {
    "id": "find_all",
    "label": "Find in All Panes…",
    "menu": "Edit",
