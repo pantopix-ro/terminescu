@@ -2,7 +2,7 @@
 
 ## 1. Baselines
 
-- [ ] 1.1 Working-tree snapshot in Terminescu's object store at `SessionStart`, `ready`
+- [x] 1.1 Working-tree snapshot in Terminescu's object store at `SessionStart`, `ready`
       marker, 30-second stop. Verify: `cargo test -p terminescu-plugin-claude`
       `snapshot_leaves_the_repo_untouched` (refs, index, objects and `git status` unchanged),
       `snapshot_includes_untracked_not_ignored`.
@@ -11,10 +11,10 @@
       `first_touch_copies_once`, `a_large_file_gets_a_marker`, `hook_stays_under_100_ms`;
       moved `hook_install` tests updated. Done as `baseline` tests in `terminescu-plugin-api`
       and `first_touch_copies_once_and_hook_stays_under_100_ms` in the CLI (D3 note).
-- [ ] 1.3 Session changes and base text: per-file copy wins over the tree snapshot. Verify:
+- [x] 1.3 Session changes and base text: per-file copy wins over the tree snapshot. Verify:
       plugin tests for a git session (Edit plus a formatter) and a non-git session (Edit plus
       `sed`).
-- [ ] 1.4 Retention: 7 days after session end, 500 MB cap oldest first, Uninstall Helpers
+- [x] 1.4 Retention: 7 days after session end, 500 MB cap oldest first, Uninstall Helpers
       removes `baselines/`. Verify: tests `old_baselines_go`, `the_cap_spares_running_sessions`.
 
 ## 2. Transcript and hook signals

@@ -54,6 +54,7 @@ fn registered() -> Vec<Arc<dyn Plugin>> {
         #[cfg(feature = "plugin-claude")]
         Some(Arc::new(terminescu_plugin_claude::ClaudePlugin::new(
             crate::paths::bin_dir().join("terminescu"),
+            &terminescu_protocol::paths::support_dir(),
         ))),
         #[cfg(not(feature = "plugin-claude"))]
         None,
