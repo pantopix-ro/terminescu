@@ -47,7 +47,7 @@
       moved `hook_install` tests; `e2e/app-sheets.spec.ts` first-run and uninstall.
 - [x] 3.4 `packages/plugin-claude`: `TranscriptPane` and transcript reading through
       `pluginCall`; the agent dot stays generic. Verify: transcript e2e tests unchanged.
-- [ ] 3.5 Registration only in `main.rs` and `plugins.ts`, behind cargo feature
+- [x] 3.5 Registration only in `main.rs` and `plugins.ts`, behind cargo feature
       `plugin-claude`. Verify: `cargo check -p terminescu-desktop --no-default-features`;
       `VITE_PLUGINS=none pnpm --filter @terminescu/desktop build`.
 

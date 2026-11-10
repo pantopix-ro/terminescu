@@ -50,8 +50,15 @@ pub fn menu_items(app: &AppHandle) -> Vec<MenuAction> {
 
 /// The plugins compiled in, in the order their decorators compose.
 fn registered() -> Vec<Arc<dyn Plugin>> {
-    let cli = crate::paths::bin_dir().join("terminescu");
-    vec![Arc::new(terminescu_plugin_claude::ClaudePlugin::new(cli))]
+    let all: [Option<Arc<dyn Plugin>>; 1] = [
+        #[cfg(feature = "plugin-claude")]
+        Some(Arc::new(terminescu_plugin_claude::ClaudePlugin::new(
+            crate::paths::bin_dir().join("terminescu"),
+        ))),
+        #[cfg(not(feature = "plugin-claude"))]
+        None,
+    ];
+    all.into_iter().flatten().collect()
 }
 
 /// Every compiled-in plugin's helpers, on or off: the first run and Uninstall Helpers reach

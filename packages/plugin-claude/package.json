@@ -2,6 +2,7 @@
   "name": "@terminescu/plugin-claude",
   "private": true,
   "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": "./src/index.tsx"
   },

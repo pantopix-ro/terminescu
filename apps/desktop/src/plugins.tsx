@@ -7,8 +7,11 @@ import type { FakePlugin } from "@terminescu/host/mock";
 import { compose, definePlugin, type Composed, type PluginBridge, type UiPlugin } from "@terminescu/plugin-api";
 import { claude } from "@terminescu/plugin-claude";
 
+/** `VITE_PLUGINS=none` builds the bare terminal; the bundler drops the unused halves. */
+export const NO_PLUGINS = import.meta.env.VITE_PLUGINS === "none";
+
 /** The UI halves built into the app, in plugin order. */
-const BUILT_IN: readonly UiPlugin[] = [claude];
+const BUILT_IN: readonly UiPlugin[] = NO_PLUGINS ? [] : [claude];
 
 /** A bridge to one plugin's Rust half. */
 export function bridgeOf(host: Host, plugin: string): PluginBridge {
