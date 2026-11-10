@@ -764,6 +764,10 @@ buffers once per sheet.
       New Side Tab moves to `⌘⇧N`. A row's edit dialog says "Add tab to this row" or "Add
       tab to this folder", and that tab is selected. Verify: core `create_window` test,
       `windows.spec.ts`, `settings.spec.ts`.
+- [x] 8.82 Cascaded windows. A window that a drag did not place opens 28 points right of and
+      below the focused window, as Terminal.app cascades, and starts again at the screen's
+      top left when it would leave the work area. Verify: desktop `cascade` unit test; manual:
+      ⌘N three times in the app.
 - [ ] 8.72 Sidebar drags, part 3. A row dragged between rows reorders (hand-sorted only), and
       out of every window opens a new one; the cross-window drag carries a row, not only a tab.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
