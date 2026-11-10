@@ -110,4 +110,13 @@ describe("compose", () => {
     const one = compose({ plugins: [a, b], enabled: new Set(["b"]), decorations: [], appActions: app });
     expect(one.beforeRowClose.map((h) => h.plugin)).toEqual(["b"]);
   });
+
+  it("shows a gated action only while its plugin raises the flag", () => {
+    const gh = definePlugin({ id: "git", name: "Git", actions: [{ id: "pr", label: "Open Pull Request", accel: "Cmd+Alt+G", when: "github", run: noop }] });
+    const ids = (flags?: Map<string, Set<string>>) => compose({ plugins: [gh], enabled: new Set(["git"]), decorations: [], appActions: app, flags }).actions.map((a) => a.id);
+    expect(ids()).toEqual([]);
+    expect(ids(new Map([["git", new Set(["other"])]]))).toEqual([]);
+    expect(ids(new Map([["claude", new Set(["github"])]]))).toEqual([]);
+    expect(ids(new Map([["git", new Set(["github"])]]))).toEqual(["git.pr"]);
+  });
 });

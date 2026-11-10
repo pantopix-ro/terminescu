@@ -64,23 +64,49 @@ export function usePlugins(host: Host, appActions: readonly ActionDef[], halves:
   }, [host]);
   const plugins = useMemo(() => uiPlugins(infos, halves), [infos, halves]);
   const enabled = useMemo(() => new Set(infos.filter((i) => i.enabled && !i.paused).map((i) => i.id)), [infos]);
-  const composed = useMemo(() => compose({ plugins, enabled, decorations, appActions }), [plugins, enabled, decorations, appActions]);
+  const bridges = useMemo(() => new Map<string, PluginBridge>(), [host]);
+  const bridge = (plugin: string) => {
+    let b = bridges.get(plugin);
+    if (!b) bridges.set(plugin, (b = bridgeOf(host, plugin)));
+    return b;
+  };
+  // Each enabled plugin's raised flags, from its own follower; a plugin turned off drops them.
+  const [flags, setFlags] = useState<ReadonlyMap<string, ReadonlySet<string>>>(new Map());
+  const following = plugins
+    .filter((p) => p.flags && enabled.has(p.id))
+    .map((p) => p.id)
+    .join(",");
+  useEffect(() => {
+    const stops = plugins
+      .filter((p) => p.flags && enabled.has(p.id))
+      .map((p) =>
+        p.flags!(bridge(p.id), (raised) =>
+          setFlags((m) => {
+            const next = new Set(raised);
+            const was = m.get(p.id);
+            if (was && was.size === next.size && [...next].every((f) => was.has(f))) return m;
+            return new Map(m).set(p.id, next);
+          }),
+        ),
+      );
+    return () => {
+      stops.forEach((s) => s());
+      setFlags(new Map());
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [host, following]);
+  const composed = useMemo(() => compose({ plugins, enabled, decorations, appActions, flags }), [plugins, enabled, decorations, appActions, flags]);
   // The native menu (and the mock's chords) follow the composed actions.
   const menuKey = composed.actions.map((a) => `${a.id}|${a.label}|${a.menu}|${a.accel}`).join("\n");
   useEffect(() => {
     void host.setPluginActions(composed.actions.map(({ id, label, menu, accel }) => ({ id, label, menu, accel }))).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [host, menuKey]);
-  const bridges = useMemo(() => new Map<string, PluginBridge>(), [host]);
   return {
     infos,
     composed,
     offOwner: (kind) => (composed.offKinds.has(kind) ? plugins.find((p) => p.paneViews?.some((v) => v.kind === kind))?.name : undefined),
-    bridge(plugin) {
-      let b = bridges.get(plugin);
-      if (!b) bridges.set(plugin, (b = bridgeOf(host, plugin)));
-      return b;
-    },
+    bridge,
   };
 }
 
@@ -97,14 +123,25 @@ const fakeOn = () => asked("fake");
  */
 interface FakeGit {
   changes?: { root: string };
+  /** The branch's open pull request, for `facts`. */
+  pr?: unknown;
   base?: Record<string, string>;
   worktrees?: string[];
   changed?: number;
 }
 
+/**
+ * GitHub as `gh` would answer it, on `window.__fakeGitHub`: absent plays no `gh`. `prs` are
+ * the repository's open pull requests.
+ */
+interface FakeGitHub {
+  prs: { number: number; title: string; url: string; branch: string; checks: string }[];
+}
+
 /** What the fake did with worktrees, for the tests to read on `window.__fakeGitDone`. */
 interface FakeGitDone {
   added: { branch: string; base: string | null }[];
+  checkedOut: number[];
   removed: { row: string; force: boolean }[];
   /** The marked rows: a worktree row's id and its folder. */
   marks: Record<string, string>;
@@ -115,10 +152,11 @@ const fakeGit = (): FakePlugin => ({
   name: "Git",
   description: "Plays the git plugin's Rust half, for the tests.",
   async call(method, args, host) {
-    const a = (args ?? {}) as { pane?: string; root?: string; path?: string; row?: string; branch?: string; base?: string | null; force?: boolean };
+    const a = (args ?? {}) as { pane?: string; root?: string; path?: string; row?: string; branch?: string; base?: string | null; force?: boolean; number?: number };
+    const github = (globalThis as { __fakeGitHub?: FakeGitHub }).__fakeGitHub;
     const all = (globalThis as { __fakeGit?: Record<string, FakeGit> }).__fakeGit ?? {};
     const answers = all[a.pane ?? a.root ?? a.row ?? ""];
-    const done = ((globalThis as { __fakeGitDone?: FakeGitDone }).__fakeGitDone ??= { added: [], removed: [], marks: {} });
+    const done = ((globalThis as { __fakeGitDone?: FakeGitDone }).__fakeGitDone ??= { added: [], checkedOut: [], removed: [], marks: {} });
     // A row below the pane's, as the core's `new_row` makes it, marked as a worktree row.
     const newRow = async (title: string, folder: string) => {
       const ws = host.workspace();
@@ -139,6 +177,23 @@ const fakeGit = (): FakePlugin => ({
     if (method === "changes") {
       if (!answers?.changes) throw new Error("the pane is not in a git repository");
       return answers.changes;
+    }
+    if (method === "status") return { version: "2.47.0", stopped: null, github: !!github, githubOff: github ? null : "gh is not installed" };
+    if (method === "facts") {
+      repo();
+      return { facts: {}, pr: answers?.pr ?? null };
+    }
+    if (method === "pullRequests") {
+      if (!github) throw new Error("gh is not installed");
+      repo();
+      return github.prs;
+    }
+    if (method === "prCheckout") {
+      if (!github) throw new Error("gh is not installed");
+      const root = repo();
+      done.checkedOut.push(a.number ?? 0);
+      const path = `${root}-${a.branch}`;
+      return { row: await newRow(`#${a.number} ${a.branch}`, path), path };
     }
     if (method === "worktreeAdd") {
       const path = `${repo()}-${a.branch}`;
@@ -162,10 +217,6 @@ const fakeGit = (): FakePlugin => ({
       done.removed.push({ row: a.row ?? "", force: a.force === true });
       delete done.marks[a.row ?? ""];
       return { removed: true };
-    }
-    if (method === "changes") {
-      if (!answers?.changes) throw new Error("the pane is not in a git repository");
-      return answers.changes;
     }
     if (method === "baseText") {
       if (!answers?.base) throw new Error("the folder is not in a git repository");

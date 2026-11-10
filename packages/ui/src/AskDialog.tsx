@@ -1,5 +1,6 @@
 // A plugin's question (add-git-plugin 3.3): the app draws it, so every plugin's dialogs look and
-// answer the same. Enter picks the first choice, Escape and a click outside answer null.
+// answer the same. Enter picks the first choice, Escape and a click outside answer null. A pick
+// list's item answers with it on Enter or a double click.
 
 import { useState } from "react";
 import type { Answer, Question } from "@terminescu/plugin-api";
@@ -12,7 +13,9 @@ export interface AskDialogProps {
 export function AskDialog({ question, onAnswer }: AskDialogProps) {
   const fields = question.fields ?? [];
   const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(fields.map((f) => [f.id, f.value ?? ""])));
-  const answer = (choice: string | null) => onAnswer({ choice, values });
+  const items = question.pick?.items ?? [];
+  const [pick, setPick] = useState(items[0]?.id);
+  const answer = (choice: string | null) => onAnswer({ choice, values: pick === undefined ? values : { ...values, pick } });
   const [first, ...rest] = question.choices;
   return (
     <div className="sheet-back" onPointerDown={() => answer(null)}>
@@ -52,6 +55,38 @@ export function AskDialog({ question, onAnswer }: AskDialogProps) {
               />
             </label>
           ))}
+          {question.pick && (
+            <div className="ask-pick" role="radiogroup" aria-label={question.pick.label}>
+              {items.map((it, i) => (
+                <button
+                  key={it.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={pick === it.id}
+                  className={`ask-item${pick === it.id ? " on" : ""}`}
+                  autoFocus={i === 0 && fields.length === 0}
+                  onClick={() => setPick(it.id)}
+                  onDoubleClick={() => onAnswer({ choice: first?.id ?? null, values: { ...values, pick: it.id } })}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      return onAnswer({ choice: first?.id ?? null, values: { ...values, pick: it.id } });
+                    }
+                    const step = e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0;
+                    if (!step) return;
+                    e.preventDefault();
+                    const next = items[Math.min(items.length - 1, Math.max(0, i + step))];
+                    if (!next) return;
+                    setPick(next.id);
+                    (e.currentTarget.parentElement?.children[items.indexOf(next)] as HTMLElement | undefined)?.focus();
+                  }}
+                >
+                  <span className="grow">{it.label}</span>
+                  {it.detail && <span className="small ao-dim">{it.detail}</span>}
+                </button>
+              ))}
+            </div>
+          )}
           {question.detail && <code className="small ao-dim ask-detail">{question.detail}</code>}
           <div className="close-actions">
             <span className="grow" />
@@ -64,7 +99,7 @@ export function AskDialog({ question, onAnswer }: AskDialogProps) {
               </button>
             ))}
             {first && (
-              <button type="submit" className={`ao-btn ${first.danger ? "danger" : "primary"}`} autoFocus={fields.length === 0}>
+              <button type="submit" className={`ao-btn ${first.danger ? "danger" : "primary"}`} autoFocus={fields.length === 0 && items.length === 0}>
                 {first.label}
               </button>
             )}

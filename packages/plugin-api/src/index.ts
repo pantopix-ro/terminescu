@@ -134,6 +134,8 @@ export interface Question {
   /** A line in the terminal font, such as the command the answer runs. */
   detail?: string;
   fields?: readonly { id: string; label: string; value?: string; placeholder?: string }[];
+  /** A list to pick one item from; the answer's `values.pick` is its id, the first by default. */
+  pick?: { label: string; items: readonly { id: string; label: string; detail?: string }[] };
   /** The first is the default and answers Enter; `danger` paints it red. */
   choices: readonly { id: string; label: string; danger?: boolean }[];
 }
@@ -156,6 +158,8 @@ export interface ActionContext {
   shellPaneId?: Id;
   bridge: PluginBridge;
   ask: Ask;
+  /** Opens an http or https link in the person's browser. */
+  openUrl(url: string): Promise<void>;
 }
 
 /** A row about to close, after the person confirmed the close. */
@@ -183,6 +187,8 @@ export interface PluginAction {
   accel?: string;
   /** Also in the sidebar's + menu, after Terminal and Text. */
   newMenu?: boolean;
+  /** Shown, in menus and the palette, only while the plugin raises this flag (`UiPlugin.flags`). */
+  when?: string;
   run(cx: ActionContext): void | Promise<void>;
 }
 
@@ -200,6 +206,12 @@ export interface UiPlugin {
   paneViews?: readonly PaneViewDef[];
   actions?: readonly PluginAction[];
   beforeRowClose?: BeforeRowClose;
+  /**
+   * Follows what the plugin's actions need, such as `github` while `gh` is logged in: calls
+   * `set` with the raised flags each time they change. Runs while the plugin is enabled;
+   * returns the stop.
+   */
+  flags?: (bridge: PluginBridge, set: (flags: readonly string[]) => void) => () => void;
   settingsPage?: ComponentType<SettingsPageProps>;
 }
 
@@ -262,6 +274,8 @@ export interface ComposeInput {
   decorations: readonly Decoration[];
   /** The app's actions with the person's chords in place. */
   appActions: readonly ActionDef[];
+  /** Each plugin's raised flags; an action whose `when` is not raised is left out. */
+  flags?: ReadonlyMap<string, ReadonlySet<string>>;
 }
 
 /**
@@ -269,7 +283,7 @@ export interface ComposeInput {
  * far; a plugin's items keep only what that plugin produced, so one plugin cannot drop
  * another's. A chord the app, macOS or an earlier plugin holds goes: the action stays, chordless.
  */
-export function compose({ plugins, enabled, decorations, appActions }: ComposeInput): Composed {
+export function compose({ plugins, enabled, decorations, appActions, flags }: ComposeInput): Composed {
   const on = plugins.filter((p) => enabled.has(p.id));
   const mine = new Map(on.map((p) => [p.id, decorations.filter((d) => d.plugin === p.id)]));
   const run = <V>(view: V, pick: (p: UiPlugin) => readonly Decorator<V>[]) =>
@@ -283,6 +297,7 @@ export function compose({ plugins, enabled, decorations, appActions }: ComposeIn
   const actions: ComposedAction[] = [];
   for (const p of on)
     for (const a of p.actions ?? []) {
+      if (a.when !== undefined && !flags?.get(p.id)?.has(a.when)) continue;
       const want = a.accel ? normalAccel(a.accel) : "";
       const free = want !== "" && /(^|\+)Cmd(\+|$)/.test(want) && !taken.has(want);
       if (free) taken.add(want);

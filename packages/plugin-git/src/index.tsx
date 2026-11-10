@@ -6,6 +6,7 @@ import { definePlugin } from "@terminescu/plugin-api";
 import { ChangesSection } from "./ChangesSection";
 import { rowChips, tabChips } from "./chips";
 import { DIFF_KIND, DiffView } from "./DiffView";
+import { checkOutPullRequest, githubFlags, openPullRequest } from "./github";
 import { loadMode, saveMode, toggled } from "./mode";
 import { beforeRowClose, newWorktreeRow, openWorktreeRows } from "./worktree";
 import "./git.css";
@@ -13,6 +14,7 @@ import "./git.css";
 export { ChangesSection, markOf, type Change, type ChangesAnswer } from "./ChangesSection";
 export { MAX_BRANCH, rowChips, shortBranch, shortenMiddle, tabChips } from "./chips";
 export { baseNote, DIFF_KIND, DiffView, diffView, parseSource, type BaseText, type DiffSource } from "./DiffView";
+export { checkOutPullRequest, GITHUB, githubFlags, openPullRequest, type PullRequest } from "./github";
 export { beforeRowClose, newWorktreeRow, openWorktreeRows } from "./worktree";
 export { loadMode, MODE_KEY, parseMode, saveMode, toggled, type DiffMode } from "./mode";
 
@@ -26,7 +28,10 @@ export const git = definePlugin({
   actions: [
     newWorktreeRow,
     openWorktreeRows,
+    openPullRequest,
+    checkOutPullRequest,
     { id: "diffLayout", label: "Toggle Diff Layout", menu: "View", accel: "Cmd+Alt+U", run: () => saveMode(toggled(loadMode())) },
   ],
   beforeRowClose,
+  flags: githubFlags,
 });

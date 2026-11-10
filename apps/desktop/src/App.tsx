@@ -1429,6 +1429,10 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       windowId,
       bridge: plugins.bridge(a.plugin),
       ask,
+      openUrl: (url: string) => {
+        if (!/^https?:\/\//i.test(url)) return Promise.reject(new Error("only http and https links open"));
+        return host.openUrl(url);
+      },
       ...(activeSide ? { sideTabId: activeSide.id } : {}),
       ...(focused ? { paneId: focused } : {}),
       ...(shellPane ? { shellPaneId: shellPane } : {}),

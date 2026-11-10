@@ -242,3 +242,58 @@ test("closing a worktree row keeps the worktree by default", async ({ page }) =>
   await expect.poll(() => titles(page)).toEqual([null]);
   expect((await done(page)).removed).toEqual([]);
 });
+
+const prs = [
+  { number: 918, title: "Retry failed payments", url: "https://github.com/acme/shop-api/pull/918", branch: "feature/PROJ-482-retry", checks: "failing" },
+  { number: 921, title: "Refund partial orders", url: "https://github.com/acme/shop-api/pull/921", branch: "PROJ-490-refunds", checks: "passing" },
+];
+
+const actionIds = (page: Page) => page.evaluate(() => (window as any).__terminescu.host.pluginActions().map((a: { id: string }) => a.id));
+
+test("without gh no pull request item shows in the menus, the palette or the + menu", async ({ page }) => {
+  await start(page);
+  await expect.poll(() => actionIds(page)).toContain("git.newWorktreeRow");
+  expect(await actionIds(page)).not.toContain("git.openPullRequest");
+  expect(await actionIds(page)).not.toContain("git.checkOutPullRequest");
+  await page.getByRole("button", { name: "Choose side tab kind" }).click();
+  await expect(page.getByRole("menuitem", { name: /New Row from Worktree/ })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: /Pull Request/ })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await page.locator(".term-pane").first().click();
+  await page.keyboard.press("Meta+KeyP");
+  await expect(page.locator(".palette")).toBeVisible();
+  await page.keyboard.type("row");
+  await expect(page.locator(".palette-item", { hasText: "New Row from Worktree" })).toBeVisible();
+  await expect(page.locator(".palette-item", { hasText: "Pull Request" })).toHaveCount(0);
+});
+
+test("with gh the pull request items open the branch's pull request and check one out as a row", async ({ page }) => {
+  await page.addInitScript((prs) => ((window as any).__fakeGitHub = { prs }), prs);
+  const { pane } = await start(page);
+  await page.evaluate(
+    ({ pane, pr }) => ((window as any).__fakeGit = { [pane]: { changes: { root: "/code/shop-api", total: 0, changes: [] }, pr } }),
+    { pane, pr: prs[0] },
+  );
+  await expect.poll(() => actionIds(page)).toContain("git.openPullRequest");
+  // ⌥⌘G opens the branch's pull request in the browser.
+  await page.locator(".term-pane").first().click();
+  await page.keyboard.press("Meta+Alt+KeyG");
+  await expect.poll(() => page.evaluate(() => (window as any).__terminescu.host.openedUrls)).toContain(prs[0]!.url);
+  // ⌥⇧⌘G lists the open pull requests, newest first; the picked one opens as a row.
+  await page.keyboard.press("Meta+Alt+Shift+KeyG");
+  const dialog = page.getByRole("alertdialog", { name: "Check out pull request" });
+  const items = dialog.getByRole("radio");
+  await expect(items).toHaveCount(2);
+  await expect(items.first()).toContainText("#921 Refund partial orders");
+  await expect(items.first()).toHaveAttribute("aria-checked", "true");
+  await page.keyboard.press("ArrowDown");
+  await expect(items.nth(1)).toHaveAttribute("aria-checked", "true");
+  await page.keyboard.press("Enter");
+  await expect(dialog).toBeHidden();
+  await expect.poll(() => titles(page)).toEqual([null, "#918 feature/PROJ-482-retry"]);
+  expect((await done(page)).checkedOut).toEqual([918]);
+  // gh logs out: the items go.
+  await page.evaluate(() => (window as any).__terminescu.host.pluginEmit("git", "github", { on: false }));
+  await expect.poll(() => actionIds(page)).not.toContain("git.openPullRequest");
+  expect(await actionIds(page)).not.toContain("git.checkOutPullRequest");
+});

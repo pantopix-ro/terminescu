@@ -172,12 +172,16 @@ impl GitPlugin {
         forge.available().map_err(|e| e.to_string())
     }
 
+    /// Tells the UI half whether the GitHub items show (`github` event, `{ on }`).
     fn set_github(&self, cx: &dyn PluginCx) {
         let check = self.check_github(cx);
         lock(&self.prs).lost = None;
+        let on = check.is_ok();
         let mut st = lock(&self.state);
-        st.github = check.is_ok();
+        st.github = on;
         st.github_off = check.err();
+        drop(st);
+        cx.emit("github", json!({ "on": on }));
     }
 
     fn launch(&self, cx: &dyn PluginCx) {
@@ -393,6 +397,8 @@ impl GitPlugin {
             let mut st = lock(&self.state);
             st.github = false;
             st.github_off = Some(why);
+            drop(st);
+            cx.emit("github", json!({ "on": false }));
         }
         let st = lock(&self.state);
         let Some(p) = st.panes.get(pane) else {

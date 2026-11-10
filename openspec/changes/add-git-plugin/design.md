@@ -60,7 +60,11 @@ the answer up. The GitHub part is on when `gh auth status` succeeds or times out
 setting allows it; a lookup that finds `gh` gone or logged out turns it off. A command that ends
 during a lookup gets a second one after it. Git changes and `gh pr checkout` stop at 100 s each,
 and the call budget covers the longest chain of three, so a call never outlives its budget.
-`gh` keeps its own token; Terminescu never reads it. Rejected: the GitHub REST API with a token
+The UI half shows the GitHub items only while the part is on: the Rust half sends a `github`
+event on each switch, and the plugin raises the `github` flag that the items' `when` names, so
+the composed menus, the palette and the + menu drop them without `gh`. "Check out pull request"
+picks from a list the app's `ask` dialog draws. `gh` keeps its own token; Terminescu never
+reads it. Rejected: the GitHub REST API with a token
 in the Keychain. It breaks the no-token rule's spirit and duplicates `gh`.
 
 ### D5. Worktree paths

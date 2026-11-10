@@ -974,4 +974,14 @@ fn the_github_setting_turns_the_part_off() {
         .unwrap();
     assert_eq!(status["github"], json!(false));
     assert_eq!(status["githubOff"], json!("GitHub is off in Settings"));
+    // The UI half hears each switch: on at launch, off after the recheck.
+    let told: Vec<_> = cx
+        .emits
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(e, _)| e == "github")
+        .map(|(_, p)| p["on"].clone())
+        .collect();
+    assert_eq!(told, [json!(true), json!(false)]);
 }
