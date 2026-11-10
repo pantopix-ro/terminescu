@@ -1460,9 +1460,17 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     cur.answer(a);
     refocus();
   };
-  const runPluginAction = (id: string) => {
+  /** Runs a plugin action; from a row's menu it runs on that row and its shown tab's shell. */
+  const runPluginAction = (id: string, rowId?: string) => {
     const a = plugins.composed.actions.find((x) => x.id === id);
     if (!a) return;
+    const row = rowId && rowId !== activeSide?.id ? sideTabs.find((sd) => sd.id === rowId) : undefined;
+    const rowShell = row && (() => {
+      const shown = row.tabs.find((t) => t.id === tabBySide[row.id]) ?? row.tabs[0];
+      const terms = shown ? terminalsOf(shown.layout) : [];
+      const last = shown && lastTerminal.current[shown.id];
+      return last && terms.includes(last) ? last : terms[0];
+    })();
     const cx = {
       windowId,
       bridge: plugins.bridge(a.plugin),
@@ -1471,9 +1479,11 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         if (!/^https?:\/\//i.test(url)) return Promise.reject(new Error("only http and https links open"));
         return host.openUrl(url);
       },
-      ...(activeSide ? { sideTabId: activeSide.id } : {}),
-      ...(focused ? { paneId: focused } : {}),
-      ...(shellPane ? { shellPaneId: shellPane } : {}),
+      ...(row ? { sideTabId: row.id, ...(rowShell ? { shellPaneId: rowShell } : {}) } : {
+        ...(activeSide ? { sideTabId: activeSide.id } : {}),
+        ...(focused ? { paneId: focused } : {}),
+        ...(shellPane ? { shellPaneId: shellPane } : {}),
+      }),
     };
     void Promise.resolve()
       .then(() => a.run(cx))
@@ -1783,6 +1793,11 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           },
         },
         { id: "status", label: "Edit status…", run: () => editStatus(side.id) },
+        // Plugin actions that work on a row (add-claude-insights 3.1).
+        ...((): MenuEntry[] => {
+          const own = plugins.composed.actions.filter((a) => a.rowMenu);
+          return own.length ? ["-", ...own.map((a) => ({ id: `plugin:${a.id}`, label: a.label, ...(a.accel ? { hint: chordLabel(a.accel) } : {}), run: () => runPluginAction(a.id, side.id) }))] : [];
+        })(),
         "-",
         {
           id: "merge",

@@ -33,7 +33,7 @@
 
 ## 3. History and files
 
-- [ ] 3.1 Session history in row data, "Resume…" that types without Enter. Verify: plugin test
+- [x] 3.1 Session history in row data, "Resume…" that types without Enter. Verify: plugin test
       `history_keeps_50_newest`; `e2e/claude.spec.ts` "resume types the command and no Enter".
 - [ ] 3.2 "What Claude changed" panel section and diff tabs through the git plugin's diff view
       (plain text view when git is off). Verify: `e2e/claude.spec.ts` "a session's changes open

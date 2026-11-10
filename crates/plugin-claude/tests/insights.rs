@@ -224,3 +224,71 @@ fn a_fixture_transcript_fills_the_meter_chips_and_todos() {
         "no session, no tail timer"
     );
 }
+
+#[test]
+fn history_keeps_50_newest() {
+    let base = folder("history");
+    let plugin = ClaudePlugin::new(PathBuf::from("/opt/terminescu"), &base.join("support"));
+    let cx = Cx::one_pane("/Users/owner/src/shop-api");
+    for i in 0..52 {
+        let id = format!("sess-{i:02}");
+        hook(
+            &plugin,
+            &cx,
+            json!({ "hook_event_name": "SessionStart", "session_id": id, "source": "startup",
+                    "cwd": format!("/Users/owner/src/shop-api/{i}") }),
+        );
+        hook(
+            &plugin,
+            &cx,
+            json!({ "hook_event_name": "UserPromptSubmit", "session_id": id,
+                    "prompt": format!("\n  Fix the retry for PROJ-{i}\nand add a test") }),
+        );
+        // A second prompt keeps the first one's line.
+        hook(
+            &plugin,
+            &cx,
+            json!({ "hook_event_name": "UserPromptSubmit", "session_id": id, "prompt": "thanks" }),
+        );
+        hook(
+            &plugin,
+            &cx,
+            json!({ "hook_event_name": "SessionEnd", "session_id": id }),
+        );
+        // Sessions start a second apart.
+        let mut data = cx.row_data.lock().unwrap();
+        if let Some(Value::Array(list)) = data.get_mut(&("s1".to_string(), "sessions".to_string()))
+        {
+            for s in list.iter_mut() {
+                if s["id"] == id.as_str() {
+                    s["started"] = json!(1000 + i);
+                }
+            }
+        }
+    }
+    let list = plugin.call("history", json!({ "row": "s1" }), &cx).unwrap();
+    let list = list.as_array().unwrap();
+    assert_eq!(list.len(), 50);
+    assert_eq!(list[0]["id"], "sess-51");
+    assert_eq!(list[49]["id"], "sess-02");
+    assert_eq!(list[0]["prompt"], "Fix the retry for PROJ-51");
+    assert!(list[0]["ended"].is_u64());
+
+    plugin
+        .call("resume", json!({ "row": "s1", "session": "sess-40" }), &cx)
+        .unwrap();
+    assert_eq!(
+        cx.typed.lock().unwrap().as_slice(),
+        [(
+            "s1".to_string(),
+            "/Users/owner/src/shop-api/40".to_string(),
+            "claude --resume sess-40".to_string()
+        )]
+    );
+    assert!(
+        plugin
+            .call("resume", json!({ "row": "s1", "session": "sess-00" }), &cx)
+            .is_err(),
+        "a session the row no longer keeps"
+    );
+}

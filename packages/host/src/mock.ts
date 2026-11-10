@@ -120,6 +120,11 @@ export interface MockHost extends Host {
   setAgent(pane: string, agent: AgentView | null): void;
   /** Plays OSC 7 in a pane: its working directory, as the shell reports it (task 8.30). */
   setCwd(pane: string, cwd: string): void;
+  /**
+   * Plays the core's `type_in_new_tab` for a plugin's Rust half: a new tab in the row, in
+   * `cwd`, with `line` typed and no Enter. Returns the new pane.
+   */
+  typeInNewTab(sideTabId: Id, cwd: string, line: string): Promise<Id>;
   /** Plays OSC 0/2 in a pane: the terminal title, spinner and all; null clears it. */
   setTitle(pane: string, title: string | null): void;
   /** Appends entries to a session's fake transcript. */
@@ -1330,6 +1335,16 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
     setCwd(pane, cwd) {
       cwds.set(pane, cwd);
       relabel();
+    },
+    async typeInNewTab(sideTabId, cwd, line) {
+      await host.send({ type: "CreateTab", sideTabId });
+      const row = ws.windows.flatMap((w) => w.sideTabs).find((sd) => sd.id === sideTabId);
+      const tab = row?.tabs[row.tabs.length - 1];
+      if (tab?.layout.type !== "pane") throw new Error(`no new tab in ${sideTabId}`);
+      const pane = tab.layout.id;
+      host.setCwd(pane, cwd);
+      typeInto(pane, line);
+      return pane;
     },
     setTitle(pane, title) {
       // As the daemon does: no spinner, and a blank title clears it.

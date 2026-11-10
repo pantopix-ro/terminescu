@@ -74,7 +74,7 @@ test("plugin actions reach the palette and the menu; a clashing chord loses", as
   await expect(page.locator(".palette-item", { hasText: "Fake Hello" }).locator(".ao-dim")).toHaveText("⌥⌘J");
   await page.keyboard.press("Escape");
   await host(page, "setPluginEnabled", "fake", false);
-  await expect.poll(() => page.evaluate(() => (window as any).__terminescu.host.pluginActions().length)).toBe(0);
+  await expect.poll(() => page.evaluate(() => (window as any).__terminescu.host.pluginActions().filter((a: { id: string }) => a.id.startsWith("fake.")).length)).toBe(0);
 });
 
 test("a pane view without its plugin keeps its place and names the plugin", async ({ page }) => {
@@ -125,7 +125,7 @@ test("switching a plugin off clears what it shows", async ({ page }) => {
   await expect(page.locator(".pl-item")).toHaveCount(0);
   await expect(page.locator('section[data-section="fake.notes"]')).toHaveCount(0);
   await expect(settings.locator(".fake-settings")).toHaveCount(0);
-  expect(await page.evaluate(() => (window as any).__terminescu.host.pluginActions().length)).toBe(0);
+  expect(await page.evaluate(() => (window as any).__terminescu.host.pluginActions().filter((a: { id: string }) => a.id.startsWith("fake.")).length)).toBe(0);
   // Back on, it starts clean: what it showed went with it.
   await settings.getByLabel("Plugin Fake").check();
   await expect(page.locator('section[data-section="fake.notes"]')).toBeVisible();

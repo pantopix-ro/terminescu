@@ -187,6 +187,8 @@ export interface PluginAction {
   accel?: string;
   /** Also in the sidebar's + menu, after Terminal and Text. */
   newMenu?: boolean;
+  /** Also in a row's right-click menu; it runs on that row, with that row's shell. */
+  rowMenu?: boolean;
   /** Shown, in menus and the palette, only while the plugin raises this flag (`UiPlugin.flags`). */
   when?: string;
   run(cx: ActionContext): void | Promise<void>;
@@ -250,6 +252,7 @@ export interface ComposedAction extends ActionDef {
   /** The chord the plugin asked for, when it lost it to the app or the person. */
   lostAccel?: string;
   newMenu: boolean;
+  rowMenu: boolean;
   run: PluginAction["run"];
 }
 
@@ -308,6 +311,7 @@ export function compose({ plugins, enabled, decorations, appActions, flags }: Co
         accel: free ? a.accel! : "",
         plugin: p.id,
         newMenu: a.newMenu === true,
+        rowMenu: a.rowMenu === true,
         run: a.run,
         ...(a.accel && !free ? { lostAccel: a.accel } : {}),
       });

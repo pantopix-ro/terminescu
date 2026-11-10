@@ -83,3 +83,45 @@ test("the todo list shows Claude's plan", async ({ page }) => {
   await expect(section.locator(".cl-todo").first()).toHaveAttribute("data-state", "completed");
   await expect(section.locator(".cl-todo").nth(1)).toHaveAttribute("data-state", "inProgress");
 });
+
+test("resume types the command and no Enter", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/?plugins=claude");
+  const row = await page.evaluate(() => (window as any).__terminescu.host.workspace().windows[0].sideTabs[0].id as string);
+  const now = Math.floor(Date.now() / 1000);
+  await page.evaluate(
+    ({ row, now }) =>
+      ((window as any).__fakeClaude = {
+        [row]: {
+          history: [
+            { id: "sess-new", cwd: "/Users/owner/src/shop-api", started: now - 60, prompt: "Add backoff to the retry" },
+            { id: "sess-old", cwd: "/Users/owner/src/shop-api/web", started: now - 86400, ended: now - 80000, prompt: "Fix PROJ-482" },
+          ],
+        },
+      }),
+    { row, now },
+  );
+  // From the row's edit dialog: the sessions newest first, then a new tab with the line typed.
+  await page.locator(`.ao-st[data-side="${row}"]`).click({ button: "right" });
+  await page.locator(".edit-actions").getByRole("button", { name: /Resume…/ }).click();
+  const dialog = page.getByRole("alertdialog", { name: "Resume a Claude session" });
+  await expect(dialog).toBeVisible();
+  const items = dialog.getByRole("radio");
+  await expect(items).toHaveCount(2);
+  await expect(items.first()).toContainText("Add backoff to the retry");
+  await items.nth(1).click();
+  await dialog.getByRole("button", { name: "Resume", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  const tabs = await page.evaluate((row) => (window as any).__terminescu.host.workspace().windows[0].sideTabs.find((s: any) => s.id === row).tabs, row);
+  expect(tabs).toHaveLength(2);
+  const pane = tabs[1].layout.id;
+  await expect
+    .poll(() => page.evaluate((pane) => (window as any).__terminescu.host.typed.get(pane), pane))
+    .toBe("claude --resume sess-old");
+  // The palette has it too, with its ⌘ chord.
+  await page.locator(".term-pane").first().click();
+  await page.keyboard.press("Meta+KeyP");
+  await expect(page.locator(".palette")).toBeVisible();
+  await page.keyboard.type("resume");
+  await expect(page.locator(".palette-item", { hasText: "Resume…" })).toContainText("⌥⌘R");
+});

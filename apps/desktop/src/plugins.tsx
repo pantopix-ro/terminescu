@@ -263,16 +263,24 @@ const fakeGit = (): FakePlugin => ({
 });
 
 /**
- * The Claude half's insight calls, as a test sets them on `window.__fakeClaude` by pane: what
- * `todos` answers (add-claude-insights group 2). The mock's own Claude half keeps `read`.
+ * The Claude half's insight calls, as a test sets them on `window.__fakeClaude`: by pane what
+ * `todos` answers, by row the `history` that `resume` reads (add-claude-insights groups 2 and
+ * 3). The mock's own Claude half keeps `read`.
  */
 const fakeClaude = (): FakePlugin => ({
   id: "claude",
   name: "Claude",
-  call(method, args) {
-    const a = (args ?? {}) as { pane?: string };
-    const all = (globalThis as { __fakeClaude?: Record<string, { todos?: unknown }> }).__fakeClaude ?? {};
+  async call(method, args, host) {
+    const a = (args ?? {}) as { pane?: string; row?: string; session?: string };
+    const all = (globalThis as { __fakeClaude?: Record<string, { todos?: unknown; history?: { id: string; cwd: string }[] }> }).__fakeClaude ?? {};
     if (method === "todos") return all[a.pane ?? ""]?.todos ?? { session: null, todos: null };
+    if (method === "history") return all[a.row ?? ""]?.history ?? [];
+    if (method === "resume") {
+      const s = all[a.row ?? ""]?.history?.find((h) => h.id === a.session);
+      if (!s) throw new Error(`${a.session} is not a session of this row`);
+      await host.typeInNewTab(a.row!, s.cwd, `claude --resume ${s.id}`);
+      return null;
+    }
     throw new Error(`${method} is not a method of this plugin`);
   },
 });

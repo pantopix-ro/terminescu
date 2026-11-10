@@ -4,6 +4,7 @@
 
 pub mod agent;
 pub mod baseline;
+pub mod history;
 pub mod hook;
 pub mod insights;
 pub mod transcript;
@@ -320,6 +321,14 @@ impl ClaudePlugin {
             }
             _ => {}
         }
+        if let Some(row) = cx
+            .panes()
+            .into_iter()
+            .find(|p| p.pane == pane)
+            .map(|p| p.side_tab)
+        {
+            history::on_hook(cx, &row, session, event, baseline::now());
+        }
         self.follow(pane, session, name == Some("SessionEnd"), event, cx);
     }
 
@@ -451,6 +460,13 @@ struct SessionArgs {
     path: Option<String>,
 }
 
+#[derive(Debug, serde::Deserialize)]
+struct RowArgs {
+    row: String,
+    #[serde(default)]
+    session: Option<String>,
+}
+
 impl Plugin for ClaudePlugin {
     fn manifest(&self) -> Manifest {
         Manifest {
@@ -503,6 +519,8 @@ impl Plugin for ClaudePlugin {
     /// `changes {session | pane}`: what the session changed (add-claude-insights 1.3).
     /// `baseText {session | pane, path}`: a file before the session.
     /// `todos {pane}`: the pane's session and its latest todo list, or null (2.2).
+    /// `history {row}`: the row's sessions, newest first (3.1).
+    /// `resume {row, session}`: a new tab in the session's folder with the resume line typed.
     fn call(&self, method: &str, args: Value, cx: &dyn PluginCx) -> Result<Value, PluginError> {
         match method {
             "changes" | "baseText" => {
@@ -539,6 +557,24 @@ impl Plugin for ClaudePlugin {
                     Some(l) => json!({ "session": l.session, "todos": l.insight.todos }),
                     None => json!({ "session": null, "todos": null }),
                 })
+            }
+            "history" => {
+                let args: RowArgs = serde_json::from_value(args).map_err(bad)?;
+                serde_json::to_value(history::read(cx, &args.row))
+                    .map_err(|e| PluginError::Failed(e.to_string()))
+            }
+            "resume" => {
+                let args: RowArgs = serde_json::from_value(args).map_err(bad)?;
+                let id = args.session.ok_or_else(|| bad("a session"))?;
+                let s = history::read(cx, &args.row)
+                    .into_iter()
+                    .find(|s| s.id == id)
+                    .ok_or_else(|| bad(format!("{id} is not a session of this row")))?;
+                let line = ClaudeAdapter
+                    .resume_command(&s.id)
+                    .ok_or_else(|| bad("not a session id"))?;
+                cx.type_in_new_tab(&args.row, &s.cwd, &line)?;
+                Ok(Value::Null)
             }
             "read" => {
                 let args: ReadArgs = serde_json::from_value(args)

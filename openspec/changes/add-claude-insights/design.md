@@ -76,6 +76,9 @@ On `SessionStart` and `SessionEnd`, and on the first `UserPromptSubmit` (for the
 line, at most 80 characters), the plugin updates `plugin_side_tab_data` key `sessions` for the
 pane's row: newest first, at most 50. Resume uses `PluginCx` "run a command line in a new
 login-shell tab without Enter".
+Note: "Resume…" (`⌥⌘R`) is a plugin action with `rowMenu: true`, a generic plugin-api flag that
+lists the action in the row's Edit dialog and runs it against that row's shown tab. The Rust
+call `resume` checks the session is in the row's history before it types the command.
 
 ### D7. Signals from hooks
 Waiting reason from `PermissionRequest` `tool_name` and `tool_input` (`command`, `file_path`,

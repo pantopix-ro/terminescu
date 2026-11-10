@@ -5,12 +5,14 @@
 import type { TranscriptChunk } from "@terminescu/host";
 import { definePlugin, type PaneViewProps } from "@terminescu/plugin-api";
 import { quoteOf } from "@terminescu/ui";
+import { resume } from "./actions";
 import { TodoSection } from "./TodoSection";
 import { TranscriptPane } from "./TranscriptPane";
 import "./transcript.css";
 
 export { TranscriptPane, type Reveal, type TextEntry } from "./TranscriptPane";
 export { TodoSection, type Todo, type TodosAnswer } from "./TodoSection";
+export { resume, startedAt, type PastSession } from "./actions";
 
 function Transcript({ paneId, source, bridge, app }: PaneViewProps) {
   return (
@@ -42,4 +44,5 @@ export const claude = definePlugin({
   name: "Claude",
   paneViews: [{ kind: "transcript", render: Transcript }],
   panelSections: [{ id: "todos", title: "Claude's plan", render: TodoSection }],
+  actions: [resume],
 });
