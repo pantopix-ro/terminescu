@@ -124,6 +124,9 @@ pane views, actions and the settings page are slots the app fills.
   keeps the view across restarts; opening the file plainly draws it as text again. A view's
   `app.renderText({ mount, bar, readOnly })` draws the app's text pane; `readOnly` locks it, as
   for a deleted file's diff.
+- A panel section gets `setHidden(hidden)`, stable for the section. A hidden section keeps its
+  body mounted, so it can show itself again. The Claude sections hide in a tab with no Claude
+  session.
 - `watch(cx)` runs in each window while the plugin is on, with the window id, the bridge and
   `ask`, and returns its stop. The git plugin answers its `orphan` event this way.
 - Mark the package `"sideEffects": false`, so a build without the plugin drops its code and its
@@ -206,3 +209,19 @@ Test the UI half on the mock host with `?plugins=git`. `window.__fakeGit` answer
 or row, `window.__fakeGitHub` stands in for `gh` (absent means no `gh`), and
 `window.__fakeGitDone` records what the fake added, checked out and removed (`removedAt` for
 the orphan notice).
+
+## The Claude plugin
+
+- **Lead pane.** Two Claude panes in one tab: the pane with the latest hook event sets the tab's
+  chips and meter. When it ends or closes, the other pane's come back.
+- **Tail.** Transcripts are read every second while a session works, every 10 s otherwise. A
+  transcript whose length and time stayed is not opened.
+- **Baselines.** The snapshot runs with every clean and process filter off, so git-lfs and
+  git-crypt neither run nor write into the repository. Settings › Claude sets the largest file
+  kept; the plugin writes it to `<support>/baselines/cap`, which `terminescu hook` reads.
+- **Waiting reasons.** A Bash request shows its program and subcommand only, a URL loses its
+  query, and a question shows its own text.
+- **Contract fixtures.** `crates/plugin-claude/tests/contract.rs` records the plugin's answers
+  in `packages/plugin-claude/contract/*.json`. The e2e fake and `claude.spec.ts` read them. After
+  a deliberate change, run
+  `TERMINESCU_BLESS=1 cargo test -p terminescu-plugin-claude --test contract`.

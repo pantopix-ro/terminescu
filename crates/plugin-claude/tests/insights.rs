@@ -37,6 +37,12 @@ fn git(dir: &Path, args: &[&str]) {
     assert!(ok, "git {args:?}");
 }
 
+/// Fires the newest tail timer.
+fn tick(plugin: &ClaudePlugin, cx: &Cx) {
+    let token = cx.timers.lock().unwrap().last().unwrap().1.clone();
+    plugin.on_event(&CoreEvent::Timer { token }, cx);
+}
+
 pub fn hook(plugin: &ClaudePlugin, cx: &Cx, event: Value) {
     plugin.on_event(
         &CoreEvent::Hook {
@@ -184,16 +190,15 @@ fn a_fixture_transcript_fills_the_meter_chips_and_todos() {
             .iter()
             .any(|(e, _)| e == "insights")
     );
-    assert_eq!(cx.timers.lock().unwrap().last().unwrap().1, "tail");
+    assert_eq!(
+        cx.timers.lock().unwrap().last().unwrap(),
+        &(Duration::from_secs(1), "tail:1".into()),
+        "a working session reads every second"
+    );
 
     // A subagent's line does not count; the main session's latest entry does.
     std::fs::write(&transcript, &full).unwrap();
-    plugin.on_event(
-        &CoreEvent::Timer {
-            token: "tail".into(),
-        },
-        &cx,
-    );
+    tick(&plugin, &cx);
     let meter = cx.decoration(&tab, "context").unwrap();
     assert_eq!(meter.text, "86%");
     assert_eq!(meter.tone, Tone::Warn);
@@ -207,12 +212,7 @@ fn a_fixture_transcript_fills_the_meter_chips_and_todos() {
         "contextWindows".into(),
         json!({ "claude-opus-5-5": 1_000_000 }),
     );
-    plugin.on_event(
-        &CoreEvent::Timer {
-            token: "tail".into(),
-        },
-        &cx,
-    );
+    tick(&plugin, &cx);
     let meter = cx.decoration(&tab, "context").unwrap();
     assert_eq!((meter.text.as_str(), meter.tone), ("17%", Tone::Neutral));
 
@@ -226,12 +226,7 @@ fn a_fixture_transcript_fills_the_meter_chips_and_todos() {
         "an ended session takes its meter"
     );
     let timers = cx.timers.lock().unwrap().len();
-    plugin.on_event(
-        &CoreEvent::Timer {
-            token: "tail".into(),
-        },
-        &cx,
-    );
+    tick(&plugin, &cx);
     assert_eq!(
         cx.timers.lock().unwrap().len(),
         timers,
@@ -466,4 +461,97 @@ fn settings_check_their_values_and_reach_the_meter_and_the_prune() {
         terminescu_plugin_claude::settings::limits(&cx).1,
         20 * 1024 * 1024
     );
+
+    // The per-file limit goes where the hook reads it (polish-claude-insights D3).
+    let store = base.join("support/baselines");
+    assert_eq!(got["baselineFileMb"], 5);
+    assert!(set("baselineFileMb", json!(101)).is_err());
+    let got = set("baselineFileMb", json!(1)).unwrap();
+    assert_eq!(got["baselineFileMb"], 1);
+    assert_eq!(
+        terminescu_plugin_api::baseline::file_cap(&store),
+        1024 * 1024
+    );
+    set("baselineFileMb", Value::Null).unwrap();
+    assert!(!store.join("cap").exists());
+    cx.settings
+        .lock()
+        .unwrap()
+        .insert("baselineFileMb".into(), json!(2));
+    plugin.on_event(&CoreEvent::AppLaunched, &cx);
+    assert_eq!(
+        terminescu_plugin_api::baseline::file_cap(&store),
+        2 * 1024 * 1024,
+        "launch writes the saved limit"
+    );
+}
+
+#[test]
+fn the_tail_rests_after_a_turn_and_old_timers_do_nothing() {
+    let base = folder("rest");
+    let transcript = base.join("sess-7.jsonl");
+    std::fs::write(&transcript, "").unwrap();
+    let plugin = ClaudePlugin::new(PathBuf::from("/opt/terminescu"), &base.join("support"));
+    let cx = Cx::one_pane("/Users/owner/src/shop-api");
+    let ev = |name: &str| json!({ "hook_event_name": name, "session_id": "sess-7", "transcript_path": transcript });
+    hook(&plugin, &cx, ev("SessionStart"));
+    let timers = || cx.timers.lock().unwrap().clone();
+    assert_eq!(timers(), [(Duration::from_secs(10), "tail:1".to_string())]);
+    // A prompt brings the far timer forward; the far one goes stale.
+    hook(&plugin, &cx, ev("UserPromptSubmit"));
+    assert_eq!(timers()[1], (Duration::from_secs(1), "tail:2".to_string()));
+    hook(&plugin, &cx, ev("PostToolUse"));
+    assert_eq!(timers().len(), 2, "a near timer stays");
+    plugin.on_event(
+        &CoreEvent::Timer {
+            token: "tail:1".into(),
+        },
+        &cx,
+    );
+    assert_eq!(timers().len(), 2, "a stale timer sets no other");
+    hook(&plugin, &cx, ev("Stop"));
+    tick(&plugin, &cx);
+    assert_eq!(
+        timers().last().unwrap().0,
+        Duration::from_secs(10),
+        "a finished turn reads every 10 s"
+    );
+}
+
+#[test]
+fn the_pane_that_spoke_last_leads_its_tab() {
+    let base = folder("lead");
+    let plugin = ClaudePlugin::new(PathBuf::from("/opt/terminescu"), &base.join("support"));
+    let cx = Cx::one_pane("/Users/owner/src/shop-api");
+    let mut second = cx.panes.lock().unwrap()[0].clone();
+    second.pane = "p2".into();
+    cx.panes.lock().unwrap().push(second);
+    let tab = Target::Tab("t1".into());
+    let start = |pane: &str, session: &str, model: &str| {
+        plugin.on_event(
+            &CoreEvent::Hook {
+                pane: pane.into(),
+                event: json!({ "hook_event_name": "SessionStart", "session_id": session, "model": model }),
+            },
+            &cx,
+        );
+    };
+    start("p1", "sess-a", "claude-opus-5-5");
+    assert_eq!(cx.text(&tab, "model").as_deref(), Some("opus-5-5"));
+    start("p2", "sess-b", "claude-haiku-5-5");
+    assert_eq!(cx.text(&tab, "model").as_deref(), Some("haiku-5-5"));
+    plugin.on_event(
+        &CoreEvent::Hook {
+            pane: "p2".into(),
+            event: json!({ "hook_event_name": "SessionEnd", "session_id": "sess-b" }),
+        },
+        &cx,
+    );
+    assert_eq!(
+        cx.text(&tab, "model").as_deref(),
+        Some("opus-5-5"),
+        "the other pane comes back"
+    );
+    plugin.on_event(&CoreEvent::PaneClosed { pane: "p1".into() }, &cx);
+    assert!(cx.text(&tab, "model").is_none());
 }

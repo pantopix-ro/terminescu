@@ -1,8 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
 
 // add-claude-insights on the mock host: the Claude half's decorations and calls are played as
 // its Rust half would set and answer them; crates/plugin-claude/tests/insights.rs covers how it
 // reads them from a transcript.
+
+/** What crates/plugin-claude answers, as tests/contract.rs records it (polish-claude-insights D8). */
+const contract = (name: string) =>
+  JSON.parse(readFileSync(new URL(`../../../packages/plugin-claude/contract/${name}.json`, import.meta.url), "utf8"));
 
 const host = (page: Page, method: string, ...args: unknown[]) =>
   page.evaluate(({ method, args }) => (window as any).__terminescu.host[method](...args), { method, args });
@@ -62,19 +67,14 @@ test("the todo list shows Claude's plan", async ({ page }) => {
   await page.locator(".term-pane").first().click();
   await page.keyboard.press("Meta+Backslash");
   const panel = page.locator('aside.ctx-pinned section[data-section="claude.todos"]');
-  await expect(panel.locator("h3")).toHaveText("Claude's plan");
-  await expect(panel.locator(".ctx-empty")).toHaveText("No Claude session in this tab.");
+  // A tab with no Claude session shows no plan section (polish-claude-insights D2).
+  await expect(panel).toBeHidden();
   const section = panel.locator(".cl-todos");
-  const todos = (states: string[]) => ({
-    session: "sess-1",
-    todos: ["Read src/retry.ts", "Add exponential backoff", "Cover it with a test", "Run the tests"].map((content, i) => ({
-      content,
-      state: states[i],
-      activeForm: i === 0 ? "Reading src/retry.ts" : undefined,
-    })),
-  });
-  await page.evaluate(({ pane, a }) => ((window as any).__fakeClaude = { [pane]: { todos: a } }), { pane, a: todos(["inProgress", "pending", "pending", "pending"]) });
+  const some = contract("todos").some as { session: string; todos: { state: string }[] };
+  const todos = (states: string[]) => ({ ...some, todos: some.todos.map((t, i) => ({ ...t, state: states[i] })) });
+  await page.evaluate(({ pane, a }) => ((window as any).__fakeClaude = { [pane]: { todos: a } }), { pane, a: some });
   await host(page, "pluginEmit", "claude", "insights", { pane });
+  await expect(panel.locator("h3")).toHaveText("Claude's plan");
   await expect(section.locator(".cl-todo")).toHaveCount(4);
   await expect(section.locator(".cl-todo").first()).toHaveAttribute("data-state", "inProgress");
   await expect(section.locator(".cl-todo").first()).toHaveText(/Reading src\/retry\.ts/);
@@ -82,6 +82,10 @@ test("the todo list shows Claude's plan", async ({ page }) => {
   await host(page, "pluginEmit", "claude", "insights", { pane });
   await expect(section.locator(".cl-todo").first()).toHaveAttribute("data-state", "completed");
   await expect(section.locator(".cl-todo").nth(1)).toHaveAttribute("data-state", "inProgress");
+  // The session ends: the section goes again.
+  await page.evaluate(({ pane, a }) => ((window as any).__fakeClaude = { [pane]: { todos: a } }), { pane, a: contract("todos").none });
+  await host(page, "pluginEmit", "claude", "insights", { pane });
+  await expect(panel).toBeHidden();
 });
 
 test("resume types the command and no Enter", async ({ page }) => {
@@ -159,30 +163,32 @@ test("a session's changes open as diffs", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/?plugins=claude");
   const { pane } = await first(page);
-  const root = "/Users/owner/src/shop-api";
-  const file = (rel: string, extra: object) => ({ path: `${root}/${rel}`, added: 1, removed: 1, created: false, deleted: false, ...extra });
+  const { changes, baseText } = contract("changes");
+  const root: string = changes.base;
   await page.locator(".term-pane").first().click();
   await page.keyboard.press("Meta+Backslash");
   const section = page.locator('aside.ctx-pinned section[data-section="claude.changes"]');
-  await expect(section.locator("h3")).toHaveText("What Claude changed");
-  await expect(section.locator(".ctx-empty")).toHaveText("No Claude session in this tab.");
+  await expect(section).toBeHidden();
+  const large = { path: `${root}/data/dump.sql`, added: null, removed: null, created: false, deleted: false, none: "too large" };
   await page.evaluate(
-    ({ pane, root, files }) => {
-      (window as any).__fakeClaude = { [pane]: { changes: { session: "sess-1", tree: true, base: root, files } } };
-      (window as any).__fakeClaudeBases = { [`${root}/src/retry.ts`]: { exists: true, binary: false, large: false, text: "const tries = 3;\n" } };
-      (window as any).__terminescu.host.files.set(`${root}/src/retry.ts`, "const tries = 5;\n");
+    ({ pane, root, changes, base }) => {
+      (window as any).__fakeClaude = { [pane]: { changes } };
+      (window as any).__fakeClaudeBases = { [`${root}/src/retry.ts`]: base };
+      (window as any).__terminescu.host.files.set(`${root}/src/retry.ts`, "const tries = 5;\nexport {};\n");
     },
-    { pane, root, files: [file("src/retry.ts", {}), file("src/new.ts", { created: true, removed: 0 }), file("data/dump.sql", { added: null, removed: null, none: "too large" })] },
+    { pane, root, changes: { ...changes, files: [...changes.files, large] }, base: baseText.changed },
   );
   await host(page, "pluginEmit", "claude", "changed", { pane });
+  await expect(section.locator("h3")).toHaveText("What Claude changed");
   const rows = section.locator(".cl-change");
-  await expect(rows).toHaveCount(3);
+  await expect(rows).toHaveCount(4);
   await expect(section.locator(".cl-untracked")).toHaveCount(0);
   const retry = section.locator(`.cl-change[data-path="${root}/src/retry.ts"]`);
   await expect(retry.locator(".cl-name")).toHaveText("retry.ts");
   await expect(retry.locator(".cl-dir")).toHaveText("src/");
-  await expect(retry.locator(".cl-lines")).toHaveText("+1 −1");
-  await expect(section.locator(`.cl-change[data-path="${root}/src/new.ts"] .cl-change-mark`)).toHaveText("A");
+  await expect(retry.locator(".cl-lines")).toHaveText("+2 −1");
+  await expect(section.locator(`.cl-change[data-path="${root}/src/backoff.ts"] .cl-change-mark`)).toHaveText("A");
+  await expect(section.locator(`.cl-change[data-path="${root}/src/old.ts"] .cl-change-mark`)).toHaveText("D");
   await expect(section.locator(`.cl-change[data-path="${root}/data/dump.sql"]`)).toContainText("Too large to compare");
   // The diff: the file before the session on the left, the working copy on the right.
   await retry.locator(".cl-path").click();

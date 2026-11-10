@@ -1,5 +1,5 @@
 // Settings › Claude (add-claude-insights 3.4): the meter threshold, a context window per model,
-// and the baselines' cap and retention. The values live in the Rust half's plugin settings; it
+// and the baselines' retention, total size and largest file. The values live in the Rust half's plugin settings; it
 // checks each one and answers the settings as they now are.
 
 import { useEffect, useState } from "react";
@@ -11,10 +11,13 @@ export interface ClaudeSettings {
   contextWindows: Record<string, number>;
   baselineCapMb: number;
   baselineDays: number;
-  defaults: { meterThreshold: number; window: number; baselineCapMb: number; baselineDays: number };
+  /** The largest file a baseline keeps (polish-claude-insights D3). */
+  baselineFileMb: number;
+  defaults: { meterThreshold: number; window: number; baselineCapMb: number; baselineDays: number; baselineFileMb: number };
 }
 
-const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+/** The Rust half's refusal as the page shows it, without the host's "bad arguments:" lead. */
+export const message = (e: unknown) => (e instanceof Error ? e.message : String(e)).replace(/^bad arguments: /, "");
 
 /** A whole number typed in a field; blank is null, which puts the default back. */
 export const typedNumber = (text: string): number | null | undefined => {
@@ -135,18 +138,25 @@ export function SettingsPage({ bridge }: SettingsPageProps) {
       </div>
       <h4 className="small cl-settings-head">Baselines</h4>
       <NumberRow
-        label="Keep for"
+        label="Keep baselines for"
         value={settings.baselineDays}
         unit="days"
         hint={`after the session ends; blank for ${d.baselineDays}`}
         save={(v) => save("baselineDays", v)}
       />
       <NumberRow
-        label="Cap"
+        label="Total baseline storage"
         value={settings.baselineCapMb}
         unit="MB"
         hint={`oldest ended sessions go first; blank for ${d.baselineCapMb}`}
         save={(v) => save("baselineCapMb", v)}
+      />
+      <NumberRow
+        label="Largest file kept"
+        value={settings.baselineFileMb}
+        unit="MB"
+        hint={`a larger file shows no diff; blank for ${d.baselineFileMb}`}
+        save={(v) => save("baselineFileMb", v)}
       />
       {error && (
         <p className="small app-error cl-settings-error" role="alert">

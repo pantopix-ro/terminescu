@@ -6,6 +6,7 @@ import type { ActionDef, Decoration, Host, KeyBindings, PluginInfo } from "@term
 import type { FakePlugin } from "@terminescu/host/mock";
 import { compose, definePlugin, type Composed, type PluginBridge, type UiPlugin } from "@terminescu/plugin-api";
 import { claude } from "@terminescu/plugin-claude";
+import settingsContract from "@terminescu/plugin-claude/contract/settings.json";
 import { git } from "@terminescu/plugin-git";
 
 /** `VITE_PLUGINS=none` builds the bare terminal; the bundler drops the unused halves. */
@@ -317,32 +318,32 @@ const fakeClaude = (): FakePlugin => ({
       await host.typeInNewTab(a.row!, s.cwd, `claude --resume ${s.id}`);
       return null;
     }
-    // As crates/plugin-claude/src/settings.rs, kept in localStorage across a reload.
+    // What crates/plugin-claude answers, from its contract fixture (polish-claude-insights
+    // D8), kept in localStorage across a reload.
     if (method === "settings" || method === "setSetting") {
       const KEY = "terminescu.fakeClaude.settings";
       const kept = JSON.parse(localStorage.getItem(KEY) ?? "{}") as Record<string, unknown>;
-      const ranges: Record<string, [number, number]> = { meterThreshold: [1, 100], baselineCapMb: [10, 100000], baselineDays: [1, 365] };
+      const { view, ranges, errors } = settingsContract as unknown as {
+        view: Record<string, unknown>;
+        ranges: Record<string, [number, number]>;
+        errors: Record<string, string>;
+      };
+      const fits = (n: unknown, [lo, hi]: [number, number]) => Number.isInteger(n) && (n as number) >= lo && (n as number) <= hi;
       if (method === "setSetting") {
         const { key, value } = args as { key: string; value: unknown };
+        const range = ranges[key];
+        if (!range) throw new Error(errors.unknown);
         if (key === "contextWindows") {
           const m = (value ?? {}) as Record<string, number>;
-          for (const n of Object.values(m)) if (!Number.isInteger(n) || n < 1000 || n > 10000000) throw new Error("a window is a whole number from 1000 to 10000000");
+          if (Object.values(m).some((n) => !fits(n, range))) throw new Error(errors[key]);
           kept[key] = Object.keys(m).length ? m : undefined;
-        } else if (ranges[key]) {
-          const [lo, hi] = ranges[key];
-          if (value !== null && !(Number.isInteger(value) && (value as number) >= lo && (value as number) <= hi))
-            throw new Error(`${key === "meterThreshold" ? "the threshold" : key === "baselineCapMb" ? "the cap" : "the days"} is a whole number from ${lo} to ${hi}`);
+        } else {
+          if (value !== null && !fits(value, range)) throw new Error(errors[key]);
           kept[key] = value ?? undefined;
-        } else throw new Error(`no setting ${key}`);
+        }
         localStorage.setItem(KEY, JSON.stringify(kept));
       }
-      return {
-        meterThreshold: kept.meterThreshold ?? 80,
-        contextWindows: kept.contextWindows ?? {},
-        baselineCapMb: kept.baselineCapMb ?? 500,
-        baselineDays: kept.baselineDays ?? 7,
-        defaults: { meterThreshold: 80, window: 200000, baselineCapMb: 500, baselineDays: 7 },
-      };
+      return { ...view, ...Object.fromEntries(Object.entries(kept).filter(([, v]) => v !== undefined)) };
     }
     // The row's folder is its `root`; the Rust test covers finding the repository root.
     if (method === "memory") {

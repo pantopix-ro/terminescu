@@ -1,0 +1,31 @@
+{
+  "none": {
+    "session": null,
+    "todos": null
+  },
+  "some": {
+    "session": "sess-1",
+    "todos": [
+      {
+        "content": "Read src/retry.ts",
+        "state": "inProgress",
+        "activeForm": "Reading src/retry.ts"
+      },
+      {
+        "content": "Add exponential backoff",
+        "state": "pending",
+        "activeForm": "Adding exponential backoff"
+      },
+      {
+        "content": "Cover it with a test",
+        "state": "pending",
+        "activeForm": "Covering it with a test"
+      },
+      {
+        "content": "Run the tests",
+        "state": "pending",
+        "activeForm": "Running the tests"
+      }
+    ]
+  }
+}

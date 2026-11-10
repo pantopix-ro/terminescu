@@ -7,6 +7,7 @@ mod agent;
 pub mod atomic;
 pub mod baseline;
 mod decoration;
+pub mod label;
 pub mod process;
 mod tail;
 

@@ -250,23 +250,33 @@ test("Settings › Claude keeps the threshold, a model's window and the baseline
   await claude.getByLabel("Window in tokens").fill("1,000,000");
   await claude.getByRole("button", { name: "Add" }).click();
   await expect(claude.locator('.cl-window[data-model="claude-opus-5"]')).toContainText("1,000,000 tokens");
-  const days = claude.getByLabel("Keep for");
+  const days = claude.getByLabel("Keep baselines for");
   await days.fill("3");
   await days.blur();
-  const cap = claude.getByLabel("Cap");
+  const cap = claude.getByLabel("Total baseline storage");
   await cap.fill("250");
   await cap.press("Enter");
+  // The per-file limit (polish-claude-insights D3).
+  const file = claude.getByLabel("Largest file kept");
+  await expect(file).toHaveValue("5");
+  await file.fill("101");
+  await file.press("Enter");
+  await expect(claude.getByRole("alert")).toHaveText("the file limit is a whole number from 1 to 100");
+  await file.fill("2");
+  await file.press("Enter");
+  await expect(claude.getByRole("alert")).toHaveCount(0);
 
   await page.reload();
   await expect(page.locator(".term-pane")).toHaveCount(1);
   const again = (await openSettings(page, "Plugins")).locator(".cl-settings");
   await expect(again.getByLabel("Meter threshold")).toHaveValue("90");
-  await expect(again.getByLabel("Keep for")).toHaveValue("3");
-  await expect(again.getByLabel("Cap")).toHaveValue("250");
+  await expect(again.getByLabel("Keep baselines for")).toHaveValue("3");
+  await expect(again.getByLabel("Total baseline storage")).toHaveValue("250");
+  await expect(again.getByLabel("Largest file kept")).toHaveValue("2");
   await again.getByRole("button", { name: "Remove claude-opus-5" }).click();
   await expect(again.locator(".cl-window")).toHaveCount(0);
   // Blank puts the default back.
-  await again.getByLabel("Cap").fill("");
-  await again.getByLabel("Cap").press("Enter");
-  await expect(again.getByLabel("Cap")).toHaveValue("500");
+  await again.getByLabel("Total baseline storage").fill("");
+  await again.getByLabel("Total baseline storage").press("Enter");
+  await expect(again.getByLabel("Total baseline storage")).toHaveValue("500");
 });

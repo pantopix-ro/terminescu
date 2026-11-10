@@ -45,6 +45,8 @@ export interface PanelPart {
   key: string;
   title: string;
   body: ReactNode;
+  /** The plugin hid the section; its body stays mounted. */
+  hidden?: boolean;
 }
 
 const SECTIONS = ["Context", "Pins", "Prompts"] as const;
@@ -395,7 +397,7 @@ function Body(props: ContextPanelProps) {
           </section>
         ))}
         {props.sections?.map((s) => (
-          <section key={s.key} className="ctx-section plugin" aria-label={s.title} data-section={s.key}>
+          <section key={s.key} className="ctx-section plugin" aria-label={s.title} data-section={s.key} hidden={s.hidden}>
             <h3 className="ctx-sec-head ao-pixel">{s.title}</h3>
             {s.body}
           </section>

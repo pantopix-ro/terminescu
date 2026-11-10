@@ -60,6 +60,9 @@ export interface PanelSectionProps {
   /** That tab's shell pane: the focused one, else the one focused last, else the first. */
   paneId?: Id;
   bridge: PluginBridge;
+  /** Hides the section's head and body, or shows them again; the body stays mounted, so it can
+   * show itself when its answer changes. Stable for the section (polish-claude-insights D2). */
+  setHidden?(hidden: boolean): void;
 }
 
 export interface PanelSection {

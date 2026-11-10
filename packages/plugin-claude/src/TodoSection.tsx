@@ -21,8 +21,14 @@ const MARK: Record<Todo["state"], { text: string; title: string }> = {
   completed: { text: "●", title: "Done" },
 };
 
-export function TodoSection({ paneId, bridge }: PanelSectionProps) {
+export function TodoSection({ paneId, bridge, setHidden }: PanelSectionProps) {
   const [answer, setAnswer] = useState<TodosAnswer>();
+  // A tab with no Claude session shows no plan section at all (polish-claude-insights D2).
+  const none = !paneId || (answer !== undefined && !answer.session);
+  const loading = !!paneId && answer === undefined;
+  useEffect(() => {
+    if (!loading) setHidden?.(none);
+  }, [none, loading, setHidden]);
   useEffect(() => {
     setAnswer(undefined);
     if (!paneId) return;

@@ -4,7 +4,8 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    ".": "./src/index.tsx"
+    ".": "./src/index.tsx",
+    "./contract/*": "./contract/*"
   },
   "scripts": {
     "test": "vitest run",

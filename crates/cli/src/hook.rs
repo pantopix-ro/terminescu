@@ -69,7 +69,8 @@ impl Baseline {
             }
         };
         let store = baseline::store(&paths::support_dir());
-        let _ = baseline::first_touch(&store, session, &path, baseline::SIZE_CAP);
+        let cap = baseline::file_cap(&store);
+        let _ = baseline::first_touch(&store, session, &path, cap);
     }
 }
 

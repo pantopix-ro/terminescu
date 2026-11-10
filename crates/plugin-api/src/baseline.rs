@@ -24,12 +24,41 @@ use std::path::{Path, PathBuf};
 
 /// The largest file the hook copies and the plugin compares (5 MB, the spec's default).
 pub const SIZE_CAP: u64 = 5 * 1024 * 1024;
+/// The largest per-file limit Settings may set.
+pub const MAX_SIZE_CAP: u64 = 100 * 1024 * 1024;
+/// The file under the store that holds the per-file limit in bytes (polish-claude-insights D3).
+/// The hook reads it before a copy; missing or bad, the limit is [`SIZE_CAP`].
+pub const CAP_FILE: &str = "cap";
 /// The marker of a finished working-tree snapshot.
 pub const READY: &str = "ready";
 
 /// `<support>/baselines`.
 pub fn store(support: &Path) -> PathBuf {
     support.join("baselines")
+}
+
+/// The per-file limit the store's [`CAP_FILE`] sets.
+pub fn file_cap(store: &Path) -> u64 {
+    std::fs::read_to_string(store.join(CAP_FILE))
+        .ok()
+        .and_then(|t| t.trim().parse::<u64>().ok())
+        .filter(|n| (1..=MAX_SIZE_CAP).contains(n))
+        .unwrap_or(SIZE_CAP)
+}
+
+/// Writes the per-file limit, or removes the file for the default.
+pub fn set_file_cap(store: &Path, cap: Option<u64>) -> std::io::Result<()> {
+    let file = store.join(CAP_FILE);
+    match cap {
+        Some(n) => {
+            private_dir(store)?;
+            crate::atomic::write(&file, format!("{n}\n").as_bytes())
+        }
+        None => match std::fs::remove_file(&file) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+            _ => Ok(()),
+        },
+    }
 }
 
 /// A session's folder, or `None` for an id that is not a plain session id.
@@ -421,6 +450,18 @@ mod tests {
         let dir = temp("odd");
         let store = dir.join("store");
         assert!(first_touch(&store, "../x", &dir.join("a"), SIZE_CAP).is_err());
+        assert_eq!(file_cap(&store), SIZE_CAP);
+        set_file_cap(&store, Some(1024)).unwrap();
+        assert_eq!(file_cap(&store), 1024);
+        std::fs::write(store.join(CAP_FILE), "lots\n").unwrap();
+        assert_eq!(
+            file_cap(&store),
+            SIZE_CAP,
+            "a bad file reads as the default"
+        );
+        set_file_cap(&store, None).unwrap();
+        set_file_cap(&store, None).unwrap();
+        assert!(!store.join(CAP_FILE).exists());
         assert!(first_touch(&store, "s-1", Path::new("a.md"), SIZE_CAP).is_err());
         assert!(!store.join("..").join("x").exists());
     }

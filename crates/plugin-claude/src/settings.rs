@@ -6,18 +6,31 @@ use crate::baseline;
 use crate::insights::{DEFAULT_THRESHOLD, DEFAULT_WINDOW};
 use serde_json::{Map, Value, json};
 use std::time::Duration;
+use terminescu_plugin_api::baseline as baseline_store;
 use terminescu_plugin_api::{PluginCx, PluginError};
 
 pub const THRESHOLD: &str = "meterThreshold";
 pub const WINDOWS: &str = "contextWindows";
 pub const CAP_MB: &str = "baselineCapMb";
 pub const KEEP_DAYS: &str = "baselineDays";
+/// The largest file a baseline keeps, in MB (polish-claude-insights D3).
+pub const FILE_MB: &str = "baselineFileMb";
 
 const MB: u64 = 1024 * 1024;
 const DAY: u64 = 24 * 3600;
 const CAP_RANGE: (u64, u64) = (10, 100_000);
 const DAYS_RANGE: (u64, u64) = (1, 365);
-const WINDOW_RANGE: (u64, u64) = (1_000, 10_000_000);
+const FILE_RANGE: (u64, u64) = (1, baseline_store::MAX_SIZE_CAP / MB);
+const THRESHOLD_RANGE: (u64, u64) = (1, 100);
+
+/// Every number setting with its range, as the contract fixture records them.
+pub const RANGES: &[(&str, (u64, u64))] = &[
+    (THRESHOLD, THRESHOLD_RANGE),
+    (CAP_MB, CAP_RANGE),
+    (KEEP_DAYS, DAYS_RANGE),
+    (FILE_MB, FILE_RANGE),
+];
+pub const WINDOW_RANGE: (u64, u64) = (1_000, 10_000_000);
 /// Longest model id kept as a window's key.
 const MODEL_CHARS: usize = 100;
 
@@ -33,6 +46,11 @@ pub fn limits(cx: &dyn PluginCx) -> (Duration, u64) {
         days.map_or(baseline::KEEP, |d| Duration::from_secs(d * DAY)),
         cap.map_or(baseline::CAP_BYTES, |c| c * MB),
     )
+}
+
+/// The per-file limit in bytes, or `None` for the default.
+pub fn file_cap(cx: &dyn PluginCx) -> Option<u64> {
+    within(cx.setting(FILE_MB), FILE_RANGE).map(|n| n * MB)
 }
 
 /// What the page shows: each value as it now reads, and the defaults beside them.
@@ -52,11 +70,13 @@ pub fn view(cx: &dyn PluginCx) -> Value {
         WINDOWS: windows,
         CAP_MB: cap / MB,
         KEEP_DAYS: keep.as_secs() / DAY,
+        FILE_MB: file_cap(cx).unwrap_or(baseline_store::SIZE_CAP) / MB,
         "defaults": {
             THRESHOLD: DEFAULT_THRESHOLD,
             "window": DEFAULT_WINDOW,
             CAP_MB: baseline::CAP_BYTES / MB,
             KEEP_DAYS: baseline::KEEP.as_secs() / DAY,
+            FILE_MB: baseline_store::SIZE_CAP / MB,
         },
     })
 }
@@ -77,9 +97,10 @@ fn number(value: &Value, what: &str, (lo, hi): (u64, u64)) -> Result<Option<Valu
 /// Saves one setting; null puts back its default.
 pub fn set(cx: &dyn PluginCx, key: &str, value: &Value) -> Result<(), PluginError> {
     let kept = match key {
-        THRESHOLD => number(value, "the threshold", (1, 100))?,
+        THRESHOLD => number(value, "the threshold", THRESHOLD_RANGE)?,
         CAP_MB => number(value, "the cap", CAP_RANGE)?,
         KEEP_DAYS => number(value, "the days", DAYS_RANGE)?,
+        FILE_MB => number(value, "the file limit", FILE_RANGE)?,
         WINDOWS => match value {
             Value::Null => None,
             Value::Object(m) => {

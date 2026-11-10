@@ -15,7 +15,8 @@ use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant, SystemTime};
+use terminescu_plugin_api::baseline as baseline_store;
 use terminescu_plugin_api::{
     Agent, AgentAdapter, AgentEvent, CoreEvent, Decoration, Helper, LineTail, Manifest, Plugin,
     PluginCx, PluginError, Target, is_session_id,
@@ -177,8 +178,89 @@ struct State {
     snapshotting: HashSet<String>,
     /// What each pane's session shows (add-claude-insights group 2).
     live: HashMap<String, Live>,
-    /// The tail timer is set.
-    ticking: bool,
+    /// What each tab shows now: its lead pane's decorations (polish-claude-insights D1).
+    shown: HashMap<String, Vec<Decoration>>,
+    /// Hook events seen, so the panes of one tab can tell which spoke last.
+    seq: u64,
+    /// The tail timer that counts, and when it is due (D5). Older tokens are stale.
+    timer: Option<(u64, Instant)>,
+    timers: u64,
+}
+
+impl State {
+    /// Each tab shows its lead pane's decorations: the pane with the latest hook event (D1).
+    /// A tab changes only where its decorations differ.
+    fn publish(&mut self, cx: &dyn PluginCx) {
+        let tabs: HashMap<String, String> =
+            cx.panes().into_iter().map(|p| (p.pane, p.tab)).collect();
+        let mut lead: HashMap<&str, &Live> = HashMap::new();
+        for (pane, live) in &self.live {
+            if let Some(tab) = tabs.get(pane) {
+                let best = lead.entry(tab).or_insert(live);
+                if live.seq > best.seq {
+                    *best = live;
+                }
+            }
+        }
+        let look = insights::Look::from_settings(
+            cx.setting("meterThreshold"),
+            cx.setting("contextWindows"),
+        );
+        let next: HashMap<String, Vec<Decoration>> = lead
+            .into_iter()
+            .map(|(tab, live)| (tab.to_string(), live.insight.decorations(tab, &look)))
+            .filter(|(_, d)| !d.is_empty())
+            .collect();
+        for (tab, old) in &self.shown {
+            if !next.contains_key(tab) {
+                cx.clear_decorations(Some(&Target::Tab(tab.clone())));
+            } else if next[tab] != *old {
+                let new = &next[tab];
+                let kept = old
+                    .iter()
+                    .all(|o| new.iter().any(|n| n.slot == o.slot && n.key == o.key));
+                if !kept {
+                    cx.clear_decorations(Some(&Target::Tab(tab.clone())));
+                }
+                for d in new.iter().filter(|d| !kept || !old.contains(d)) {
+                    cx.set_decoration(d.clone());
+                }
+            }
+        }
+        for (tab, new) in &next {
+            if !self.shown.contains_key(tab) {
+                cx.clear_decorations(Some(&Target::Tab(tab.clone())));
+                for d in new {
+                    cx.set_decoration(d.clone());
+                }
+            }
+        }
+        self.shown = next;
+    }
+
+    /// Sets the tail timer: every second while a session works, else every 10 s. A timer due
+    /// later than that is replaced; none runs while no session is followed.
+    fn arm(&mut self, cx: &dyn PluginCx) {
+        if self.live.is_empty() {
+            self.timer = None;
+            return;
+        }
+        let every = if self.live.values().any(|l| l.busy) {
+            TAIL_BUSY
+        } else {
+            TAIL_IDLE
+        };
+        let at = Instant::now() + every;
+        if self
+            .timer
+            .is_some_and(|(_, due)| due <= at + Duration::from_millis(50))
+        {
+            return;
+        }
+        self.timers += 1;
+        self.timer = Some((self.timers, at));
+        cx.schedule(every, &format!("{TAIL}{}", self.timers));
+    }
 }
 
 /// One pane's session as its tab shows it.
@@ -187,9 +269,12 @@ struct Live {
     session: String,
     insight: insights::Insight,
     tail: Option<LineTail>,
-    /// The tab the decorations went on, and what they were.
-    tab: Option<String>,
-    shown: Vec<Decoration>,
+    /// The number of this pane's latest hook event.
+    seq: u64,
+    /// The session works now: from a prompt or a tool event until it stops.
+    busy: bool,
+    /// The transcript's length and time at the last read.
+    seen: Option<(u64, SystemTime)>,
 }
 
 impl Live {
@@ -198,12 +283,14 @@ impl Live {
             session: session.into(),
             insight: insights::Insight::default(),
             tail: None,
-            tab: None,
-            shown: Vec::new(),
+            seq: 0,
+            busy: false,
+            seen: None,
         }
     }
 
-    /// Reads what the transcript gained. True when the todo list changed.
+    /// Reads what the transcript gained, unless its length and time stayed. True when the
+    /// todo list changed.
     fn catch_up(&mut self, cx: &dyn PluginCx) -> bool {
         if self.tail.is_none() {
             self.tail = cx.agent_log(&self.session).map(LineTail::new);
@@ -211,51 +298,18 @@ impl Live {
         let Some(tail) = self.tail.as_mut() else {
             return false;
         };
+        let now = std::fs::metadata(tail.path())
+            .ok()
+            .and_then(|m| Some((m.len(), m.modified().ok()?)));
+        if now.is_some() && now == self.seen {
+            return false;
+        }
+        self.seen = now;
         let before = self.insight.todos.clone();
         for (_, line) in tail.read().unwrap_or_default() {
             self.insight.on_line(&line);
         }
         self.insight.todos != before
-    }
-
-    /// Puts the decorations on the pane's tab when they changed, or when the pane moved.
-    fn publish(&mut self, pane: &str, cx: &dyn PluginCx) {
-        let tab = cx
-            .panes()
-            .into_iter()
-            .find(|p| p.pane == pane)
-            .map(|p| p.tab);
-        let look = insights::Look::from_settings(
-            cx.setting("meterThreshold"),
-            cx.setting("contextWindows"),
-        );
-        let next = tab
-            .as_deref()
-            .map(|t| self.insight.decorations(t, &look))
-            .unwrap_or_default();
-        if tab == self.tab && next == self.shown {
-            return;
-        }
-        if let Some(old) = &self.tab {
-            cx.clear_decorations(Some(&Target::Tab(old.clone())));
-        }
-        if let Some(t) = &tab
-            && self.tab.as_ref() != Some(t)
-        {
-            cx.clear_decorations(Some(&Target::Tab(t.clone())));
-        }
-        for d in &next {
-            cx.set_decoration(d.clone());
-        }
-        self.tab = tab;
-        self.shown = next;
-    }
-
-    fn take_down(&mut self, cx: &dyn PluginCx) {
-        if let Some(t) = self.tab.take() {
-            cx.clear_decorations(Some(&Target::Tab(t)));
-        }
-        self.shown.clear();
     }
 }
 
@@ -265,8 +319,12 @@ fn transcript_of(event: &Value) -> Option<PathBuf> {
     (path.is_absolute() && path.extension().is_some_and(|e| e == "jsonl")).then_some(path)
 }
 
-/// How often a running session's transcript is read: the meter and todos follow within 2 s.
-const TAIL_EVERY: Duration = Duration::from_secs(1);
+/// How often a working session's transcript is read: the meter and todos follow within 2 s.
+const TAIL_BUSY: Duration = Duration::from_secs(1);
+/// How often it is read while every session rests (polish-claude-insights D5).
+const TAIL_IDLE: Duration = Duration::from_secs(10);
+/// The tail timer's token, followed by its number.
+const TAIL: &str = "tail:";
 
 /// How often retention runs, and how soon after launch.
 const PRUNE_EVERY: Duration = Duration::from_secs(6 * 3600);
@@ -346,62 +404,75 @@ impl ClaudePlugin {
     }
 
     /// The pane's signals after one hook event: its tab's decorations and, while any session
-    /// runs, the tail timer.
+    /// is followed, the tail timer.
     fn follow(&self, pane: &str, session: &str, ended: bool, event: &Value, cx: &dyn PluginCx) {
         let mut st = lock(&self.state);
         if ended {
-            if let Some(mut live) = st.live.remove(pane) {
-                live.take_down(cx);
+            if st.live.remove(pane).is_some() {
+                st.publish(cx);
                 cx.emit("insights", json!({ "pane": pane }));
             }
+            st.arm(cx);
             return;
         }
+        st.seq += 1;
+        let seq = st.seq;
         let live = st
             .live
             .entry(pane.to_string())
             .or_insert_with(|| Live::new(session));
         if live.session != session {
-            live.take_down(cx);
             *live = Live::new(session);
         }
+        live.seq = seq;
         if let Some(path) = transcript_of(event)
             && live.tail.as_ref().is_none_or(|t| t.path() != path)
         {
             live.tail = Some(LineTail::new(path));
+            live.seen = None;
         }
         live.insight.on_hook(event);
+        let name = event.get("hook_event_name").and_then(Value::as_str);
+        match name {
+            Some(
+                "UserPromptSubmit" | "PostToolUse" | "PostToolUseFailure" | "PreCompact"
+                | "SubagentStart",
+            ) => live.busy = true,
+            Some("Stop") => live.busy = false,
+            _ => {}
+        }
         // A tool result or a finished turn may have changed files (3.2).
-        if matches!(
-            event.get("hook_event_name").and_then(Value::as_str),
-            Some("PostToolUse" | "Stop")
-        ) {
+        if matches!(name, Some("PostToolUse" | "Stop")) {
             cx.emit("changed", json!({ "pane": pane }));
         }
         let todos = live.catch_up(cx);
-        live.publish(pane, cx);
+        st.publish(cx);
         if todos {
             cx.emit("insights", json!({ "pane": pane }));
         }
-        if !st.ticking {
-            st.ticking = true;
-            cx.schedule(TAIL_EVERY, "tail");
-        }
+        st.arm(cx);
     }
 
-    /// The tail timer: every followed session catches up with its transcript.
-    fn tick(&self, cx: &dyn PluginCx) {
+    /// The tail timer: every followed session catches up with its transcript. A stale timer,
+    /// one a nearer timer replaced, does nothing.
+    fn tick(&self, token: &str, cx: &dyn PluginCx) {
         let mut st = lock(&self.state);
+        if st.timer.map(|(n, _)| n.to_string()).as_deref() != Some(token) {
+            return;
+        }
+        st.timer = None;
+        let mut todos = Vec::new();
         for (pane, live) in st.live.iter_mut() {
-            let todos = live.catch_up(cx);
-            live.publish(pane, cx);
-            if todos {
-                cx.emit("insights", json!({ "pane": pane }));
+            if live.catch_up(cx) {
+                todos.push(pane.clone());
             }
         }
-        st.ticking = !st.live.is_empty();
-        if st.ticking {
-            cx.schedule(TAIL_EVERY, "tail");
+        // Also when no transcript grew: a pane may have moved to another tab.
+        st.publish(cx);
+        for pane in todos {
+            cx.emit("insights", json!({ "pane": pane }));
         }
+        st.arm(cx);
     }
 
     /// A new session gets its baseline (D1): a resumed, cleared or compacted one in the same
@@ -460,6 +531,13 @@ impl ClaudePlugin {
             });
         if spawned.is_err() {
             lock(&self.state).snapshotting.remove(&key);
+        }
+    }
+
+    /// Puts the per-file limit where the hook reads it (D3).
+    fn write_file_cap(&self, cx: &dyn PluginCx) {
+        if let Err(e) = baseline_store::set_file_cap(&self.store.dir, settings::file_cap(cx)) {
+            eprintln!("terminescu: baseline file limit not saved: {e}");
         }
     }
 
@@ -530,24 +608,23 @@ impl Plugin for ClaudePlugin {
             CoreEvent::Hook { pane, event } => self.on_hook(pane, event, cx),
             CoreEvent::AppLaunched => {
                 cx.schedule(PRUNE_FIRST, "prune");
-                // Switched on again: the decorations went with the switch, so they go back up.
+                self.write_file_cap(cx);
+                // Switched on again: the decorations and timers went with the switch.
                 let mut st = lock(&self.state);
-                for (pane, live) in st.live.iter_mut() {
-                    live.tab = None;
-                    live.shown.clear();
-                    live.publish(pane, cx);
-                }
-                if !st.live.is_empty() {
-                    st.ticking = true;
-                    cx.schedule(TAIL_EVERY, "tail");
-                }
+                st.shown.clear();
+                st.timer = None;
+                st.publish(cx);
+                st.arm(cx);
             }
-            CoreEvent::Timer { token } if token == "tail" => self.tick(cx),
+            CoreEvent::Timer { token } if token.starts_with(TAIL) => {
+                self.tick(&token[TAIL.len()..], cx)
+            }
             CoreEvent::PaneClosed { pane } => {
                 let mut st = lock(&self.state);
                 st.sessions.remove(pane);
-                if let Some(mut live) = st.live.remove(pane) {
-                    live.take_down(cx);
+                if st.live.remove(pane).is_some() {
+                    st.publish(cx);
+                    st.arm(cx);
                 }
             }
             CoreEvent::Timer { token } if token == "prune" => {
@@ -653,12 +730,11 @@ impl Plugin for ClaudePlugin {
                 settings::set(cx, key, args.get("value").unwrap_or(&Value::Null))?;
                 if matches!(key, settings::CAP_MB | settings::KEEP_DAYS) {
                     cx.schedule(Duration::ZERO, "prune-now");
+                } else if key == settings::FILE_MB {
+                    self.write_file_cap(cx);
                 } else {
                     // The meter reads the new threshold or window at once.
-                    let mut st = lock(&self.state);
-                    for (pane, live) in st.live.iter_mut() {
-                        live.publish(pane, cx);
-                    }
+                    lock(&self.state).publish(cx);
                 }
                 Ok(settings::view(cx))
             }

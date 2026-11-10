@@ -357,3 +357,91 @@ fn a_session_that_never_ended_is_pruned_when_stale() {
     assert_eq!(gone, ["stale-1"]);
     assert!(store.meta("live-1").is_some());
 }
+
+/// A fake clean filter, like git-lfs: it writes a mark when it runs and stores a pointer.
+#[test]
+fn a_snapshot_runs_no_filter_and_keeps_the_files_own_bytes() {
+    let (base, repo) = repo("filters");
+    let mark = base.join("filter-ran");
+    let script = base.join("clean.sh");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\nps -o args= -p $PPID >> '{}'\necho pointer\n",
+            mark.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&script, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    git(
+        &repo,
+        &["config", "filter.fake.clean", &script.display().to_string()],
+    );
+    git(&repo, &["config", "filter.fake.required", "true"]);
+    std::fs::write(repo.join(".gitattributes"), "*.bin filter=fake\n").unwrap();
+    std::fs::write(repo.join("model.bin"), "weights v1\n").unwrap();
+    // Over the per-file limit set below: it keeps the index's blob, the pointer.
+    std::fs::write(repo.join("big.bin"), "x".repeat(64)).unwrap();
+    git(&repo, &["add", "-A"]);
+    git(&repo, &["commit", "-q", "-m", "filtered"]);
+    assert!(mark.exists(), "the filter works for git itself");
+    // Files older than the index, as in a repository worked on for a while: written in the
+    // same second as the index, git would hash them again as racily clean.
+    let old = Command::new("touch")
+        .args(["-t", "202001010000"])
+        .arg(repo.join("big.bin"))
+        .arg(repo.join("model.bin"))
+        .status()
+        .unwrap();
+    assert!(old.success());
+    std::thread::sleep(Duration::from_millis(1100));
+    git(&repo, &["add", "-A"]);
+
+    let store = Store::new(&base.join("support"));
+    // `git status` in `state` runs the filter too, so the mark goes after it.
+    let before = state(&repo);
+    std::fs::remove_file(&mark).unwrap();
+    store::set_file_cap(&store.dir, Some(32)).unwrap();
+    start(&store, "sess-1", &repo);
+    store::set_file_cap(&store.dir, None).unwrap();
+    let big = store.base_text("sess-1", &repo.join("big.bin")).unwrap();
+    assert_eq!(
+        big.text.as_deref(),
+        Some("pointer\n"),
+        "a large file keeps its blob"
+    );
+    let text = store.base_text("sess-1", &repo.join("model.bin")).unwrap();
+    assert_eq!(
+        text.text.as_deref(),
+        Some("weights v1\n"),
+        "not the pointer"
+    );
+    std::fs::write(repo.join("model.bin"), "weights v2\n").unwrap();
+    let changes = store.changes("sess-1").unwrap();
+    let bin = changes
+        .files
+        .iter()
+        .find(|f| f.path.ends_with("model.bin"))
+        .expect("the edit shows");
+    assert_eq!((bin.added, bin.removed), (Some(1), Some(1)));
+    assert!(
+        !mark.exists(),
+        "the filter never ran: {:?}",
+        std::fs::read_to_string(&mark)
+    );
+    std::fs::write(repo.join("model.bin"), "weights v1\n").unwrap();
+    assert_eq!(state(&repo), before, "nothing written into the repository");
+}
+
+#[test]
+fn base_text_follows_the_per_file_limit() {
+    let (base, repo) = repo("file-cap");
+    let store = Store::new(&base.join("support"));
+    start(&store, "sess-1", &repo);
+    store::set_file_cap(&store.dir, Some(4)).unwrap();
+    let text = store.base_text("sess-1", &repo.join("notes.md")).unwrap();
+    assert!(text.large && text.text.is_none());
+    store::set_file_cap(&store.dir, None).unwrap();
+    let text = store.base_text("sess-1", &repo.join("notes.md")).unwrap();
+    assert_eq!(text.text.as_deref(), Some("untracked\n"));
+}

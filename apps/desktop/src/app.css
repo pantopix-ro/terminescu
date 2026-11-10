@@ -149,8 +149,6 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 .ctx-quote { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-size: 12px; line-height: 16px; }
 .ctx-pin-x { background: none; border: 0; color: var(--faint); padding: 6px var(--space-2); cursor: pointer; }
 
-.tr-extract { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-top: 2px solid var(--line-strong); background: var(--panel); }
-.tr-name { width: 160px; }
 .tr-value { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--dim); }
 
 /* Statuses (D15): the editor and Settings › Statuses open as sheets over the window. */

@@ -69,9 +69,18 @@ const RELOAD_MS = 300;
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-export function ChangesSection({ paneId, bridge, app }: PanelSectionProps) {
+/** The answer of a tab with no Claude session, or none recorded for it. */
+const NO_SESSION = /no Claude session|no baseline/;
+
+export function ChangesSection({ paneId, bridge, app, setHidden }: PanelSectionProps) {
   const [state, setState] = useState<{ answer?: ClaudeChanges; error?: string }>({});
   const [openError, setOpenError] = useState<string>();
+  // Hidden in a tab with no Claude session (polish-claude-insights D2).
+  const none = !paneId || (!!state.error && NO_SESSION.test(state.error));
+  const loading = !!paneId && !state.answer && !state.error;
+  useEffect(() => {
+    if (!loading) setHidden?.(none);
+  }, [none, loading, setHidden]);
   useEffect(() => {
     setState({});
     if (!paneId) return;
@@ -105,8 +114,7 @@ export function ChangesSection({ paneId, bridge, app }: PanelSectionProps) {
 
   if (!paneId) return <p className="small ao-dim ctx-empty">This tab has no shell.</p>;
   if (state.error) {
-    const none = /no Claude session|no baseline/.test(state.error);
-    return <p className="small ao-dim ctx-empty">{none ? "No Claude session in this tab." : state.error}</p>;
+    return <p className="small ao-dim ctx-empty">{NO_SESSION.test(state.error) ? "No Claude session in this tab." : state.error}</p>;
   }
   const answer = state.answer;
   if (!answer) return null;

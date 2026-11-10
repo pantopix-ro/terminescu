@@ -292,6 +292,9 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
       // A test's `claude` half answers the insight calls (add-claude-insights group 2).
       if (method !== "read") {
         if (extra?.call) return extra.call(method, args, host);
+        // A pane with no session, as the Rust half answers it.
+        if (method === "todos") return { session: null, todos: null };
+        if (method === "changes") throw new Error("bad arguments: no Claude session");
         throw new Error(`${method} is not a method of this plugin`);
       }
       const { session, offset } = args as { session: string; offset: number };

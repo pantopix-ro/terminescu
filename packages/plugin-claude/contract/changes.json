@@ -1,0 +1,46 @@
+{
+  "changes": {
+    "files": [
+      {
+        "path": "/Users/owner/src/shop-api/src/backoff.ts",
+        "added": 1,
+        "removed": 0,
+        "created": true,
+        "deleted": false
+      },
+      {
+        "path": "/Users/owner/src/shop-api/src/old.ts",
+        "added": 0,
+        "removed": 1,
+        "created": false,
+        "deleted": true
+      },
+      {
+        "path": "/Users/owner/src/shop-api/src/retry.ts",
+        "added": 2,
+        "removed": 1,
+        "created": false,
+        "deleted": false
+      }
+    ],
+    "tree": true,
+    "base": "/Users/owner/src/shop-api",
+    "session": "sess-1"
+  },
+  "baseText": {
+    "changed": {
+      "exists": true,
+      "binary": false,
+      "large": false,
+      "text": "const tries = 3;\n",
+      "session": "sess-1"
+    },
+    "created": {
+      "exists": false,
+      "binary": false,
+      "large": false,
+      "text": "",
+      "session": "sess-1"
+    }
+  }
+}

@@ -30,10 +30,18 @@ fn an_event_names_the_session_and_session_end_clears_it() {
         events(&start),
         [AgentEvent::Session(Some("sess-0b5c".into()))]
     );
+    let prompt = json!({"hook_event_name": "UserPromptSubmit", "session_id": "sess-0b5c"});
+    assert_eq!(
+        events(&prompt),
+        [AgentEvent::Session(Some("sess-0b5c".into()))]
+    );
+    // A tool call does not send the session again (polish-claude-insights D7).
+    let tool = json!({"hook_event_name": "PreCompact", "session_id": "sess-0b5c"});
+    assert!(events(&tool).is_empty());
     let end = json!({"hook_event_name": "SessionEnd", "session_id": "sess-0b5c"});
     assert_eq!(events(&end), [AgentEvent::Session(None)]);
     // A session id that could name a path is not one.
-    let odd = json!({"hook_event_name": "Notification", "session_id": "../x"});
+    let odd = json!({"hook_event_name": "UserPromptSubmit", "session_id": "../x"});
     assert!(events(&odd).is_empty());
 }
 

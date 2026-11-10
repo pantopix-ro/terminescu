@@ -4,6 +4,7 @@
 use crate::transcript::Entry;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
+use terminescu_plugin_api::label::{command_label, url_label};
 use terminescu_plugin_api::{AgentEvent, is_session_id};
 
 /// Longest `last_assistant_message` kept from `Stop`, in characters.
@@ -68,6 +69,7 @@ pub fn on_hook(agent: Option<Agent>, event: &Value) -> Option<Agent> {
             // posts on its own connection, so arrival order is not guaranteed.
             if str_of(event, "notification_type") == Some("elicitation_dialog") {
                 a.state = AgentState::Waiting;
+                a.reason = Some(question_of(event));
             }
         }
         // A tool result that lands after `Stop` belongs to the finished turn.
@@ -107,7 +109,15 @@ pub fn reason_of(event: &Value) -> String {
                 .and_then(Value::as_object)
                 .and_then(|m| m.values().find_map(Value::as_str))
         });
+    // A command line or a query may hold a secret, and Notification Center keeps what it
+    // shows (polish-claude-insights D6).
+    let arg = match (tool, arg) {
+        ("Bash", Some(c)) => command_label(c),
+        (_, Some(u)) if u.contains("://") => Some(url_label(u).to_string()),
+        (_, a) => a.map(String::from),
+    };
     let arg = arg.map(|a| {
+        let a = a.as_str();
         let cwd = str_of(event, "cwd").filter(|c| Path::new(c).is_absolute());
         match cwd.and_then(|c| Path::new(a).strip_prefix(c).ok()) {
             Some(rel) if !rel.as_os_str().is_empty() => rel.display().to_string(),
@@ -118,6 +128,19 @@ pub fn reason_of(event: &Value) -> String {
         Some(a) => format!("{tool}: {a}"),
         None => tool.to_string(),
     };
+    cut(text)
+}
+
+/// What a question asks, from its notification's text (D6).
+fn question_of(event: &Value) -> String {
+    let text = str_of(event, "message").map(|m| m.split_whitespace().collect::<Vec<_>>().join(" "));
+    match text {
+        Some(m) if !m.is_empty() => cut(m),
+        _ => "Claude asks a question".into(),
+    }
+}
+
+fn cut(text: String) -> String {
     if text.chars().count() <= REASON_CHARS {
         text
     } else {
@@ -142,9 +165,13 @@ pub fn events(event: &Value) -> Vec<AgentEvent> {
         _ => {}
     }
     let session = str_of(event, "session_id").filter(|s| is_session_id(s));
+    // The core needs the session once a turn, not on every tool call (D7).
     match str_of(event, "hook_event_name") {
         Some("SessionEnd") => out.push(AgentEvent::Session(None)),
-        _ => out.extend(session.map(|s| AgentEvent::Session(Some(s.into())))),
+        Some("SessionStart" | "UserPromptSubmit") => {
+            out.extend(session.map(|s| AgentEvent::Session(Some(s.into()))))
+        }
+        _ => {}
     }
     out
 }
@@ -267,7 +294,7 @@ mod tests {
         };
         assert_eq!(
             reason_of(&fixture("permissionrequest-bash.json")),
-            "Bash: touch made-by-bash.txt"
+            "Bash: touch"
         );
         assert_eq!(
             reason_of(&fixture("permissionrequest-edit.json")),
@@ -277,7 +304,17 @@ mod tests {
             "PermissionRequest",
             json!({ "tool_name": "Bash", "tool_input": { "command": "npm  publish\n --access public" } }),
         );
-        assert_eq!(reason_of(&publish), "Bash: npm publish --access public");
+        assert_eq!(reason_of(&publish), "Bash: npm publish");
+        let token = ev(
+            "PermissionRequest",
+            json!({ "tool_name": "Bash", "tool_input": { "command": "API_TOKEN=abc123 ./deploy.sh prod" } }),
+        );
+        assert_eq!(reason_of(&token), "Bash: deploy.sh prod");
+        let query = ev(
+            "PermissionRequest",
+            json!({ "tool_name": "WebFetch", "tool_input": { "url": "https://x.test/a?key=s3cr3t" } }),
+        );
+        assert_eq!(reason_of(&query), "WebFetch: https://x.test/a");
         let long = ev(
             "PermissionRequest",
             json!({ "tool_name": "WebFetch", "tool_input": { "url": format!("https://example.com/{}", "a".repeat(80)) } }),
@@ -290,11 +327,23 @@ mod tests {
             "Waiting for you"
         );
         let a = on_hook(None, &publish).unwrap();
-        assert_eq!(
-            a.reason.as_deref(),
-            Some("Bash: npm publish --access public")
-        );
+        assert_eq!(a.reason.as_deref(), Some("Bash: npm publish"));
         let a = on_hook(Some(a), &ev("PostToolUse", json!({}))).unwrap();
         assert_eq!(a.reason, None, "an answered request drops its reason");
+    }
+
+    #[test]
+    fn a_question_waits_with_its_text() {
+        let ask = |message: Value| {
+            ev(
+                "Notification",
+                json!({ "notification_type": "elicitation_dialog", "message": message }),
+            )
+        };
+        let a = on_hook(None, &ask(json!("Which  branch?\n"))).unwrap();
+        assert_eq!(a.state, AgentState::Waiting);
+        assert_eq!(a.reason.as_deref(), Some("Which branch?"));
+        let a = on_hook(None, &ask(Value::Null)).unwrap();
+        assert_eq!(a.reason.as_deref(), Some("Claude asks a question"));
     }
 }

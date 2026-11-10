@@ -1486,6 +1486,24 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     cur.answer(a);
     refocus();
   };
+  // Panel sections a plugin hid (polish-claude-insights D2); each gets one stable setter.
+  const [hiddenSections, setHiddenSections] = useState<ReadonlySet<string>>(() => new Set());
+  const hiders = useRef(new Map<string, (hidden: boolean) => void>());
+  const sectionHider = (key: string) => {
+    let f = hiders.current.get(key);
+    if (!f) {
+      f = (hidden: boolean) =>
+        setHiddenSections((cur) => {
+          if (cur.has(key) === hidden) return cur;
+          const next = new Set(cur);
+          if (hidden) next.add(key);
+          else next.delete(key);
+          return next;
+        });
+      hiders.current.set(key, f);
+    }
+    return f;
+  };
   // Each enabled plugin's watcher runs while this window lives (polish-git-plugin D6).
   const askRef = useRef(ask);
   askRef.current = ask;
@@ -2753,11 +2771,24 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           <ContextPanel
             sections={
               activeSide
-                ? plugins.composed.panelSections.map((sec) => ({
-                    key: `${sec.plugin}.${sec.id}`,
-                    title: sec.title,
-                    body: <sec.render sideTabId={activeSide.id} tabId={activeTab?.id} paneId={shellPane} app={{ openText }} bridge={plugins.bridge(sec.plugin)} />,
-                  }))
+                ? plugins.composed.panelSections.map((sec) => {
+                    const key = `${sec.plugin}.${sec.id}`;
+                    return {
+                      key,
+                      title: sec.title,
+                      hidden: hiddenSections.has(key),
+                      body: (
+                        <sec.render
+                          sideTabId={activeSide.id}
+                          tabId={activeTab?.id}
+                          paneId={shellPane}
+                          app={{ openText }}
+                          bridge={plugins.bridge(sec.plugin)}
+                          setHidden={sectionHider(key)}
+                        />
+                      ),
+                    };
+                  })
                 : undefined
             }
             mode={mode}

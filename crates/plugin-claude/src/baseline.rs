@@ -11,7 +11,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use terminescu_plugin_api::baseline::{self as store, Copy, READY, SIZE_CAP};
+use terminescu_plugin_api::baseline::{self as store, Copy, READY};
 use terminescu_plugin_api::process::{self, RunError};
 
 /// A snapshot that takes longer stops; the session keeps its first-touch copies (D2 risks).
@@ -120,8 +120,8 @@ pub struct BaseText {
 }
 
 impl BaseText {
-    fn of(bytes: Vec<u8>) -> Self {
-        if bytes.len() as u64 > SIZE_CAP {
+    fn of(bytes: Vec<u8>, cap: u64) -> Self {
+        if bytes.len() as u64 > cap {
             return Self {
                 exists: true,
                 binary: false,
@@ -166,16 +166,18 @@ impl Store {
         store::session_dir(&self.dir, id)
     }
 
+    /// `pre` goes before the subcommand, as `-c` options.
     fn run_git(
         &self,
         cwd: &Path,
+        pre: &[String],
         args: &[&str],
         env: &[(&str, &Path)],
         limit: Duration,
     ) -> Result<Vec<u8>, String> {
         let mut cmd = Command::new(&self.git);
         git_env(&mut cmd);
-        cmd.current_dir(cwd).args(args);
+        cmd.current_dir(cwd).args(pre).args(args);
         for (k, v) in env {
             cmd.env(k, v);
         }
@@ -225,6 +227,7 @@ impl Store {
         let out = self
             .run_git(
                 cwd,
+                &[],
                 &[
                     "rev-parse",
                     "--show-toplevel",
@@ -269,12 +272,114 @@ impl Store {
         {
             return Err(e.to_string());
         }
+        self.drop_filtered(&dir, &index, repo, limit);
         let tree = self.write_tree(&dir, &index, repo, limit)?;
         // The tree, then the root the snapshot covers: the hook reads the second line.
         let ready = format!("{tree}\n{}\n", repo.root.display());
         terminescu_plugin_api::atomic::write(&dir.join(READY), ready.as_bytes())
             .map_err(|e| e.to_string())?;
         Ok(tree)
+    }
+
+    /// The per-file limit Settings › Claude sets (D3).
+    pub fn file_cap(&self) -> u64 {
+        store::file_cap(&self.dir)
+    }
+
+    /// The repository's filter drivers that rewrite content on `git add`: git-lfs, git-crypt.
+    fn filters(&self, root: &Path) -> Vec<String> {
+        let found = self.run_git(
+            root,
+            &[],
+            &[
+                "config",
+                "-z",
+                "--get-regexp",
+                r"^filter\..+\.(clean|process)$",
+            ],
+            &[],
+            READ_LIMIT,
+        );
+        let mut names: Vec<String> = found
+            .unwrap_or_default()
+            .split(|b| *b == 0)
+            .filter_map(|entry| {
+                let key = String::from_utf8_lossy(entry);
+                let key = key.split('\n').next()?.to_string();
+                let name = key.strip_prefix("filter.")?.rsplit_once('.')?.0.to_string();
+                (!name.is_empty()).then_some(name)
+            })
+            .collect();
+        names.sort();
+        names.dedup();
+        names
+    }
+
+    /// `-c` options that turn every content filter off, so a snapshot holds the file's own bytes
+    /// and no filter writes into the repository (polish-claude-insights D4).
+    fn no_filters(&self, root: &Path) -> Vec<String> {
+        self.filters(root)
+            .iter()
+            .flat_map(|n| {
+                [
+                    format!("filter.{n}.clean="),
+                    format!("filter.{n}.process="),
+                    format!("filter.{n}.required=false"),
+                ]
+            })
+            .flat_map(|o| ["-c".to_string(), o])
+            .collect()
+    }
+
+    /// Takes the filtered files up to the per-file limit out of the copied index, so `git add`
+    /// hashes them from the working tree instead of keeping the filtered blob, an LFS pointer,
+    /// the index holds. Larger ones keep that blob: hashing gigabytes of assets per session
+    /// costs more than their diff is worth. Best effort; the snapshot goes on without it.
+    fn drop_filtered(&self, dir: &Path, index: &Path, repo: &Repo, limit: Duration) {
+        let names = self.filters(&repo.root);
+        if names.is_empty() || !index.exists() {
+            return;
+        }
+        let env: [(&str, &Path); 1] = [("GIT_INDEX_FILE", index)];
+        let specs: Vec<String> = names
+            .iter()
+            .map(|n| format!(":(attr:filter={n})"))
+            .collect();
+        let mut args = vec!["ls-files", "-z", "--"];
+        args.extend(specs.iter().map(String::as_str));
+        let Ok(listed) = self.run_git(&repo.root, &[], &args, &env, limit) else {
+            return;
+        };
+        let cap = self.file_cap();
+        let mut small = Vec::new();
+        for rel in listed.split(|b| *b == 0).filter(|r| !r.is_empty()) {
+            let path = repo.root.join(String::from_utf8_lossy(rel).as_ref());
+            if std::fs::metadata(&path).is_ok_and(|m| m.is_file() && m.len() <= cap) {
+                small.extend_from_slice(rel);
+                small.push(0);
+            }
+        }
+        if small.is_empty() {
+            return;
+        }
+        let list = dir.join("filtered");
+        if std::fs::write(&list, &small).is_err() {
+            return;
+        }
+        let from = format!("--pathspec-from-file={}", list.display());
+        let pre = self.no_filters(&repo.root);
+        let literal = Path::new("1");
+        let _ = self.run_git(
+            &repo.root,
+            &pre,
+            &["rm", "--cached", "-f", "-q", "--pathspec-file-nul", &from],
+            &[
+                ("GIT_INDEX_FILE", index),
+                ("GIT_LITERAL_PATHSPECS", literal),
+            ],
+            limit,
+        );
+        let _ = std::fs::remove_file(&list);
     }
 
     fn write_tree(
@@ -295,6 +400,7 @@ impl Store {
         // Untracked files that look like secrets or are over the size cap stay out of the store.
         // They go in as exclude pathspecs, which add to the person's own ignore rules; tracked
         // files are already in the repository's objects.
+        let pre = self.no_filters(&repo.root);
         let spec = dir.join("pathspec");
         let skipped = self.write_pathspec(repo, &spec, &env, start, limit)?;
         let mut add = vec!["add", "-A"];
@@ -307,6 +413,7 @@ impl Store {
         }
         self.run_git(
             &repo.root,
+            &pre,
             &add,
             &env,
             limit
@@ -316,7 +423,8 @@ impl Store {
         let left = limit
             .saturating_sub(start.elapsed())
             .max(Duration::from_millis(100));
-        let out = self.run_git(&repo.root, &["write-tree"], &env, left)?;
+        // write-tree checks racily clean entries against the file, through the filter too.
+        let out = self.run_git(&repo.root, &pre, &["write-tree"], &env, left)?;
         let tree = String::from_utf8_lossy(&out).trim().to_string();
         if tree.len() < 40 || !tree.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Err("git write-tree gave no tree".into());
@@ -325,7 +433,7 @@ impl Store {
     }
 
     /// Writes `.` and one `:(exclude,literal)` pathspec per untracked, not ignored file that
-    /// [`is_secret_path`] names or that is over [`SIZE_CAP`]. False when there is none.
+    /// [`is_secret_path`] names or that is over [`Self::file_cap`]. False when there is none.
     fn write_pathspec(
         &self,
         repo: &Repo,
@@ -336,6 +444,7 @@ impl Store {
     ) -> Result<bool, String> {
         let list = self.run_git(
             &repo.root,
+            &[],
             &["ls-files", "-z", "--others", "--exclude-standard"],
             env,
             limit,
@@ -346,8 +455,8 @@ impl Store {
                 return Err("git took too long".into());
             }
             let path = repo.root.join(std::ffi::OsStr::from_bytes(rel));
-            let big =
-                std::fs::symlink_metadata(&path).is_ok_and(|m| m.is_file() && m.len() > SIZE_CAP);
+            let big = std::fs::symlink_metadata(&path)
+                .is_ok_and(|m| m.is_file() && m.len() > self.file_cap());
             if big || terminescu_plugin_api::baseline::is_secret_path(&path) {
                 out.extend_from_slice(b":(exclude,literal)");
                 out.extend_from_slice(rel);
@@ -393,6 +502,7 @@ impl Store {
             ];
             let raw = self.run_git(
                 &repo.root,
+                &[],
                 &[
                     "diff-tree",
                     "-r",
@@ -407,6 +517,7 @@ impl Store {
             )?;
             let status = self.run_git(
                 &repo.root,
+                &[],
                 &[
                     "diff-tree",
                     "-r",
@@ -525,7 +636,7 @@ impl Store {
             }
             return match copy {
                 Copy::Before(c) => std::fs::read(c)
-                    .map(BaseText::of)
+                    .map(|b| BaseText::of(b, self.file_cap()))
                     .map_err(|e| e.to_string()),
                 Copy::New => Ok(BaseText::missing()),
                 Copy::None(why) if why == "too large" => Ok(BaseText {
@@ -557,14 +668,21 @@ impl Store {
             ("GIT_ALTERNATE_OBJECT_DIRECTORIES", &alternates),
         ];
         let spec = format!("{tree}:{}", rel.display());
-        let size = match self.run_git(&repo.root, &["cat-file", "-s", &spec], &env, READ_LIMIT) {
+        let cap = self.file_cap();
+        let size = match self.run_git(
+            &repo.root,
+            &[],
+            &["cat-file", "-s", &spec],
+            &env,
+            READ_LIMIT,
+        ) {
             Ok(out) => String::from_utf8_lossy(&out)
                 .trim()
                 .parse::<u64>()
                 .unwrap_or(u64::MAX),
             Err(_) => return Ok(BaseText::missing()),
         };
-        if size > SIZE_CAP {
+        if size > cap {
             return Ok(BaseText {
                 exists: true,
                 binary: false,
@@ -572,8 +690,14 @@ impl Store {
                 text: None,
             });
         }
-        self.run_git(&repo.root, &["cat-file", "blob", &spec], &env, READ_LIMIT)
-            .map(BaseText::of)
+        self.run_git(
+            &repo.root,
+            &[],
+            &["cat-file", "blob", &spec],
+            &env,
+            READ_LIMIT,
+        )
+        .map(|b| BaseText::of(b, cap))
     }
 
     /// Retention (1.4): baselines of sessions that ended more than `keep` ago go, then the
