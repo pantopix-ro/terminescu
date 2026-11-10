@@ -34,6 +34,9 @@ struct Cx {
     rows: Mutex<Vec<NewRow>>,
     row_data: Mutex<HashMap<(String, String), Value>>,
     emits: Mutex<Vec<(String, Value)>>,
+    /// Decoration calls, sets and clears, to show a publish sends only what changed.
+    sets: std::sync::atomic::AtomicUsize,
+    clears: std::sync::atomic::AtomicUsize,
     /// `new_row` fails, as when the window went meanwhile.
     no_rows: AtomicBool,
 }
@@ -82,12 +85,14 @@ impl PluginCx for Cx {
         Ok(())
     }
     fn set_decoration(&self, d: Decoration) {
+        self.sets.fetch_add(1, Ordering::SeqCst);
         self.chips
             .lock()
             .unwrap()
             .insert((d.target.clone(), d.key.clone()), d);
     }
     fn clear_decorations(&self, target: Option<&Target>) {
+        self.clears.fetch_add(1, Ordering::SeqCst);
         let mut chips = self.chips.lock().unwrap();
         match target {
             Some(t) => chips.retain(|k, _| &k.0 != t),
@@ -183,6 +188,8 @@ struct Fake {
     forgot: Mutex<Vec<PathBuf>>,
     changes: Mutex<Vec<Change>>,
     base: Mutex<Option<Vec<u8>>>,
+    /// Each path `base_text` was asked for.
+    based: Mutex<Vec<PathBuf>>,
     added: Mutex<Vec<(PathBuf, String, String, PathBuf)>>,
     remove: Mutex<Option<Result<(), VcsError>>>,
     /// What `worktrees` lists, and each remove asked for: path and force.
@@ -209,7 +216,8 @@ impl Vcs for Fake {
     fn changes(&self, _: &Path) -> Result<Vec<Change>, VcsError> {
         Ok(self.changes.lock().unwrap().clone())
     }
-    fn base_text(&self, _: &Path, _: &Path, _: DiffBase) -> Result<Option<Vec<u8>>, VcsError> {
+    fn base_text(&self, _: &Path, file: &Path, _: DiffBase) -> Result<Option<Vec<u8>>, VcsError> {
+        self.based.lock().unwrap().push(file.into());
         Ok(self.base.lock().unwrap().clone())
     }
     fn worktree_add(
@@ -300,12 +308,10 @@ fn launch_reads_each_pane_and_the_tab_shows_branch_and_ahead() {
     );
     assert_eq!(cx.var("p1", "repo").as_deref(), Some("shop-api"));
     // The Changes section hears that the pane's facts were read.
-    assert!(
-        cx.emits
-            .lock()
-            .unwrap()
-            .contains(&("facts".into(), json!({ "pane": "p1" })))
-    );
+    assert!(cx.emits.lock().unwrap().contains(&(
+        "facts".into(),
+        json!({ "pane": "p1", "root": "/code/shop-api" })
+    )));
 }
 
 #[test]
@@ -488,6 +494,7 @@ fn changes_list_the_first_500_and_the_total() {
         added: Some(12),
         removed: Some(3),
         binary: false,
+        deleted: false,
     };
     *fake.changes.lock().unwrap() = vec![one; 620];
     let got = plugin
@@ -611,6 +618,7 @@ fn only_a_marked_row_removes_its_worktree_and_changes_ask_first() {
         added: None,
         removed: None,
         binary: false,
+        deleted: false,
     };
     *fake.changes.lock().unwrap() = vec![change; 2];
     let got = plugin
@@ -715,6 +723,7 @@ fn row_worktree_names_the_mark_and_counts_its_changes() {
         added: None,
         removed: None,
         binary: false,
+        deleted: false,
     };
     *fake.changes.lock().unwrap() = vec![change; 2];
     let got = plugin
@@ -896,22 +905,186 @@ fn a_panicking_lookup_does_not_block_the_next() {
 }
 
 #[test]
-fn the_minute_tick_goes_on_when_its_git_read_times_out() {
+fn the_minute_tick_reads_no_git_and_stops_without_a_branch() {
     let forge = Arc::new(FakeForge::default());
     let (plugin, fake, cx) = with_forge(forge);
     fire(&plugin, &cx);
     settle(&plugin, &cx);
-    fake.set("/code/shop-api", Err(VcsError::Timeout));
-    plugin.on_event(
-        &CoreEvent::Timer {
-            token: "prtick:p1".into(),
-        },
-        &cx,
-    );
+    let reads = fake.reads.lock().unwrap().len();
+    let tick = || {
+        plugin.on_event(
+            &CoreEvent::Timer {
+                token: "prtick:p1".into(),
+            },
+            &cx,
+        )
+    };
+    tick();
+    assert_eq!(fake.reads.lock().unwrap().len(), reads, "no git read");
     assert!(
         cx.timers()
             .contains(&(Duration::from_secs(60), "prtick:p1".into()))
     );
+    // Detached: the facts hold no branch, and the tick lets go.
+    let mut detached = repo("main");
+    detached.head = Head::Detached("a1b2c3d".into());
+    fake.set("/code/shop-api", Ok(Some(detached)));
+    plugin.on_event(
+        &CoreEvent::CwdMoved {
+            pane: "p1".into(),
+            cwd: "/code/shop-api".into(),
+        },
+        &cx,
+    );
+    fire(&plugin, &cx);
+    cx.timers();
+    tick();
+    assert!(!cx.timers().iter().any(|t| t.1 == "prtick:p1"));
+}
+
+#[test]
+fn the_same_facts_twice_send_nothing_the_second_time() {
+    let (plugin, fake, cx) = setup(vec![pane("p1", "t1", "/code/shop-api")]);
+    fake.set("/code/shop-api", Ok(Some(repo("main"))));
+    fire(&plugin, &cx);
+    let (sets, clears) = (
+        cx.sets.load(Ordering::SeqCst),
+        cx.clears.load(Ordering::SeqCst),
+    );
+    assert_eq!(sets, 1);
+    plugin.on_event(
+        &CoreEvent::CwdMoved {
+            pane: "p1".into(),
+            cwd: "/code/shop-api".into(),
+        },
+        &cx,
+    );
+    fire(&plugin, &cx);
+    assert_eq!(cx.sets.load(Ordering::SeqCst), sets);
+    assert_eq!(cx.clears.load(Ordering::SeqCst), clears);
+    // A new branch replaces the chip without a clear.
+    fake.set("/code/shop-api", Ok(Some(repo("next"))));
+    plugin.on_event(
+        &CoreEvent::CwdMoved {
+            pane: "p1".into(),
+            cwd: "/code/shop-api".into(),
+        },
+        &cx,
+    );
+    fire(&plugin, &cx);
+    assert_eq!(cx.chip("t1").unwrap().text, "next");
+    assert_eq!(cx.clears.load(Ordering::SeqCst), clears);
+}
+
+#[test]
+fn a_worktree_row_closed_without_asking_says_its_worktree_stays() {
+    let (plugin, _, cx) = setup(vec![pane("p1", "t1", "/code/shop-api")]);
+    let mark = json!({ "worktree": "/code/shop-api-x", "repo": "/code/shop-api", "branch": "x" });
+    let close = |row: &str, data: Option<Value>| {
+        let data = data
+            .map(|m| [(WORKTREE_ROW.to_string(), m)].into_iter().collect())
+            .unwrap_or_default();
+        plugin.on_event(
+            &CoreEvent::SideTabClosed {
+                side_tab: row.into(),
+                data,
+            },
+            &cx,
+        );
+    };
+    close("s9", None);
+    assert!(!cx.emits.lock().unwrap().iter().any(|e| e.0 == "orphan"));
+    // A shell exit closes the pane and its tab before the row.
+    plugin.on_event(&CoreEvent::PaneClosed { pane: "p1".into() }, &cx);
+    plugin.on_event(&CoreEvent::TabClosed { tab: "t1".into() }, &cx);
+    close("s1", Some(mark));
+    let emits = cx.emits.lock().unwrap();
+    let (_, orphan) = emits.iter().find(|e| e.0 == "orphan").unwrap();
+    assert_eq!(orphan["worktree"], "/code/shop-api-x");
+    assert_eq!(orphan["repo"], "/code/shop-api");
+    assert_eq!(orphan["branch"], "x");
+    assert_eq!(orphan["row"], "s1");
+    // The panes went with the first close; the row still names its window.
+    assert_eq!(orphan["window"], "w1");
+}
+
+#[test]
+fn a_kept_worktree_goes_only_when_git_still_lists_it_with_its_branch() {
+    let (plugin, fake, cx) = setup(vec![]);
+    let at = |branch: &str| json!({ "worktree": "/code/shop-api-x", "repo": "/code/shop-api", "branch": branch });
+    // Already gone: nothing to remove.
+    let got = plugin.call("worktreeRemoveAt", at("x"), &cx).unwrap();
+    assert_eq!(got["removed"], true);
+    assert!(fake.removed.lock().unwrap().is_empty());
+    *fake.trees.lock().unwrap() = vec![tree("/code/shop-api-x", "y", false)];
+    assert!(plugin.call("worktreeRemoveAt", at("x"), &cx).is_err());
+    assert!(fake.removed.lock().unwrap().is_empty());
+    *fake.trees.lock().unwrap() = vec![tree("/code/shop-api-x", "x", false)];
+    *fake.remove.lock().unwrap() = Some(Err(VcsError::HasChanges));
+    let got = plugin.call("worktreeRemoveAt", at("x"), &cx).unwrap();
+    assert_eq!(got["removed"], false);
+    let got = plugin
+        .call(
+            "worktreeRemoveAt",
+            json!({ "worktree": "/code/shop-api-x", "repo": "/code/shop-api", "branch": "x", "force": true }),
+            &cx,
+        )
+        .unwrap();
+    assert_eq!(got["removed"], true);
+    assert_eq!(
+        *fake.removed.lock().unwrap(),
+        vec![
+            (PathBuf::from("/code/shop-api-x"), false),
+            (PathBuf::from("/code/shop-api-x"), true)
+        ]
+    );
+}
+
+#[test]
+fn a_renamed_file_reads_its_old_path() {
+    let (plugin, fake, cx) = setup(vec![]);
+    fake.set("/code/shop-api", Ok(Some(repo("main"))));
+    *fake.base.lock().unwrap() = Some(b"old".to_vec());
+    let args = json!({ "root": "/code/shop-api", "path": "b.ts", "from": "a.ts" });
+    plugin.call("baseText", args, &cx).unwrap();
+    let args = json!({ "root": "/code/shop-api", "path": "b.ts", "from": null });
+    plugin.call("baseText", args, &cx).unwrap();
+    assert_eq!(
+        *fake.based.lock().unwrap(),
+        vec![PathBuf::from("a.ts"), PathBuf::from("b.ts")]
+    );
+}
+
+#[test]
+fn the_worktree_dialog_names_folder_and_base() {
+    let (plugin, fake, cx) = setup(vec![pane("p1", "t1", "/code/shop-api")]);
+    fake.set("/code/shop-api", Ok(Some(repo("main"))));
+    let got = plugin
+        .call("worktreeWhere", json!({ "pane": "p1" }), &cx)
+        .unwrap();
+    assert_eq!(
+        got,
+        json!({ "at": "/code/shop-api-<branch>", "base": "main" })
+    );
+    cx.set_setting(WORKTREE_FOLDER, Some(json!("/code/trees/./")))
+        .unwrap();
+    let got = plugin
+        .call("worktreeWhere", json!({ "pane": "p1" }), &cx)
+        .unwrap();
+    assert_eq!(got["at"], "/code/trees/shop-api/<branch>");
+}
+
+#[test]
+fn a_broken_mark_never_keeps_a_row_open() {
+    let (plugin, _, cx) = setup(vec![]);
+    cx.set_row_data(
+        "s2",
+        WORKTREE_ROW,
+        Some(json!({ "repo": "/code/shop-api" })),
+    )
+    .unwrap();
+    let got = plugin.call("rowWorktree", json!({ "row": "s2" }), &cx);
+    assert_eq!(got.unwrap(), Value::Null);
 }
 
 #[test]

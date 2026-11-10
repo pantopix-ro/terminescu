@@ -45,8 +45,9 @@ export interface EditorConfig {
 export interface MountedEditor {
   view: EditorView;
   destroy(): void;
-  /** Takes new text from the core; without it the pane mounts a fresh editor. */
-  reset?(config: EditorConfig): void;
+  /** Takes new text from the core; without it, or when it answers false, the pane mounts a
+   * fresh editor. */
+  reset?(config: EditorConfig): boolean | void;
 }
 
 /** Builds the pane's editor (Strategy): a plain one, or a diff tab's merge view (add-git-plugin D6). */
@@ -75,6 +76,8 @@ export interface TextPaneProps {
   mount?: MountEditor;
   /** A bar above the editor, as a diff tab's. */
   bar?: ReactNode;
+  /** Shows the text read-only whatever the document says, as a deleted file's diff. */
+  locked?: boolean;
 }
 
 /** What the app asks of a text pane: send pending text before a save, read the selection. */
@@ -93,7 +96,8 @@ export function textPane(paneId: string): TextHandle | undefined {
 }
 
 /** Marks text the core sent, so it does not go back as an edit. */
-const fromCore = Annotation.define<boolean>();
+/** Marks a change that brings the core's text, which the pane must not send back. */
+export const fromCore = Annotation.define<boolean>();
 
 /** The text pane's look, for an editor beside it such as a diff's base side. */
 export const editorTheme = EditorView.theme(
@@ -179,7 +183,9 @@ interface Cursor {
  * element from the registry, so a split or a tab move keeps its state. Typing reaches the core
  * after a pause; the core sends reloads and the changed-on-disk state back.
  */
-export function TextPane({ paneId, docId, visible, focused, onFocus, host, onDoc, variables, mount = plainEditor, bar }: TextPaneProps) {
+export function TextPane({ paneId, docId, visible, focused, onFocus, host, onDoc, variables, mount = plainEditor, bar, locked = false }: TextPaneProps) {
+  const lockedRef = useRef(locked);
+  lockedRef.current = locked;
   const saveChord = useChord("save");
   const holder = useRef<HTMLDivElement>(null);
   const editor = useRef<EditorView | null>(null);
@@ -287,9 +293,9 @@ export function TextPane({ paneId, docId, visible, focused, onFocus, host, onDoc
       clearTimeout(s.timer);
       const keep = Math.min(editor.current.state.selection.main.head, d.text.length);
       const config = exactConfig(d.text, baseExtensions(language, readOnly, onUpdate, extra));
-      if (mounted.reset) mounted.reset(config);
-      else {
-        // A merge view keeps extensions of its own: it is built again around the new text.
+      if (mounted.reset?.(config) === false || !mounted.reset) {
+        // An editor that cannot take the text in place, as over other line breaks, is built
+        // again around it.
         mounted.destroy();
         mounted = mount(holder.current!, config);
         editor.current = mounted.view;
@@ -297,7 +303,7 @@ export function TextPane({ paneId, docId, visible, focused, onFocus, host, onDoc
       const view = mounted.view;
       view.dispatch({
         selection: { anchor: Math.min(keep, view.state.doc.length) },
-        effects: readOnly.reconfigure(EditorState.readOnly.of(d.readOnly)),
+        effects: readOnly.reconfigure(EditorState.readOnly.of(d.readOnly || lockedRef.current)),
         annotations: fromCore.of(true),
       });
       setEol(eolOf(d.text));
@@ -420,7 +426,7 @@ export function TextPane({ paneId, docId, visible, focused, onFocus, host, onDoc
       )}
       {bar}
       {doc?.note && <div className="text-bar text-bar-warn">{doc.note}</div>}
-      {doc?.missing && !doc.conflict && <div className="text-bar">Not on disk yet. {saveChord ? `${saveChord} creates it.` : "Save creates it."}</div>}
+      {doc?.missing && !doc.conflict && !locked && <div className="text-bar">Not on disk yet. {saveChord ? `${saveChord} creates it.` : "Save creates it."}</div>}
       {error && (
         <div className="text-bar text-bar-error" role="alert">
           {error}
@@ -435,7 +441,7 @@ export function TextPane({ paneId, docId, visible, focused, onFocus, host, onDoc
         <span>{eol}</span>
         <span>{doc?.bom ? "UTF-8 BOM" : "UTF-8"}</span>
         <span>{langName}</span>
-        {doc?.readOnly && <span>Read-only</span>}
+        {(doc?.readOnly || locked) && <span>Read-only</span>}
         {doc?.sessionOnly && <span>Session only</span>}
       </div>
     </div>,

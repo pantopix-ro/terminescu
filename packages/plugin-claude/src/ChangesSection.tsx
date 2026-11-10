@@ -33,6 +33,8 @@ export const CLAUDE_DIFF = "claude-diff";
 export interface ClaudeDiffSource {
   session: string;
   path: string;
+  /** Deleted in the session: the base shows read-only (polish-git-plugin D7). */
+  deleted?: boolean;
 }
 
 export const claudeDiff = (source: ClaudeDiffSource): TextView => ({ kind: CLAUDE_DIFF, source: JSON.stringify(source) });
@@ -40,7 +42,8 @@ export const claudeDiff = (source: ClaudeDiffSource): TextView => ({ kind: CLAUD
 export function parseClaudeDiff(source: string): ClaudeDiffSource | undefined {
   try {
     const s = JSON.parse(source) as Partial<ClaudeDiffSource>;
-    return typeof s.session === "string" && typeof s.path === "string" ? { session: s.session, path: s.path } : undefined;
+    if (typeof s.session !== "string" || typeof s.path !== "string") return undefined;
+    return { session: s.session, path: s.path, ...(s.deleted === true ? { deleted: true } : {}) };
   } catch {
     return undefined;
   }
@@ -120,7 +123,8 @@ export function ChangesSection({ paneId, bridge, app }: PanelSectionProps) {
   const open = (c: ClaudeChange) => {
     if (!app) return;
     setOpenError(undefined);
-    app.openText(c.path, claudeDiff({ session: answer.session, path: c.path })).catch((e: unknown) => setOpenError(message(e)));
+    const view = claudeDiff({ session: answer.session, path: c.path, ...(c.deleted ? { deleted: true } : {}) });
+    app.openText(c.path, view).catch((e: unknown) => setOpenError(message(e)));
   };
   return (
     <>
@@ -178,6 +182,7 @@ export function ClaudeDiffView({ source, bridge, app }: PaneViewProps) {
       read={() => (src ? bridge.call<DiffBase>("baseText", { session: src.session, path: src.path }) : Promise.reject(new Error("the tab names no file")))}
       notes={NOTES}
       renderText={app.renderText}
+      deleted={src?.deleted === true}
     />
   );
 }

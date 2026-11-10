@@ -155,6 +155,8 @@ interface FakeGitDone {
   added: { branch: string; base: string | null }[];
   checkedOut: number[];
   removed: { row: string; force: boolean }[];
+  /** Worktrees removed after the orphan notice: folder and force. */
+  removedAt: { worktree: string; force: boolean }[];
   /** The marked rows: a worktree row's id and its folder. */
   marks: Record<string, string>;
 }
@@ -164,11 +166,23 @@ const fakeGit = (): FakePlugin => ({
   name: "Git",
   description: "Plays the git plugin's Rust half, for the tests.",
   async call(method, args, host) {
-    const a = (args ?? {}) as { pane?: string; root?: string; path?: string; row?: string; branch?: string; base?: string | null; force?: boolean; number?: number };
+    const a = (args ?? {}) as {
+      pane?: string;
+      root?: string;
+      path?: string;
+      from?: string | null;
+      row?: string;
+      branch?: string;
+      base?: string | null;
+      force?: boolean;
+      number?: number;
+      worktree?: string;
+      repo?: string;
+    };
     const github = (globalThis as { __fakeGitHub?: FakeGitHub }).__fakeGitHub;
     const all = (globalThis as { __fakeGit?: Record<string, FakeGit> }).__fakeGit ?? {};
-    const answers = all[a.pane ?? a.root ?? a.row ?? ""];
-    const done = ((globalThis as { __fakeGitDone?: FakeGitDone }).__fakeGitDone ??= { added: [], checkedOut: [], removed: [], marks: {} });
+    const answers = all[a.pane ?? a.root ?? a.row ?? a.repo ?? ""];
+    const done = ((globalThis as { __fakeGitDone?: FakeGitDone }).__fakeGitDone ??= { added: [], checkedOut: [], removed: [], removedAt: [], marks: {} });
     // A row below the pane's, as the core's `new_row` makes it, marked as a worktree row.
     const newRow = async (title: string, folder: string) => {
       const ws = host.workspace();
@@ -235,6 +249,13 @@ const fakeGit = (): FakePlugin => ({
       done.added.push({ branch: a.branch ?? "", base: a.base ?? null });
       return { row: await newRow(a.branch ?? "", path), path, branch: a.branch };
     }
+    if (method === "worktreeWhere") return { at: `${repo()}-<branch>`, base: "main" };
+    if (method === "worktreeRemoveAt") {
+      const changed = answers?.changed ?? 0;
+      if (changed > 0 && !a.force) return { removed: false, changed };
+      (done.removedAt ??= []).push({ worktree: a.worktree ?? "", force: a.force === true });
+      return { removed: true };
+    }
     if (method === "openWorktrees") {
       const root = repo();
       const opened = [];
@@ -257,7 +278,7 @@ const fakeGit = (): FakePlugin => ({
     }
     if (method === "baseText") {
       if (!answers?.base) throw new Error("the folder is not in a git repository");
-      const text = answers.base[a.path ?? ""];
+      const text = answers.base[a.from || a.path || ""];
       return text === undefined ? { root: a.root, exists: false } : { root: a.root, exists: true, binary: false, size: text.length, text };
     }
     throw new Error(`${method} is not a method of this plugin`);

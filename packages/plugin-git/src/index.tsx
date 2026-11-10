@@ -8,15 +8,15 @@ import { rowChips, tabChips } from "./chips";
 import { DIFF_KIND, DiffView } from "./DiffView";
 import { checkOutPullRequest, githubFlags, openPullRequest } from "./github";
 import { SettingsPage } from "./SettingsPage";
-import { beforeRowClose, newWorktreeRow, openWorktreeRows } from "./worktree";
+import { beforeRowClose, newWorktreeRow, openWorktreeRows, watchOrphans } from "./worktree";
 import "./git.css";
 
 export { ChangesSection, markOf, type Change, type ChangesAnswer } from "./ChangesSection";
 export { MAX_BRANCH, rowChips, shortBranch, shortenMiddle, tabChips } from "./chips";
-export { DIFF_KIND, DiffView, diffView, parseSource, type BaseText, type DiffSource } from "./DiffView";
+export { DIFF_KIND, DiffView, diffView, factsFor, parseSource, type BaseText, type DiffSource } from "./DiffView";
 export { checkOutPullRequest, GITHUB, githubFlags, openPullRequest, type PullRequest } from "./github";
 export { SettingsPage, type GitSettings } from "./SettingsPage";
-export { beforeRowClose, newWorktreeRow, openWorktreeRows } from "./worktree";
+export { beforeRowClose, newWorktreeRow, offerOrphan, openWorktreeRows, watchOrphans, type Orphan } from "./worktree";
 
 export const git = definePlugin({
   id: "git",
@@ -32,6 +32,7 @@ export const git = definePlugin({
     checkOutPullRequest,
   ],
   beforeRowClose,
+  watch: watchOrphans,
   flags: githubFlags,
   settingsPage: SettingsPage,
 });

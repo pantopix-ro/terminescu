@@ -121,7 +121,11 @@ pane views, actions and the settings page are slots the app fills.
   and a facade to resume, dismiss and switch the agent hook. The Claude plugin draws its
   hook-off and resume bars this way.
 - `app.openText(path, view)` opens a file drawn by a pane view, such as a diff tab. The document
-  keeps the view across restarts; opening the file plainly draws it as text again.
+  keeps the view across restarts; opening the file plainly draws it as text again. A view's
+  `app.renderText({ mount, bar, readOnly })` draws the app's text pane; `readOnly` locks it, as
+  for a deleted file's diff.
+- `watch(cx)` runs in each window while the plugin is on, with the window id, the bridge and
+  `ask`, and returns its stop. The git plugin answers its `orphan` event this way.
 - Mark the package `"sideEffects": false`, so a build without the plugin drops its code and its
   CSS.
 
@@ -184,11 +188,21 @@ VITE_PLUGINS=none pnpm --filter @terminescu/desktop build
   lookups run once a minute per branch at most, on a thread of their own.
 - **What it shows.** Tab chips `branch` and `pr`, the Changes section, the `git-diff` pane view
   and the facts `git.pushed`, `git.conflict` and `git.checksFailed` for status rules.
+- **Quiet refresh.** A tab's chips and facts change only where they differ. The minute pull
+  request tick reads no git and stops on a pane with no branch. The `facts` event carries
+  `{ pane, root }`; a diff tab reads its base again only for its own root, in place, so its
+  scroll stays.
 - **Worktree rows.** A new worktree goes to `<repo>-<branch>` beside the repository, or to
-  `<folder>/<repo>/<branch>` when Settings › Plugins › Git names a folder. The row keeps a mark
-  in its plugin data, and only a marked row asks about its worktree when it closes. Keep is the
-  default, and a worktree with changes asks a second time. No branch is ever deleted.
+  `<folder>/<repo>/<branch>` when Settings › Plugins › Git names a folder. A bare repository
+  (`shop.git`, or a `.bare` folder) counts as the repository folder. The New Row dialog shows
+  the target folder and base. The row keeps a mark in its plugin data, and only a marked row
+  asks about its worktree when it closes. Keep is the default, and a worktree with changes asks
+  a second time. A marked row that closes without asking, as on a shell exit, raises the notice
+  "Worktree kept at X. Remove it?" in its window. No branch is ever deleted.
+- **Renames and deletes.** A renamed file diffs against its old path at HEAD. A deleted file
+  opens read-only with a "Deleted" note.
 
 Test the UI half on the mock host with `?plugins=git`. `window.__fakeGit` answers by pane, root
 or row, `window.__fakeGitHub` stands in for `gh` (absent means no `gh`), and
-`window.__fakeGitDone` records what the fake added, checked out and removed.
+`window.__fakeGitDone` records what the fake added, checked out and removed (`removedAt` for
+the orphan notice).

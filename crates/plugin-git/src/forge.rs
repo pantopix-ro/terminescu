@@ -127,9 +127,13 @@ const FIELDS: &str = "number,title,url,headRefName,state,statusCheckRollup";
 
 impl Forge for GhCli {
     fn available(&self) -> Result<(), ForgeError> {
-        match self.run(Path::new("/"), &["auth", "status"], self.limit) {
+        match self.run(
+            Path::new("/"),
+            &["auth", "status", "--hostname", "github.com"],
+            self.limit,
+        ) {
             Ok(_) => Ok(()),
-            // `gh auth status` fails when no host is logged in.
+            // It fails when github.com is not logged in; other hosts do not count.
             Err(ForgeError::Failed(_)) => Err(ForgeError::LoggedOut),
             // A slow network is not a lost login: lookups find out, and turn the part off
             // when `gh` answers that it is gone or logged out.

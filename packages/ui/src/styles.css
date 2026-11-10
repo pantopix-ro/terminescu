@@ -8,6 +8,3 @@
 .diff-note { flex: 1; min-width: 0; }
 .text-editor > .cm-mergeView { height: 100%; overflow-y: auto; }
 .text-editor > .cm-mergeView .cm-editor { height: auto !important; }
-.cm-mergeView .cm-changedLine, .cm-changedLine { background-color: color-mix(in srgb, var(--amber) 10%, transparent); }
-.cm-mergeView .cm-changedText, .cm-changedText { background: color-mix(in srgb, var(--amber) 28%, transparent); }
-.cm-deletedChunk { background-color: color-mix(in srgb, var(--red) 12%, transparent); }

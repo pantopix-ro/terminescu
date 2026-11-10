@@ -16,6 +16,8 @@ export interface Change {
   added?: number | null;
   removed?: number | null;
   binary: boolean;
+  /** Gone from the working tree. */
+  deleted?: boolean;
 }
 
 export interface ChangesAnswer {
@@ -74,7 +76,8 @@ export function ChangesSection({ paneId, bridge, app }: PanelSectionProps) {
     if (!app) return;
     setOpenError(undefined);
     const root = answer.root.replace(/\/+$/, "");
-    app.openText(`${root}/${c.path}`, diffView({ root, path: c.path })).catch((e: unknown) => setOpenError(message(e)));
+    const view = diffView({ root, path: c.path, ...(c.from ? { from: c.from } : {}), ...(c.deleted ? { deleted: true } : {}) });
+    app.openText(`${root}/${c.path}`, view).catch((e: unknown) => setOpenError(message(e)));
   };
   return (
     <>

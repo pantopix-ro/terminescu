@@ -383,7 +383,8 @@ fn inside(file: &Path) -> Result<String, VcsError> {
 }
 
 /// `a/b/../c` as `a/c`, without touching the disk.
-fn clean(path: &Path) -> PathBuf {
+/// The path with `.` parts dropped and `..` parts applied, without reading the disk.
+pub(crate) fn clean(path: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     for c in path.components() {
         match c {
@@ -444,6 +445,7 @@ pub fn parse_status(bytes: &[u8]) -> Status {
                 added: None,
                 removed: None,
                 binary: false,
+                deleted: x == Some('D') || y == Some('D'),
             }
         };
         if let Some(h) = rec.strip_prefix("# ") {
@@ -583,6 +585,19 @@ u UU N... 100644 100644 100644 100644 aaa bbb ccc src/conflict.ts\0\
         assert!(s.entries[1].staged);
         assert!(s.entries[2].conflicted);
         assert!(s.entries[3].untracked);
+    }
+
+    #[test]
+    fn a_deleted_file_says_so_staged_or_not() {
+        let raw = b"1 .D N... 100644 100644 000000 aaa aaa gone.ts\0\
+1 D. N... 100644 000000 000000 aaa 000 staged.ts\0\
+1 .M N... 100644 100644 100644 aaa bbb kept.ts\0";
+        let d: Vec<bool> = parse_status(raw)
+            .entries
+            .iter()
+            .map(|c| c.deleted)
+            .collect();
+        assert_eq!(d, [true, true, false]);
     }
 
     #[test]

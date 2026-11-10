@@ -6,10 +6,10 @@
 
 use crate::forge::{Checks, Forge, ForgeError, GhCli, PullRequest};
 use crate::vcs::{DiffBase, RepoFacts, Vcs, VcsError};
-use crate::worktree::path_for;
+use crate::worktree::{path_for, slug};
 use crate::{CachedVcs, CoalescingVcs, GitCli, TimedVcs};
 use serde_json::{Value, json};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -87,13 +87,28 @@ pub struct GitPlugin {
     forge: Option<Arc<dyn Forge>>,
     prs: Arc<Mutex<Prs>>,
     state: Mutex<State>,
+    /// What each tab shows now, so a publish changes only what differs (polish-git-plugin D2).
+    shown: Mutex<HashMap<Id, Shown>>,
 }
+
+/// A tab's chips and facts as last published.
+#[derive(Default, PartialEq)]
+struct Shown {
+    branch: Option<Decoration>,
+    pr: Option<Decoration>,
+    facts: [Option<Value>; 3],
+}
+
+/// The tab facts for status rules, in [`Shown::facts`] order.
+const TAB_FACTS: [&str; 3] = ["pushed", "conflict", "checksFailed"];
 
 #[derive(Default)]
 struct State {
     panes: HashMap<Id, PaneGit>,
     /// Per tab, the pane whose facts the tab shows.
     lead: HashMap<Id, Id>,
+    /// Per row, its window: kept until the row closes, after its panes went (D6).
+    windows: HashMap<Id, Id>,
     /// Why the plugin stopped: no git, or one too old.
     stopped: Option<String>,
     version: Option<String>,
@@ -149,6 +164,7 @@ impl GitPlugin {
             forge: Some(Arc::new(GhCli::default())),
             prs: Arc::default(),
             state: Mutex::default(),
+            shown: Mutex::default(),
         }
     }
 
@@ -160,6 +176,7 @@ impl GitPlugin {
             forge: None,
             prs: Arc::default(),
             state: Mutex::default(),
+            shown: Mutex::default(),
         }
     }
 
@@ -216,6 +233,7 @@ impl GitPlugin {
                 eprintln!("terminescu: git plugin stopped: {why}");
                 lock(&self.state).stopped = Some(why);
                 cx.clear_decorations(None);
+                lock(&self.shown).clear();
                 false
             }
         }
@@ -223,6 +241,7 @@ impl GitPlugin {
 
     fn launch(&self, cx: &dyn PluginCx) {
         cx.clear_decorations(None);
+        lock(&self.shown).clear();
         let mut st = lock(&self.state);
         *st = State::default();
         drop(st);
@@ -236,6 +255,7 @@ impl GitPlugin {
             st.lead
                 .entry(p.tab.clone())
                 .or_insert_with(|| p.pane.clone());
+            st.windows.insert(p.side_tab.clone(), p.window.clone());
             st.panes.insert(p.pane.clone(), PaneGit::from(p));
         }
         drop(st);
@@ -254,6 +274,7 @@ impl GitPlugin {
             let Some(p) = cx.panes().into_iter().find(|p| p.pane == pane) else {
                 return;
             };
+            st.windows.insert(p.side_tab.clone(), p.window.clone());
             st.panes.insert(p.pane.clone(), PaneGit::from(&p));
         }
         let p = st.panes.get_mut(pane).expect("just checked");
@@ -296,6 +317,7 @@ impl GitPlugin {
                 eprintln!("terminescu: git plugin stopped: {why}");
                 lock(&self.state).stopped = Some(why);
                 cx.clear_decorations(None);
+                lock(&self.shown).clear();
                 return;
             }
             Err(e) => {
@@ -318,8 +340,10 @@ impl GitPlugin {
         let leads = st.lead.get(&tab).map(String::as_str) == Some(pane);
         drop(st);
         // The Changes section reads its list again; a dirty file edited again keeps the
-        // same facts, so this goes out on every read.
-        cx.emit("facts", json!({ "pane": pane }));
+        // same facts, so this goes out on every read. Diff tabs read again only for their
+        // own root (D3).
+        let root = facts.as_ref().map(|f| f.root.clone());
+        cx.emit("facts", json!({ "pane": pane, "root": root }));
         let target = Target::Pane(pane.into());
         let f = facts.as_ref();
         cx.set_variable(
@@ -351,7 +375,7 @@ impl GitPlugin {
     fn show(&self, cx: &dyn PluginCx, tab: &str, facts: Option<&RepoFacts>) {
         let pr = self.known_pr(facts);
         let github = lock(&self.state).github && facts.and_then(branch_of).is_some();
-        publish(cx, tab, facts, pr.as_ref(), github);
+        self.publish(cx, tab, facts, pr.as_ref(), github);
     }
 
     /// Starts a lookup of the branch's pull request unless one runs or a recent answer stands,
@@ -462,10 +486,10 @@ impl GitPlugin {
         }
     }
 
-    /// The minute tick: the next one is set before the read, so a slow git read that
-    /// returns early does not end the chain.
+    /// The minute tick looks up the pull request of the facts the pane has, reading no git
+    /// (D1). A pane with no branch lets its tick go; a refresh that finds one starts it again.
     fn tick(&self, pane: &str, cx: &dyn PluginCx) {
-        {
+        let key = {
             let st = lock(&self.state);
             let Some(p) = st.panes.get(pane) else {
                 return;
@@ -473,9 +497,12 @@ impl GitPlugin {
             if !st.github || st.lead.get(&p.tab).map(String::as_str) != Some(pane) {
                 return;
             }
-        }
-        cx.schedule(PR_EVERY, &format!("{PR_TICK}{pane}"));
-        self.refresh(pane, cx);
+            match p.facts.as_ref().and_then(branch_of) {
+                Some(key) => key,
+                None => return,
+            }
+        };
+        self.look_up(pane, key, false, cx);
     }
 
     fn pane_closed(&self, pane: &str, cx: &dyn PluginCx) {
@@ -510,8 +537,12 @@ impl GitPlugin {
         self.show(cx, tab, None);
     }
 
-    fn side_tab_closed(&self, side_tab: &str, cx: &dyn PluginCx) {
+    /// The row's tabs show nothing more. A worktree mark still in the row's data means no one
+    /// asked about the worktree, as when the row's shell exited: the UI half offers to remove
+    /// it (D6).
+    fn side_tab_closed(&self, side_tab: &str, data: &BTreeMap<String, Value>, cx: &dyn PluginCx) {
         let mut st = lock(&self.state);
+        let window = st.windows.remove(side_tab);
         let tabs: Vec<Id> = st
             .panes
             .values()
@@ -525,6 +556,20 @@ impl GitPlugin {
         drop(st);
         for t in tabs {
             self.show(cx, &t, None);
+        }
+        if let Some(mark) = data.get(WORKTREE_ROW)
+            && let Some(worktree) = mark.get("worktree").and_then(Value::as_str)
+        {
+            cx.emit(
+                "orphan",
+                json!({
+                    "row": side_tab,
+                    "window": window,
+                    "worktree": worktree,
+                    "repo": mark.get("repo"),
+                    "branch": mark.get("branch"),
+                }),
+            );
         }
     }
 
@@ -611,7 +656,8 @@ impl GitPlugin {
 
     fn base_text(&self, args: &Value, cx: &dyn PluginCx) -> Result<Value, PluginError> {
         let facts = self.root_facts(args, cx)?;
-        let path = arg(args, "path")?;
+        // A renamed file compares with its old path at the base (D7).
+        let path = arg(args, "from").or_else(|_| arg(args, "path"))?;
         let base: DiffBase = match args.get("base") {
             None | Some(Value::Null) => DiffBase::Head,
             Some(b) => serde_json::from_value(b.clone())
@@ -638,6 +684,22 @@ impl GitPlugin {
                 }
             }
         })
+    }
+
+    /// Where New Row from Worktree puts the worktree, with `<branch>` for the branch, and the
+    /// base it starts from when the person names none (D8).
+    fn worktree_where(&self, args: &Value, cx: &dyn PluginCx) -> Result<Value, PluginError> {
+        let (_, facts) = self.pane_facts(args, cx)?;
+        let (repo, main) = (slug(&facts.repo_name()), facts.main_root());
+        let at = match worktree_folder(cx) {
+            Some(f) => f.join(repo).join("<branch>"),
+            None => main
+                .parent()
+                .unwrap_or(&main)
+                .join(format!("{repo}-<branch>")),
+        };
+        let base = facts.head.branch().unwrap_or("HEAD");
+        Ok(json!({ "at": at, "base": base }))
     }
 
     fn worktree_add(&self, args: &Value, cx: &dyn PluginCx) -> Result<Value, PluginError> {
@@ -840,10 +902,10 @@ impl GitPlugin {
         let Some(mark) = cx.row_data(row, WORKTREE_ROW) else {
             return Ok(Value::Null);
         };
+        // A broken mark never keeps a row open (D5): the row closes as an unmarked one.
         let Some(worktree) = mark.get("worktree").and_then(Value::as_str) else {
-            return Err(PluginError::Failed(
-                "the row's worktree mark is broken".into(),
-            ));
+            eprintln!("terminescu: worktree mark of row {row} is broken");
+            return Ok(Value::Null);
         };
         let changed = self.vcs.changes(Path::new(worktree)).map(|c| c.len()).ok();
         Ok(json!({ "worktree": worktree, "repo": mark.get("repo"), "changed": changed }))
@@ -984,7 +1046,7 @@ fn worktree_folder(cx: &dyn PluginCx) -> Option<PathBuf> {
         None if s == "~" => PathBuf::from(std::env::var_os("HOME")?),
         None => PathBuf::from(s),
     };
-    path.is_absolute().then_some(path)
+    path.is_absolute().then(|| crate::cli::clean(&path))
 }
 
 /// The branch chip: the branch, a dot when files changed, `↑n` and `↓n`.
@@ -1061,33 +1123,92 @@ pub fn pr_chip(tab: &str, pr: &PullRequest) -> Decoration {
     }
 }
 
-/// What a tab shows; `None` facts clear it. `github` says a pull request answer counts: without
-/// it the checks fact is unknown rather than false.
-fn publish(
-    cx: &dyn PluginCx,
-    tab: &str,
-    facts: Option<&RepoFacts>,
-    pr: Option<&PullRequest>,
-    github: bool,
-) {
-    let target = Target::Tab(tab.into());
-    // Clearing first takes away a chip of the branch the tab was on before.
-    cx.clear_decorations(Some(&target));
-    if let Some(f) = facts {
-        cx.set_decoration(chip(tab, f));
+impl GitPlugin {
+    /// What a tab shows; `None` facts clear it. `github` says a pull request answer counts:
+    /// without it the checks fact is unknown rather than false. Only what differs from the
+    /// last publish goes out, so chips never blink (D2).
+    fn publish(
+        &self,
+        cx: &dyn PluginCx,
+        tab: &str,
+        facts: Option<&RepoFacts>,
+        pr: Option<&PullRequest>,
+        github: bool,
+    ) {
+        let failed = pr.map(|p| matches!(p.checks, Checks::Failing(_)));
+        let failed = failed.or((github && facts.is_some()).then_some(false));
+        let next = Shown {
+            branch: facts.map(|f| chip(tab, f)),
+            pr: pr.map(|p| pr_chip(tab, p)),
+            facts: [
+                facts.map(|f| Value::Bool(f.pushed())),
+                facts.map(|f| Value::Bool(f.conflicted > 0)),
+                failed.map(Value::Bool),
+            ],
+        };
+        let mut shown = lock(&self.shown);
+        let before = shown.remove(tab).unwrap_or_default();
+        let target = Target::Tab(tab.into());
+        // No call takes one chip away: a chip that goes clears the tab, and the rest is set
+        // again.
+        let gone = (before.branch.is_some() && next.branch.is_none())
+            || (before.pr.is_some() && next.pr.is_none());
+        if gone {
+            cx.clear_decorations(Some(&target));
+        }
+        for (was, now) in [(&before.branch, &next.branch), (&before.pr, &next.pr)] {
+            if let Some(d) = now
+                && (gone || was.as_ref() != Some(d))
+            {
+                cx.set_decoration(d.clone());
+            }
+        }
+        for (i, name) in TAB_FACTS.iter().enumerate() {
+            if before.facts[i] != next.facts[i] {
+                cx.set_fact(&target, name, next.facts[i].clone());
+            }
+        }
+        if next != Shown::default() {
+            shown.insert(tab.into(), next);
+        }
     }
-    if let Some(pr) = pr {
-        cx.set_decoration(pr_chip(tab, pr));
+
+    /// Removes a worktree whose row has gone, after the orphan notice (D6). Checked against
+    /// git like `worktreeRemove`, and never forced unless asked.
+    fn worktree_remove_at(&self, args: &Value) -> Result<Value, PluginError> {
+        let worktree = PathBuf::from(arg(args, "worktree")?);
+        let repo = PathBuf::from(arg(args, "repo")?);
+        let force = args.get("force").and_then(Value::as_bool).unwrap_or(false);
+        let marked = args.get("branch").and_then(Value::as_str);
+        let list = self.vcs.worktrees(&repo).map_err(failed)?;
+        let refuse = |why: &str| {
+            Err(PluginError::Failed(format!(
+                "{} was not removed: {why}",
+                worktree.display()
+            )))
+        };
+        match list.iter().find(|w| same_path(&w.path, &worktree)) {
+            None => return Ok(json!({ "removed": true, "gone": true })),
+            Some(w) if w.main || w.bare => {
+                return refuse("it is the repository's main working tree");
+            }
+            Some(w) if marked.is_some() && w.branch.as_deref() != marked => {
+                return refuse("it now holds another branch");
+            }
+            Some(_) => {}
+        }
+        match self.vcs.worktree_remove(&repo, &worktree, force) {
+            Ok(()) => {
+                self.vcs.forget(&repo);
+                Ok(json!({ "removed": true }))
+            }
+            Err(VcsError::HasChanges) => {
+                let changed = self.vcs.changes(&worktree).map(|c| c.len()).ok();
+                Ok(json!({ "removed": false, "changed": changed }))
+            }
+            Err(e) => Err(failed(e)),
+        }
     }
-    cx.set_fact(&target, "pushed", facts.map(|f| Value::Bool(f.pushed())));
-    cx.set_fact(
-        &target,
-        "conflict",
-        facts.map(|f| Value::Bool(f.conflicted > 0)),
-    );
-    let failed = pr.map(|p| matches!(p.checks, Checks::Failing(_)));
-    let failed = failed.or((github && facts.is_some()).then_some(false));
-    cx.set_fact(&target, "checksFailed", failed.map(Value::Bool));
 }
 
 impl Plugin for GitPlugin {
@@ -1124,7 +1245,7 @@ impl Plugin for GitPlugin {
             }
             CoreEvent::PaneClosed { pane } => self.pane_closed(pane, cx),
             CoreEvent::TabClosed { tab } => self.tab_closed(tab, cx),
-            CoreEvent::SideTabClosed { side_tab, .. } => self.side_tab_closed(side_tab, cx),
+            CoreEvent::SideTabClosed { side_tab, data } => self.side_tab_closed(side_tab, data, cx),
             CoreEvent::SideTabSelected { side_tab, .. } => self.selected(side_tab, cx),
             CoreEvent::Timer { token } => {
                 if token == VERSION_TIMER {
@@ -1165,6 +1286,8 @@ impl Plugin for GitPlugin {
             "changes" => self.changes(&args, cx),
             "baseText" => self.base_text(&args, cx),
             "worktreeAdd" => self.worktree_add(&args, cx),
+            "worktreeWhere" => self.worktree_where(&args, cx),
+            "worktreeRemoveAt" => self.worktree_remove_at(&args),
             "worktrees" => self.worktrees(&args, cx),
             "worktreeRemove" => self.worktree_remove(&args, cx),
             "openWorktrees" => self.open_worktrees(&args, cx),

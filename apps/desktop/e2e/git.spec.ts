@@ -180,6 +180,103 @@ test("a new file's diff tab compares with nothing", async ({ page }) => {
   await expect(page.locator(".cm-mergeView .cm-editor").nth(1)).toContainText("export const added = true;");
 });
 
+// polish-git-plugin D7: a rename compares with its old path; a deleted file shows read-only.
+test("a renamed file diffs against its old path, and a deleted one opens read-only", async ({ page }) => {
+  const { pane } = await start(page);
+  const root = "/Users/owner/shop-api";
+  await page.evaluate(
+    ({ pane, root, renamed, gone }) => {
+      (window as any).__fakeGit = {
+        [pane]: { changes: { root, total: 2, changes: [renamed, gone] } },
+        [root]: { base: { "src/old.ts": "export const name = 'old';\n", "src/gone.ts": "export const gone = 1;\n" } },
+      };
+      (window as any).__terminescu.host.files.set(`${root}/src/new.ts`, "export const name = 'new';\n");
+    },
+    { pane, root, renamed: change("src/new.ts", { from: "src/old.ts", staged: true }), gone: change("src/gone.ts", { deleted: true, added: 0, removed: 1 }) },
+  );
+  await page.keyboard.press("Meta+Backslash");
+  await page.locator('aside.ctx-pinned .git-change[data-path="src/new.ts"] .git-path').click();
+  const sides = page.locator(".cm-mergeView .cm-editor");
+  await expect(sides.nth(0)).toContainText("export const name = 'old';");
+  await expect(page.locator(".diff-note")).toHaveText("Changes since HEAD.");
+  await page.locator('aside.ctx-pinned .git-change[data-path="src/gone.ts"] .git-path').click();
+  const pane2 = page.locator(".text-pane").filter({ hasText: "Deleted:" });
+  await expect(pane2.locator(".diff-note")).toHaveText("Deleted: the file is gone from the working tree.");
+  await expect(pane2.locator(".cm-mergeView .cm-editor").nth(0)).toContainText("export const gone = 1;");
+  await expect(pane2.locator(".cm-mergeView .cm-editor").nth(1).locator(".cm-content")).toHaveAttribute("aria-readonly", "true");
+  await expect(pane2.getByText("Not on disk yet.")).toHaveCount(0);
+  await expect(pane2.locator(".text-status")).toContainText("Read-only");
+});
+
+// polish-git-plugin D4: text taken in place keeps the file's own line breaks.
+test("a CRLF file's diff tab keeps its line breaks in both layouts", async ({ page }) => {
+  const { pane } = await start(page);
+  const root = "/Users/owner/shop-api";
+  await page.evaluate(
+    ({ pane, root, c }) => {
+      (window as any).__fakeGit = { [pane]: { changes: { root, total: 1, changes: [c] } }, [root]: { base: { "win.txt": "one\r\ntwo\r\n" } } };
+      (window as any).__terminescu.host.files.set(`${root}/win.txt`, "one\r\n2\r\n");
+    },
+    { pane, root, c: change("win.txt", { added: 1, removed: 1 }) },
+  );
+  await page.keyboard.press("Meta+Backslash");
+  await page.locator('aside.ctx-pinned .git-change[data-path="win.txt"] .git-path').click();
+  await expect(page.locator(".cm-mergeView .cm-editor")).toHaveCount(2);
+  await expect(page.locator(".text-status")).toContainText("CRLF");
+  await page.locator(".diff-mode").click();
+  await expect(page.locator(".cm-mergeView")).toHaveCount(0);
+  await expect(page.locator(".text-status")).toContainText("CRLF");
+  await page.locator(".text-pane .cm-line").first().click();
+  await page.keyboard.press("End");
+  await page.keyboard.type("!");
+  await page.keyboard.press("Meta+KeyS");
+  await expect.poll(async () => (await files(page))[`${root}/win.txt`]).toBe("one!\r\n2\r\n");
+  await page.locator(".diff-mode").click();
+});
+
+// polish-git-plugin D3, D4: a new base for this repository goes into the open editor in place.
+test("a diff tab keeps its scroll place when HEAD moves, and ignores other repositories", async ({ page }) => {
+  const { pane } = await start(page);
+  const root = "/Users/owner/shop-api";
+  const lines = (tag: string) => Array.from({ length: 300 }, (_, i) => `line ${i} ${i === 120 ? tag : ""}`).join("\n") + "\n";
+  await page.evaluate(
+    ({ pane, root, base, work, retry }) => {
+      (window as any).__fakeGit = {
+        [pane]: { changes: { root, total: 1, changes: [retry] } },
+        [root]: { base: { "src/long.ts": base } },
+      };
+      (window as any).__terminescu.host.files.set(`${root}/src/long.ts`, work);
+    },
+    { pane, root, base: lines("base"), work: lines("work"), retry: change("src/long.ts", { added: 1, removed: 1 }) },
+  );
+  await page.keyboard.press("Meta+Backslash");
+  await page.locator('aside.ctx-pinned .git-change[data-path="src/long.ts"] .git-path').click();
+  const merge = page.locator(".cm-mergeView");
+  await expect(merge.locator(".cm-editor")).toHaveCount(2);
+  await merge.evaluate((el) => (el.scrollTop = 2000));
+  const top = () => merge.evaluate((el) => el.scrollTop);
+  await expect.poll(top).toBeGreaterThan(1500);
+  const before = await top();
+  const setBase = (tag: string) =>
+    page.evaluate(({ root, base }) => ((window as any).__fakeGit[root].base["src/long.ts"] = base), { root, base: lines(tag) });
+  // Another repository's facts leave the tab alone.
+  await setBase("other");
+  await host(page, "pluginEmit", "git", "facts", { pane: "elsewhere", root: "/Users/owner/other" });
+  await page.waitForTimeout(200);
+  await expect(merge.locator(".cm-editor").nth(0)).not.toContainText("line 120 other");
+  // This repository's facts bring the new base, in place.
+  await setBase("commit");
+  await host(page, "pluginEmit", "git", "facts", { pane, root });
+  await expect(merge.locator(".cm-editor").nth(0)).toContainText("line 120 commit");
+  expect(Math.abs((await top()) - before)).toBeLessThan(5);
+  // A layout switch and back puts the scroll back.
+  await page.locator(".diff-mode").click();
+  await expect(merge).toHaveCount(0);
+  await page.locator(".diff-mode").click();
+  await expect(merge.locator(".cm-editor")).toHaveCount(2);
+  await expect.poll(top).toBeGreaterThan(before - 50);
+});
+
 const titles = async (page: Page) =>
   (await page.evaluate(() => (window as any).__terminescu.host.workspace())).windows[0].sideTabs.map((s: { title: string | null }) => s.title);
 
@@ -195,7 +292,7 @@ test("a worktree row opens below the selected one", async ({ page }) => {
   await page.getByRole("button", { name: "Choose side tab kind" }).click();
   await page.getByRole("menuitem", { name: /New Row from Worktree/ }).click();
   const dialog = page.getByRole("alertdialog", { name: "New row from worktree" });
-  await expect(dialog).toContainText("git worktree add -b");
+  await expect(dialog).toContainText("Goes to /code/shop-api-<branch>, from main");
   await dialog.getByRole("textbox", { name: "Branch" }).fill("PROJ-490-refunds");
   await page.keyboard.press("Enter");
   await expect(dialog).toBeHidden();
@@ -255,6 +352,8 @@ test("closing a worktree row keeps the worktree by default", async ({ page }) =>
   await page.evaluate((pane) => ((window as any).__fakeGit = { [pane]: { changes: { root: "/code/shop-api", total: 0, changes: [] } } }), pane);
   await page.locator(".term-pane").first().click();
   await page.keyboard.press("Meta+Alt+KeyN");
+  // The dialog names the folder the worktree goes to and the base (polish-git-plugin D8).
+  await expect(page.getByRole("alertdialog", { name: "New row from worktree" })).toContainText("Goes to /code/shop-api-<branch>, from main");
   await page.getByRole("textbox", { name: "Branch" }).fill("PROJ-490-refunds");
   await page.keyboard.press("Enter");
   await expect.poll(() => titles(page)).toEqual([null, "PROJ-490-refunds"]);
@@ -266,6 +365,27 @@ test("closing a worktree row keeps the worktree by default", async ({ page }) =>
   await page.keyboard.press("Enter");
   await expect.poll(() => titles(page)).toEqual([null]);
   expect((await done(page)).removed).toEqual([]);
+  // The close asked already, so its event raises no notice.
+  const win = await page.evaluate(() => (window as any).__terminescu.host.workspace().windows[0].id);
+  await host(page, "pluginEmit", "git", "orphan", { row, window: win, worktree: "/code/shop-api-PROJ-490-refunds", repo: "/code/shop-api", branch: "PROJ-490-refunds" });
+  await page.waitForTimeout(200);
+  await expect(page.getByRole("alertdialog", { name: "Worktree kept" })).toHaveCount(0);
+});
+
+// polish-git-plugin D6: a row that closed without asking, as on a shell exit.
+test("a worktree row closed without asking offers to remove its worktree", async ({ page }) => {
+  await start(page);
+  const win = await page.evaluate(() => (window as any).__terminescu.host.workspace().windows[0].id);
+  const orphan = { row: "gone-row", window: win, worktree: "/code/shop-api-PROJ-7-tax", repo: "/code/shop-api", branch: "PROJ-7-tax" };
+  // Another window's row asks there, not here.
+  await host(page, "pluginEmit", "git", "orphan", { ...orphan, window: "another" });
+  await page.waitForTimeout(200);
+  await expect(page.getByRole("alertdialog", { name: "Worktree kept" })).toHaveCount(0);
+  await host(page, "pluginEmit", "git", "orphan", orphan);
+  const notice = page.getByRole("alertdialog", { name: "Worktree kept" });
+  await expect(notice).toContainText("Worktree kept at /code/shop-api-PROJ-7-tax. Remove it?");
+  await notice.getByRole("button", { name: "Remove worktree" }).click();
+  await expect.poll(async () => (await done(page)).removedAt).toEqual([{ worktree: "/code/shop-api-PROJ-7-tax", force: false }]);
 });
 
 const prs = [

@@ -73,26 +73,38 @@ pub struct RepoFacts {
 }
 
 impl RepoFacts {
-    /// The repository's name: its main working tree's folder.
+    /// The repository's name: its main working tree's folder, or for a bare repository `shop`
+    /// from `shop.git` and the parent folder of a `.bare` one (polish-git-plugin D5).
     pub fn repo_name(&self) -> String {
-        let main = if self.common_dir.file_name().is_some_and(|n| n == ".git") {
-            self.common_dir.parent().unwrap_or(&self.root)
-        } else {
-            &self.root
+        let name = |p: &Path| {
+            p.file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default()
         };
-        main.file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default()
+        match self.common_dir.file_name().and_then(|n| n.to_str()) {
+            Some(".git" | ".bare") => self
+                .common_dir
+                .parent()
+                .map(name)
+                .unwrap_or_else(|| name(&self.root)),
+            Some(n) if n.len() > 4 && n.ends_with(".git") => n[..n.len() - 4].to_string(),
+            _ => name(&self.root),
+        }
     }
 
-    /// The main working tree, where worktrees are made from.
+    /// Where git runs for the repository's worktree list and removes, and the folder new
+    /// worktrees go beside: the main working tree, or the shared git folder of a bare
+    /// repository.
     pub fn main_root(&self) -> PathBuf {
-        match self.common_dir.file_name() {
-            Some(n) if n == ".git" => self
+        match self.common_dir.file_name().and_then(|n| n.to_str()) {
+            Some(".git") => self
                 .common_dir
                 .parent()
                 .map(Path::to_path_buf)
                 .unwrap_or_else(|| self.root.clone()),
+            Some(n) if n == ".bare" || (n.len() > 4 && n.ends_with(".git")) => {
+                self.common_dir.clone()
+            }
             _ => self.root.clone(),
         }
     }
@@ -118,6 +130,8 @@ pub struct Change {
     pub added: Option<u32>,
     pub removed: Option<u32>,
     pub binary: bool,
+    /// Deleted, staged or not: the file is gone from the working tree.
+    pub deleted: bool,
 }
 
 /// The side a diff compares the working copy with.
@@ -187,4 +201,48 @@ pub trait Vcs: Send + Sync {
     /// Drops what is known about the repository around `dir`, after a command may have
     /// changed it.
     fn forget(&self, _dir: &Path) {}
+}
+
+#[cfg(test)]
+mod bare_tests {
+    use super::*;
+
+    fn facts(root: &str, common: &str) -> RepoFacts {
+        RepoFacts {
+            root: root.into(),
+            git_dir: common.into(),
+            common_dir: common.into(),
+            head: Head::Branch("main".into()),
+            upstream: None,
+            ahead: 0,
+            behind: 0,
+            changed: 0,
+            conflicted: 0,
+            op: None,
+        }
+    }
+
+    #[test]
+    fn bare_layouts_name_the_repository_and_its_main_folder() {
+        let plain = facts("/code/shop-fix", "/code/shop/.git");
+        assert_eq!(plain.repo_name(), "shop");
+        assert_eq!(plain.main_root(), PathBuf::from("/code/shop"));
+        let dot_git = facts("/code/shop-fix", "/code/shop.git");
+        assert_eq!(dot_git.repo_name(), "shop");
+        assert_eq!(dot_git.main_root(), PathBuf::from("/code/shop.git"));
+        let dot_bare = facts("/code/shop/fix", "/code/shop/.bare");
+        assert_eq!(dot_bare.repo_name(), "shop");
+        assert_eq!(dot_bare.main_root(), PathBuf::from("/code/shop/.bare"));
+        // A separate git folder with another name keeps the working tree.
+        let other = facts("/code/shop", "/gitdirs/shop-data");
+        assert_eq!(other.repo_name(), "shop");
+        assert_eq!(other.main_root(), PathBuf::from("/code/shop"));
+    }
+
+    #[test]
+    fn a_bare_repository_puts_worktrees_beside_it() {
+        let f = facts("/code/shop-fix", "/code/shop.git");
+        let at = crate::worktree::path_for(&f.main_root(), &f.repo_name(), "next", None);
+        assert_eq!(at, PathBuf::from("/code/shop-next"));
+    }
 }

@@ -111,6 +111,17 @@ describe("compose", () => {
     expect(one.beforeRowClose.map((h) => h.plugin)).toEqual(["b"]);
   });
 
+  it("lists the enabled plugins' watchers in order", () => {
+    const watch = () => () => undefined;
+    const a = definePlugin({ id: "a", name: "A", watch });
+    const b = definePlugin({ id: "b", name: "B" });
+    const c = definePlugin({ id: "c", name: "C", watch });
+    const all = compose({ plugins: [a, b, c], enabled: new Set(["a", "b", "c"]), decorations: [], appActions: app });
+    expect(all.watchers.map((w) => w.plugin)).toEqual(["a", "c"]);
+    const off = compose({ plugins: [a, b, c], enabled: new Set(["c"]), decorations: [], appActions: app });
+    expect(off.watchers.map((w) => w.plugin)).toEqual(["c"]);
+  });
+
   it("shows a gated action only while its plugin raises the flag", () => {
     const gh = definePlugin({ id: "git", name: "Git", actions: [{ id: "pr", label: "Open Pull Request", accel: "Cmd+Alt+G", when: "github", run: noop }] });
     const ids = (flags?: Map<string, Set<string>>) => compose({ plugins: [gh], enabled: new Set(["git"]), decorations: [], appActions: app, flags }).actions.map((a) => a.id);

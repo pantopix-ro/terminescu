@@ -1486,6 +1486,23 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     cur.answer(a);
     refocus();
   };
+  // Each enabled plugin's watcher runs while this window lives (polish-git-plugin D6).
+  const askRef = useRef(ask);
+  askRef.current = ask;
+  const watchers = plugins.composed.watchers;
+  const watchKey = watchers.map((w) => w.plugin).join(",");
+  useEffect(() => {
+    const stops = watchers.map((w) => {
+      try {
+        return w.watch({ windowId, bridge: plugins.bridge(w.plugin), ask: (q) => askRef.current(q) });
+      } catch (e) {
+        console.error(`plugin ${w.plugin}: watch`, e);
+        return () => undefined;
+      }
+    });
+    return () => stops.forEach((s) => s());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [windowId, watchKey]);
   /** Runs a plugin action; from a row's menu it runs on that row and its shown tab's shell. */
   const runPluginAction = (id: string, rowId?: string) => {
     const a = plugins.composed.actions.find((x) => x.id === id);
@@ -2842,7 +2859,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           panesOf(tab.layout).flatMap((paneId) => {
             const docId = docOf(tab.layout, paneId);
             if (!docId) return [];
-            const text = (o?: { mount?: unknown; bar?: ReactNode }) => (
+            const text = (o?: { mount?: unknown; bar?: ReactNode; readOnly?: boolean }) => (
               <TextPane
                 key={paneId}
                 paneId={paneId}
@@ -2856,6 +2873,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                 // The plugin builds it with `@terminescu/ui`, the type `renderText` names.
                 mount={o?.mount as MountEditor | undefined}
                 bar={o?.bar}
+                locked={o?.readOnly === true}
               />
             );
             // The document keeps its view, so a diff tab is one again after a restart.

@@ -102,9 +102,10 @@ export interface PaneApp {
   /**
    * The app's own text pane over the leaf's document, for a view that decorates it (D6 of
    * add-git-plugin). `mount` is `@terminescu/ui`'s `MountEditor`; `bar` goes above the editor.
-   * Present only for a view the app opened over a document.
+   * Present only for a view the app opened over a document. `readOnly` shows the text
+   * read-only, as a deleted file's diff (polish-git-plugin D7).
    */
-  renderText?(options?: { mount?: unknown; bar?: ReactNode }): ReactNode;
+  renderText?(options?: { mount?: unknown; bar?: ReactNode; readOnly?: boolean }): ReactNode;
 }
 
 export interface PaneViewProps {
@@ -214,6 +215,18 @@ export interface UiPlugin {
   settingsPage?: ComponentType<SettingsPageProps>;
   /** A bar above each terminal pane, such as an agent's resume offer (harden-plugin-host D7). */
   paneBar?: ComponentType<PaneBarProps>;
+  /**
+   * Runs in each window while the plugin is enabled, to answer the Rust half's events with the
+   * app's dialog, such as a worktree left behind (polish-git-plugin D6). Returns the stop.
+   */
+  watch?: (cx: WatchContext) => () => void;
+}
+
+/** What a plugin's watcher gets: its window, its bridge and the app's dialog. */
+export interface WatchContext {
+  windowId: Id;
+  bridge: PluginBridge;
+  ask: Ask;
 }
 
 /** What a pane bar can do in the app (Facade). */
@@ -295,6 +308,8 @@ export interface Composed {
   settingsPages: readonly { plugin: string; name: string; render: ComponentType<SettingsPageProps> }[];
   /** The enabled plugins' pane bars, in plugin order. */
   paneBars: readonly { plugin: string; render: ComponentType<PaneBarProps> }[];
+  /** The enabled plugins' watchers, in plugin order. */
+  watchers: readonly { plugin: string; watch: (cx: WatchContext) => () => void }[];
 }
 
 export interface ComposeInput {
@@ -386,5 +401,6 @@ export function compose({ plugins, enabled, decorations, appActions, flags, bind
     beforeRowClose: on.flatMap((p) => (p.beforeRowClose ? [{ plugin: p.id, run: p.beforeRowClose }] : [])),
     settingsPages: on.flatMap((p) => (p.settingsPage ? [{ plugin: p.id, name: p.name, render: p.settingsPage }] : [])),
     paneBars: on.flatMap((p) => (p.paneBar ? [{ plugin: p.id, render: p.paneBar }] : [])),
+    watchers: on.flatMap((p) => (p.watch ? [{ plugin: p.id, watch: p.watch }] : [])),
   };
 }
