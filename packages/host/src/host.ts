@@ -5,6 +5,7 @@ import type {
   PaneLabel,
   DragEnd,
   DragItem,
+  Reopened,
   DragPoint,
   AttentionSettings,
   AppSettings,
@@ -249,6 +250,11 @@ export interface Host {
    * `dragEnd`. Resolves to the drag's token.
    */
   dragBegin(item: DragItem, title: string): Promise<number>;
+  /**
+   * Reopens the last closed tab or row (task 8.87): into its window when that is still open,
+   * else into `windowId`. Null when nothing was closed this session.
+   */
+  reopenClosed(windowId: Id): Promise<Reopened | null>;
   /** The drag `token` ended: `drop` false for a cancel. Says where it landed. */
   dragEnd(token: number, drop: boolean): Promise<DragEnd>;
   /** A drag from another window is over this one at a point, or left it (`null`). */

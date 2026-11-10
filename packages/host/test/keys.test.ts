@@ -55,7 +55,8 @@ describe("editable shortcuts (task 6.10)", () => {
 
   it("flags ⌘T as a clash, and a chord without ⌘ or one macOS keeps", () => {
     expect(bindingProblem("open_file", "Cmd+T", withOpenFile)).toBe("⌘T is already New Tab.");
-    expect(bindingProblem("open_file", "Shift+Cmd+t", withOpenFile)).toBeUndefined();
+    expect(bindingProblem("open_file", "Shift+Cmd+t", withOpenFile)).toBe("⇧⌘T is already Reopen Closed Tab.");
+    expect(bindingProblem("open_file", "Shift+Cmd+y", withOpenFile)).toBeUndefined();
     expect(bindingProblem("open_file", "Ctrl+P", withOpenFile)).toMatch(/needs ⌘/);
     expect(bindingProblem("open_file", "Cmd+C", withOpenFile)).toBe("⌘C is Copy.");
     expect(bindingProblem("open_file", "Cmd++", withOpenFile)).toMatch(/needs a key/);

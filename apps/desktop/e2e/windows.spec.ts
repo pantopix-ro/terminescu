@@ -481,6 +481,34 @@ test("a one-tab row drags to another window and back; the emptied window closes"
   await expect.poll(() => sideIds(page)).toEqual([first, second]);
 });
 
+// Task 8.87: ⇧⌘T brings back the last closed tab, then the last closed row, at their places.
+test("⇧⌘T reopens a tab and a row", async ({ page }) => {
+  await start(page);
+  await addTab(page);
+  await expect.poll(() => tabIds(page)).toHaveLength(2);
+  const [a, b] = await tabIds(page);
+  const [first] = await sideIds(page);
+  await page.keyboard.press("Meta+Shift+KeyN");
+  await expect.poll(() => sideIds(page)).toHaveLength(2);
+  const second = (await sideIds(page))[1];
+  const send = (c: object) => page.evaluate((c) => (window as any).__terminescu.host.send(c), c);
+
+  await send({ type: "CloseTab", tabId: a });
+  await page.keyboard.press("Meta+Shift+KeyT");
+  await expect.poll(() => tabIds(page), "the tab is back at its index, and shows").toEqual([a, b]);
+
+  await send({ type: "CloseSideTab", sideTabId: first });
+  await expect.poll(() => sideIds(page)).toEqual([second]);
+  await page.keyboard.press("Meta+Shift+KeyT");
+  await expect.poll(() => sideIds(page), "the row is back at the top").toEqual([first, second]);
+  const ws = (await mock(page)).ws;
+  expect(ws.windows[0].sideTabs[0].tabs.map((t: any) => t.id)).toEqual([a, b]);
+
+  // Nothing left to reopen: nothing changes.
+  await page.keyboard.press("Meta+Shift+KeyT");
+  await expect.poll(() => sideIds(page)).toEqual([first, second]);
+});
+
 // Task 8.86: a folder row goes out to a new window, back as a row, and merges into a row.
 test("a folder drags to another window, back, and into a row", async ({ page }) => {
   await start(page);

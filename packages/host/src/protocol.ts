@@ -395,6 +395,12 @@ export interface MergeDone {
   renames: [string, string][];
 }
 
+/** Where ⇧⌘T put a reopened tab or row back (task 8.87). */
+export interface Reopened {
+  sideTabId: Id;
+  tabId: Id;
+}
+
 /** What a drag across windows carries: a tab, or a whole row with its tabs (task 8.86). */
 export type DragItem = { tabId: Id; sideTabId?: undefined } | { sideTabId: Id; tabId?: undefined };
 

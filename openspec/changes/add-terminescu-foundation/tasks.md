@@ -788,9 +788,9 @@ buffers once per sheet.
       dropped on another window's row merges (clash dialog), on a gap, the end or the panes
       moves as a row, and outside every window opens a new window at the cursor. Verify: desktop
       unit test for the drag item; `windows.spec.ts` "a folder drags to another window".
-- [ ] 8.87 Undo close. ⇧⌘T reopens the last closed tab or row, from a session-only list of 10:
+- [x] 8.87 Undo close. ⇧⌘T reopens the last closed tab or row, from a session-only list of 10:
       names, icons, accents, layout, status, variables, pins and context come back, each pane
-      with a fresh login shell in its last cwd; secrets stay in the daemon until the entry
+      with a fresh login shell in its last cwd (text and transcript panes do not come back); secrets stay in the daemon until the entry
       leaves the list. A tab goes back to its row at its index, else as a new row; a row to its
       window at its index, else the focused window. Verify: core test
       `reopen_restores_a_row_with_its_context`; `windows.spec.ts` "⇧⌘T reopens a tab and a row".

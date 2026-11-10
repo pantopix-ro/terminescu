@@ -100,6 +100,10 @@ each drag SHALL have a palette equivalent.
 - **WHEN** a second window holds one side tab with one tab and the person drags that row from its sidebar into the first window and releases
 - **THEN** the row joins the first window with its context and the second window closes
 
+#### Scenario: Reopen a closed row
+- **WHEN** the person closes row `PROJ-482`, which has two tabs and the variable `ticket`, and presses `⇧⌘T`
+- **THEN** the row comes back at its place with both tabs, its icon, accent, status and `ticket`, and each pane starts a fresh login shell in its last folder
+
 #### Scenario: Drag a folder to another window
 - **WHEN** the person drags a folder row with three tabs onto a row of another window and releases
 - **THEN** the folder merges into that row, asking first when names clash; released on a gap or the panes it joins that window as a row, and released outside every window it opens a new window at the cursor

@@ -637,6 +637,33 @@ export function createMockHost(initial?: Workspace): MockHost {
     return out;
   };
 
+  // Undo close (task 8.87): the last 10 closed tabs and rows, as they were.
+  type ClosedEntry =
+    | { kind: "row"; windowId: string; index: number; sideTab: SideTab }
+    | { kind: "tab"; windowId: string; sideTabId: string; index: number; tab: Tab };
+  const closedList: ClosedEntry[] = [];
+  const closingOf = (c: Command): ClosedEntry | undefined => {
+    const rowOf = (sideTabId: string): ClosedEntry | undefined => {
+      const w = ws.windows.find((x) => x.sideTabs.some((s) => s.id === sideTabId));
+      const index = w?.sideTabs.findIndex((s) => s.id === sideTabId) ?? -1;
+      return w && index >= 0 ? { kind: "row", windowId: w.id, index, sideTab: structuredClone(w.sideTabs[index]!) } : undefined;
+    };
+    let tabId: string;
+    if (c.type === "CloseSideTab") return rowOf(c.sideTabId);
+    if (c.type === "CloseTab") tabId = c.tabId;
+    else if (c.type === "ClosePane") {
+      const tab = allSideTabs().flatMap((s) => s.tabs).find((t) => panesOf(t.layout).includes(c.paneId));
+      const left = tab && removePane(tab.layout, c.paneId);
+      if (!tab || (left && holdsWork(left))) return undefined;
+      tabId = tab.id;
+    } else return undefined;
+    const side = allSideTabs().find((s) => s.tabs.some((t) => t.id === tabId));
+    if (!side) return undefined;
+    if (side.tabs.length === 1) return rowOf(side.id);
+    const w = ws.windows.find((x) => x.sideTabs.includes(side))!;
+    const index = side.tabs.findIndex((t) => t.id === tabId);
+    return { kind: "tab", windowId: w.id, sideTabId: side.id, index, tab: structuredClone(side.tabs[index]!) };
+  };
   function plan(c: Command): Patch[] {
     switch (c.type) {
       case "CreateWindow": {
@@ -862,7 +889,29 @@ export function createMockHost(initial?: Workspace): MockHost {
       return { rev, workspace: structuredClone(ws) };
     },
     async send(command) {
-      return commit(plan(command));
+      const noted = closingOf(command);
+      const rev = await commit(plan(command));
+      if (noted && closedList.push(noted) > 10) closedList.shift();
+      return rev;
+    },
+    async reopenClosed(windowId) {
+      const e = closedList.pop();
+      if (!e) return null;
+      const w = ws.windows.find((x) => x.id === e.windowId) ?? window(windowId);
+      if (e.kind === "row") {
+        const index = Math.min(e.index, w.sideTabs.length);
+        await commit([{ type: "SideTabCreated", windowId: w.id, index, sideTab: e.sideTab }]);
+        return { sideTabId: e.sideTab.id, tabId: e.sideTab.tabs[0]!.id };
+      }
+      const side = allSideTabs().find((s) => s.id === e.sideTabId);
+      if (side) {
+        await commit([{ type: "TabCreated", sideTabId: side.id, index: Math.min(e.index, side.tabs.length), tab: e.tab }]);
+        return { sideTabId: side.id, tabId: e.tab.id };
+      }
+      const sid = id();
+      const created: SideTab = { id: sid, title: null, tabs: [e.tab], accent: pickNeon(sid), name: pickName(sid) };
+      await commit([{ type: "SideTabCreated", windowId: w.id, index: w.sideTabs.length, sideTab: created }]);
+      return { sideTabId: sid, tabId: e.tab.id };
     },
     async mergePreview(from, into, label) {
       sideTab(from);

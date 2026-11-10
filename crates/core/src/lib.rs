@@ -4,6 +4,7 @@
 pub mod agent;
 mod atomic;
 pub mod attention;
+pub mod closed;
 pub mod commands;
 pub mod context;
 pub mod core_socket;
