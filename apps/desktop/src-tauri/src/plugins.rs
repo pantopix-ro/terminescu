@@ -363,12 +363,14 @@ impl PluginCx for Cx {
             return Err(PluginError::BadArgs(format!("no file {path}")));
         }
         // An absolute path never reads as an `open` option.
-        std::process::Command::new("/usr/bin/open")
+        let mut child = std::process::Command::new("/usr/bin/open")
             .arg("-R")
             .arg(p)
             .spawn()
-            .map(drop)
-            .map_err(failed)
+            .map_err(failed)?;
+        // Reaped off the caller's thread, so no zombie stays behind.
+        std::thread::spawn(move || child.wait());
+        Ok(())
     }
 
     fn new_row(

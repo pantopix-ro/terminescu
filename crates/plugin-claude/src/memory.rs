@@ -16,9 +16,11 @@ pub fn config_dir() -> PathBuf {
 }
 
 /// The project's `CLAUDE.md`: at the repository root above `cwd` (the nearest folder holding
-/// `.git`, a folder or a worktree's file), else in `cwd` itself.
-pub fn project_file(cwd: &Path) -> PathBuf {
+/// `.git`, a folder or a worktree's file), else in `cwd` itself. The walk stops below `home`, so
+/// a dotfiles repository in the home folder never stands in for a project's.
+pub fn project_file(cwd: &Path, home: Option<&Path>) -> PathBuf {
     cwd.ancestors()
+        .take_while(|d| Some(*d) != home)
         .find(|d| d.join(".git").exists())
         .unwrap_or(cwd)
         .join("CLAUDE.md")
@@ -65,12 +67,20 @@ mod tests {
         let deep = base.join("repo/src/lib");
         std::fs::create_dir_all(&deep).unwrap();
         std::fs::create_dir_all(base.join("repo/.git")).unwrap();
-        assert_eq!(project_file(&deep), base.join("repo/CLAUDE.md"));
+        assert_eq!(project_file(&deep, None), base.join("repo/CLAUDE.md"));
+        // A repository at the home folder is not the project of a folder under it.
+        let home = base.join("home");
+        std::fs::create_dir_all(home.join(".git")).unwrap();
+        std::fs::create_dir_all(home.join("notes")).unwrap();
+        assert_eq!(
+            project_file(&home.join("notes"), Some(&home)),
+            home.join("notes/CLAUDE.md")
+        );
         let plain = base.join("plain");
         std::fs::create_dir_all(&plain).unwrap();
         // `plain` has no repository above it inside the temp folder, unless the temp folder
         // itself is in one; the nearest `.git` wins either way.
-        let found = project_file(&plain);
+        let found = project_file(&plain, None);
         assert!(found == plain.join("CLAUDE.md") || !found.starts_with(&base));
         std::fs::remove_dir_all(&base).unwrap();
     }

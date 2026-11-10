@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DIFF_MODE_KEY as MODE_KEY, loadDiffMode as loadMode, parseDiffMode as parseMode, saveDiffMode as saveMode, toggledDiffMode as toggled } from "../src/diff-mode";
+import { DIFF_MODE_KEY as MODE_KEY, OLD_DIFF_MODE_KEY, loadDiffMode as loadMode, parseDiffMode as parseMode, saveDiffMode as saveMode, toggledDiffMode as toggled } from "../src/diff-mode";
 
 const memory = () => {
   const data = new Map<string, string>();
@@ -24,6 +24,14 @@ describe("diff layout", () => {
     saveMode(toggled(loadMode(store)), store);
     expect(store.data.get(MODE_KEY)).toBe("unified");
     expect(loadMode(store)).toBe("unified");
+  });
+
+  it("reads the git plugin's old key until a layout is saved", () => {
+    const store = memory();
+    store.setItem(OLD_DIFF_MODE_KEY, "unified");
+    expect(loadMode(store)).toBe("unified");
+    saveMode("side", store);
+    expect(loadMode(store)).toBe("side");
   });
 
   it("falls back to side by side when storage throws", () => {

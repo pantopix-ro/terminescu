@@ -308,6 +308,50 @@ fn history_keeps_50_newest() {
 }
 
 #[test]
+fn history_adds_a_late_session_and_reopens_a_resumed_one() {
+    let base = folder("history-late");
+    let plugin = ClaudePlugin::new(PathBuf::from("/opt/terminescu"), &base.join("support"));
+    let cx = Cx::one_pane("/Users/owner/src/shop-api");
+    // A session the hook first sees mid-way still lands, from any event with a cwd.
+    hook(
+        &plugin,
+        &cx,
+        json!({ "hook_event_name": "UserPromptSubmit", "session_id": "sess-late",
+                "cwd": "/Users/owner/src/shop-api", "prompt": "Rename the client" }),
+    );
+    // Without a cwd an unknown session stays out.
+    hook(
+        &plugin,
+        &cx,
+        json!({ "hook_event_name": "Stop", "session_id": "sess-nocwd" }),
+    );
+    hook(
+        &plugin,
+        &cx,
+        json!({ "hook_event_name": "SessionEnd", "session_id": "sess-late" }),
+    );
+    let list = plugin.call("history", json!({ "row": "s1" }), &cx).unwrap();
+    let list = list.as_array().unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0]["prompt"], "Rename the client");
+    assert!(list[0]["ended"].is_u64());
+
+    // `claude --resume` starts it again: open, prompt kept.
+    hook(
+        &plugin,
+        &cx,
+        json!({ "hook_event_name": "SessionStart", "session_id": "sess-late", "source": "resume",
+                "cwd": "/Users/owner/src/shop-api" }),
+    );
+    let list = plugin.call("history", json!({ "row": "s1" }), &cx).unwrap();
+    assert!(
+        list[0]["ended"].is_null(),
+        "a resumed session is open again"
+    );
+    assert_eq!(list[0]["prompt"], "Rename the client");
+}
+
+#[test]
 fn memory_files_open_from_the_repository_root_and_transcripts_reveal() {
     let base = folder("memory");
     let config = base.join("claude-config");

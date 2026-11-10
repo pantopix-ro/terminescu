@@ -61,6 +61,9 @@ export function splitUnder(path: string, base: string): { dir: string; name: str
   return at < 0 ? { dir: "", name: rel } : { dir: rel.slice(0, at + 1), name: rel.slice(at + 1) };
 }
 
+/** How long the list waits after a change event before it reads again. */
+const RELOAD_MS = 300;
+
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export function ChangesSection({ paneId, bridge, app }: PanelSectionProps) {
@@ -80,11 +83,18 @@ export function ChangesSection({ paneId, bridge, app }: PanelSectionProps) {
       );
     };
     load();
-    const mine = (p: unknown) => (p as { pane?: string } | null)?.pane === paneId && load();
+    // A busy session edits many times a second; one read follows the last event of a burst.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const mine = (p: unknown) => {
+      if ((p as { pane?: string } | null)?.pane !== paneId) return;
+      clearTimeout(timer);
+      timer = setTimeout(load, RELOAD_MS);
+    };
     const offChanged = bridge.on("changed", mine);
     const offInsights = bridge.on("insights", mine);
     return () => {
       gone = true;
+      clearTimeout(timer);
       offChanged();
       offInsights();
     };

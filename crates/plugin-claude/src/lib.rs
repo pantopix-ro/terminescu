@@ -637,6 +637,7 @@ impl Plugin for ClaudePlugin {
                         &args
                             .cwd(cx)
                             .ok_or_else(|| bad("the row's folder is not known"))?,
+                        std::env::var_os("HOME").map(PathBuf::from).as_deref(),
                     ),
                     _ => return Err(bad("which is project or user")),
                 };

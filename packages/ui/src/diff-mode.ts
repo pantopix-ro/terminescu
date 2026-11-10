@@ -21,9 +21,12 @@ const storage = (): Store | undefined => {
   }
 };
 
+/** Where the git plugin kept the layout before every diff tab shared it. */
+export const OLD_DIFF_MODE_KEY = "terminescu.git.diffMode";
+
 export function loadDiffMode(store: Store | undefined = storage()): DiffMode {
   try {
-    return parseDiffMode(store?.getItem(DIFF_MODE_KEY));
+    return parseDiffMode(store?.getItem(DIFF_MODE_KEY) ?? store?.getItem(OLD_DIFF_MODE_KEY));
   } catch {
     return "side";
   }

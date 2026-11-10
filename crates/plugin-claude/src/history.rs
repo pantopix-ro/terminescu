@@ -53,7 +53,9 @@ fn first_line(prompt: &str) -> Option<String> {
     Some(out)
 }
 
-/// One hook event of `session` in a pane of `row`: `SessionStart` adds it, the first
+/// One hook event of `session` in a pane of `row`. The first event that names an absolute cwd
+/// adds the session, so one that started before Terminescu or its hook still shows; a
+/// `SessionStart` of a known session (`--resume`) opens it again at the top. The first
 /// `UserPromptSubmit` keeps its prompt's first line, `SessionEnd` its end.
 pub fn on_hook(cx: &dyn PluginCx, row: &str, session: &str, event: &Value, now: u64) {
     if !is_session_id(session) {
@@ -61,9 +63,10 @@ pub fn on_hook(cx: &dyn PluginCx, row: &str, session: &str, event: &Value, now: 
     }
     let name = event.get("hook_event_name").and_then(Value::as_str);
     let mut list = read(cx, row);
-    let at = list.iter().position(|s| s.id == session);
-    match (name, at) {
-        (Some("SessionStart"), None) => {
+    let mut changed = false;
+    let i = match list.iter().position(|s| s.id == session) {
+        Some(i) => i,
+        None => {
             let Some(cwd) = event
                 .get("cwd")
                 .and_then(Value::as_str)
@@ -78,19 +81,33 @@ pub fn on_hook(cx: &dyn PluginCx, row: &str, session: &str, event: &Value, now: 
                 ended: None,
                 prompt: None,
             });
+            changed = true;
+            list.len() - 1
         }
-        (Some("UserPromptSubmit"), Some(i)) if list[i].prompt.is_none() => {
-            let Some(p) = event
+    };
+    match name {
+        Some("SessionStart") if !changed => {
+            list[i].started = now;
+            list[i].ended = None;
+            changed = true;
+        }
+        Some("UserPromptSubmit") if list[i].prompt.is_none() => {
+            if let Some(p) = event
                 .get("prompt")
                 .and_then(Value::as_str)
                 .and_then(first_line)
-            else {
-                return;
-            };
-            list[i].prompt = Some(p);
+            {
+                list[i].prompt = Some(p);
+                changed = true;
+            }
         }
-        (Some("SessionEnd"), Some(i)) => list[i].ended = Some(now),
-        _ => return,
+        Some("SessionEnd") => {
+            list[i].ended = Some(now);
+            changed = true;
+        }
+        _ => {}
     }
-    write(cx, row, list);
+    if changed {
+        write(cx, row, list);
+    }
 }

@@ -301,6 +301,15 @@ pub fn doc_open_file(
     if let Some(id) = state.docs.find_file(&path)
         && let Some(view) = state.docs.get(&id)
     {
+        // A document whose pane went (kept for its unsaved text) shows again in a new one.
+        if pane_of_doc(&state.runtime, &id).is_none() {
+            let cmd = Command::OpenText {
+                side_tab_id: side_tab,
+                doc_id: id,
+                beside,
+            };
+            state.runtime.command(cmd).map_err(|e| e.to_string())?;
+        }
         return Ok(view);
     }
     let view = state.docs.open_file(&path, Some(&side_tab)).map_err(err)?;
@@ -510,10 +519,10 @@ pub fn path_open(
     if reveal {
         cmd.arg("-R");
     }
-    cmd.arg(&target)
-        .spawn()
-        .map(drop)
-        .map_err(|e| e.to_string())
+    let mut child = cmd.arg(&target).spawn().map_err(|e| e.to_string())?;
+    // Reaped off the command's thread, so no zombie stays behind.
+    std::thread::spawn(move || child.wait());
+    Ok(())
 }
 
 /// A document with its text, when a pane mounts or a window takes over a tab.
