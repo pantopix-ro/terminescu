@@ -144,6 +144,8 @@ export interface MockHost extends Host {
    * with that code. Exit-code rules fire as in the core.
    */
   runCommand(pane: string, command: string, exit: number | null): void;
+  /** The pane offers `session` for resuming, as after a restart. */
+  offerResume(pane: string, session: string): Promise<void>;
   /**
    * Plays `terminescu status` in a pane; `null` is `--clear`. The mock has no `--for` or
    * `--until-exit` and no Claude idle rules; `crates/core/tests/rules.rs` covers those.
@@ -1116,18 +1118,18 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
       if (e.kind === "row") {
         const index = Math.min(e.index, w.sideTabs.length);
         await commit([{ type: "SideTabCreated", windowId: w.id, index, sideTab: e.sideTab }]);
-        return { windowId: w.id, sideTabId: e.sideTab.id, tabId: e.sideTab.tabs[0]!.id };
+        return { windowId: w.id, sideTabId: e.sideTab.id, tabId: e.sideTab.tabs[0]!.id, row: true };
       }
       const side = allSideTabs().find((s) => s.id === e.sideTabId);
       if (side) {
         await commit([{ type: "TabCreated", sideTabId: side.id, index: Math.min(e.index, side.tabs.length), tab: e.tab }]);
         const home = ws.windows.find((x) => x.sideTabs.some((s) => s.id === side.id)) ?? w;
-        return { windowId: home.id, sideTabId: side.id, tabId: e.tab.id };
+        return { windowId: home.id, sideTabId: side.id, tabId: e.tab.id, row: false };
       }
       const sid = id();
       const created: SideTab = { id: sid, title: null, tabs: [e.tab], accent: pickNeon(sid), name: pickName(sid) };
       await commit([{ type: "SideTabCreated", windowId: w.id, index: w.sideTabs.length, sideTab: created }]);
-      return { windowId: w.id, sideTabId: sid, tabId: e.tab.id };
+      return { windowId: w.id, sideTabId: sid, tabId: e.tab.id, row: false };
     },
     async mergePreview(from, into, label) {
       sideTab(from);
@@ -1314,6 +1316,14 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
       }
       for (const l of agentListeners) l({ pane, agent });
       recompute();
+    },
+    async offerResume(pane, session) {
+      const tab = tabOfPane(pane);
+      const layout = structuredClone(tab.layout);
+      const l = leaf(layout, pane);
+      if (!l) throw new Error(`no pane ${pane}`);
+      l.resume = session;
+      await commit([{ type: "LayoutChanged", tabId: tab.id, layout }]);
     },
     runCommand(pane, command, exit) {
       // A rule status holds until its command runs again.
@@ -1833,12 +1843,21 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
     async newText(sideTabId, beside) {
       return showDoc(sideTabId, newDoc({ kind: "untitled" }, "Untitled", ""), beside);
     },
-    async openFile(sideTabId, path, beside) {
+    async openFile(sideTabId, path, beside, view) {
       if (!path.startsWith("/")) throw new Error(`${path} is not an absolute path`);
+      const tag = (d: { view: DocView }) => {
+        if (view) d.view.paneView = { ...view };
+        else delete d.view.paneView;
+      };
       const open = [...docs.values()].find((d) => d.view.source.kind === "file" && d.view.source.path === path);
-      if (open) return full(open);
+      if (open) {
+        tag(open);
+        return full(open);
+      }
       const text = files.get(path);
-      return showDoc(sideTabId, newDoc({ kind: "file", path }, baseName(path), text ?? "", text === undefined), beside);
+      const id = newDoc({ kind: "file", path }, baseName(path), text ?? "", text === undefined);
+      tag(docs.get(id)!);
+      return showDoc(sideTabId, id, beside);
     },
     async openPath(sideTabId, _paneId, path, beside) {
       const abs = path.startsWith("/") ? path : path.startsWith("~/") ? `/Users/owner/${path.slice(2)}` : `${MOCK_CWD}/${path.replace(/^\.\//, "")}`;

@@ -4,7 +4,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { sideBySide, unified } from "./diff-merge";
-import { DIFF_MODE_EVENT, loadDiffMode, saveDiffMode, toggledDiffMode, type DiffMode } from "./diff-mode";
+import { loadDiffMode, onDiffMode, saveDiffMode, toggledDiffMode, type DiffMode } from "./diff-mode";
 import { useChord, withChord } from "./chords";
 
 /** A file's base text, as both plugins' `baseText` calls answer it. */
@@ -59,11 +59,7 @@ export function DiffPane({ readKey, read, subscribe, notes, renderText }: DiffPa
   const calls = useRef({ read, subscribe });
   calls.current = { read, subscribe };
 
-  useEffect(() => {
-    const follow = (e: Event) => setMode((e as CustomEvent<DiffMode>).detail);
-    window.addEventListener(DIFF_MODE_EVENT, follow);
-    return () => window.removeEventListener(DIFF_MODE_EVENT, follow);
-  }, []);
+  useEffect(() => onDiffMode(setMode), []);
 
   useEffect(() => {
     let gone = false;

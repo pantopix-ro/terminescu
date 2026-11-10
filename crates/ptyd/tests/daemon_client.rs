@@ -271,6 +271,33 @@ fn a_shell_that_exits_closes_its_tab() {
 }
 
 #[test]
+fn an_exit_close_goes_to_the_sink() {
+    let f = Fixture::new();
+    let (rt, _, _) = f.start();
+    let [(side, _)] = tabs(&rt.workspace()).try_into().unwrap();
+    rt.command(Command::CreateTab { side_tab_id: side })
+        .unwrap();
+    let (_, tab) = tabs(&rt.workspace())[1].clone();
+    let shown = pane(&rt.workspace(), &tab);
+    let heard: Arc<Mutex<Vec<Command>>> = Arc::default();
+    let (sink, runner) = (heard.clone(), rt.clone());
+    rt.on_exit_close(Arc::new(move |c| {
+        sink.lock().unwrap().push(c.clone());
+        runner.command(c).unwrap();
+    }));
+    let pane = rt.daemon_of(&shown).unwrap();
+    rt.daemon()
+        .unwrap()
+        .input(pane, b"exit\n".to_vec())
+        .unwrap();
+    wait_for(|| tabs(&rt.workspace()).len() == 1, "tab closed after exit");
+    assert_eq!(
+        *heard.lock().unwrap(),
+        vec![Command::ClosePane { pane_id: shown }]
+    );
+}
+
+#[test]
 fn a_new_core_without_a_saved_layout_adopts_live_panes() {
     let f = Fixture::new();
     let (first, _, _) = f.start();

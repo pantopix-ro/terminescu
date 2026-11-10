@@ -139,6 +139,31 @@ test("a diff tab edits and saves, and switches between side by side and unified"
   await expect(page.locator(".cm-mergeView .cm-editor")).toHaveCount(2);
 });
 
+// harden-plugin-host D6: the document keeps its diff view; a plain open shows it as text.
+test("a diff tab's document keeps its view until a plain open", async ({ page }) => {
+  const { pane } = await start(page);
+  const root = "/Users/owner/acme-api";
+  await page.evaluate(
+    ({ pane, root, retry }) => {
+      (window as any).__fakeGit = {
+        [pane]: { changes: { root, total: 1, changes: [retry] } },
+        [root]: { base: { "src/retry.ts": "const tries = 3;\n" } },
+      };
+      (window as any).__terminescu.host.files.set(`${root}/src/retry.ts`, "const tries = 5;\n");
+    },
+    { pane, root, retry: change("src/retry.ts", { added: 1, removed: 1 }) },
+  );
+  await page.keyboard.press("Meta+Backslash");
+  await page.locator('aside.ctx-pinned .git-change[data-path="src/retry.ts"] .git-path').click();
+  await expect(page.locator(".cm-mergeView .cm-editor")).toHaveCount(2);
+  await page.locator(".term-pane").first().click();
+  await page.keyboard.press("Meta+KeyO");
+  await page.keyboard.type("retry");
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".cm-mergeView")).toHaveCount(0);
+  await expect(page.locator(".text-pane .cm-content")).toContainText("const tries = 5;");
+});
+
 test("a new file's diff tab compares with nothing", async ({ page }) => {
   const { pane } = await start(page);
   const root = "/Users/owner/shop-api";

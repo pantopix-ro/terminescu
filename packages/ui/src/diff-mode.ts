@@ -32,6 +32,24 @@ export function loadDiffMode(store: Store | undefined = storage()): DiffMode {
   }
 }
 
+/**
+ * Calls `follow` with each new layout: saved in this window, or in another one, which reaches
+ * here as a `storage` event (harden-plugin-host). Returns the unsubscribe.
+ */
+export function onDiffMode(follow: (mode: DiffMode) => void, target: Pick<Window, "addEventListener" | "removeEventListener"> = window): () => void {
+  const here = (e: Event) => follow((e as CustomEvent<DiffMode>).detail);
+  const there = (e: Event) => {
+    const s = e as StorageEvent;
+    if (s.key === DIFF_MODE_KEY) follow(parseDiffMode(s.newValue));
+  };
+  target.addEventListener(DIFF_MODE_EVENT, here);
+  target.addEventListener("storage", there);
+  return () => {
+    target.removeEventListener(DIFF_MODE_EVENT, here);
+    target.removeEventListener("storage", there);
+  };
+}
+
 /** Keeps the layout and tells the open diff tabs. */
 export function saveDiffMode(mode: DiffMode, store: Store | undefined = storage()) {
   try {

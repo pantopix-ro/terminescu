@@ -6,7 +6,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "test": "node ../../scripts/check-plugins.mjs && vitest run",
+    "test": "vitest run",
     "typecheck": "tsc -p ."
   },
   "peerDependencies": {

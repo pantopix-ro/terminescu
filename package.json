@@ -15,7 +15,7 @@
     "credits": "node scripts/credits.mjs",
     "licenses:check": "cargo deny check licenses",
     "check:plugins": "node scripts/check-plugins.mjs",
-    "check:rust": "cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace"
+    "check:rust": "cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace && node scripts/check-plugins.mjs"
   },
   "devDependencies": {
     "typescript": "~5.9.3"

@@ -561,7 +561,6 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const [toSave, setToSave] = useState("");
   // Documents a plugin's pane view draws, as a diff tab: the text pane under a plugin's
   // decoration. For this window's life; a view whose plugin is off shows plain text.
-  const [docViews, setDocViews] = useState<Record<string, TextView>>({});
   const [libraryKey, setLibraryKey] = useState<string>();
   // Text panes' documents as their panes last reported them: titles and unsaved edits (D27).
   const [docs, setDocs] = useState<Record<string, DocView>>({});
@@ -739,13 +738,20 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   // Opens a file in the active side tab, or beside the focused pane, and shows it.
   const openDoc = (path: string, beside: boolean) => {
     if (!activeSide) return;
-    void host.openFile(activeSide.id, path, beside ? (focused ?? null) : null).then((d) => revealDoc(d.id), (e: unknown) => setError(String(e)));
+    // A plain open draws the file as text, a diff tab of it too (harden-plugin-host D6).
+    void host.openFile(activeSide.id, path, beside ? (focused ?? null) : null).then(
+      (d) => {
+        noteDoc(d);
+        revealDoc(d.id);
+      },
+      (e: unknown) => setError(String(e)),
+    );
   };
   // A panel section opens a file beside the focused pane, as a plugin's view when it names one.
   const openText = (path: string, view?: TextView): Promise<void> => {
     if (!activeSide) return Promise.reject(new Error("Select a row first."));
-    return host.openFile(activeSide.id, path, focused ?? null).then((d) => {
-      if (view) setDocViews((v) => ({ ...v, [d.id]: view }));
+    return host.openFile(activeSide.id, path, focused ?? null, view ?? null).then((d) => {
+      noteDoc(d);
       revealDoc(d.id);
     });
   };
@@ -775,7 +781,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     if (!doc?.request) return setNotice("No program waits on this text pane.");
     if (!(await saveDoc(focused, false))) return;
     await host.returnEdit(doc.id).catch((e: unknown) => setError(String(e)));
-    void send({ type: "ClosePane", paneId: focused });
+    // The app's close path, so the plugins' close hooks still ask (harden-plugin-host).
+    void sendClose({ type: "ClosePane", paneId: focused });
   };
   // `⌘⇧↵` in a text pane: the selection, or all of it, goes to a terminal as a paste without
   // Enter. The target is the tab's last focused terminal, else one running Claude, else the
@@ -1022,13 +1029,15 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         return void host.reopenClosed(windowId).then((r) => {
           // Back in another window: that one comes forward and shows it.
           if (!r || r.windowId !== windowId) return refocus();
+          // A row comes back on the tab it showed, when that tab came back (D3).
+          const shown = tabBySide[r.sideTabId];
           const pick = (w: Workspace) => {
-            const ok = sidesOf(w).some((s) => s.id === r.sideTabId && s.tabs.some((t) => t.id === r.tabId));
-            if (ok) {
-              selectTab(r.sideTabId, r.tabId);
+            const side = sidesOf(w).find((s) => s.id === r.sideTabId && s.tabs.some((t) => t.id === r.tabId));
+            if (side) {
+              selectTab(r.sideTabId, r.row && shown && side.tabs.some((t) => t.id === shown) ? shown : r.tabId);
               refocus();
             }
-            return ok;
+            return !!side;
           };
           if (!pick(wsNow.current)) setFollow(pick);
         }, report);
@@ -2637,31 +2646,21 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                           </button>
                         </PaneHead>
                       )}
-                      {appSettings.hook === "off" && labels[paneId]?.program === "claude" && (
-                        <div className="ao-bar-wait resume-bar hook-off-bar" role="status">
-                          <span className="w">Claude hook is off</span>
-                          <span className="grow small ao-dim">no Claude status or transcript for this session</span>
-                          <button
-                            type="button"
-                            className="ao-btn primary"
-                            onClick={() => void host.setSettings({ ...appSettings, hook: "on" }).catch((e: unknown) => setError(String(e)))}
-                          >
-                            Turn on
-                          </button>
-                        </div>
-                      )}
-                      {resume && (
-                        <div className="ao-bar-wait resume-bar" role="status">
-                          <span className="w">Claude session {resume}</span>
-                          <span className="grow small ao-dim">ended with the last restart</span>
-                          <button type="button" className="ao-btn primary" onClick={() => void send({ type: "ResumePane", paneId })}>
-                            Resume
-                          </button>
-                          <button type="button" className="ao-btn ghost" onClick={() => void send({ type: "DismissResume", paneId })}>
-                            Dismiss
-                          </button>
-                        </div>
-                      )}
+                      {/* Agent bars (hook off, resume offer) belong to their plugin (D7). */}
+                      {plugins.composed.paneBars.map((bar) => (
+                        <bar.render
+                          key={bar.plugin}
+                          paneId={paneId}
+                          program={labels[paneId]?.program}
+                          resume={resume ?? undefined}
+                          app={{
+                            resume: () => void send({ type: "ResumePane", paneId }),
+                            dismiss: () => void send({ type: "DismissResume", paneId }),
+                            hookOn: appSettings.hook !== "off",
+                            setHook: (on) => void host.setSettings({ ...appSettings, hook: on ? "on" : "off" }).catch((e: unknown) => setError(String(e))),
+                          }}
+                        />
+                      ))}
                       <div className="ao-tp-body">
                         {findPane === paneId && (
                           <SearchBar
@@ -2859,7 +2858,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                 bar={o?.bar}
               />
             );
-            const tagged = docViews[docId];
+            // The document keeps its view, so a diff tab is one again after a restart.
+            const tagged = docs[docId]?.paneView;
             const view = tagged && plugins.composed.paneView(tagged.kind);
             if (!tagged || !view) return [text()];
             return [

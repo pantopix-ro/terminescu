@@ -99,6 +99,8 @@ pub(crate) struct AppState {
     merging: Mutex<()>,
     /// The tab drag the core tracks across windows (task 8.1).
     drags: drag::Drags,
+    /// What ⇧⌘T can reopen (task 8.87); the save asks it which rows keep their variables.
+    closed: Arc<Mutex<terminescu_core::closed::ClosedList>>,
 }
 
 /// How long a merge offers undo; the core keeps it a little longer for a late click.
@@ -1241,12 +1243,17 @@ fn host_command(state: State<'_, AppState>, command: Command) -> Result<u64, Com
     {
         return Err(CommandError::UnknownSideTab(from.clone()));
     }
-    // A close keeps what it takes for ⇧⌘T (task 8.87).
-    let noted = reopen::note(&state, &command);
+    run_noted(&state, command)
+}
+
+/// Runs `command`; a close keeps what it takes for ⇧⌘T (task 8.87). Shell exits close through
+/// here too (harden-plugin-host D1).
+fn run_noted(state: &AppState, command: Command) -> Result<u64, CommandError> {
+    let noted = reopen::note(state, &command);
     // The runtime emits each batch under its core lock, so windows see them in rev order.
     let done = state.runtime.command(command);
     if let Some(token) = noted {
-        reopen::done(&state, token, done.is_ok());
+        reopen::done(state, token, done.is_ok());
     }
     done
 }
@@ -1393,6 +1400,7 @@ fn hook_at_launch(db: &Arc<Mutex<Db>>) {
 fn start_runtime(
     app: &AppHandle,
     db: Arc<Mutex<Db>>,
+    parked: Arc<Mutex<terminescu_core::closed::ClosedList>>,
 ) -> Result<
     (Runtime, Vec<String>, std::sync::mpsc::Receiver<AgentUpdate>),
     Box<dyn std::error::Error>,
@@ -1497,7 +1505,7 @@ fn start_runtime(
             // Session and secret variables end with their side tab (D21).
             if let Some(d) = rt.daemon().filter(|d| d.side_vars) {
                 // A closed row ⇧⌘T can reopen keeps them until it leaves the list.
-                for side in gone.iter().filter(|s| !reopen::is_parked(s)) {
+                for side in gone.iter().filter(|s| !lock(&parked).is_parked(s)) {
                     if let Err(e) = d.side_vars_drop(side) {
                         eprintln!("terminescu: variables of a closed side tab not dropped: {e}");
                     }
@@ -2048,7 +2056,8 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("terminescu: default statuses not added: {e}");
     }
     let db = Arc::new(Mutex::new(db));
-    let (runtime, windows, updates) = start_runtime(app.handle(), db.clone())?;
+    let closed: Arc<Mutex<terminescu_core::closed::ClosedList>> = Arc::default();
+    let (runtime, windows, updates) = start_runtime(app.handle(), db.clone(), closed.clone())?;
     let waits = Arc::new(docs::Waits::default());
     let docs = docs::start(app.handle(), db.clone(), &runtime, waits.clone());
     let attention = Arc::new(Mutex::new(Attention::default()));
@@ -2088,7 +2097,17 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         merges: Arc::default(),
         merging: Mutex::default(),
         drags: drag::Drags::default(),
+        closed,
     });
+    let handle = app.handle().clone();
+    app.state::<AppState>()
+        .runtime
+        .on_exit_close(Arc::new(move |close| {
+            let state = handle.state::<AppState>();
+            if let Err(e) = run_noted(&state, close) {
+                eprintln!("terminescu: closing the pane of an exited shell: {e:?}");
+            }
+        }));
     for id in &windows {
         open_window(app.handle(), id, None)?;
     }

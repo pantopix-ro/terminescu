@@ -10,7 +10,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use terminescu_core::attention;
 use terminescu_core::context;
 use terminescu_core::db::Db;
-use terminescu_core::documents::{DocView, Documents, Source};
+use terminescu_core::documents::{DocView, Documents, PaneViewTag, Source};
 use terminescu_core::prompts;
 use terminescu_core::runtime::Runtime;
 use terminescu_core::state::{Command, Id};
@@ -289,18 +289,21 @@ pub fn doc_new(
 }
 
 /// Opens a file by absolute path. A file already open comes back as it is, without a new pane;
-/// the window focuses the pane that shows it.
+/// the window focuses the pane that shows it. `view` names the plugin pane view that draws it;
+/// an open without one draws plain text again (harden-plugin-host D6).
 #[tauri::command(async)]
 pub fn doc_open_file(
     state: State<'_, AppState>,
     side_tab: Id,
     path: String,
     beside: Option<Id>,
+    view: Option<PaneViewTag>,
 ) -> Result<DocView, String> {
     let path = PathBuf::from(path);
     if let Some(id) = state.docs.find_file(&path)
-        && let Some(view) = state.docs.get(&id)
+        && state.docs.get(&id).is_some()
     {
+        let view = state.docs.set_pane_view(&id, view).map_err(err)?;
         // A document whose pane went (kept for its unsaved text) shows again in a new one.
         if pane_of_doc(&state.runtime, &id).is_none() {
             let cmd = Command::OpenText {
@@ -312,8 +315,11 @@ pub fn doc_open_file(
         }
         return Ok(view);
     }
-    let view = state.docs.open_file(&path, Some(&side_tab)).map_err(err)?;
-    show(&state, &side_tab, view, beside)
+    let mut opened = state.docs.open_file(&path, Some(&side_tab)).map_err(err)?;
+    if view.is_some() {
+        opened = state.docs.set_pane_view(&opened.id, view).map_err(err)?;
+    }
+    show(&state, &side_tab, opened, beside)
 }
 
 /// The document over `source`, or a new one shown in a text pane.
@@ -415,7 +421,7 @@ pub fn doc_open_path(
     if !full.is_file() {
         return Err(format!("No file {}", full.display()));
     }
-    doc_open_file(state, side_tab, full.display().to_string(), beside)
+    doc_open_file(state, side_tab, full.display().to_string(), beside, None)
 }
 
 /// Extensions macOS runs, installs, mounts or follows on `open`, which a link must never start

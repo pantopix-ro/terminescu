@@ -4,9 +4,9 @@
 //! failures in a minute pause the plugin until it is switched off and on.
 
 use serde_json::Value;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex, mpsc};
 use std::time::{Duration, Instant};
 use terminescu_plugin_api::{
@@ -16,6 +16,8 @@ use terminescu_plugin_api::{
 
 /// Events waiting per plugin; a full queue drops its oldest.
 pub const QUEUE: usize = 256;
+/// Calls a plugin may hold at once; a call over it is refused as busy (harden-plugin-host D4).
+pub const MAX_CALLS: usize = 4;
 /// Failures in [`WINDOW`] that pause a plugin.
 pub const MAX_FAILURES: usize = 5;
 const WINDOW: Duration = Duration::from_secs(60);
@@ -24,6 +26,8 @@ const WINDOW: Duration = Duration::from_secs(60);
 pub type CxFactory = Arc<dyn Fn(&'static str) -> Arc<dyn PluginCx> + Send + Sync>;
 /// Hears that a plugin was paused or switched, for the UI and for clearing decorations.
 pub type SwitchSink = Arc<dyn Fn(&str, bool) + Send + Sync>;
+/// Reads a plugin's row data on a row (plugin, row), for the row-closed event.
+pub type RowDataReader = Arc<dyn Fn(&str, &str) -> BTreeMap<String, Value> + Send + Sync>;
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
@@ -174,6 +178,8 @@ struct Slot {
     failures: Mutex<VecDeque<Instant>>,
     /// When the handler now running started; a watchdog pauses a plugin stuck in one.
     running: Mutex<Option<Instant>>,
+    /// Calls whose thread still runs, a timed-out one too.
+    calls: AtomicUsize,
 }
 
 /// A handler this many times over its event budget (and at least [`HANG_MIN`]) counts as hung.
@@ -303,6 +309,7 @@ pub struct PluginHost {
     slots: Vec<Arc<Slot>>,
     stopped: Arc<AtomicBool>,
     on_switch: SharedSink,
+    row_data: Mutex<Option<RowDataReader>>,
 }
 
 impl PluginHost {
@@ -337,6 +344,7 @@ impl PluginHost {
                     paused,
                     running: Mutex::new(None),
                     failures: Mutex::new(VecDeque::new()),
+                    calls: AtomicUsize::new(0),
                     queue,
                     plugin,
                     manifest,
@@ -347,6 +355,7 @@ impl PluginHost {
             slots,
             stopped,
             on_switch: Arc::default(),
+            row_data: Mutex::new(None),
         };
         for slot in &host.slots {
             let (slot, stopped, sink) =
@@ -381,14 +390,30 @@ impl PluginHost {
         self.slots.iter().find(|s| s.manifest.id == id)
     }
 
-    /// Hands `event` to every plugin that is on. Never waits on a plugin.
+    /// Where the row-closed event reads each plugin's row data (harden-plugin-host D2).
+    pub fn set_row_data(&self, reader: RowDataReader) {
+        *lock(&self.row_data) = Some(reader);
+    }
+
+    /// Hands `event` to every plugin that is on. Never waits on a plugin. A row-closed event
+    /// gets each plugin's own row data, read now, before the save deletes it.
     pub fn dispatch(&self, event: &CoreEvent) {
+        let reader = lock(&self.row_data).clone();
         for slot in self.slots.iter().filter(|s| s.live()) {
+            let event = match (event, &reader) {
+                (CoreEvent::SideTabClosed { side_tab, .. }, Some(read)) => {
+                    CoreEvent::SideTabClosed {
+                        side_tab: side_tab.clone(),
+                        data: read(slot.manifest.id, side_tab),
+                    }
+                }
+                _ => event.clone(),
+            };
             let mut q = lock(&slot.queue.events);
             if q.len() >= QUEUE {
                 q.pop_front();
             }
-            q.push_back(event.clone());
+            q.push_back(event);
             drop(q);
             slot.queue.ready.notify_one();
         }
@@ -407,6 +432,11 @@ impl PluginHost {
         if !slot.live() {
             return Err(PluginError::Off);
         }
+        // A hung call keeps its place until its thread ends, so stuck calls cannot pile up.
+        if slot.calls.fetch_add(1, Ordering::SeqCst) >= MAX_CALLS {
+            slot.calls.fetch_sub(1, Ordering::SeqCst);
+            return Err(PluginError::Busy);
+        }
         let (tx, rx) = mpsc::channel();
         let (worker, method_name) = (slot.clone(), method.to_string());
         std::thread::Builder::new()
@@ -415,9 +445,13 @@ impl PluginHost {
                 let run = catch_unwind(AssertUnwindSafe(|| {
                     worker.plugin.call(&method_name, args, worker.cx.as_ref())
                 }));
+                worker.calls.fetch_sub(1, Ordering::SeqCst);
                 let _ = tx.send(run);
             })
-            .map_err(|e| PluginError::Failed(e.to_string()))?;
+            .map_err(|e| {
+                slot.calls.fetch_sub(1, Ordering::SeqCst);
+                PluginError::Failed(e.to_string())
+            })?;
         match rx.recv_timeout(slot.manifest.call_budget) {
             Ok(Ok(result)) => result,
             Ok(Err(_)) => {
@@ -516,7 +550,8 @@ impl Drop for PluginHost {
     }
 }
 
-/// A plugin's worker: one event or due timer at a time, under the event budget.
+/// A plugin's worker: one event or due timer at a time, under the event budget. A due timer
+/// goes before the queued events (harden-plugin-host D5).
 fn work(slot: &Slot, stopped: &AtomicBool, sink: &SharedSink) {
     loop {
         let event = {
@@ -525,15 +560,15 @@ fn work(slot: &Slot, stopped: &AtomicBool, sink: &SharedSink) {
                 if stopped.load(Ordering::SeqCst) {
                     return;
                 }
-                if let Some(e) = q.pop_front() {
-                    break e;
-                }
                 let wait = match slot.queue.due() {
                     Ok(token) => break CoreEvent::Timer { token },
                     Err(next) => next
                         .unwrap_or(Duration::MAX)
                         .min(Duration::from_millis(500)),
                 };
+                if let Some(e) = q.pop_front() {
+                    break e;
+                }
                 q = slot
                     .queue
                     .ready
@@ -758,6 +793,13 @@ pub(crate) mod tests {
             }
         }
         fn call(&self, method: &str, _: Value, _: &dyn PluginCx) -> Result<Value, PluginError> {
+            if method == "hang" {
+                let (m, cv) = &*self.gate;
+                let mut open = lock(m);
+                while !*open {
+                    open = cv.wait(open).unwrap();
+                }
+            }
             Ok(Value::from(method))
         }
     }
@@ -1047,5 +1089,120 @@ pub(crate) mod tests {
         host.set_enabled("test", true);
         facade.set_decoration(a_decoration());
         assert_eq!(count.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn hung_calls_hold_their_places_and_the_next_is_busy() {
+        let (host, _, gate) = host(Mood::Counts, true);
+        let host = Arc::new(host);
+        let hung: Vec<_> = (0..MAX_CALLS)
+            .map(|_| {
+                let h = host.clone();
+                std::thread::spawn(move || h.call("test", "hang", Value::Null))
+            })
+            .collect();
+        assert!(until(
+            || host.slots[0].calls.load(Ordering::SeqCst) == MAX_CALLS
+        ));
+        let started = Instant::now();
+        assert_eq!(
+            host.call("test", "ping", Value::Null),
+            Err(PluginError::Busy)
+        );
+        assert!(
+            started.elapsed() < Duration::from_millis(500),
+            "busy at once"
+        );
+        for h in hung {
+            assert_eq!(h.join().unwrap(), Err(PluginError::Timeout));
+        }
+        // Over the budget the hung calls still run, so the cap still holds.
+        assert_eq!(
+            host.call("test", "ping", Value::Null),
+            Err(PluginError::Busy)
+        );
+        let (m, cv) = &*gate;
+        *lock(m) = true;
+        cv.notify_all();
+        assert!(until(|| host.slots[0].calls.load(Ordering::SeqCst) == 0));
+        assert_eq!(
+            host.call("test", "ping", Value::Null),
+            Ok(Value::from("ping"))
+        );
+    }
+
+    /// Writes down what it hears; the first event waits on the gate.
+    struct Recorder {
+        heard: Arc<Mutex<Vec<String>>>,
+        gate: Gate,
+    }
+
+    impl Plugin for Recorder {
+        fn manifest(&self) -> Manifest {
+            Manifest::new("rec", "Recorder", "A plugin for tests")
+        }
+        fn on_event(&self, event: &CoreEvent, _: &dyn PluginCx) {
+            let first = lock(&self.heard).is_empty();
+            let line = match event {
+                CoreEvent::CwdMoved { cwd, .. } => cwd.clone(),
+                CoreEvent::Timer { token } => format!("timer {token}"),
+                CoreEvent::SideTabClosed { side_tab, data } => {
+                    format!("closed {side_tab} {}", serde_json::to_string(data).unwrap())
+                }
+                _ => return,
+            };
+            lock(&self.heard).push(line);
+            if first {
+                let (m, cv) = &*self.gate;
+                let mut open = lock(m);
+                while !*open {
+                    open = cv.wait(open).unwrap();
+                }
+            }
+        }
+        fn call(&self, _: &str, _: Value, _: &dyn PluginCx) -> Result<Value, PluginError> {
+            Ok(Value::Null)
+        }
+    }
+
+    fn recorder() -> (PluginHost, Arc<Mutex<Vec<String>>>, Gate) {
+        let heard = Arc::new(Mutex::new(Vec::new()));
+        let gate: Gate = Arc::new((Mutex::new(false), Condvar::new()));
+        let plugin = Recorder {
+            heard: heard.clone(),
+            gate: gate.clone(),
+        };
+        let host = PluginHost::new(vec![Arc::new(plugin)], no_cx(), &HashMap::new());
+        (host, heard, gate)
+    }
+
+    #[test]
+    fn a_due_timer_goes_before_queued_events() {
+        let (host, heard, gate) = recorder();
+        host.dispatch(&event(0));
+        assert!(until(|| lock(&heard).len() == 1));
+        host.dispatch(&event(1));
+        host.dispatch(&event(2));
+        host.slots[0].cx.schedule(Duration::ZERO, "t");
+        let (m, cv) = &*gate;
+        *lock(m) = true;
+        cv.notify_all();
+        assert!(until(|| lock(&heard).len() == 4));
+        assert_eq!(*lock(&heard), ["/tmp/0", "timer t", "/tmp/1", "/tmp/2"]);
+    }
+
+    #[test]
+    fn a_closed_row_brings_the_plugin_its_own_data() {
+        let (host, heard, gate) = recorder();
+        *lock(&gate.0) = true;
+        host.set_row_data(Arc::new(|plugin, side_tab| {
+            BTreeMap::from([(format!("{plugin}-key"), Value::from(side_tab))])
+        }));
+        host.dispatch(&CoreEvent::SideTabClosed {
+            side_tab: "s1".into(),
+            data: BTreeMap::new(),
+        });
+        assert!(until(|| lock(&heard).len() == 1));
+        assert_eq!(*lock(&heard), [r#"closed s1 {"rec-key":"s1"}"#]);
     }
 }

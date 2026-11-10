@@ -407,6 +407,8 @@ export interface Reopened {
   windowId: Id;
   sideTabId: Id;
   tabId: Id;
+  /** A whole row came back, not one tab. */
+  row: boolean;
 }
 
 /** What a drag across windows carries: a tab, or a whole row with its tabs (task 8.86). */
@@ -761,6 +763,12 @@ export type DocSource =
  * What a text pane shows, as crates/core/src/documents.rs sends it. `text` is absent when the
  * editor already has it.
  */
+/** A plugin pane view over a document: its kind and what it reads, such as `{ root, path }`. */
+export interface PaneViewTag {
+  kind: string;
+  source: string;
+}
+
 export interface DocView {
   id: Id;
   source: DocSource;
@@ -780,6 +788,8 @@ export interface DocView {
   note?: string;
   /** Bumps when the core replaced the text (a reload). */
   rev: number;
+  /** The plugin pane view that draws it, such as a diff tab (harden-plugin-host D6). */
+  paneView?: PaneViewTag;
 }
 
 /** Files for `⌘O`, relative to `root`. */

@@ -79,6 +79,26 @@ pub fn row_data(db: &Db, side_tab: &str, plugin: &str, key: &str) -> Result<Opti
     Ok(parse(json))
 }
 
+/// Every key a plugin keeps on a row.
+pub fn row_data_all(
+    db: &Db,
+    side_tab: &str,
+    plugin: &str,
+) -> Result<std::collections::BTreeMap<String, Value>> {
+    let mut stmt = db.conn().prepare(
+        "SELECT key, value_json FROM plugin_side_tab_data WHERE side_tab_id = ?1 AND plugin_id = ?2",
+    )?;
+    let rows = stmt
+        .query_map(params![side_tab, plugin], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|(k, json)| parse(json).map(|v| (k, v)))
+        .collect())
+}
+
 /// Sets a row's data; `None` removes it. A row that is not saved yet fails on its foreign key.
 pub fn set_row_data(
     db: &Db,

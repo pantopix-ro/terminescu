@@ -3,6 +3,7 @@
 // (3.2) and Settings › Claude (3.4). The agent dot and the
 // amber row stay the app's own.
 
+import { ClaudePaneBar } from "./PaneBar";
 import type { TranscriptChunk } from "@terminescu/host";
 import { definePlugin, type PaneViewProps } from "@terminescu/plugin-api";
 import { quoteOf } from "@terminescu/ui";
@@ -68,4 +69,5 @@ export const claude = definePlugin({
   ],
   actions: [resume, openMemory, openUserMemory, revealTranscripts],
   settingsPage: SettingsPage,
+  paneBar: ClaudePaneBar,
 });

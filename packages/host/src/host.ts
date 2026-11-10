@@ -19,6 +19,7 @@ import type {
   Auto,
   Command,
   DocView,
+  PaneViewTag,
   FileList,
   Id,
   Item,
@@ -224,7 +225,8 @@ export interface Host {
    * Opens a file by absolute path in a text pane. A file already open comes back without a new
    * pane; the window focuses the pane that shows it.
    */
-  openFile(sideTabId: Id, path: string, beside?: Id | null): Promise<DocView>;
+  /** `view` draws it as that plugin pane view; an open without one draws plain text. */
+  openFile(sideTabId: Id, path: string, beside?: Id | null, view?: PaneViewTag | null): Promise<DocView>;
   /**
    * `⌘`-click on a path in terminal output: `path` may be relative to the pane's cwd or start
    * with `~`. Only an existing file opens.

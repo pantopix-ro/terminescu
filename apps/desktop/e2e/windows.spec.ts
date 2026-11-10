@@ -496,11 +496,14 @@ test("⇧⌘T reopens a tab and a row", async ({ page }) => {
   await send({ type: "CloseTab", tabId: a });
   await page.keyboard.press("Meta+Shift+KeyT");
   await expect.poll(() => tabIds(page), "the tab is back at its index, and shows").toEqual([a, b]);
+  await page.locator(`.ao-tabs .ao-tab[data-tab="${b}"]`).click();
+  await expect(page.locator(".ao-tabs .ao-tab.active")).toHaveAttribute("data-tab", b!);
 
   await send({ type: "CloseSideTab", sideTabId: first });
   await expect.poll(() => sideIds(page)).toEqual([second]);
   await page.keyboard.press("Meta+Shift+KeyT");
   await expect.poll(() => sideIds(page), "the row is back at the top").toEqual([first, second]);
+  await expect(page.locator(".ao-tabs .ao-tab.active"), "on the tab it showed").toHaveAttribute("data-tab", b!);
   const ws = (await mock(page)).ws;
   expect(ws.windows[0].sideTabs[0].tabs.map((t: any) => t.id)).toEqual([a, b]);
 

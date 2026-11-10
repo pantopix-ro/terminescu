@@ -1124,7 +1124,7 @@ impl Plugin for GitPlugin {
             }
             CoreEvent::PaneClosed { pane } => self.pane_closed(pane, cx),
             CoreEvent::TabClosed { tab } => self.tab_closed(tab, cx),
-            CoreEvent::SideTabClosed { side_tab } => self.side_tab_closed(side_tab, cx),
+            CoreEvent::SideTabClosed { side_tab, .. } => self.side_tab_closed(side_tab, cx),
             CoreEvent::SideTabSelected { side_tab, .. } => self.selected(side_tab, cx),
             CoreEvent::Timer { token } => {
                 if token == VERSION_TIMER {

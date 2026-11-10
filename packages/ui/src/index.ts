@@ -88,4 +88,4 @@ export { nextStop, tabStops, topModal, trapModalFocus } from "./modal";
 export { composeView, fitView, folderLines, hideRow, replaceRow, rowsOf, showBeside, viewSplitId, type View } from "./view";
 export { DiffPane, diffNote, type DiffBase, type DiffNotes, type DiffPaneProps } from "./DiffPane";
 export { sideBySide, unified } from "./diff-merge";
-export { DIFF_MODE_EVENT, DIFF_MODE_KEY, loadDiffMode, parseDiffMode, saveDiffMode, toggledDiffMode, type DiffMode } from "./diff-mode";
+export { DIFF_MODE_EVENT, DIFF_MODE_KEY, loadDiffMode, onDiffMode, parseDiffMode, saveDiffMode, toggledDiffMode, type DiffMode } from "./diff-mode";

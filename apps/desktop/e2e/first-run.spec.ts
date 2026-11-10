@@ -79,3 +79,17 @@ test("with the hook off, a Claude pane says so and turns it on", async ({ page }
   await expect.poll(() => mock(page, "claudeHook")).toBe(true);
   await expect(bar).toHaveCount(0);
 });
+
+// harden-plugin-host D7: the Claude plugin draws the resume bar; with it off, no bar shows.
+test("the resume bar belongs to the Claude plugin", async ({ page }) => {
+  await start(page, "/");
+  const pane = await page.locator(".ao-tp[data-pane]").first().getAttribute("data-pane");
+  await mock(page, "offerResume", pane, "0b5e9a5c-1c1f-4c55-9d5e-1a2b3c4d5e6f");
+  const bar = page.locator(".resume-bar", { hasText: "Claude session" });
+  await expect(bar).toContainText("ended with the last restart");
+  await mock(page, "setPluginEnabled", "claude", false);
+  await expect(bar).toHaveCount(0);
+  await mock(page, "setPluginEnabled", "claude", true);
+  await bar.getByRole("button", { name: "Dismiss" }).click();
+  await expect(bar).toHaveCount(0);
+});

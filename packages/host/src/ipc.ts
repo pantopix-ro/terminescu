@@ -186,7 +186,7 @@ export function createIpcHost(): Host {
     importTerminalApp: () => invoke<TerminalProfile>("import_terminal_app"),
     importTerminalFile: (path) => invoke<TerminalProfile>("import_terminal_file", { path }),
     newText: (sideTab, beside) => invoke<DocView>("doc_new", { sideTab, beside: beside ?? null }),
-    openFile: (sideTab, path, beside) => invoke<DocView>("doc_open_file", { sideTab, path, beside: beside ?? null }),
+    openFile: (sideTab, path, beside, view) => invoke<DocView>("doc_open_file", { sideTab, path, beside: beside ?? null, view: view ?? null }),
     openPath: (sideTab, pane, path, beside) => invoke<DocView>("doc_open_path", { sideTab, pane, path, beside: beside ?? null }),
     returnEdit: (id) => invoke("doc_return", { id }),
     sendText: (pane, text) => invoke("pane_send_text", { pane, text }),

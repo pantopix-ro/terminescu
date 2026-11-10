@@ -77,6 +77,16 @@ pub struct DocView {
     /// Counts the text changes the store made itself (reloads), so the editor knows its copy
     /// is old.
     pub rev: u64,
+    /// The plugin pane view that draws the document, such as a diff tab (harden-plugin-host D6).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pane_view: Option<PaneViewTag>,
+}
+
+/// A plugin pane view over a document: its kind and what it reads.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PaneViewTag {
+    pub kind: String,
+    pub source: String,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -288,13 +298,14 @@ impl Documents {
             String,
             Option<String>,
             Option<String>,
+            Option<String>,
         );
         let rows: Vec<Row> = {
             let db = lock(&self.db);
             let owner = db.local_owner()?;
             db.conn()
                 .prepare(
-                    "SELECT id, side_tab_id, source_ref, title, content, base_sig
+                    "SELECT id, side_tab_id, source_ref, title, content, base_sig, view_json
                      FROM documents WHERE owner_id = ?1",
                 )?
                 .query_map([&owner], |r| {
@@ -305,12 +316,14 @@ impl Documents {
                         r.get(3)?,
                         r.get(4)?,
                         r.get(5)?,
+                        r.get(6)?,
                     ))
                 })?
                 .collect::<rusqlite::Result<_>>()?
         };
         let mut docs = lock(&self.docs);
-        for (id, side_tab, source, title, content, base_sig) in rows {
+        for (id, side_tab, source, title, content, base_sig, view_json) in rows {
+            let pane_view = view_json.and_then(|j| serde_json::from_str::<PaneViewTag>(&j).ok());
             let source = serde_json::from_str::<Source>(&source).unwrap_or(Source::Untitled);
             let mut doc = Doc {
                 view: DocView {
@@ -327,6 +340,7 @@ impl Documents {
                     request: false,
                     note: None,
                     rev: 0,
+                    pane_view,
                 },
                 saved: String::new(),
                 sig: None,
@@ -453,6 +467,7 @@ impl Documents {
                 request: false,
                 note: None,
                 rev: 0,
+                pane_view: None,
             },
             text: disk.text.clone(),
             saved: disk.text,
@@ -493,6 +508,7 @@ impl Documents {
                 request: false,
                 note: None,
                 rev: 0,
+                pane_view: None,
             },
             saved: text.into(),
             text: text.into(),
@@ -649,6 +665,14 @@ impl Documents {
     }
 
     /// The variable or prompt store took the text: the buffer is clean.
+    /// Sets the pane view that draws the document; `None` draws plain text again.
+    pub fn set_pane_view(&self, id: &str, tag: Option<PaneViewTag>) -> Result<DocView, DocError> {
+        self.with(id, |doc| {
+            doc.view.pane_view = tag;
+            Ok(doc.full())
+        })
+    }
+
     pub fn mark_saved(&self, id: &str) -> Result<DocView, DocError> {
         self.with(id, |doc| {
             doc.saved = doc.text.clone();
@@ -838,12 +862,13 @@ impl Documents {
         let source = serde_json::to_string(&doc.view.source).expect("a source serializes");
         db.conn().execute(
             "INSERT INTO documents (id, owner_id, side_tab_id, source_kind, source_ref, title, content,
-               dirty, base_sig, updated_at)
-             VALUES (?1, ?2, (SELECT id FROM side_tabs WHERE id = ?3), ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+               dirty, base_sig, updated_at, view_json)
+             VALUES (?1, ?2, (SELECT id FROM side_tabs WHERE id = ?3), ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
              ON CONFLICT (id) DO UPDATE SET side_tab_id = excluded.side_tab_id,
                source_kind = excluded.source_kind, source_ref = excluded.source_ref,
                title = excluded.title, content = excluded.content, dirty = excluded.dirty,
-               base_sig = excluded.base_sig, updated_at = excluded.updated_at",
+               base_sig = excluded.base_sig, updated_at = excluded.updated_at,
+               view_json = excluded.view_json",
             params![
                 doc.view.id,
                 owner,
@@ -855,6 +880,10 @@ impl Documents {
                 doc.view.dirty,
                 doc.sig,
                 crate::now_ms(),
+                doc.view
+                    .pane_view
+                    .as_ref()
+                    .map(|v| serde_json::to_string(v).expect("a tag serializes")),
             ],
         )?;
         Ok(())

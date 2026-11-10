@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from "react";
 import type { SettingsPageProps } from "@terminescu/plugin-api";
-import { DIFF_MODE_EVENT, loadDiffMode, saveDiffMode, type DiffMode } from "@terminescu/ui";
+import { loadDiffMode, onDiffMode, saveDiffMode, type DiffMode } from "@terminescu/ui";
 
 /** The Rust half's `settings` answer. */
 export interface GitSettings {
@@ -45,11 +45,7 @@ export function SettingsPage({ bridge }: SettingsPageProps) {
     };
   }, [bridge]);
 
-  useEffect(() => {
-    const follow = (e: Event) => setMode((e as CustomEvent<DiffMode>).detail);
-    window.addEventListener(DIFF_MODE_EVENT, follow);
-    return () => window.removeEventListener(DIFF_MODE_EVENT, follow);
-  }, []);
+  useEffect(() => onDiffMode(setMode), []);
 
   const save = (key: string, value: unknown) =>
     bridge.call<GitSettings>("setSetting", { key, value }).then(

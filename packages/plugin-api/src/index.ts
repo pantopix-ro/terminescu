@@ -3,7 +3,7 @@
 // components take the composed lists as props, knowing no plugin.
 
 import type { ComponentType, ReactNode } from "react";
-import { normalAccel, RESERVED, type ActionDef, type KeyBindings, type Decoration, type DecorationSlot, type DecorationTone, type Id } from "@terminescu/host";
+import { normalAccel, RESERVED, type ActionDef, type KeyBindings, type PaneViewTag, type Decoration, type DecorationSlot, type DecorationTone, type Id } from "@terminescu/host";
 
 /** What a plugin's UI parts call through: its own Rust half and its own events. */
 export interface PluginBridge {
@@ -42,12 +42,9 @@ export interface TabView {
  */
 export type Decorator<V> = (items: readonly RenderItem[], view: V, mine: readonly Decoration[]) => RenderItem[];
 
-/** A pane view over a document, such as a diff tab: what it shows on the text it edits. */
-export interface TextView {
-  kind: string;
-  /** What the view reads, such as `{ root, path }` as JSON. */
-  source: string;
-}
+/** A pane view over a document, such as a diff tab: what it shows on the text it edits. The
+ * document keeps it, so the tab draws the same view after a restart. */
+export type TextView = PaneViewTag;
 
 /** What the app does for a panel section (Facade). */
 export interface SectionApp {
@@ -215,6 +212,28 @@ export interface UiPlugin {
    */
   flags?: (bridge: PluginBridge, set: (flags: readonly string[]) => void) => () => void;
   settingsPage?: ComponentType<SettingsPageProps>;
+  /** A bar above each terminal pane, such as an agent's resume offer (harden-plugin-host D7). */
+  paneBar?: ComponentType<PaneBarProps>;
+}
+
+/** What a pane bar can do in the app (Facade). */
+export interface PaneBarApp {
+  /** Types the line that resumes the pane's offered session. */
+  resume(): void;
+  /** Drops the pane's resume offer. */
+  dismiss(): void;
+  /** The agent hook setting (Settings › Shell). */
+  hookOn: boolean;
+  setHook(on: boolean): void;
+}
+
+export interface PaneBarProps {
+  paneId: Id;
+  /** The program the pane runs now, from its label. */
+  program?: string;
+  /** The session the pane offers to resume after a restart. */
+  resume?: string;
+  app: PaneBarApp;
 }
 
 export function definePlugin(plugin: UiPlugin): UiPlugin {
@@ -274,6 +293,8 @@ export interface Composed {
   /** The enabled plugins' close hooks, in plugin order. */
   beforeRowClose: readonly { plugin: string; run: BeforeRowClose }[];
   settingsPages: readonly { plugin: string; name: string; render: ComponentType<SettingsPageProps> }[];
+  /** The enabled plugins' pane bars, in plugin order. */
+  paneBars: readonly { plugin: string; render: ComponentType<PaneBarProps> }[];
 }
 
 export interface ComposeInput {
@@ -364,5 +385,6 @@ export function compose({ plugins, enabled, decorations, appActions, flags, bind
     keyActions,
     beforeRowClose: on.flatMap((p) => (p.beforeRowClose ? [{ plugin: p.id, run: p.beforeRowClose }] : [])),
     settingsPages: on.flatMap((p) => (p.settingsPage ? [{ plugin: p.id, name: p.name, render: p.settingsPage }] : [])),
+    paneBars: on.flatMap((p) => (p.paneBar ? [{ plugin: p.id, render: p.paneBar }] : [])),
   };
 }

@@ -130,6 +130,9 @@ pub type FoundSink = Box<dyn Fn(&str, &str, Vec<crate::extract::Found>) + Send +
 pub type DocSink = Box<dyn Fn(&[Id]) + Send + Sync>;
 /// Hears what plugins observe (add-plugin-architecture D3). It must not block.
 pub type EventSink = Box<dyn Fn(CoreEvent) + Send + Sync>;
+/// Runs the close a shell exit asks for, as the app runs the person's closes
+/// (harden-plugin-host D1).
+pub type ExitCloseSink = Arc<dyn Fn(Command) + Send + Sync>;
 /// How often expiries and Claude idle rules are checked when nothing else happens.
 const STATUS_TICK: Duration = Duration::from_secs(1);
 /// Makes sure a daemon runs, then connects to it. Called at start and after a drop.
@@ -247,6 +250,7 @@ struct Inner {
     scanners: Mutex<HashMap<PaneId, crate::extract::Scanner>>,
     doc_sink: Mutex<Option<DocSink>>,
     event_sink: Mutex<Option<EventSink>>,
+    exit_close: Mutex<Option<ExitCloseSink>>,
     /// Plugin facts and variables (add-plugin-architecture D4).
     provided: Mutex<crate::provided::Provided>,
     /// Settings › Shell: new shells point `VISUAL` and `EDITOR` at `terminescu edit --wait`.
@@ -402,6 +406,7 @@ impl Runtime {
                 scanners: Mutex::default(),
                 doc_sink: Mutex::default(),
                 event_sink: Mutex::default(),
+                exit_close: Mutex::default(),
                 provided: Mutex::default(),
                 editor: AtomicBool::new(editor),
                 scrollback: AtomicU32::new(0),
@@ -652,6 +657,7 @@ impl Runtime {
                 }),
                 Patch::SideTabClosed { side_tab_id } => self.observe(CoreEvent::SideTabClosed {
                     side_tab: side_tab_id.clone(),
+                    data: Default::default(),
                 }),
                 _ => {}
             }
@@ -1342,6 +1348,11 @@ impl Runtime {
         *lock(&self.inner.event_sink) = Some(sink);
     }
 
+    /// Where a shell exit's close goes; without one the runtime runs it itself.
+    pub fn on_exit_close(&self, sink: ExitCloseSink) {
+        *lock(&self.inner.exit_close) = Some(sink);
+    }
+
     /// A plugin's fact on a target; statuses follow.
     pub fn set_fact(&self, plugin: &str, target: &Target, name: &str, value: Option<Value>) {
         if lock(&self.inner.provided).set_fact(plugin, target, name, value) {
@@ -1377,7 +1388,7 @@ impl Runtime {
         let gone = match &event {
             CoreEvent::PaneClosed { pane } => Some(Target::Pane(pane.clone())),
             CoreEvent::TabClosed { tab } => Some(Target::Tab(tab.clone())),
-            CoreEvent::SideTabClosed { side_tab } => Some(Target::SideTab(side_tab.clone())),
+            CoreEvent::SideTabClosed { side_tab, .. } => Some(Target::SideTab(side_tab.clone())),
             _ => None,
         };
         if let Some(t) = gone {
@@ -1663,8 +1674,17 @@ impl Runtime {
         lock(&self.inner.scanners).remove(&daemon);
         match self.pane_of_daemon(daemon) {
             Some(pane) => {
-                if let Err(e) = self.command(Command::ClosePane { pane_id: pane }) {
-                    eprintln!("terminescu: closing the pane of daemon pane {daemon}: {e:?}");
+                let close = Command::ClosePane { pane_id: pane };
+                let sink = lock(&self.inner.exit_close).clone();
+                match sink {
+                    Some(sink) => sink(close),
+                    None => {
+                        if let Err(e) = self.command(close) {
+                            eprintln!(
+                                "terminescu: closing the pane of daemon pane {daemon}: {e:?}"
+                            );
+                        }
+                    }
                 }
             }
             None => {

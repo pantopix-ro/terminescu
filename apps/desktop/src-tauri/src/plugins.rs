@@ -135,6 +135,13 @@ impl Plugins {
                 let _ = handle.emit("host://plugins", &plugins.host.list());
             }
         }));
+        // A closed row's data, read while the row is still saved (harden-plugin-host D2).
+        host.set_row_data(Arc::new(move |plugin, side_tab| {
+            plugin_store::row_data_all(&lock(&db), side_tab, plugin).unwrap_or_else(|e| {
+                eprintln!("terminescu: row data of a closed side tab not read: {e}");
+                Default::default()
+            })
+        }));
         Self {
             host,
             shared,
@@ -174,7 +181,7 @@ pub fn observe(app: &AppHandle, runtime: &Runtime, plugins: Arc<Plugins>) {
         let gone = match &event {
             CoreEvent::PaneClosed { pane } => Some(Target::Pane(pane.clone())),
             CoreEvent::TabClosed { tab } => Some(Target::Tab(tab.clone())),
-            CoreEvent::SideTabClosed { side_tab } => Some(Target::SideTab(side_tab.clone())),
+            CoreEvent::SideTabClosed { side_tab, .. } => Some(Target::SideTab(side_tab.clone())),
             _ => None,
         };
         plugins.dispatch(&event);
@@ -326,8 +333,9 @@ impl PluginCx for Cx {
     /// The file shows once open, as a file `terminescu edit` opens does.
     fn open_text(&self, side_tab: &str, path: &str) -> Result<(), PluginError> {
         let state = self.state()?;
-        let view = crate::docs::doc_open_file(state.clone(), side_tab.into(), path.into(), None)
-            .map_err(failed)?;
+        let view =
+            crate::docs::doc_open_file(state.clone(), side_tab.into(), path.into(), None, None)
+                .map_err(failed)?;
         crate::docs::reveal(&self.app, &state.runtime, &view.id);
         Ok(())
     }

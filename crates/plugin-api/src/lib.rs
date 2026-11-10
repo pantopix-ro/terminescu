@@ -87,6 +87,9 @@ pub enum CoreEvent {
     },
     SideTabClosed {
         side_tab: Id,
+        /// This plugin's own row data as it stood before the close, by key; the save deletes
+        /// it with the row (harden-plugin-host D2).
+        data: std::collections::BTreeMap<String, Value>,
     },
     SideTabSelected {
         window: Id,
@@ -121,6 +124,9 @@ pub enum PluginError {
     Timeout,
     #[error("the plugin is off or paused")]
     Off,
+    /// The plugin already holds its most calls at once (harden-plugin-host D4).
+    #[error("the plugin is busy with other calls")]
+    Busy,
 }
 
 /// The one way a plugin acts on the app (Facade, D4). Every method is scoped to the calling

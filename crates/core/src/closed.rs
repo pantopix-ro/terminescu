@@ -170,6 +170,8 @@ pub struct ClosedList {
     /// Each running close's entry, by the token [`ClosedList::push`] gave it.
     running: Vec<(u64, Entry)>,
     next: u64,
+    /// The entry whose reopen failed last; a second failure in a row drops it.
+    failed: Option<Id>,
 }
 
 impl ClosedList {
@@ -178,6 +180,7 @@ impl ClosedList {
             done: VecDeque::new(),
             running: Vec::new(),
             next: 0,
+            failed: None,
         }
     }
 
@@ -205,6 +208,18 @@ impl ClosedList {
     /// The newest closed tab or row whose close is over.
     pub fn pop(&mut self) -> Option<Entry> {
         self.done.pop_back()
+    }
+
+    /// An entry whose reopen failed goes back on top, so ⇧⌘T can try it again. One that fails a
+    /// second time in a row comes back out to be dropped, so it cannot block the older ones.
+    pub fn put_back(&mut self, entry: Entry) -> Option<Entry> {
+        if self.failed.as_ref() == Some(entry.key()) {
+            self.failed = None;
+            return Some(entry);
+        }
+        self.failed = Some(entry.key().clone());
+        self.done.push_back(entry);
+        None
     }
 
     pub fn is_parked(&self, side_tab_id: &str) -> bool {
@@ -471,7 +486,16 @@ mod tests {
         assert!(list.is_parked("s0") && list.is_parked("s10"));
         let newest = list.pop().unwrap();
         assert_eq!(newest.key(), "s9");
-        list.done.push_back(newest);
+        // A failed reopen puts it back, newest again and still parked; a second failure drops it.
+        assert!(list.put_back(newest).is_none());
+        assert!(list.is_parked("s9"));
+        let again = list.pop().unwrap();
+        let dropped = list.put_back(again).unwrap();
+        assert_eq!(dropped.key(), "s9");
+        let s8 = list.pop().unwrap();
+        assert_eq!(s8.key(), "s8");
+        list.done.push_back(s8);
+        list.done.push_back(dropped);
         let out = list.settle(t10, true);
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].parked_side_tab().unwrap(), "s0");

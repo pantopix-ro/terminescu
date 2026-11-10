@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DIFF_MODE_KEY as MODE_KEY, OLD_DIFF_MODE_KEY, loadDiffMode as loadMode, parseDiffMode as parseMode, saveDiffMode as saveMode, toggledDiffMode as toggled } from "../src/diff-mode";
+import { DIFF_MODE_EVENT, DIFF_MODE_KEY as MODE_KEY, OLD_DIFF_MODE_KEY, loadDiffMode as loadMode, onDiffMode, parseDiffMode as parseMode, saveDiffMode as saveMode, toggledDiffMode as toggled } from "../src/diff-mode";
 
 const memory = () => {
   const data = new Map<string, string>();
@@ -32,6 +32,19 @@ describe("diff layout", () => {
     expect(loadMode(store)).toBe("unified");
     saveMode("side", store);
     expect(loadMode(store)).toBe("side");
+  });
+
+  it("follows a layout saved here or in another window", () => {
+    const target = new EventTarget();
+    const seen: string[] = [];
+    const off = onDiffMode((m) => seen.push(m), target as unknown as Window);
+    target.dispatchEvent(new CustomEvent(DIFF_MODE_EVENT, { detail: "unified" }));
+    const storage = (key: string, newValue: string | null) => Object.assign(new Event("storage"), { key, newValue });
+    target.dispatchEvent(storage(MODE_KEY, "side"));
+    target.dispatchEvent(storage("other", "unified"));
+    off();
+    target.dispatchEvent(storage(MODE_KEY, "unified"));
+    expect(seen).toEqual(["unified", "side"]);
   });
 
   it("falls back to side by side when storage throws", () => {

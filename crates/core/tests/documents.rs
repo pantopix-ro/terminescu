@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use terminescu_core::db::Db;
-use terminescu_core::documents::{DocError, Documents, Source};
+use terminescu_core::documents::{DocError, Documents, PaneViewTag, Source};
 
 fn dir() -> PathBuf {
     let d = std::env::temp_dir().join(format!("terminescu-docs-{}", terminescu_core::new_id()));
@@ -14,6 +14,29 @@ fn dir() -> PathBuf {
 
 fn db() -> Arc<Mutex<Db>> {
     Arc::new(Mutex::new(Db::open_in_memory().unwrap()))
+}
+
+#[test]
+fn a_pane_view_tag_survives_a_restart_and_clears() {
+    let d = dir();
+    let path = d.join("main.rs");
+    std::fs::write(&path, "fn main() {}\n").unwrap();
+    let db = db();
+    let tag = PaneViewTag {
+        kind: "git-diff".into(),
+        source: r#"{"path":"main.rs"}"#.into(),
+    };
+    let id = {
+        let docs = Documents::new(db.clone());
+        let file = docs.open_file(&path, None).unwrap();
+        let tagged = docs.set_pane_view(&file.id, Some(tag.clone())).unwrap();
+        assert_eq!(tagged.pane_view.as_ref(), Some(&tag));
+        file.id
+    };
+    let docs = Documents::new(db);
+    docs.restore(|_| None).unwrap();
+    assert_eq!(docs.get(&id).unwrap().pane_view, Some(tag));
+    assert_eq!(docs.set_pane_view(&id, None).unwrap().pane_view, None);
 }
 
 #[test]

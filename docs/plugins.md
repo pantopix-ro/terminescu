@@ -64,12 +64,19 @@ Two optional parts:
 Each plugin runs on its own thread with a queue of 256 events; a full queue drops the oldest.
 An event handler gets 500 ms and a call gets 2 s, unless the manifest sets other budgets. A
 panic or an overrun is logged. Five in one minute pause the plugin until the person switches it
-off and on in Settings › Plugins.
+off and on in Settings › Plugins. A plugin holds at most 4 calls at once; a fifth fails at once
+with `PluginError::Busy` and does not count as a failure. A call that ran over its budget keeps
+its place until its thread ends.
 
 A handler that should run later, or once after a burst of events, sets a timer:
 `cx.schedule(Duration::from_millis(300), "pane:p1")` sends the plugin `CoreEvent::Timer`
 with that token on its own worker. Setting the same token again moves its time, which gives a
-debounce. The git plugin reads a pane's repository this way.
+debounce. A due timer runs before the queued events. The git plugin reads a pane's repository
+this way.
+
+`CoreEvent::SideTabClosed { side_tab, data }` carries the plugin's own row data as it stood
+before the close: the save deletes the row's data with the row. It arrives for every close,
+the ones a shell exit makes too.
 
 Decorations live in memory only. Rebuild them on `CoreEvent::AppLaunched`, which also arrives
 when the plugin is switched on.
@@ -108,7 +115,13 @@ pane views, actions and the settings page are slots the app fills.
   shows only while the plugin's `flags` (a function that gets the bridge and raises flags)
   has that flag up.
 - `beforeRowClose(cx)` runs when the person closes a row, after the app's own questions and in
-  plugin order (Chain of Responsibility). Return `false` to keep the row open.
+  plugin order (Chain of Responsibility). Return `false` to keep the row open. A row whose last
+  shell exits closes without asking.
+- `paneBar` draws a bar above each terminal pane. It gets the pane's program and resume offer
+  and a facade to resume, dismiss and switch the agent hook. The Claude plugin draws its
+  hook-off and resume bars this way.
+- `app.openText(path, view)` opens a file drawn by a pane view, such as a diff tab. The document
+  keeps the view across restarts; opening the file plainly draws it as text again.
 - Mark the package `"sideEffects": false`, so a build without the plugin drops its code and its
   CSS.
 

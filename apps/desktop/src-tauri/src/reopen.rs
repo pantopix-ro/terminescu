@@ -4,17 +4,9 @@
 
 use crate::{AppState, lock, merged};
 use serde::Serialize;
-use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State};
-use terminescu_core::closed::{self, Closed, ClosedList, Entry};
+use terminescu_core::closed::{self, Closed, Entry};
 use terminescu_core::state::{Command, Id};
-
-static CLOSED: Mutex<ClosedList> = Mutex::new(ClosedList::new());
-
-/// A closed row whose daemon variables must stay.
-pub fn is_parked(side_tab_id: &str) -> bool {
-    lock(&CLOSED).is_parked(side_tab_id)
-}
 
 fn drop_vars(state: &AppState, entry: &Entry) {
     if let (Some(side), Some(d)) = (
@@ -49,13 +41,13 @@ pub fn note(state: &AppState, cmd: &Command) -> Option<u64> {
     .cloned()
     .collect();
     let cwds = state.runtime.live_cwds(&panes);
-    Some(lock(&CLOSED).push(Entry { closed, cwds }))
+    Some(lock(&state.closed).push(Entry { closed, cwds }))
 }
 
 /// After the close ran: a done one can be reopened, a failed one is forgotten, and the oldest
 /// entries leave with their rows' daemon variables.
 pub fn done(state: &AppState, token: u64, ok: bool) {
-    let gone = lock(&CLOSED).settle(token, ok);
+    let gone = lock(&state.closed).settle(token, ok);
     for old in &gone {
         drop_vars(state, old);
     }
@@ -63,7 +55,7 @@ pub fn done(state: &AppState, token: u64, ok: bool) {
 
 /// The app quits: the list ends, and its rows' daemon variables with it.
 pub fn end(state: &AppState) {
-    let all = lock(&CLOSED).drain();
+    let all = lock(&state.closed).drain();
     for e in &all {
         drop_vars(state, e);
     }
@@ -75,6 +67,8 @@ pub struct Reopened {
     window_id: Id,
     side_tab_id: Id,
     tab_id: Id,
+    /// A whole row came back, not one tab.
+    row: bool,
 }
 
 /// Reopens the last closed tab or row: back to its window when it still has it, else to
@@ -85,7 +79,7 @@ pub fn reopen_closed(
     state: State<'_, AppState>,
     window_id: Id,
 ) -> Result<Option<Reopened>, String> {
-    let Some(entry) = lock(&CLOSED).pop() else {
+    let Some(entry) = lock(&state.closed).pop() else {
         return Ok(None);
     };
     let cmd = entry.reopen(&state.runtime.workspace(), &window_id);
@@ -95,9 +89,14 @@ pub fn reopen_closed(
         }
         _ => window_id.clone(),
     };
+    // A reopen that fails keeps its entry, so ⇧⌘T can try again (harden-plugin-host D3).
     if let Err(e) = state.runtime.command_in(cmd, &entry.cwds) {
-        drop_vars(&state, &entry);
-        return Err(e.to_string());
+        let dropped = lock(&state.closed).put_back(entry);
+        if let Some(gone) = dropped {
+            drop_vars(&state, &gone);
+            return Err(format!("Reopen: {e}. It is no longer kept."));
+        }
+        return Err(format!("Reopen: {e}"));
     }
     let (side_tab_id, tab_id) = match &entry.closed {
         Closed::Row {
@@ -136,5 +135,6 @@ pub fn reopen_closed(
         window_id: target,
         side_tab_id,
         tab_id,
+        row: matches!(entry.closed, Closed::Row { .. }),
     }))
 }
