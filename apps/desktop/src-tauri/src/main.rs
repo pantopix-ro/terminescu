@@ -1631,14 +1631,23 @@ fn serve_core_socket(
             .spawn(move || {
                 for (pane, event) in hooks_rx {
                     let Some(rt) = runtime.get() else { continue };
-                    rt.hook(pane, &event);
-                    // A file Claude wrote or edited lands in the side tab's Files (D30).
-                    if let (Some(t), Some((side, tab))) = (
-                        terminescu_core::files::touched(&event),
-                        rt.place_of_daemon(pane),
-                    ) && terminescu_core::files::record(&lock(&db), &side, Some(&tab), &t)
-                        .is_ok()
-                    {
+                    // A file the agent wrote or edited lands in the side tab's Files (D30).
+                    let touched = rt.hook(pane, &event);
+                    let Some((side, tab)) = (!touched.is_empty())
+                        .then(|| rt.place_of_daemon(pane))
+                        .flatten()
+                    else {
+                        continue;
+                    };
+                    let db = lock(&db);
+                    let recorded = touched
+                        .iter()
+                        .filter(|t| {
+                            terminescu_core::files::record(&db, &side, Some(&tab), t).is_ok()
+                        })
+                        .count();
+                    drop(db);
+                    if recorded > 0 {
                         rt.context_changed(&side);
                     }
                 }

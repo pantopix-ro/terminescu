@@ -17,6 +17,7 @@ zeroize = "1"
 
 [dev-dependencies]
 terminescu-core.workspace = true
+terminescu-plugin-api.workspace = true
 
 [lib]
 name = "terminescu_ptyd"

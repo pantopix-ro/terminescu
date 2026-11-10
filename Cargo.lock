@@ -4464,6 +4464,7 @@ dependencies = [
  "portable-pty",
  "serde_json",
  "terminescu-core",
+ "terminescu-plugin-api",
  "terminescu-protocol",
  "zeroize",
 ]

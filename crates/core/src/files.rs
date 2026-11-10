@@ -1,12 +1,13 @@
-//! The Files section (D30): files Claude wrote or edited in a side tab, from `PostToolUse` hook
-//! events for Write, Edit, MultiEdit and NotebookEdit. One entry per path; a file Claude
-//! created stays "added" through later edits.
+//! The Files section (D30): files an agent wrote or edited in a side tab, as its adapter reports
+//! them (add-plugin-architecture D2). One entry per path; a file the agent created stays
+//! "added" through later edits.
 
 use crate::db::{Db, Result};
 use crate::state::Id;
 use rusqlite::params;
 use serde::Serialize;
 use std::path::Path;
+use terminescu_plugin_api::AgentEvent;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -35,43 +36,35 @@ pub struct Touch {
     pub cwd: Option<String>,
 }
 
-/// The file a `PostToolUse` event for a file-editing tool touched, if any.
-pub fn touched(event: &serde_json::Value) -> Option<Touch> {
-    let s = |v: &serde_json::Value, k: &str| v.get(k).and_then(|x| x.as_str()).map(String::from);
-    if s(event, "hook_event_name")? != "PostToolUse" {
-        return None;
+impl Touch {
+    /// The entry for a file an agent adapter reports touched; the path is normalized here, so
+    /// `a/../b` and `b` make one entry. A relative path has nothing to resolve against.
+    pub fn of(event: AgentEvent) -> Option<Touch> {
+        let AgentEvent::Touched {
+            path,
+            created,
+            session,
+            cwd,
+        } = event
+        else {
+            return None;
+        };
+        if !Path::new(&path).is_absolute() {
+            return None;
+        }
+        Some(Touch {
+            path: crate::documents::normalize(Path::new(&path))
+                .display()
+                .to_string(),
+            change: if created {
+                Change::Added
+            } else {
+                Change::Modified
+            },
+            session,
+            cwd: cwd.filter(|c| Path::new(c).is_absolute()),
+        })
     }
-    let tool = s(event, "tool_name")?;
-    let input = event.get("tool_input")?;
-    let path = match tool.as_str() {
-        "Write" | "Edit" | "MultiEdit" => s(input, "file_path")?,
-        "NotebookEdit" => s(input, "notebook_path")?,
-        _ => return None,
-    };
-    let cwd = s(event, "cwd").filter(|c| Path::new(c).is_absolute());
-    let path = if Path::new(&path).is_absolute() {
-        Path::new(&path).to_path_buf()
-    } else {
-        Path::new(cwd.as_deref()?).join(&path)
-    };
-    let path = crate::documents::normalize(&path).display().to_string();
-    // Write reports `"type": "create"` for a new file and `"update"` over an old one.
-    let created = tool == "Write"
-        && event
-            .get("tool_response")
-            .and_then(|r| r.get("type"))
-            .and_then(|t| t.as_str())
-            == Some("create");
-    Some(Touch {
-        path,
-        change: if created {
-            Change::Added
-        } else {
-            Change::Modified
-        },
-        session: s(event, "session_id"),
-        cwd,
-    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

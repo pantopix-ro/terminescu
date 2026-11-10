@@ -32,7 +32,7 @@ use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 use terminescu_plugin_api::{
-    Agent, AgentAdapter, AgentState, AgentUpdate, CoreEvent, LineTail, Target,
+    Agent, AgentAdapter, AgentEvent, AgentState, AgentUpdate, CoreEvent, LineTail, Target,
 };
 use terminescu_protocol::core::Expiry;
 use terminescu_protocol::{PaneId, PaneInfo, ShellState, SpawnSpec};
@@ -589,12 +589,15 @@ impl Runtime {
         // Typed text and the cwd a split inherits, read before the batch changes the layout.
         let (typed, inherit) = match &cmd {
             Command::ResumePane { pane_id } => {
+                // The first adapter that can resume the session types its line (D2).
+                let adapters = lock(&self.inner.adapters).clone();
                 let session = core
                     .workspace()
                     .locate_pane(pane_id)
                     .and_then(|(_, t)| t.layout.resume_of(pane_id))
                     .filter(|s| is_session_id(s))
-                    .map(|s| (pane_id.clone(), format!("claude --resume {s}\r")));
+                    .and_then(|s| adapters.iter().find_map(|a| a.resume_command(s)))
+                    .map(|line| (pane_id.clone(), format!("{line}\r")));
                 // An offer with a bad id is never typed; the core refuses it as nothing to resume.
                 if session.is_none() {
                     return Err(CommandError::NothingToResume(pane_id.clone()));
@@ -860,28 +863,36 @@ impl Runtime {
         }
     }
 
-    /// A Claude Code hook event from a pane (D34). The session it names becomes the pane's
-    /// session until `SessionEnd`, so a reboot can offer to resume it.
-    pub fn hook(&self, daemon: PaneId, event: &serde_json::Value) {
-        {
+    /// A hook event from a pane (D34). The session it names becomes the pane's session until
+    /// `SessionEnd`, so a reboot can offer to resume it. A reply goes through the extraction
+    /// rules (D13); the files the agent touched come back for the Files section (D30).
+    pub fn hook(&self, daemon: PaneId, event: &serde_json::Value) -> Vec<crate::files::Touch> {
+        let events = {
             // `panes` stays held while the agent changes, so a closing pane can't get an
             // agent back after `drop_agent` (lock order: panes, then agents).
             let panes = lock(&self.inner.panes);
-            if let Some(pane) = panes.by_daemon.get(&daemon) {
-                self.hook_agent(pane, event);
-                self.observe(CoreEvent::Hook {
-                    pane: pane.clone(),
-                    event: event.clone(),
-                });
+            match panes.by_daemon.get(&daemon) {
+                Some(pane) => {
+                    let events = self.hook_agent(pane, event);
+                    self.observe(CoreEvent::Hook {
+                        pane: pane.clone(),
+                        event: event.clone(),
+                    });
+                    events
+                }
+                None => Vec::new(),
+            }
+        };
+        let mut touched = Vec::new();
+        for e in events {
+            match e {
+                AgentEvent::Reply(reply) => self.found(daemon, crate::extract::find(&reply)),
+                touch @ AgentEvent::Touched { .. } => {
+                    touched.extend(crate::files::Touch::of(touch))
+                }
             }
         }
         let name = event.get("hook_event_name").and_then(|v| v.as_str());
-        // Claude's reply at the end of a turn goes through the extraction rules (D13).
-        if name == Some("Stop")
-            && let Some(reply) = event.get("last_assistant_message").and_then(|v| v.as_str())
-        {
-            self.found(daemon, crate::extract::find(reply));
-        }
         let session = event
             .get("session_id")
             .and_then(|v| v.as_str())
@@ -890,7 +901,7 @@ impl Runtime {
         let next = match name {
             Some("SessionEnd") => None,
             _ if session.is_some() => session,
-            _ => return,
+            _ => return touched,
         };
         self.update_meta(|panes| {
             let Some(pane) = panes.by_daemon.get(&daemon).cloned() else {
@@ -903,6 +914,7 @@ impl Runtime {
             rec.session = next;
             true
         });
+        touched
     }
 
     /// The transcript file of a Claude session: the one its hooks named, else the session's
@@ -995,12 +1007,14 @@ impl Runtime {
     }
 
     /// Applies a hook event to the pane's agent and tells the UI when it shows differently.
-    fn hook_agent(&self, pane: &str, event: &serde_json::Value) {
+    /// Returns the replies and touched files the event carries.
+    fn hook_agent(&self, pane: &str, event: &serde_json::Value) -> Vec<AgentEvent> {
         // Lock order: adapters are copied out before agents is taken.
         let adapters = lock(&self.inner.adapters).clone();
         let mut agents = lock(&self.inner.agents);
         let mut live = agents.remove(pane);
-        let changed = agent_step(&mut live, &adapters, event);
+        let step = agent_step(&mut live, &adapters, event);
+        let changed = step.as_ref().map(|(c, _)| *c);
         let after = live.as_ref().map(|l| l.agent.view());
         if let Some(l) = live {
             agents.insert(pane.into(), l);
@@ -1015,6 +1029,7 @@ impl Runtime {
         if changed {
             self.mark_status();
         }
+        step.map(|(_, a)| a.events(event)).unwrap_or_default()
     }
 
     /// Reads the logs of working and waiting sessions: a denied prompt, an interrupt or a
@@ -1648,13 +1663,13 @@ impl Runtime {
 
 /// One hook event on a pane's agent (add-plugin-architecture D2): the pane's own adapter takes
 /// it, else the first adapter that accepts it, and another tool's agent in the pane ends where
-/// this one starts. Returns whether the agent shows differently, or `None` when no adapter took
-/// the event and `live` stays as it was.
+/// this one starts. Returns whether the agent shows differently and the adapter that took the
+/// event, or `None` when no adapter took it and `live` stays as it was.
 fn agent_step(
     live: &mut Option<Live>,
     adapters: &[Arc<dyn AgentAdapter>],
     event: &Value,
-) -> Option<bool> {
+) -> Option<(bool, Arc<dyn AgentAdapter>)> {
     let adapter = match live.as_ref().filter(|l| l.adapter.accepts(event)) {
         Some(l) => l.adapter.clone(),
         None => adapters.iter().find(|a| a.accepts(event))?.clone(),
@@ -1676,11 +1691,11 @@ fn agent_step(
         };
         Live {
             agent,
-            adapter,
+            adapter: adapter.clone(),
             tail,
         }
     });
-    Some(shown != live.as_ref().map(|l| l.agent.view()))
+    Some((shown != live.as_ref().map(|l| l.agent.view()), adapter))
 }
 
 fn set_resume(ws: &mut Workspace, pane: &str, session: Option<String>) {
@@ -1915,7 +1930,7 @@ mod adapter_tests {
     }
 
     fn step(mut live: Option<Live>, event: Value) -> (Option<Live>, bool) {
-        let changed = agent_step(&mut live, &adapters(), &event).expect("no adapter took it");
+        let (changed, _) = agent_step(&mut live, &adapters(), &event).expect("no adapter took it");
         (live, changed)
     }
 
@@ -1940,12 +1955,12 @@ mod adapter_tests {
     fn an_event_no_adapter_takes_leaves_the_pane_alone() {
         let (mut live, _) = step(None, json!({ "tool": "one", "state": "waiting" }));
         let other = json!({ "hook_event_name": "Stop" });
-        assert_eq!(agent_step(&mut live, &adapters(), &other), None);
+        assert!(agent_step(&mut live, &adapters(), &other).is_none());
         assert_eq!(live.unwrap().agent.state, AgentState::Waiting);
         // With no adapter at all (the plugin is off), nothing starts.
         let mut none = None;
         let waiting = json!({ "tool": "one", "state": "waiting" });
-        assert_eq!(agent_step(&mut none, &[], &waiting), None);
+        assert!(agent_step(&mut none, &[], &waiting).is_none());
         assert!(none.is_none());
     }
 

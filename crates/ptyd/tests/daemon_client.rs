@@ -11,7 +11,49 @@ use terminescu_core::layout::{Dir, Layout};
 use terminescu_core::persist;
 use terminescu_core::runtime::Runtime;
 use terminescu_core::state::{Command, Core, Patch, PatchBatch, Workspace};
+use terminescu_plugin_api::{Agent, AgentAdapter, AgentEvent};
 use terminescu_protocol::PaneInfo;
+
+/// An agent tool for the runtime: its hooks name their event, `Stop` carries a reply and
+/// `PostToolUse` a touched file, and it resumes with its own line (add-plugin-architecture D2).
+struct Tool;
+
+impl AgentAdapter for Tool {
+    fn id(&self) -> &'static str {
+        "tool"
+    }
+    fn accepts(&self, event: &serde_json::Value) -> bool {
+        event.get("hook_event_name").is_some()
+    }
+    fn on_hook(&self, _: Option<Agent>, _: &serde_json::Value) -> Option<Agent> {
+        None
+    }
+    fn on_line(&self, _: &mut Agent, _: &[u8]) -> bool {
+        false
+    }
+    fn events(&self, event: &serde_json::Value) -> Vec<AgentEvent> {
+        let s = |k: &str| event[k].as_str().map(String::from);
+        match event["hook_event_name"].as_str() {
+            Some("Stop") => s("reply").map(AgentEvent::Reply).into_iter().collect(),
+            Some("PostToolUse") => s("path")
+                .map(|path| AgentEvent::Touched {
+                    path,
+                    created: false,
+                    session: s("session_id"),
+                    cwd: None,
+                })
+                .into_iter()
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
+    fn resume_command(&self, session: &str) -> Option<String> {
+        Some(format!("tool --resume {session}"))
+    }
+    fn find_transcript(&self, _: &str) -> Option<PathBuf> {
+        None
+    }
+}
 
 static NEXT: AtomicU32 = AtomicU32::new(0);
 
@@ -67,6 +109,7 @@ impl Fixture {
             false,
         )
         .unwrap();
+        rt.set_adapters(vec![Arc::new(Tool)]);
         self.started.lock().unwrap().push(rt.clone());
         (rt, windows[0].clone(), batches)
     }
@@ -392,7 +435,7 @@ fn a_reboot_restores_the_layout_with_fresh_shells_and_resume_offers() {
         })
         .unwrap();
     wait_for(
-        || std::fs::read_to_string(&typed).unwrap_or_default() == "claude --resume sess-0b5c\n",
+        || std::fs::read_to_string(&typed).unwrap_or_default() == "tool --resume sess-0b5c\n",
         "the resume line",
     );
     let layout = second
@@ -407,6 +450,61 @@ fn a_reboot_restores_the_layout_with_fresh_shells_and_resume_offers() {
         "the offer is gone once pressed"
     );
     assert!(matches!(layout, Layout::Split { .. }));
+}
+
+#[test]
+fn resume_uses_the_adapter_command() {
+    let f = Fixture::new();
+    let (rt, _, _) = f.start();
+    let p = all_panes(&rt.workspace())[0].clone();
+    let d = rt.daemon_of(&p).unwrap();
+    rt.hook(
+        d,
+        &serde_json::json!({"hook_event_name": "SessionStart", "session_id": "sess-9"}),
+    );
+    rt.stop();
+    f.kill_daemon();
+    let (second, _, _) = f.start();
+    // With no adapter (the plugin is off) there is nothing to type.
+    second.set_adapters(Vec::new());
+    assert!(
+        second
+            .command(Command::ResumePane { pane_id: p.clone() })
+            .is_err()
+    );
+}
+
+#[test]
+fn a_reply_runs_the_extraction_rules() {
+    let f = Fixture::new();
+    let (rt, _, _) = f.start();
+    let p = all_panes(&rt.workspace())[0].clone();
+    let d = rt.daemon_of(&p).unwrap();
+    let found: Arc<Mutex<Vec<String>>> = Arc::default();
+    let into = found.clone();
+    rt.on_found(Box::new(move |_, _, items| {
+        into.lock()
+            .unwrap()
+            .extend(items.into_iter().map(|i| i.value))
+    }));
+    let touched = rt.hook(
+        d,
+        &serde_json::json!({"hook_event_name": "Stop", "reply": "Opened https://github.com/acme/api/pull/7"}),
+    );
+    assert!(touched.is_empty());
+    assert_eq!(
+        *found.lock().unwrap(),
+        ["https://github.com/acme/api/pull/7"]
+    );
+    // A touched file comes back normalized, for the Files section.
+    let touched = rt.hook(
+        d,
+        &serde_json::json!({"hook_event_name": "PostToolUse", "path": "/tmp/a/../b.md"}),
+    );
+    assert_eq!(
+        touched.iter().map(|t| t.path.as_str()).collect::<Vec<_>>(),
+        ["/tmp/b.md"]
+    );
 }
 
 #[test]
