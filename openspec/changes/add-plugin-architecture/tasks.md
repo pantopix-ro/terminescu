@@ -22,7 +22,7 @@
 
 ## 2. Plugin API and slots in the UI
 
-- [ ] 2.1 `packages/plugin-api`: `definePlugin`, contribution types, a registry that composes
+- [x] 2.1 `packages/plugin-api`: `definePlugin`, contribution types, a registry that composes
       decorators in plugin order and merges actions with chord clashes resolved for the app.
       Verify: vitest `registry.test.ts`.
 - [ ] 2.2 Host: `pluginCall`, `onPluginEvent`, `decorations`, `onDecorations` in `ipc.ts` and

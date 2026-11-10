@@ -785,3 +785,27 @@ export interface FileList {
   /** More files exist than the list holds. */
   truncated: boolean;
 }
+
+/** What a plugin decoration is about (add-plugin-architecture D6). */
+export type DecorationTarget = { kind: "sideTab" | "tab" | "pane"; id: Id };
+export type DecorationSlot = "chip" | "subtitle" | "badge" | "meter";
+export type DecorationTone = "neutral" | "good" | "warn" | "bad";
+/** A plugin's decoration as the core sends it on `host://decorations`. */
+export interface Decoration {
+  plugin: string;
+  target: DecorationTarget;
+  slot: DecorationSlot;
+  key: string;
+  text: string;
+  tone: DecorationTone;
+  tip?: string;
+}
+/** A plugin the app is built with, from `plugin_list`. */
+export interface PluginInfo {
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  /** Stopped after 5 failures in a minute, until switched off and on. */
+  paused: boolean;
+}
