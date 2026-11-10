@@ -86,6 +86,13 @@ describe("compose", () => {
     expect(all.offKinds.size).toBe(0);
   });
 
+  it("shows a single row's tab decorations on the row, not a folder's", () => {
+    const plain = definePlugin({ id: "git", name: "Git" });
+    const some = compose({ plugins: [plain], enabled: new Set(["git"]), decorations, appActions: app });
+    expect(some.rowItems(row).map((i) => i.text)).toEqual(["main", "row chip git does not show"]);
+    expect(some.rowItems({ id: "s1", tabIds: ["t1", "t2"], shownTabId: "t1" }).map((i) => i.text)).toEqual(["row chip git does not show"]);
+  });
+
   it("lists panel sections with their plugin", () => {
     expect(all.panelSections.map((s) => `${s.plugin}.${s.id}`)).toEqual(["claude.usage"]);
   });

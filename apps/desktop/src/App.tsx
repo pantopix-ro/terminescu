@@ -150,11 +150,13 @@ import {
   type TerminalLink,
   isLight,
   LIGHT_TINT,
+  type Decorate,
 } from "@terminescu/ui";
 import type { Terminal } from "@xterm/xterm";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useStore } from "zustand";
+import { usePlugins, type Plugins } from "./plugins";
 
 export interface AppProps {
   windowId: string;
@@ -175,6 +177,23 @@ type Toast = { text: string; undo(): void; done?(): Promise<unknown> | void; rem
 type Removal = { kind: "variable"; side: string; name: string } | { kind: "pin" | "command"; id: string };
 
 /** Keeps a selection valid: the previous id while it still exists, else the first one. */
+/**
+ * A pane a plugin draws (D7, D9). With the plugin off the pane keeps its place and names the
+ * plugin it needs.
+ */
+function PluginPaneView({ kind, paneId, sideTabId, focused, plugins, openSettings }: { kind: string; paneId: string; sideTabId: string; focused: boolean; plugins: Plugins; openSettings(): void }) {
+  const view = plugins.composed.paneView(kind);
+  if (view) return <view.render paneId={paneId} sideTabId={sideTabId} focused={focused} bridge={plugins.bridge(view.plugin)} />;
+  return (
+    <div className="plugin-missing" role="status">
+      <span>Needs the {plugins.offOwner(kind) ?? "missing"} plugin</span>
+      <button type="button" className="ao-btn primary" onClick={openSettings}>
+        Open Settings
+      </button>
+    </div>
+  );
+}
+
 function pick(ids: string[], previous: string | undefined): string | undefined {
   return previous && ids.includes(previous) ? previous : ids[0];
 }
@@ -890,6 +909,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       else if (activeSide) selectTab(activeSide.id, target.id);
       return;
     }
+    // A plugin action reads `plugin.action`; app actions never hold a dot.
+    if (id.includes(".")) return runPluginAction(id);
     switch (id) {
       case "new_tab":
         return newBeside();
@@ -1318,6 +1339,32 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       off?.();
     };
   }, [host]);
+  // The enabled plugins' contributions, composed in plugin order (add-plugin-architecture D7).
+  const boundActions = useMemo(() => withBindings(ACTIONS, keyBindings), [keyBindings]);
+  const plugins = usePlugins(host, boundActions);
+  const decorate = useMemo<Decorate>(
+    () => ({
+      row: (side) => plugins.composed.rowItems({ id: side.id, tabIds: side.tabs.map((t) => t.id), shownTabId: pick(side.tabs.map((t) => t.id), tabBySide[side.id]) }),
+      tab: (side, tabId) => {
+        const tab = side.tabs.find((t) => t.id === tabId);
+        return plugins.composed.tabItems({ id: tabId, sideTabId: side.id, paneIds: tab ? panesOf(tab.layout) : [] });
+      },
+    }),
+    [plugins.composed, tabBySide],
+  );
+  const runPluginAction = (id: string) => {
+    const a = plugins.composed.actions.find((x) => x.id === id);
+    if (!a) return;
+    const cx = { windowId, bridge: plugins.bridge(a.plugin), ...(activeSide ? { sideTabId: activeSide.id } : {}), ...(focused ? { paneId: focused } : {}) };
+    void Promise.resolve()
+      .then(() => a.run(cx))
+      .catch((e: unknown) => setError(`${a.label}: ${String(e)}`));
+  };
+  // Plugins hear which row this window shows (D3).
+  const selectedRow = activeSide?.id;
+  useEffect(() => {
+    if (selectedRow) void host.rowSelected(windowId, selectedRow).catch(() => undefined);
+  }, [host, windowId, selectedRow]);
   const startExtract = (tabId: string, value: string, from: string) => {
     const side = sideOfTab(tabId);
     if (side) setExtracting({ side, tab: tabId, value, from });
@@ -2078,6 +2125,13 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     ...paletteActions(withBindings(ACTIONS, keyBindings))
       .filter((a) => a.id !== "merge_windows" || ws.windows.length > 1)
       .map((a) => ({ id: a.id, label: a.label, group: "Actions", hint: chordLabel(a.accel), run: () => act(a.id) })),
+    ...plugins.composed.actions.map((a) => ({
+      id: a.id,
+      label: a.label,
+      group: "Plugins",
+      ...(a.accel ? { hint: chordLabel(a.accel) } : {}),
+      run: () => runPluginAction(a.id),
+    })),
     ...(activeTab
       ? [
           { id: "move:new", label: "New side tab", group: "Move tab to…", run: () => moveTab(activeTab.id, { newAt: sideTabs.length }) },
@@ -2220,6 +2274,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               </span>
             </div>
             <SideTabList
+              decorate={decorate}
               sideTabs={shownSides}
               statuses={statuses}
               builtins={statusConfig.builtins}
@@ -2297,6 +2352,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           </aside>
           <main className={`app-main${appSettings.topTabs ? "" : " bare"}`}>
             {appSettings.topTabs && <TabBar
+              decorate={activeSide ? (tabId) => decorate.tab(activeSide, tabId) : undefined}
               tabs={appSettings.topTabs ? tabs : []}
               folder={
                 activeSide && activeSide.tabs.length > 1
@@ -2463,7 +2519,16 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                             }}
                           />
                         )}
-                        {transcript ? (
+                        {transcript && (plugins.composed.paneView("transcript") || plugins.offOwner("transcript")) ? (
+                          <PluginPaneView
+                            kind="transcript"
+                            paneId={paneId}
+                            sideTabId={sideOfTab(own.id) ?? ""}
+                            focused={focused === paneId}
+                            plugins={plugins}
+                            openSettings={() => setSheet("settings")}
+                          />
+                        ) : transcript ? (
                           <TranscriptPane
                             paneId={paneId}
                             session={transcript}
@@ -2530,6 +2595,15 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
             </section>
           </main>
           <ContextPanel
+            sections={
+              activeSide
+                ? plugins.composed.panelSections.map((sec) => ({
+                    key: `${sec.plugin}.${sec.id}`,
+                    title: sec.title,
+                    body: <sec.render sideTabId={activeSide.id} bridge={plugins.bridge(sec.plugin)} />,
+                  }))
+                : undefined
+            }
             mode={mode}
             onMode={changeMode}
             owner={activeSide && sideTabName(activeSide)}

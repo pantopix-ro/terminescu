@@ -27,7 +27,7 @@
       Verify: vitest `registry.test.ts`.
 - [x] 2.2 Host: `pluginCall`, `onPluginEvent`, `decorations`, `onDecorations` in `ipc.ts` and
       the mock, which takes fake plugins. Verify: host vitest.
-- [ ] 2.3 Slots: row and tab decorations in `SideTabList` and `TabBar`, plugin sections in
+- [x] 2.3 Slots: row and tab decorations in `SideTabList` and `TabBar`, plugin sections in
       `ContextPanel`, the pane-view registry with the missing-plugin notice, plugin actions in
       menus and the palette; the UI reports row selection as `SideTabSelected`; plugin
       variables (`plugin:` ids) show read-only; Settings › Statuses offers fact rules. Verify: `e2e/plugins.spec.ts` with a fake plugin (chip, section,

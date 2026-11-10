@@ -2,7 +2,7 @@ export { colors, type ColorToken } from "./generated/colors";
 export { ANSI_SLOTS, terminalBehaviour, terminalFont, terminalFontOptions, xtermTheme, schemeTheme, isLight, LIGHT_TINT, type TerminalBehaviourSettings, type TerminalFont } from "./xterm-theme";
 export { PasteDialog, type PasteDialogProps } from "./PasteDialog";
 export { pasteRisk } from "./paste";
-export { ContextPanel, HOVER_MS, type ContextMode, type ContextPanelProps } from "./ContextPanel";
+export { ContextPanel, HOVER_MS, type ContextMode, type ContextPanelProps, type PanelPart } from "./ContextPanel";
 export { focusPane, paneEvent } from "./pane-registry";
 export { Palette, type PaletteItem, type PaletteProps } from "./Palette";
 export { FileFinder, type FileFinderProps } from "./FileFinder";
@@ -27,6 +27,7 @@ export {
   tabRequest,
   type DocMarks,
   type SideTabListProps,
+  type Decorate,
   type MenuTarget,
 } from "./SideTabList";
 export { ContextMenu, type ContextMenuProps, type MenuEntry } from "./ContextMenu";
@@ -36,6 +37,7 @@ export { ShellPicker, usePicker, type PickAt } from "./ShellPicker";
 export { Tip, useTip, type TipAt } from "./Tip";
 export { dragSizes, PaneSlot, SplitView, type SplitViewProps } from "./SplitView";
 export { TabBar, type TabBarProps } from "./TabBar";
+export { PluginItems } from "./PluginItems";
 export { SYNC_MS, TextPane, textPane, type TextHandle, type TextHost, type TextPaneProps } from "./TextPane";
 export { eolOf, exactState, separatorOf, textOf, type Eol } from "./text";
 export { varOptions, varRefs, type VarInfo } from "./varchips";

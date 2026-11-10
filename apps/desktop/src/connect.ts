@@ -2,6 +2,7 @@ import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { createIpcHost, createWorkspaceStore, type Host, type WorkspaceStore } from "@terminescu/host";
 import { createMockHost } from "@terminescu/host/mock";
 import type { Terminal } from "@xterm/xterm";
+import { fakeRustHalves } from "./plugins";
 
 export interface Connection {
   windowId: string;
@@ -17,7 +18,7 @@ export interface Connection {
  */
 export async function connect(): Promise<Connection> {
   const inTauri = "__TAURI_INTERNALS__" in window;
-  const host = inTauri ? createIpcHost() : createMockHost();
+  const host = inTauri ? createIpcHost() : createMockHost(undefined, { plugins: fakeRustHalves() });
   const workspace = createWorkspaceStore(host);
   await workspace.start();
   const windowId = inTauri

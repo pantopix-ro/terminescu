@@ -7,6 +7,8 @@ import { DOT, tabAgent, type Agents } from "./agents";
 import { StatusChip } from "./StatusChip";
 import { chipOf, rowStyle, type Builtins, type Chip, type SortMode } from "./status";
 import { NewMenu } from "./NewMenu";
+import { PluginItems } from "./PluginItems";
+import type { RenderItem } from "@terminescu/plugin-api";
 import { ShellPicker, usePicker } from "./ShellPicker";
 import { Tip, useTip } from "./Tip";
 
@@ -65,6 +67,14 @@ export interface SideTabListProps {
   onIconPick?(id: string, at: { x: number; y: number }): void;
   /** Only the rows' icons show; hovering one shows its name and status (task 8.23). */
   collapsed?: boolean;
+  /** What the enabled plugins show on each row and each listed tab, composed (D7). */
+  decorate?: Decorate;
+}
+
+/** The composed plugin items of a row and of a tab. */
+export interface Decorate {
+  row(side: SideTab): readonly RenderItem[];
+  tab(side: SideTab, tabId: string): readonly RenderItem[];
 }
 
 /** Where an icon picker opens: under the double-clicked icon. */
@@ -236,6 +246,7 @@ function Row(props: {
   collapsed: boolean;
   tips: Tips;
   picker: Picker;
+  decorate: Decorate | undefined;
 }) {
   const { side, active, expanded, dragging, agents, statuses, builtins, docs, collapsed, tips, picker } = props;
   const name = sideTabName(side, docs);
@@ -356,6 +367,7 @@ function Row(props: {
           </span>
         )}
         {single && only && props.subtitles[only.id] && <span className="st-sub">{props.subtitles[only.id]}</span>}
+        {single && <PluginItems items={props.decorate?.row(side)} />}
         <span className="side-trail">
         {folder && (
           <button
@@ -393,6 +405,7 @@ function Row(props: {
           </span>
           {/* A one-tab row shows its tab's live subtitle here; a folder's tabs show theirs below (task 8.30). */}
           <span className="grow st-sub">{!folder && side.tabs[0] && props.subtitles[side.tabs[0].id]}</span>
+          <PluginItems items={props.decorate?.row(side)} />
           {/* The status sits under the name, so the name has the row's width (task 8.28). */}
           <ChipButton
             chip={chip}
@@ -501,6 +514,7 @@ function Kid(props: Parameters<typeof Row>[0] & { tab: Tab; index: number }) {
           {props.subtitles[t.id] && <span className="kid-sub">{props.subtitles[t.id]}</span>}
         </span>
       )}
+      <PluginItems items={props.decorate?.tab(props.side, t.id)} />
       {statuses[t.id]?.look && (
         <ChipButton
           chip={chipOf(statuses[t.id], builtins)}
@@ -574,6 +588,7 @@ export function SideTabList({
   onStatus,
   onIconPick,
   collapsed = false,
+  decorate,
 }: SideTabListProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   useEffect(() => {
@@ -632,6 +647,7 @@ export function SideTabList({
               collapsed={collapsed}
               tips={tips}
               picker={picker}
+              decorate={decorate}
             />
           </div>
         ))}

@@ -28,6 +28,24 @@ pub struct Shared {
 pub struct Plugins {
     pub host: PluginHost,
     pub shared: Arc<Shared>,
+    /// The enabled plugins' actions, composed by the UI, for the native menu (D7).
+    pub menu: Mutex<Vec<MenuAction>>,
+}
+
+/// A plugin action as the menu shows it; `id` is `plugin.action`, `accel` empty when it has none.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct MenuAction {
+    pub id: String,
+    pub label: String,
+    pub menu: String,
+    pub accel: String,
+}
+
+/// The plugin actions the menu shows now.
+pub fn menu_items(app: &AppHandle) -> Vec<MenuAction> {
+    app.try_state::<Arc<Plugins>>()
+        .map(|p| lock(&p.menu).clone())
+        .unwrap_or_default()
 }
 
 /// The plugins compiled in, in the order their decorators compose.
@@ -61,7 +79,11 @@ impl Plugins {
                 forget_plugin(&handle, &held, id);
             }
         }));
-        Self { host, shared }
+        Self {
+            host,
+            shared,
+            menu: Mutex::default(),
+        }
     }
 
     pub fn dispatch(&self, event: &CoreEvent) {
@@ -391,6 +413,41 @@ pub fn plugin_set_enabled(
     let list = plugins.host.list();
     let _ = app.emit("host://plugins", &list);
     Ok(list)
+}
+
+/// Puts the composed plugin actions in the native menu. An id must read `plugin.action`, so a
+/// plugin item can never fire an app action.
+#[tauri::command]
+pub fn plugin_menu(
+    app: AppHandle,
+    plugins: State<'_, Arc<Plugins>>,
+    state: State<'_, AppState>,
+    items: Vec<MenuAction>,
+) -> Result<(), String> {
+    if let Some(bad) = items.iter().find(|i| !i.id.contains('.')) {
+        return Err(format!("plugin action {} needs a plugin prefix", bad.id));
+    }
+    let same = {
+        let mut menu = lock(&plugins.menu);
+        let same = menu.len() == items.len()
+            && menu.iter().zip(&items).all(|(a, b)| {
+                (&a.id, &a.label, &a.menu, &a.accel) == (&b.id, &b.label, &b.menu, &b.accel)
+            });
+        *menu = items;
+        same
+    };
+    if same {
+        return Ok(());
+    }
+    // While Settings › Keys records a chord the menu stays chordless.
+    let chords = lock(&state.recording).is_none();
+    crate::set_chords(&app, &state.db, chords)
+}
+
+/// The UI selected a row: the core does not know which row a window shows (D3).
+#[tauri::command]
+pub fn plugin_row_selected(plugins: State<'_, Arc<Plugins>>, window: Id, side_tab: Id) {
+    plugins.dispatch(&CoreEvent::SideTabSelected { window, side_tab });
 }
 
 #[tauri::command]

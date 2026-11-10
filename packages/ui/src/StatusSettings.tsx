@@ -91,7 +91,8 @@ export function StatusesSection({ config, host, onError }: StatusesSectionProps)
   const addRule = () => {
     const status = ruleStatus || config.statuses[0]?.id;
     if (!status) return onError("Save a status first; a rule sets one.");
-    const kind: RuleKind = ruleKind === "exitCode" ? { kind: "exitCode", pattern: ruleArg } : { kind: "claudeIdle", minutes: Number(ruleArg) };
+    const kind: RuleKind =
+      ruleKind === "exitCode" ? { kind: "exitCode", pattern: ruleArg } : ruleKind === "fact" ? { kind: "fact", name: ruleArg.trim() } : { kind: "claudeIdle", minutes: Number(ruleArg) };
     run(host.addRule(status, kind).then(() => setRuleArg("")));
   };
 
@@ -187,13 +188,14 @@ export function StatusesSection({ config, host, onError }: StatusesSectionProps)
               <select className="ao-input" value={ruleKind} aria-label="Rule kind" onChange={(e) => setRuleKind(e.target.value as RuleKind["kind"])}>
                 <option value="exitCode">command exits non-zero</option>
                 <option value="claudeIdle">Claude idle (minutes)</option>
+                <option value="fact">a plugin fact holds</option>
               </select>
               <input
                 className="ao-input"
                 value={ruleArg}
                 inputMode={ruleKind === "claudeIdle" ? "numeric" : undefined}
-                placeholder={ruleKind === "exitCode" ? "pnpm test*" : "30"}
-                aria-label={ruleKind === "exitCode" ? "Command pattern" : "Minutes"}
+                placeholder={ruleKind === "exitCode" ? "pnpm test*" : ruleKind === "fact" ? "git.dirty" : "30"}
+                aria-label={ruleKind === "exitCode" ? "Command pattern" : ruleKind === "fact" ? "Fact name" : "Minutes"}
                 onChange={(e) => setRuleArg(e.target.value)}
               />
               <select className="ao-input" value={ruleStatus} aria-label="Status to set" onChange={(e) => setRuleStatus(e.target.value)}>

@@ -114,8 +114,16 @@ const item = (d: Decoration): RenderItem => ({
   ...(d.tip === undefined ? {} : { tip: d.tip }),
 });
 
-/** A plugin with no row decorator shows its decorations on the row as they are. */
-export const showOwnRow: Decorator<RowView> = (items, row, mine) => [...items, ...mine.filter((d) => d.target.kind === "sideTab" && d.target.id === row.id).map(item)];
+/**
+ * A plugin with no row decorator shows its decorations on the row as they are. A row of one tab
+ * is that tab in the sidebar, so it shows the tab's too.
+ */
+export const showOwnRow: Decorator<RowView> = (items, row, mine) => [
+  ...items,
+  ...mine
+    .filter((d) => (d.target.kind === "sideTab" && d.target.id === row.id) || (row.tabIds.length === 1 && d.target.kind === "tab" && d.target.id === row.tabIds[0]))
+    .map(item),
+];
 
 /** A plugin with no tab decorator shows its decorations on the tab as they are. */
 export const showOwnTab: Decorator<TabView> = (items, tab, mine) => [...items, ...mine.filter((d) => d.target.kind === "tab" && d.target.id === tab.id).map(item)];

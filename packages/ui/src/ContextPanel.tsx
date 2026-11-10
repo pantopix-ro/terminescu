@@ -1,5 +1,5 @@
 import { VAR_MODES, type Item, type ItemKind, type NewVariable, type Pin, type Prompt, type TouchedFile, type Variable, type VarMode, type VariableChange } from "@terminescu/host";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { parseTtl, timeAgo, timeLeft } from "./names";
 
 export type ContextMode = "pinned" | "auto";
@@ -35,6 +35,15 @@ export interface ContextPanelProps {
   prompts?: Prompt[];
   /** Opens the library at a prompt, or at its start. */
   onOpenPrompt?(key?: string): void;
+  /** Sections the enabled plugins add after the app's, each drawn by its plugin (D7). */
+  sections?: readonly PanelPart[];
+}
+
+/** A plugin's section: the panel draws its head; the plugin draws the body. */
+export interface PanelPart {
+  key: string;
+  title: string;
+  body: ReactNode;
 }
 
 const SECTIONS = ["Context", "Pins", "Prompts"] as const;
@@ -62,9 +71,29 @@ function metaOf(v: Variable): string {
   return v.source ?? "";
 }
 
+/** A variable a plugin provides: it shows and inserts, but only the plugin changes it. */
+const provided = (v: Variable) => v.id.startsWith("plugin:");
+
 function VariableRow({ v, props, fail }: { v: Variable; props: ContextPanelProps; fail(e: unknown): void }) {
   const [editing, setEditing] = useState<string>();
   const secret = v.mode === "secret";
+  if (provided(v))
+    return (
+      <li className="ctx-var provided" data-var={v.name} data-mode={v.mode} data-provided="">
+        <span className="ctx-name">{`{{${v.name}}}`}</span>
+        <span className="ctx-value small" title={v.value ?? ""}>
+          {v.value}
+        </span>
+        <span className="ctx-row-acts">
+          {props.onInsertVariable && (
+            <button type="button" className="ao-btn ghost ctx-insert" aria-label={`Insert ${v.name}`} title="Types the value, without Enter" onClick={() => props.onInsertVariable?.(v)}>
+              insert
+            </button>
+          )}
+        </span>
+        <span className="ctx-meta">{`from ${v.source?.replace(/^plugin:/, "") ?? "a plugin"} · read-only`}</span>
+      </li>
+    );
   const commit = () => {
     if (editing === undefined) return;
     const value = editing;
@@ -360,6 +389,12 @@ function Body(props: ContextPanelProps) {
           <section key={s} className="ctx-section" aria-label={s} data-section={s}>
             <h3 className="ctx-sec-head ao-pixel">{s}</h3>
             <Items {...props} section={s} />
+          </section>
+        ))}
+        {props.sections?.map((s) => (
+          <section key={s.key} className="ctx-section plugin" aria-label={s.title} data-section={s.key}>
+            <h3 className="ctx-sec-head ao-pixel">{s.title}</h3>
+            {s.body}
           </section>
         ))}
       </div>

@@ -1,4 +1,4 @@
-import type { KeyBindings } from "./keys";
+import type { ActionDef, KeyBindings } from "./keys";
 import type {
   Decoration,
   PluginInfo,
@@ -311,6 +311,10 @@ export interface Host {
   decorations(): Promise<Decoration[]>;
   /** The whole list again, whenever a decoration changes. */
   onDecorations(listener: (decorations: Decoration[]) => void): Promise<() => void>;
+  /** The enabled plugins' actions, ids `plugin.action`, for the app menu and its chords (D7). */
+  setPluginActions(actions: ActionDef[]): Promise<void>;
+  /** A window selected a row; plugins hear it as `SideTabSelected` (D3). */
+  rowSelected(windowId: Id, sideTabId: Id): Promise<void>;
 }
 
 /** The Edit menu actions the pixel context menu sends (task 8.55). */

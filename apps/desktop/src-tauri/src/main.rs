@@ -503,7 +503,7 @@ fn keys_set(
 }
 
 /// Builds the menu from the saved chords, with them or without them.
-fn set_chords(app: &AppHandle, db: &Mutex<Db>, chords: bool) -> Result<(), String> {
+pub(crate) fn set_chords(app: &AppHandle, db: &Mutex<Db>, chords: bool) -> Result<(), String> {
     let saved = keys::get(&lock(db)).map_err(|e| e.to_string())?;
     let bindings = keys::check(&default_chords(), saved).unwrap_or_default();
     let menu = build_menu(app, &bindings, chords).map_err(|e| e.to_string())?;
@@ -1938,6 +1938,15 @@ fn build_menu(
             None => sections.push((a.menu.clone(), vec![item])),
         }
     }
+    // Plugin actions join the menu they name, or a menu of their own (add-plugin-architecture D7).
+    for a in plugins::menu_items(app) {
+        let accel = (chords && !a.accel.is_empty()).then_some(a.accel.as_str());
+        let item = MenuItem::with_id(app, &a.id, &a.label, true, accel)?;
+        match sections.iter_mut().find(|(name, _)| *name == a.menu) {
+            Some((_, items)) => items.push(item),
+            None => sections.push((a.menu, vec![item])),
+        }
+    }
     let edit = Submenu::with_items(
         app,
         "Edit",
@@ -2135,6 +2144,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             edit::edit_command,
             plugins::plugin_call,
+            plugins::plugin_menu,
+            plugins::plugin_row_selected,
             plugins::plugin_list,
             plugins::plugin_set_enabled,
             plugins::decorations,

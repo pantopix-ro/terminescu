@@ -7,6 +7,8 @@ import { StatusChip } from "./StatusChip";
 import { chipOf, rowStyle, type Builtins } from "./status";
 import { useEffect, useRef, useState } from "react";
 import { NewMenu } from "./NewMenu";
+import { PluginItems } from "./PluginItems";
+import type { RenderItem } from "@terminescu/plugin-api";
 import { Tip, useTip } from "./Tip";
 import { AskMark, KidIcon, pickAt, RenameInput, tabDirty, tabName, tabRequest, type DocMarks } from "./SideTabList";
 
@@ -44,6 +46,8 @@ export interface TabBarProps {
    * its name and neon start the bar, and its pixel tip lists the tabs.
    */
   folder?: { name: string; accent?: string; lines: readonly string[] };
+  /** What the enabled plugins show on each tab, composed (D7). */
+  decorate?(tabId: string): readonly RenderItem[];
 }
 
 function TabItem({
@@ -64,7 +68,9 @@ function TabItem({
   onIconPick,
   onEdit,
   tips,
+  items,
 }: Pick<TabBarProps, "onRenameStart" | "onRename" | "onRenameEnd" | "onIconPick" | "onEdit"> & {
+  items: readonly RenderItem[] | undefined;
   renaming: boolean;
   tab: Tab;
   active: boolean;
@@ -146,6 +152,7 @@ function TabItem({
         </>
       )}
       {!renaming && sub && <span className="tab-sub">{sub}</span>}
+      <PluginItems items={items} />
       {tabDirty(tab, docs) && <span className="tab-dirty" title="Unsaved changes" aria-label="Unsaved changes" />}
       {shown?.look && <StatusChip chip={chipOf(shown, builtins)} />}
       <button
@@ -166,7 +173,7 @@ function TabItem({
 
 /** The active side tab's tabs, across the top like browser tabs. Drag one to reorder it. */
 
-export function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNewText, agents = {}, statuses = {}, builtins = {}, docs = {}, subtitles = {}, activity = {}, renaming, onRenameStart, onRename, onRenameEnd, onIconPick, onEdit, folder }: TabBarProps) {
+export function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNewText, agents = {}, statuses = {}, builtins = {}, docs = {}, subtitles = {}, activity = {}, renaming, onRenameStart, onRename, onRenameEnd, onIconPick, onEdit, folder, decorate }: TabBarProps) {
   const tips = useTip();
   return (
     <div className="ao-tabs" role="tablist" data-tauri-drag-region>
@@ -203,6 +210,7 @@ export function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNewText, ag
             onIconPick={onIconPick}
             onEdit={onEdit}
             tips={tips}
+            items={decorate?.(t.id)}
           />
         ))}
       </SortableContext>

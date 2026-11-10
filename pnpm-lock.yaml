@@ -27,6 +27,9 @@ importers:
       '@terminescu/host':
         specifier: workspace:*
         version: link:../../packages/host
+      '@terminescu/plugin-api':
+        specifier: workspace:*
+        version: link:../../packages/plugin-api
       '@terminescu/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -178,6 +181,9 @@ importers:
       '@terminescu/host':
         specifier: workspace:*
         version: link:../host
+      '@terminescu/plugin-api':
+        specifier: workspace:*
+        version: link:../plugin-api
       '@types/node':
         specifier: ^24
         version: 24.19.2

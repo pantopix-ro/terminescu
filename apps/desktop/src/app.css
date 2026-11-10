@@ -614,3 +614,16 @@ html[data-see-through] :is(.ctx-pinned, .ao-ctx-over) .ctx-sec-head { background
 .app-side .ao-st.single .side-trail:empty { display: none; }
 .app-side .ao-st.single .single-chip { flex: none; display: flex; }
 .app-side .ao-st.single:not(:hover, :focus-within) .single-chip.unset { display: none; }
+
+/* add-plugin-architecture D7: what plugins show on rows and tabs. Items give way after the
+   subtitle and before the name, which keeps at least 6 characters. */
+.pl-items { display: inline-flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; flex: 0 50 auto; margin-left: 6px; }
+.pl-item { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--dim); }
+.pl-item.pl-chip, .pl-item.pl-badge { padding: 0 4px; border: 1px solid var(--line); line-height: 14px; }
+.pl-item.pl-subtitle { color: var(--faint); }
+.pl-item.pl-good { color: var(--green); }
+.pl-item.pl-warn { color: var(--amber); }
+.pl-item.pl-bad { color: var(--red); }
+.ao-tab .n, .ao-st .n, .ao-st-kid .n { min-width: min(6ch, 100%); }
+.plugin-missing { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-3); height: 100%; color: var(--dim); }
+.ctx-var.provided .ctx-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

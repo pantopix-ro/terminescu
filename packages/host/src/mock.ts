@@ -2,7 +2,7 @@
 // plans commands like crates/core/src/state.rs, with readable ids (m1, m2, ...).
 
 import type { Host, PaneView } from "./host";
-import { ACTIONS, actionFor, bindingProblem, normalAccel, terminalChordProblem, withBindings, type KeyBindings } from "./keys";
+import { ACTIONS, actionFor, bindingProblem, normalAccel, terminalChordProblem, withBindings, type ActionDef, type KeyBindings } from "./keys";
 import { PromptStore } from "./prompt-store";
 import { dockPlace, hasSplit, holdsWork, isSessionId, leaf, panesOf, removePane, resizeSplit, splitAt, splitPane, terminalsOf } from "./layout";
 import {
@@ -169,6 +169,12 @@ export interface MockHost extends Host {
   pausePlugin(plugin: string): void;
   /** Every plugin call, as `plugin.method`. */
   readonly pluginCalls: string[];
+  /** The plugin actions the app menu would show now. */
+  readonly pluginActions: () => ActionDef[];
+  /** Each row a window reported selected, as `window side tab`. */
+  readonly rowsSelected: string[];
+  /** Plays a plugin providing a variable on a row (null drops it); a person's variable of that name wins. */
+  provideVariable(plugin: string, sideTabId: Id, name: string, value: string | null): void;
 }
 
 /** A plugin's Rust half, played in the browser (add-plugin-architecture D8). */
@@ -270,6 +276,19 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
   const pluginListeners = new Set<(p: PluginInfo[]) => void>();
   const pluginEventListeners = new Set<{ plugin: string; listener: (event: string, payload: unknown) => void }>();
   const pluginCalls: string[] = [];
+  let pluginActions: ActionDef[] = [];
+  const rowsSelected: string[] = [];
+  // Plugin variables by row, as `Provided` in the core: id `plugin:<plugin>:<name>`.
+  const provided = new Map<Id, Map<string, Variable>>();
+  // A plugin that stops takes its variables with it, as `forget_plugin` in the core.
+  const dropProvided = (plugin: string) => {
+    for (const [side, row] of provided)
+      for (const [name, v] of row)
+        if (v.source === `plugin:${plugin}`) {
+          row.delete(name);
+          contextChanged(side);
+        }
+  };
   const pluginInfos = (): PluginInfo[] =>
     fakePlugins.map((p) => ({ id: p.id, name: p.name, description: p.description ?? "", enabled: pluginOn.get(p.id) ?? true, paused: pluginPaused.has(p.id) }));
   const pluginLive = (plugin: string) => (pluginOn.get(plugin) ?? false) && !pluginPaused.has(plugin);
@@ -926,7 +945,7 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
     (e: KeyboardEvent) => {
       // A chord the app hands back to a field (see `passToField` in App.tsx) is untrusted.
       if (recording || !e.isTrusted) return;
-      const action = actionFor(e, withBindings(ACTIONS, keyBindings));
+      const action = actionFor(e, [...withBindings(ACTIONS, keyBindings), ...pluginActions.filter((a) => a.accel)]);
       if (!action) return;
       e.preventDefault();
       e.stopPropagation();
@@ -938,6 +957,23 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
   const host: MockHost = {
     batches,
     pluginCalls,
+    pluginActions: () => structuredClone(pluginActions),
+    rowsSelected,
+    provideVariable(plugin, sideTabId, name, value) {
+      if (!pluginLive(plugin)) return;
+      const row = provided.get(sideTabId) ?? new Map<string, Variable>();
+      if (value === null) row.delete(name);
+      else row.set(name, { id: `plugin:${plugin}:${name}`, sideTabId, name, value, mode: "session", source: `plugin:${plugin}`, originTabId: null, expiresAt: null });
+      provided.set(sideTabId, row);
+      contextChanged(sideTabId);
+    },
+    async setPluginActions(actions) {
+      if (actions.some((a) => !a.id.includes("."))) throw new Error("a plugin action needs a plugin prefix");
+      pluginActions = actions.map(({ id, label, menu, accel }) => ({ id, label, menu, accel }));
+    },
+    async rowSelected(windowId, sideTabId) {
+      rowsSelected.push(`${windowId} ${sideTabId}`);
+    },
     decorate(decoration) {
       if (!pluginLive(decoration.plugin)) return;
       const same = (d: Decoration) =>
@@ -953,6 +989,7 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
     pausePlugin(plugin) {
       pluginPaused.add(plugin);
       dropDecorations(plugin);
+      dropProvided(plugin);
       sendPlugins();
     },
     async pluginCall<T>(plugin: string, method: string, args?: unknown): Promise<T> {
@@ -975,7 +1012,10 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
       if (!pluginOn.has(plugin)) throw new Error(`no plugin ${plugin}`);
       pluginOn.set(plugin, enabled);
       if (enabled) pluginPaused.delete(plugin);
-      else dropDecorations(plugin);
+      else {
+        dropDecorations(plugin);
+        dropProvided(plugin);
+      }
       sendPlugins();
       return pluginInfos();
     },
@@ -1311,6 +1351,8 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
       const st = savedStatus(statusId);
       if (kind.kind === "exitCode" && !kind.pattern.trim()) throw new Error("a rule needs a command pattern");
       if (kind.kind === "claudeIdle" && !(kind.minutes >= 1 && kind.minutes <= 1440)) throw new Error("an idle rule waits 1 to 1440 minutes");
+      // As `provided::is_fact_name` in the core: `plugin.name`.
+      if (kind.kind === "fact" && !/^[a-z0-9-]{1,64}\.[A-Za-z0-9_]{1,64}$/.test(kind.name)) throw new Error(`${kind.name} is no fact name; facts read plugin.name`);
       const rule = {
         id: id(),
         statusId,
@@ -1577,8 +1619,10 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
     },
     async variables(side) {
       const order = (v: Variable) => (v.mode === "saved" ? 0 : 1);
+      const own = live(side);
+      const theirs = [...(provided.get(side)?.values() ?? [])].filter((p) => !own.some((v) => v.name === p.name));
       return structuredClone(
-        live(side)
+        [...own, ...theirs]
           .map((v, i) => [v, i] as const)
           .sort(([a, i], [b, j]) => order(a) - order(b) || (order(a) ? a.name.localeCompare(b.name) : i - j))
           .map(([v]) => v),

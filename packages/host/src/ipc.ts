@@ -97,6 +97,8 @@ export function createIpcHost(): Host {
     onPlugins: (listener) => listen<PluginInfo[]>(PLUGINS_EVENT, (e) => listener(e.payload)),
     decorations: () => invoke<Decoration[]>("decorations"),
     onDecorations: (listener) => listen<Decoration[]>(DECORATIONS_EVENT, (e) => listener(e.payload)),
+    setPluginActions: (items) => invoke<void>("plugin_menu", { items: items.map(({ id, label, menu, accel }) => ({ id, label, menu, accel })) }),
+    rowSelected: (window, sideTab) => invoke<void>("plugin_row_selected", { window, sideTab }),
     onAgent: (listener) => listen<AgentUpdate>(AGENT_EVENT, (e) => listener(e.payload)),
     jumpWaiting: () => invoke<Id | null>("attention_jump"),
     onRevealPane: (listener) => getCurrentWebviewWindow().listen<Id>(REVEAL_EVENT, (e) => listener(e.payload)),
