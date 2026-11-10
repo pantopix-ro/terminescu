@@ -89,7 +89,9 @@ impl<V: Vcs + 'static> Vcs for TimedVcs<V> {
 }
 
 /// Keeps the facts per folder until the repository's `HEAD` or index changes, `ttl` passes, or
-/// [`Vcs::forget`] drops them. Errors are never kept.
+/// [`Vcs::forget`] drops them. Errors are never kept. An edit to a tracked file or a new
+/// untracked file touches neither, so `ttl` bounds how long the change count can lag; the
+/// plugin also forgets a folder when a command ends in it.
 pub struct CachedVcs<V> {
     inner: V,
     ttl: Duration,
@@ -135,13 +137,18 @@ impl<V: Vcs> Vcs for CachedVcs<V> {
         {
             return Ok(k.facts.clone());
         }
+        let started = SystemTime::now();
         let facts = self.inner.facts(dir)?;
-        let kept = Kept {
-            stamps: stamps(&facts),
-            facts: facts.clone(),
-            at: Instant::now(),
-        };
-        lock(&self.facts).insert(dir.to_path_buf(), kept);
+        let stamps = stamps(&facts);
+        // A HEAD or index written while git ran may postdate what it read: keep nothing.
+        if stamps.iter().flatten().all(|t| *t < started) {
+            let kept = Kept {
+                stamps,
+                facts: facts.clone(),
+                at: Instant::now(),
+            };
+            lock(&self.facts).insert(dir.to_path_buf(), kept);
+        }
         Ok(facts)
     }
     fn changes(&self, root: &Path) -> Result<Vec<Change>, VcsError> {
@@ -173,19 +180,16 @@ impl<V: Vcs> Vcs for CachedVcs<V> {
     fn worktree_remove(&self, root: &Path, at: &Path, force: bool) -> Result<(), VcsError> {
         self.inner.worktree_remove(root, at, force)
     }
-    /// Drops `dir` and every folder of the same working tree.
+    /// Drops `dir` and every folder of a working tree that holds it, asked about or not.
     fn forget(&self, dir: &Path) {
         let mut kept = lock(&self.facts);
-        let root = kept
-            .get(dir)
-            .and_then(|k| k.facts.as_ref())
-            .map(|f| f.root.clone());
-        kept.retain(|d, k| {
-            d != dir
-                && root
-                    .as_ref()
-                    .is_none_or(|r| k.facts.as_ref().is_none_or(|f| &f.root != r))
-        });
+        let roots: Vec<PathBuf> = kept
+            .iter()
+            .filter_map(|(d, k)| Some((d, k.facts.as_ref()?)))
+            .filter(|(d, f)| d.as_path() == dir || dir.starts_with(&f.root))
+            .map(|(_, f)| f.root.clone())
+            .collect();
+        kept.retain(|d, k| d != dir && k.facts.as_ref().is_none_or(|f| !roots.contains(&f.root)));
         drop(kept);
         self.inner.forget(dir);
     }
@@ -345,6 +349,8 @@ mod tests {
         git_dir: PathBuf,
         gate: Arc<(Mutex<bool>, Condvar)>,
         gated: bool,
+        /// Writes HEAD during each call, as a commit in another shell would.
+        touch: bool,
     }
 
     impl Fake {
@@ -375,6 +381,9 @@ mod tests {
                 }
             }
             std::thread::sleep(self.delay);
+            if self.touch {
+                std::fs::write(self.git_dir.join("HEAD"), "ref: refs/heads/next\n").unwrap();
+            }
             Ok(Some(self.facts_now()))
         }
         fn changes(&self, _: &Path) -> Result<Vec<Change>, VcsError> {
@@ -449,13 +458,34 @@ mod tests {
         std::fs::write(dir.join("index"), "j").unwrap();
         cached.facts(at).unwrap();
         assert_eq!(cached.inner.calls.load(Ordering::SeqCst), 2);
-        // So does a command that ended in the repository.
+        // So does a command that ended anywhere in the working tree, asked about or not.
         cached.forget(Path::new("/code/shop-api/src"));
         cached.facts(at).unwrap();
-        assert_eq!(cached.inner.calls.load(Ordering::SeqCst), 2);
+        assert_eq!(cached.inner.calls.load(Ordering::SeqCst), 3);
         cached.forget(at);
         cached.facts(at).unwrap();
-        assert_eq!(cached.inner.calls.load(Ordering::SeqCst), 3);
+        assert_eq!(cached.inner.calls.load(Ordering::SeqCst), 4);
+        // A folder outside it leaves the kept facts alone.
+        cached.forget(Path::new("/code/shop-web"));
+        cached.facts(at).unwrap();
+        assert_eq!(cached.inner.calls.load(Ordering::SeqCst), 4);
+    }
+
+    #[test]
+    fn facts_read_while_head_moves_are_not_kept() {
+        let dir = git_dir();
+        let cached = CachedVcs::new(
+            Fake {
+                git_dir: dir.clone(),
+                touch: true,
+                ..Fake::default()
+            },
+            Duration::from_secs(60),
+        );
+        let at = Path::new("/code/shop-api");
+        cached.facts(at).unwrap();
+        cached.facts(at).unwrap();
+        assert_eq!(cached.inner.calls.load(Ordering::SeqCst), 2);
     }
 
     #[test]

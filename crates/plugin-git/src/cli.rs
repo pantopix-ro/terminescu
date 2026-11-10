@@ -11,12 +11,17 @@ use std::time::{Duration, Instant};
 
 /// Untracked files longer than this are not counted line by line.
 const COUNT_LINES_UP_TO: u64 = 1024 * 1024;
+/// How long to wait for the pipes to close after git exits. A hook's background process can
+/// keep them open; what git wrote is in by then.
+const DRAIN: Duration = Duration::from_millis(250);
 
 #[derive(Debug, Clone)]
 pub struct GitCli {
     program: PathBuf,
-    /// A call still running after this is killed.
+    /// A read still running after this is killed.
     limit: Duration,
+    /// The same for a change (worktree add, remove), which a kill would leave half done.
+    change_limit: Duration,
     env: Vec<(OsString, OsString)>,
 }
 
@@ -37,13 +42,20 @@ impl GitCli {
         Self {
             program: program.into(),
             limit: Duration::from_secs(1),
+            change_limit: Duration::from_secs(600),
             env: Vec::new(),
         }
     }
 
-    /// Kills a read after `limit`; changes such as `worktree add` get ten times as long.
+    /// Kills a read after `limit`.
     pub fn with_limit(mut self, limit: Duration) -> Self {
         self.limit = limit;
+        self
+    }
+
+    /// Kills a change such as `worktree add` after `limit`; ten minutes unless set.
+    pub fn with_change_limit(mut self, limit: Duration) -> Self {
+        self.change_limit = limit;
         self
     }
 
@@ -96,18 +108,8 @@ impl GitCli {
             std::io::ErrorKind::NotFound => VcsError::NoGit,
             _ => VcsError::Failed(e.to_string()),
         })?;
-        let mut out_pipe = child.stdout.take().expect("piped");
-        let mut err_pipe = child.stderr.take().expect("piped");
-        let out = std::thread::spawn(move || {
-            let mut b = Vec::new();
-            let _ = out_pipe.read_to_end(&mut b);
-            b
-        });
-        let err = std::thread::spawn(move || {
-            let mut b = Vec::new();
-            let _ = err_pipe.read_to_end(&mut b);
-            b
-        });
+        let out = drain(child.stdout.take().expect("piped"));
+        let err = drain(child.stderr.take().expect("piped"));
         let end = Instant::now() + limit;
         let status = loop {
             match child.try_wait() {
@@ -121,12 +123,11 @@ impl GitCli {
                 Err(e) => return Err(VcsError::Failed(e.to_string())),
             }
         };
+        let until = Instant::now() + DRAIN;
         Ok(Output {
             ok: status.success(),
-            stdout: out.join().unwrap_or_default(),
-            stderr: String::from_utf8_lossy(&err.join().unwrap_or_default())
-                .trim()
-                .to_string(),
+            stdout: out.take(until),
+            stderr: String::from_utf8_lossy(&err.take(until)).trim().to_string(),
         })
     }
 
@@ -135,7 +136,7 @@ impl GitCli {
     }
 
     fn change(&self, dir: &Path, args: &[&str]) -> Result<(), VcsError> {
-        let out = self.run(dir, args, self.limit * 10)?;
+        let out = self.run(dir, args, self.change_limit)?;
         if out.ok {
             Ok(())
         } else {
@@ -166,7 +167,10 @@ impl Vcs for GitCli {
             return Ok(None);
         };
         let (root, git_dir) = (PathBuf::from(root), PathBuf::from(git_dir));
-        let common_dir = clean(&dir.join(common));
+        // Relative to `dir` when it is the main working tree's `.git`. Git hands out the other
+        // two with symlinks resolved, so resolve this one too.
+        let common_dir =
+            std::fs::canonicalize(dir.join(common)).unwrap_or_else(|_| clean(&dir.join(common)));
         let status = self.read(
             &root,
             &[
@@ -174,7 +178,8 @@ impl Vcs for GitCli {
                 "--porcelain=v2",
                 "--branch",
                 "-z",
-                "--untracked-files=normal",
+                // As `changes` lists them, so the count and the list agree.
+                "--untracked-files=all",
             ],
         )?;
         if !status.ok {
@@ -217,7 +222,9 @@ impl Vcs for GitCli {
         }
         for c in changes.iter_mut().filter(|c| c.untracked) {
             let file = root.join(&c.path);
-            if std::fs::metadata(&file).is_ok_and(|m| m.len() <= COUNT_LINES_UP_TO)
+            // Not through a link, and never a device or a pipe.
+            if std::fs::symlink_metadata(&file)
+                .is_ok_and(|m| m.is_file() && m.len() <= COUNT_LINES_UP_TO)
                 && let Ok(bytes) = std::fs::read(&file)
             {
                 if bytes.contains(&0) {
@@ -244,8 +251,9 @@ impl Vcs for GitCli {
             DiffBase::Head => format!("HEAD:{rel}"),
             DiffBase::Index => format!(":{rel}"),
         };
-        let exists = self.read(root, &["cat-file", "-e", &spec])?;
-        if !exists.ok {
+        // Absent, or a submodule's commit rather than a file.
+        let kind = self.read(root, &["cat-file", "-t", &spec])?;
+        if !kind.ok || kind.stdout.trim_ascii() != b"blob" {
             return Ok(None);
         }
         let out = self.read(root, &["cat-file", "blob", &spec])?;
@@ -262,9 +270,7 @@ impl Vcs for GitCli {
         base: &str,
         at: &Path,
     ) -> Result<(), VcsError> {
-        if at.exists() {
-            return Err(VcsError::Exists(at.display().to_string()));
-        }
+        free(at)?;
         name(branch)?;
         name(base)?;
         let at = at.to_string_lossy();
@@ -272,9 +278,7 @@ impl Vcs for GitCli {
     }
 
     fn worktree_checkout(&self, root: &Path, branch: &str, at: &Path) -> Result<(), VcsError> {
-        if at.exists() {
-            return Err(VcsError::Exists(at.display().to_string()));
-        }
+        free(at)?;
         name(branch)?;
         let at = at.to_string_lossy();
         self.change(root, &["worktree", "add", "--", &at, branch])
@@ -295,7 +299,7 @@ impl Vcs for GitCli {
             args.push("--force");
         }
         args.extend(["--", &at]);
-        let out = self.run(root, &args, self.limit * 10)?;
+        let out = self.run(root, &args, self.change_limit)?;
         if out.ok {
             return Ok(());
         }
@@ -304,6 +308,55 @@ impl Vcs for GitCli {
             return Err(VcsError::HasChanges);
         }
         Err(VcsError::Failed(out.stderr))
+    }
+}
+
+/// An absolute path with nothing there yet. Git would read a relative one against the root.
+fn free(at: &Path) -> Result<(), VcsError> {
+    if !at.is_absolute() {
+        return Err(VcsError::Failed(format!(
+            "{} is not an absolute path",
+            at.display()
+        )));
+    }
+    if at.symlink_metadata().is_ok() {
+        return Err(VcsError::Exists(at.display().to_string()));
+    }
+    Ok(())
+}
+
+/// A pipe read on its own thread until it closes.
+struct Drain {
+    bytes: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
+    done: std::sync::mpsc::Receiver<()>,
+}
+
+fn drain(mut pipe: impl Read + Send + 'static) -> Drain {
+    let bytes = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let (tx, done) = std::sync::mpsc::channel();
+    let sink = bytes.clone();
+    std::thread::spawn(move || {
+        let mut chunk = [0u8; 8192];
+        while let Ok(n) = pipe.read(&mut chunk) {
+            if n == 0 {
+                break;
+            }
+            sink.lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .extend_from_slice(&chunk[..n]);
+        }
+        let _ = tx.send(());
+    });
+    Drain { bytes, done }
+}
+
+impl Drain {
+    /// What came in by `until`, closed or not.
+    fn take(self, until: Instant) -> Vec<u8> {
+        let _ = self
+            .done
+            .recv_timeout(until.saturating_duration_since(Instant::now()));
+        std::mem::take(&mut *self.bytes.lock().unwrap_or_else(|p| p.into_inner()))
     }
 }
 

@@ -99,3 +99,12 @@ fn a_name_that_reads_as_an_option_is_refused() {
     assert!(cli.worktree_checkout(&repo, "-b", &at).is_err());
     assert!(!at.exists());
 }
+
+#[test]
+fn a_relative_worktree_path_is_refused() {
+    let dir = repo("relative");
+    let err = git_cli()
+        .worktree_add(&dir, "feature/x", "main", std::path::Path::new("x"))
+        .unwrap_err();
+    assert!(matches!(err, VcsError::Failed(m) if m.contains("absolute")));
+}

@@ -194,3 +194,51 @@ fn the_installed_git_is_new_enough() {
     let v = git_cli().version().unwrap();
     assert!(v.starts_with('2'), "{v}");
 }
+
+#[test]
+fn a_background_process_holding_the_pipes_does_not_hold_the_call() {
+    let dir = folder("lingering");
+    let script = dir.join("git");
+    // A hook that leaves a process behind keeps git's stdout open after git exits.
+    std::fs::write(&script, "#!/bin/sh\nsleep 5 &\necho 'git version 2.44.0'\n").unwrap();
+    std::process::Command::new("chmod")
+        .arg("+x")
+        .arg(&script)
+        .status()
+        .unwrap();
+    let cli = terminescu_plugin_git::GitCli::new(&script);
+    let start = std::time::Instant::now();
+    assert_eq!(cli.version().as_deref(), Ok("2.44.0"));
+    assert!(start.elapsed() < std::time::Duration::from_secs(2));
+}
+
+#[test]
+fn a_folder_reached_through_a_link_has_the_resolved_common_dir() {
+    let dir = repo("linked");
+    let link = folder("links").join("shop-api");
+    std::os::unix::fs::symlink(&dir, &link).unwrap();
+    let facts = git_cli().facts(&link).unwrap().unwrap();
+    assert_eq!(facts.root, dir);
+    assert_eq!(facts.common_dir, dir.join(".git"));
+    assert_eq!(facts.main_root(), dir);
+}
+
+#[test]
+fn an_untracked_link_is_counted_as_one_line_and_never_followed() {
+    let dir = repo("links-untracked");
+    std::os::unix::fs::symlink("/dev/zero", dir.join("zero")).unwrap();
+    let changes = git_cli().changes(&dir).unwrap();
+    let zero = changes.iter().find(|c| c.path == "zero").unwrap();
+    assert!(zero.untracked);
+    assert_eq!(zero.added, None);
+}
+
+#[test]
+fn an_untracked_folder_counts_each_file_in_facts_and_changes() {
+    let dir = repo("untracked-folder");
+    write(&dir, "build/a.txt", "a\n");
+    write(&dir, "build/b.txt", "b\n");
+    let facts = git_cli().facts(&dir).unwrap().unwrap();
+    assert_eq!(facts.changed, 2);
+    assert_eq!(git_cli().changes(&dir).unwrap().len(), 2);
+}
