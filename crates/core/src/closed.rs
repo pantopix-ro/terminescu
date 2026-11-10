@@ -167,7 +167,9 @@ impl Entry {
 #[derive(Debug, Default)]
 pub struct ClosedList {
     done: VecDeque<Entry>,
-    running: Vec<Entry>,
+    /// Each running close's entry, by the token [`ClosedList::push`] gave it.
+    running: Vec<(u64, Entry)>,
+    next: u64,
 }
 
 impl ClosedList {
@@ -175,20 +177,23 @@ impl ClosedList {
         Self {
             done: VecDeque::new(),
             running: Vec::new(),
+            next: 0,
         }
     }
 
     /// Adds an entry before its close runs, so the close leaves a row's daemon variables
-    /// alone. [`ClosedList::settle`] files it when the close is over.
-    pub fn push(&mut self, entry: Entry) {
-        self.running.push(entry);
+    /// alone. Returns the token [`ClosedList::settle`] files it by when the close is over.
+    pub fn push(&mut self, entry: Entry) -> u64 {
+        self.next += 1;
+        self.running.push((self.next, entry));
+        self.next
     }
 
-    /// The close of `key` is over. A done one joins the list; a failed one leaves quietly, as
+    /// The close of `token` is over. A done one joins the list; a failed one leaves quietly, as
     /// its tab or row is still open. Returns the oldest entries beyond [`KEEP`], which leave.
-    pub fn settle(&mut self, key: &str, ok: bool) -> Vec<Entry> {
-        if let Some(at) = self.running.iter().rposition(|e| e.key() == key) {
-            let entry = self.running.remove(at);
+    pub fn settle(&mut self, token: u64, ok: bool) -> Vec<Entry> {
+        if let Some(at) = self.running.iter().position(|(t, _)| *t == token) {
+            let (_, entry) = self.running.remove(at);
             if ok {
                 self.done.push_back(entry);
             }
@@ -205,12 +210,16 @@ impl ClosedList {
     pub fn is_parked(&self, side_tab_id: &str) -> bool {
         self.done
             .iter()
-            .chain(&self.running)
+            .chain(self.running.iter().map(|(_, e)| e))
             .any(|e| e.parked_side_tab().map(String::as_str) == Some(side_tab_id))
     }
 
     pub fn drain(&mut self) -> Vec<Entry> {
-        self.running.drain(..).chain(self.done.drain(..)).collect()
+        self.running
+            .drain(..)
+            .map(|(_, e)| e)
+            .chain(self.done.drain(..))
+            .collect()
     }
 }
 
@@ -453,27 +462,29 @@ mod tests {
             },
             cwds: HashMap::new(),
         };
-        let key = |i: usize| format!("s{i}");
         for i in 0..KEEP {
-            list.push(entry(i));
-            assert!(list.settle(&key(i), true).is_empty());
+            let t = list.push(entry(i));
+            assert!(list.settle(t, true).is_empty());
         }
         // Parked while its close runs, so the close keeps its variables, but not reopened yet.
-        list.push(entry(KEEP));
+        let t10 = list.push(entry(KEEP));
         assert!(list.is_parked("s0") && list.is_parked("s10"));
         let newest = list.pop().unwrap();
         assert_eq!(newest.key(), "s9");
         list.done.push_back(newest);
-        let out = list.settle(&key(KEEP), true);
+        let out = list.settle(t10, true);
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].parked_side_tab().unwrap(), "s0");
         assert!(!list.is_parked("s0") && list.is_parked("s1"));
-        // A failed close drops its own entry, not the newest, and nothing leaves the list.
-        list.push(entry(11));
-        list.push(entry(12));
-        assert!(list.settle("s11", false).is_empty());
-        assert!(!list.is_parked("s11") && list.is_parked("s12"));
-        assert_eq!(list.settle("s12", true)[0].key(), "s1");
-        assert_eq!(list.pop().unwrap().parked_side_tab().unwrap(), "s12");
+        // A failed close drops its own entry, even beside another close of the same row.
+        let failed = list.push(entry(11));
+        let again = list.push(entry(11));
+        let other = list.push(entry(12));
+        assert!(list.settle(failed, false).is_empty());
+        assert!(list.is_parked("s11") && list.is_parked("s12"));
+        assert_eq!(list.settle(again, true)[0].key(), "s1");
+        assert_eq!(list.settle(other, true)[0].key(), "s2");
+        assert_eq!(list.pop().unwrap().key(), "s12");
+        assert_eq!(list.pop().unwrap().key(), "s11");
     }
 }

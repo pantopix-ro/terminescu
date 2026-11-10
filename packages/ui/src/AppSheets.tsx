@@ -7,8 +7,8 @@ import { NOT_AFFILIATED, PRIVACY_POINTS } from "./privacy";
 
 type Api = Pick<Host, "appInfo" | "feedbackOpen" | "uninstallHelpers" | "appQuit" | "openUrl" | "settings" | "setSettings" | "helpers">;
 
-/** The built-in plugins' helpers, such as the Claude Code hook; undefined while they load. A
- * failed load reports through `onError` and lists none. */
+/** The built-in plugins' helpers, such as the Claude Code hook; undefined while they load and
+ * after a failed load, which reports through `onError`. */
 export function useHelpers(host: Pick<Host, "helpers">, onError?: (message: string) => void): HelperInfo[] | undefined {
   const [list, setList] = useState<HelperInfo[]>();
   const report = useRef(onError);
@@ -17,11 +17,7 @@ export function useHelpers(host: Pick<Host, "helpers">, onError?: (message: stri
     let gone = false;
     void host.helpers().then(
       (h) => !gone && setList(h),
-      (e: unknown) => {
-        if (gone) return;
-        setList([]);
-        report.current?.(String(e));
-      },
+      (e: unknown) => !gone && report.current?.(String(e)),
     );
     return () => {
       gone = true;
@@ -292,12 +288,15 @@ export function FirstRunSheet({
 }: AppSheetProps & { onPrivacy(): void; hook: boolean; setHook(on: boolean): void }) {
   const loaded = useHelpers(host, onError);
   const helpers = loaded ?? [];
-  // With no helpers listed there is nothing to consent to: the saved choice stays.
+  // Until the helpers are known the screen only closes, and comes back at the next launch.
+  // With none listed there is nothing to consent to: the saved choice stays.
   const finish = (on: boolean) =>
-    void host
-      .settings()
-      .then((s) => host.setSettings({ ...s, ...(helpers.length > 0 && { hook: on ? "on" : "off" }), firstRunDone: true }))
-      .then(onClose, (e: unknown) => onError(String(e)));
+    loaded
+      ? void host
+          .settings()
+          .then((s) => host.setSettings({ ...s, ...(helpers.length > 0 && { hook: on ? "on" : "off" }), firstRunDone: true }))
+          .then(onClose, (e: unknown) => onError(String(e)))
+      : onClose();
   return (
     <Sheet label="Welcome to Terminescu" className="first-run-sheet" backdrop={false} onClose={() => finish(false)}>
       <h2 className="ao-pixel">TERMINESCU</h2>

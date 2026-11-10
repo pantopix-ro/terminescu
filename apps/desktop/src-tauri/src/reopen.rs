@@ -27,8 +27,8 @@ fn drop_vars(state: &AppState, entry: &Entry) {
 }
 
 /// Before `cmd` runs: notes the tab or row it closes, with its context and cwds, so the close
-/// leaves its daemon variables alone. Returns the entry's key for [`done`].
-pub fn note(state: &AppState, cmd: &Command) -> Option<Id> {
+/// leaves its daemon variables alone. Returns the close's token for [`done`].
+pub fn note(state: &AppState, cmd: &Command) -> Option<u64> {
     if !closed::may_close(cmd) {
         return None;
     }
@@ -49,16 +49,13 @@ pub fn note(state: &AppState, cmd: &Command) -> Option<Id> {
     .cloned()
     .collect();
     let cwds = state.runtime.live_cwds(&panes);
-    let entry = Entry { closed, cwds };
-    let key = entry.key().clone();
-    lock(&CLOSED).push(entry);
-    Some(key)
+    Some(lock(&CLOSED).push(Entry { closed, cwds }))
 }
 
 /// After the close ran: a done one can be reopened, a failed one is forgotten, and the oldest
 /// entries leave with their rows' daemon variables.
-pub fn done(state: &AppState, key: &str, ok: bool) {
-    let gone = lock(&CLOSED).settle(key, ok);
+pub fn done(state: &AppState, token: u64, ok: bool) {
+    let gone = lock(&CLOSED).settle(token, ok);
     for old in &gone {
         drop_vars(state, old);
     }

@@ -1241,8 +1241,8 @@ fn host_command(state: State<'_, AppState>, command: Command) -> Result<u64, Com
     let noted = reopen::note(&state, &command);
     // The runtime emits each batch under its core lock, so windows see them in rev order.
     let done = state.runtime.command(command);
-    if let Some(key) = noted {
-        reopen::done(&state, &key, done.is_ok());
+    if let Some(token) = noted {
+        reopen::done(&state, token, done.is_ok());
     }
     done
 }

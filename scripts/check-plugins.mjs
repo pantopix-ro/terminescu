@@ -54,14 +54,15 @@ for (const id of members) {
   }
 }
 
-// Rust registration: only plugins.rs names a plugin crate.
+// Rust registration: in the app crate (sources, build script, tests), only plugins.rs names a
+// plugin crate.
 const RUST_REGISTRY = join("apps", "desktop", "src-tauri", "src", "plugins.rs");
 const rustPlugin = /\bterminescu_plugin_(?!api\b)\w+/;
-for (const file of walk(join(root, "apps", "desktop", "src-tauri", "src"), [".rs"])) {
+for (const file of walk(join(root, "apps", "desktop", "src-tauri"), [".rs"])) {
   const rel = relative(root, file);
   if (rel === RUST_REGISTRY) continue;
-  lines(file).forEach((line, i) => {
-    if (rustPlugin.test(line)) breaches.push(`${rel}:${i + 1} names a plugin crate outside ${RUST_REGISTRY}`);
+  code(file).forEach(({ text, line }) => {
+    if (rustPlugin.test(text)) breaches.push(`${rel}:${line} names a plugin crate outside ${RUST_REGISTRY}`);
   });
 }
 
@@ -95,9 +96,10 @@ for (const dir of GUARDED_PACKAGES) {
   }
 }
 
-// UI registration: in the app, only plugins.tsx imports a plugin package.
+// UI registration: in the app (sources, e2e tests, configs), only plugins.tsx imports a plugin
+// package.
 const UI_REGISTRY = join("apps", "desktop", "src", "plugins.tsx");
-for (const file of walk(join(root, "apps", "desktop", "src"), SOURCE)) {
+for (const file of walk(join(root, "apps", "desktop"), SOURCE)) {
   const rel = relative(root, file);
   if (rel === UI_REGISTRY) continue;
   importsOf(file).forEach(({ spec, line }) => {
@@ -123,16 +125,20 @@ function* walk(dir, exts) {
   }
 }
 
-function lines(file) {
-  return readFileSync(file, "utf8").split("\n");
+/** The lines that are not comments, with their 1-based numbers. */
+function code(file) {
+  return readFileSync(file, "utf8")
+    .split("\n")
+    .map((text, i) => ({ text, line: i + 1 }))
+    .filter(({ text }) => !/^\s*(\/\/|\/\*|\*)/.test(text));
 }
 
 /** Import specifiers with their 1-based line; type-only imports count too. */
 function importsOf(file) {
   const out = [];
-  lines(file).forEach((text, i) => {
-    for (const m of text.matchAll(IMPORT)) out.push({ spec: m[1], line: i + 1 });
-  });
+  for (const { text, line } of code(file)) {
+    for (const m of text.matchAll(IMPORT)) out.push({ spec: m[1], line });
+  }
   return out;
 }
 

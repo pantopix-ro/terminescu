@@ -72,7 +72,10 @@ pub fn uninstall_helpers(app: AppHandle, delete_data: bool) -> Result<(), String
     // is tried; when one fails the binaries stay, since its tool still runs them.
     let failed = helpers::apply(&crate::plugins::helpers(), HookConsent::Off);
     if let Some(f) = helpers::describe(&failed) {
-        return Err(format!("not removed: {f}"));
+        return Err(format!(
+            "Uninstall stopped before the shell daemon and the terminescu command, which a \
+             helper still uses. Not removed: {f}. Fix this and run Uninstall Helpers again."
+        ));
     }
     // Stop reconnecting first: after the kill below, a reconnect would copy the daemon back
     // into bin/ and start it again, and it would outlive the uninstall.
