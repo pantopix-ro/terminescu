@@ -6,6 +6,7 @@ use crate::vcs::{Change, DiffBase, RepoFacts, Vcs, VcsError, Worktree};
 use std::collections::HashMap;
 use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant, SystemTime};
@@ -96,6 +97,9 @@ pub struct CachedVcs<V> {
     inner: V,
     ttl: Duration,
     facts: Mutex<HashMap<PathBuf, Kept>>,
+    /// Moves on each [`Vcs::forget`]: a read that started before it keeps nothing, since it
+    /// may predate the command that ended.
+    generation: AtomicU64,
 }
 
 struct Kept {
@@ -125,6 +129,7 @@ impl<V: Vcs> CachedVcs<V> {
             inner,
             ttl,
             facts: Mutex::new(HashMap::new()),
+            generation: AtomicU64::new(0),
         }
     }
 }
@@ -138,6 +143,7 @@ impl<V: Vcs> Vcs for CachedVcs<V> {
             return Ok(k.facts.clone());
         }
         let started = SystemTime::now();
+        let generation = self.generation.load(Ordering::SeqCst);
         let facts = self.inner.facts(dir)?;
         let stamps = stamps(&facts);
         // A HEAD or index written while git ran may postdate what it read: keep nothing.
@@ -147,7 +153,11 @@ impl<V: Vcs> Vcs for CachedVcs<V> {
                 facts: facts.clone(),
                 at: Instant::now(),
             };
-            lock(&self.facts).insert(dir.to_path_buf(), kept);
+            let mut all = lock(&self.facts);
+            // Checked under the lock `forget` takes, so a forget never slips in between.
+            if self.generation.load(Ordering::SeqCst) == generation {
+                all.insert(dir.to_path_buf(), kept);
+            }
         }
         Ok(facts)
     }
@@ -183,6 +193,7 @@ impl<V: Vcs> Vcs for CachedVcs<V> {
     /// Drops `dir` and every folder of a working tree that holds it, asked about or not.
     fn forget(&self, dir: &Path) {
         let mut kept = lock(&self.facts);
+        self.generation.fetch_add(1, Ordering::SeqCst);
         let roots: Vec<PathBuf> = kept
             .iter()
             .filter_map(|(d, k)| Some((d, k.facts.as_ref()?)))
@@ -339,7 +350,7 @@ impl<T: Clone> Fold<T> {
 mod tests {
     use super::*;
     use crate::vcs::Head;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::AtomicUsize;
 
     /// A provider that counts its calls, can be slow, and can be held at a gate.
     #[derive(Default)]
@@ -537,5 +548,32 @@ mod tests {
         }
         assert_eq!(vcs.inner.calls.load(Ordering::SeqCst), 2);
         assert!(lock(&vcs.facts.slots).is_empty());
+    }
+
+    #[test]
+    fn a_read_that_started_before_a_forget_is_not_kept() {
+        let fake = Fake {
+            git_dir: git_dir(),
+            gated: true,
+            ..Fake::default()
+        };
+        let gate = fake.gate.clone();
+        let cached = Arc::new(CachedVcs::new(fake, Duration::from_secs(60)));
+        let at = Path::new("/code/shop-api");
+        let reading = {
+            let cached = cached.clone();
+            std::thread::spawn(move || cached.facts(at).unwrap())
+        };
+        while cached.inner.calls.load(Ordering::SeqCst) == 0 {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        // A command ends while git still reads.
+        cached.forget(at);
+        *lock(&gate.0) = true;
+        gate.1.notify_all();
+        reading.join().unwrap();
+        assert!(lock(&cached.facts).is_empty());
+        cached.facts(at).unwrap();
+        assert_eq!(cached.inner.calls.load(Ordering::SeqCst), 2);
     }
 }

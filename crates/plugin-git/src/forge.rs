@@ -103,6 +103,9 @@ impl GhCli {
         let out = process::run(&mut cmd, limit).map_err(|e| match e {
             RunError::NotFound => ForgeError::NoGh,
             RunError::Timeout => ForgeError::Timeout,
+            RunError::TooLarge => {
+                ForgeError::Failed("gh wrote more output than Terminescu reads".into())
+            }
             RunError::Io(e) => ForgeError::Failed(e),
         })?;
         if out.ok {

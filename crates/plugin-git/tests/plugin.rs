@@ -13,7 +13,7 @@ use terminescu_plugin_api::{
     CoreEvent, Decoration, Id, PaneInfo, Plugin, PluginCx, PluginError, Target, Tone,
 };
 use terminescu_plugin_git::plugin::{
-    DEBOUNCE, MAX_BASE, MAX_CHANGES, WORKTREE_FOLDER, WORKTREE_ROW,
+    DEBOUNCE, MAX_BASE, MAX_CHANGES, VERSION_TIMER, WORKTREE_FOLDER, WORKTREE_ROW,
 };
 use terminescu_plugin_git::{
     Change, Checks, DiffBase, Forge, ForgeError, GitPlugin, Head, Op, PullRequest, RepoFacts, Vcs,
@@ -34,6 +34,8 @@ struct Cx {
     rows: Mutex<Vec<NewRow>>,
     row_data: Mutex<HashMap<(String, String), Value>>,
     emits: Mutex<Vec<(String, Value)>>,
+    /// `new_row` fails, as when the window went meanwhile.
+    no_rows: AtomicBool,
 }
 
 impl Cx {
@@ -105,6 +107,9 @@ impl PluginCx for Cx {
         title: &str,
         cwd: &str,
     ) -> Result<Id, PluginError> {
+        if self.no_rows.load(Ordering::SeqCst) {
+            return Err(PluginError::Failed("the window is gone".into()));
+        }
         let mut rows = self.rows.lock().unwrap();
         rows.push((
             window.into(),
@@ -177,6 +182,9 @@ struct Fake {
     base: Mutex<Option<Vec<u8>>>,
     added: Mutex<Vec<(PathBuf, String, String, PathBuf)>>,
     remove: Mutex<Option<Result<(), VcsError>>>,
+    /// What `worktrees` lists, and each remove asked for: path and force.
+    trees: Mutex<Vec<Worktree>>,
+    removed: Mutex<Vec<(PathBuf, bool)>>,
 }
 
 impl Fake {
@@ -218,9 +226,10 @@ impl Vcs for Fake {
         Ok(())
     }
     fn worktrees(&self, _: &Path) -> Result<Vec<Worktree>, VcsError> {
-        Ok(Vec::new())
+        Ok(self.trees.lock().unwrap().clone())
     }
-    fn worktree_remove(&self, _: &Path, _: &Path, _: bool) -> Result<(), VcsError> {
+    fn worktree_remove(&self, _: &Path, at: &Path, force: bool) -> Result<(), VcsError> {
+        self.removed.lock().unwrap().push((at.into(), force));
         self.remove.lock().unwrap().take().unwrap_or(Ok(()))
     }
     fn forget(&self, dir: &Path) {
@@ -571,7 +580,7 @@ fn a_worktree_row_goes_under_the_folder_below_the_row_and_is_marked() {
     let row = got["row"].as_str().unwrap();
     assert_eq!(
         cx.row_data(row, WORKTREE_ROW),
-        Some(json!({ "worktree": at, "repo": "/code/shop-api" }))
+        Some(json!({ "worktree": at, "repo": "/code/shop-api", "branch": "PROJ-490-refunds" }))
     );
 }
 
@@ -582,8 +591,12 @@ fn only_a_marked_row_removes_its_worktree_and_changes_ask_first() {
         plugin.call("worktreeRemove", json!({ "row": "s1" }), &cx),
         Err(PluginError::BadArgs(_))
     ));
-    let mark = json!({ "worktree": "/code/shop-api-x", "repo": "/code/shop-api" });
+    let mark = json!({ "worktree": "/code/shop-api-x", "repo": "/code/shop-api", "branch": "x" });
     cx.set_row_data("s2", WORKTREE_ROW, Some(mark)).unwrap();
+    *fake.trees.lock().unwrap() = vec![
+        tree("/code/shop-api", "main", true),
+        tree("/code/shop-api-x", "x", false),
+    ];
     *fake.remove.lock().unwrap() = Some(Err(VcsError::HasChanges));
     let change = Change {
         path: "a".into(),
@@ -669,7 +682,7 @@ fn open_worktrees_opens_a_row_for_each_one_no_row_shows_and_marks_it() {
     let row = got["opened"][0]["row"].as_str().unwrap();
     assert_eq!(
         cx.row_data(row, WORKTREE_ROW),
-        Some(json!({ "worktree": refunds, "repo": dir }))
+        Some(json!({ "worktree": refunds, "repo": dir, "branch": "PROJ-490-refunds" }))
     );
     // The new row's mark counts as showing it, though no shell of it is there yet.
     let again = plugin
@@ -1045,4 +1058,106 @@ fn settings_keep_the_worktree_folder_and_switch_github() {
         set("colour", json!("red")),
         Err(PluginError::BadArgs(_))
     ));
+}
+
+fn tree(path: &str, branch: &str, main: bool) -> Worktree {
+    Worktree {
+        path: path.into(),
+        branch: Some(branch.into()),
+        head: None,
+        bare: false,
+        main,
+    }
+}
+
+#[test]
+fn a_stale_mark_removes_nothing_and_lets_go() {
+    let (plugin, fake, cx) = setup(vec![pane("p1", "t1", "/code/shop-api")]);
+    *fake.trees.lock().unwrap() = vec![
+        tree("/code/shop-api", "main", true),
+        tree("/code/shop-api-x", "PROJ-7-other", false),
+    ];
+    let cases = [
+        // A mark on the main working tree.
+        json!({ "worktree": "/code/shop-api", "repo": "/code/shop-api" }),
+        // A path git does not list.
+        json!({ "worktree": "/code/elsewhere", "repo": "/code/shop-api" }),
+        // The path was reused for another branch since the row was made.
+        json!({ "worktree": "/code/shop-api-x", "repo": "/code/shop-api", "branch": "x" }),
+    ];
+    for mark in cases {
+        cx.set_row_data("s2", WORKTREE_ROW, Some(mark.clone()))
+            .unwrap();
+        let got = plugin.call("worktreeRemove", json!({ "row": "s2", "force": true }), &cx);
+        assert!(
+            matches!(&got, Err(PluginError::Failed(m)) if m.contains("was not removed")),
+            "{mark}: {got:?}"
+        );
+        assert!(cx.row_data("s2", WORKTREE_ROW).is_none(), "{mark}");
+    }
+    assert!(fake.removed.lock().unwrap().is_empty());
+    // An old mark with no branch still removes a listed worktree.
+    let old = json!({ "worktree": "/code/shop-api-x", "repo": "/code/shop-api" });
+    cx.set_row_data("s2", WORKTREE_ROW, Some(old)).unwrap();
+    let got = plugin
+        .call("worktreeRemove", json!({ "row": "s2" }), &cx)
+        .unwrap();
+    assert_eq!(got, json!({ "removed": true }));
+}
+
+#[test]
+fn a_worktree_with_no_row_goes_again_and_the_error_says_so() {
+    let (plugin, fake, cx) = setup(vec![pane("p1", "t1", "/code/shop-api")]);
+    fake.set("/code/shop-api", Ok(Some(repo("main"))));
+    plugin.on_event(&CoreEvent::AppLaunched, &cx);
+    cx.no_rows.store(true, Ordering::SeqCst);
+    let got = plugin.call(
+        "worktreeAdd",
+        json!({ "pane": "p1", "branch": "PROJ-490-refunds" }),
+        &cx,
+    );
+    let Err(PluginError::Failed(m)) = got else {
+        panic!("{got:?}")
+    };
+    assert!(
+        m.contains("the window is gone") && m.contains("removed again"),
+        "{m}"
+    );
+    let removed = fake.removed.lock().unwrap().clone();
+    assert_eq!(
+        removed,
+        [(PathBuf::from("/code/shop-api-PROJ-490-refunds"), false)]
+    );
+}
+
+#[test]
+fn a_slow_git_version_at_launch_asks_again_instead_of_stopping() {
+    let dir = common::folder("slow-version");
+    let marker = dir.join("asked");
+    let script = dir.join("git");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\nif [ ! -e '{m}' ]; then touch '{m}'; sleep 2; fi\necho 'git version 2.44.0'\n",
+            m = marker.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&script, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    let git = terminescu_plugin_git::GitCli::new(&script).with_limit(Duration::from_millis(200));
+    let plugin = GitPlugin::with_vcs(Arc::new(Fake::default())).with_git(git);
+    let cx = Cx::default();
+    plugin.on_event(&CoreEvent::AppLaunched, &cx);
+    let st = plugin.call("status", json!({}), &cx).unwrap();
+    assert_eq!(st["stopped"], Value::Null, "{st}");
+    assert_eq!(st["version"], Value::Null);
+    assert!(cx.timers().iter().any(|(_, t)| t == VERSION_TIMER));
+    plugin.on_event(
+        &CoreEvent::Timer {
+            token: VERSION_TIMER.into(),
+        },
+        &cx,
+    );
+    let st = plugin.call("status", json!({}), &cx).unwrap();
+    assert_eq!(st["version"], json!("2.44.0"), "{st}");
 }

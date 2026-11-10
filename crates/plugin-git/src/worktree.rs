@@ -34,7 +34,9 @@ pub fn path_for(main_root: &Path, repo: &str, branch: &str, folder: Option<&Path
             .unwrap_or(main_root)
             .join(format!("{repo}-{branch}")),
     };
-    if !first.exists() {
+    // A dangling link counts as taken: git would refuse the path.
+    let taken = |p: &Path| std::fs::symlink_metadata(p).is_ok();
+    if !taken(&first) {
         return first;
     }
     let name = first
@@ -43,7 +45,7 @@ pub fn path_for(main_root: &Path, repo: &str, branch: &str, folder: Option<&Path
         .unwrap_or_default();
     (2..)
         .map(|n| first.with_file_name(format!("{name}-{n}")))
-        .find(|p| !p.exists())
+        .find(|p| !taken(p))
         .expect("some suffix is free")
 }
 
@@ -59,5 +61,16 @@ mod tests {
         assert_eq!(slug(".."), "worktree");
         assert_eq!(slug(".hidden"), "hidden");
         assert_eq!(slug("ü"), "-");
+    }
+
+    #[test]
+    fn a_dangling_link_counts_as_taken() {
+        let dir = std::env::temp_dir().join(format!("tsc-wt-link-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("shop")).unwrap();
+        std::os::unix::fs::symlink(dir.join("gone"), dir.join("shop-fix")).unwrap();
+        let at = path_for(&dir.join("shop"), "shop", "fix", None);
+        assert_eq!(at, dir.join("shop-fix-2"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -11,6 +11,10 @@ use std::time::Duration;
 
 /// Untracked files longer than this are not counted line by line.
 const COUNT_LINES_UP_TO: u64 = 1024 * 1024;
+/// At most this many untracked files are counted line by line, and at most this many bytes in
+/// all, so a folder of build output stays inside the read limit. The rest show no counts.
+pub const COUNT_FILES_UP_TO: usize = 200;
+const COUNT_BYTES_UP_TO: u64 = 8 << 20;
 
 #[derive(Debug, Clone)]
 pub struct GitCli {
@@ -99,6 +103,9 @@ impl GitCli {
         process::run(&mut cmd, limit).map_err(|e| match e {
             RunError::NotFound => VcsError::NoGit,
             RunError::Timeout => VcsError::Timeout,
+            RunError::TooLarge => {
+                VcsError::Failed("git wrote more output than Terminescu reads".into())
+            }
             RunError::Io(e) => VcsError::Failed(e),
         })
     }
@@ -193,13 +200,23 @@ impl Vcs for GitCli {
                 }
             }
         }
+        let (mut files, mut budget) = (0usize, COUNT_BYTES_UP_TO);
         for c in changes.iter_mut().filter(|c| c.untracked) {
+            if files == COUNT_FILES_UP_TO {
+                break;
+            }
             let file = root.join(&c.path);
             // Not through a link, and never a device or a pipe.
-            if std::fs::symlink_metadata(&file)
-                .is_ok_and(|m| m.is_file() && m.len() <= COUNT_LINES_UP_TO)
-                && let Ok(bytes) = std::fs::read(&file)
-            {
+            let Some(len) = std::fs::symlink_metadata(&file)
+                .ok()
+                .filter(|m| m.is_file() && m.len() <= COUNT_LINES_UP_TO.min(budget))
+                .map(|m| m.len())
+            else {
+                continue;
+            };
+            files += 1;
+            budget -= len;
+            if let Ok(bytes) = std::fs::read(&file) {
                 if bytes.contains(&0) {
                     c.binary = true;
                 } else {
@@ -228,6 +245,18 @@ impl Vcs for GitCli {
         let kind = self.read(root, &["cat-file", "-t", &spec])?;
         if !kind.ok || kind.stdout.trim_ascii() != b"blob" {
             return Ok(None);
+        }
+        // Sized first, so a huge blob is never read into memory.
+        let size = self.read(root, &["cat-file", "-s", &spec])?;
+        let size: usize = String::from_utf8_lossy(&size.stdout)
+            .trim()
+            .parse()
+            .map_err(|_| VcsError::Failed(format!("git gave no size for {rel}")))?;
+        if size > process::STDOUT_CAP {
+            return Err(VcsError::Failed(format!(
+                "{rel} is {} MB, too large to diff",
+                size >> 20
+            )));
         }
         let out = self.read(root, &["cat-file", "blob", &spec])?;
         if !out.ok {

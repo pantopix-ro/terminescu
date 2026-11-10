@@ -242,3 +242,25 @@ fn an_untracked_folder_counts_once_in_facts_and_lists_each_file_in_changes() {
     assert_eq!(facts.changed, 1);
     assert_eq!(git_cli().changes(&dir).unwrap().len(), 2);
 }
+
+#[test]
+fn untracked_files_past_the_count_budget_show_no_counts() {
+    let dir = repo("many-untracked");
+    let n = terminescu_plugin_git::cli::COUNT_FILES_UP_TO + 5;
+    for i in 0..n {
+        write(&dir, &format!("out/f{i:03}.txt"), "x\n");
+    }
+    let changes = git_cli().changes(&dir).unwrap();
+    assert_eq!(changes.len(), n);
+    let counted = changes.iter().filter(|c| c.added.is_some()).count();
+    assert_eq!(counted, terminescu_plugin_git::cli::COUNT_FILES_UP_TO);
+}
+
+#[test]
+fn a_base_text_is_sized_before_it_is_read() {
+    let dir = repo("sized-base");
+    let text = git_cli()
+        .base_text(&dir, Path::new("a.txt"), DiffBase::Head)
+        .unwrap();
+    assert_eq!(text.as_deref(), Some(&b"one\ntwo\n"[..]));
+}

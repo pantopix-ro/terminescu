@@ -37,7 +37,12 @@ pub const PR_POLL: Duration = Duration::from_millis(250);
 /// An answer younger than this stands; the margin keeps the minute tick from just missing it.
 const PR_FRESH: Duration = Duration::from_secs(58);
 
+/// After a `git --version` that timed out at launch, as the first run after a reboot can.
+pub const VERSION_RETRY: Duration = Duration::from_secs(5);
+
 const TIMER: &str = "pane:";
+/// Asks `git --version` again.
+pub const VERSION_TIMER: &str = "git:version";
 const PR_READY: &str = "prready:";
 const PR_TICK: &str = "prtick:";
 
@@ -158,6 +163,12 @@ impl GitPlugin {
         }
     }
 
+    /// Checks this `git`'s version on launch, as [`GitPlugin::new`] does with the person's.
+    pub fn with_git(mut self, git: GitCli) -> Self {
+        self.git = Some(git);
+        self
+    }
+
     pub fn with_forge(mut self, forge: Arc<dyn Forge>) -> Self {
         self.forge = Some(forge);
         self
@@ -184,22 +195,40 @@ impl GitPlugin {
         cx.emit("github", json!({ "on": on }));
     }
 
+    /// Checks `git --version`; false when the plugin stopped for it. A slow answer is no
+    /// verdict: the plugin keeps going and asks again after [`VERSION_RETRY`].
+    fn check_version(&self, cx: &dyn PluginCx) -> bool {
+        let Some(git) = &self.git else {
+            return true;
+        };
+        match git.version() {
+            Ok(v) => {
+                lock(&self.state).version = Some(v);
+                true
+            }
+            Err(VcsError::Timeout) => {
+                eprintln!("terminescu: git --version timed out; asking again");
+                cx.schedule(VERSION_RETRY, VERSION_TIMER);
+                true
+            }
+            Err(e) => {
+                let why = e.to_string();
+                eprintln!("terminescu: git plugin stopped: {why}");
+                lock(&self.state).stopped = Some(why);
+                cx.clear_decorations(None);
+                false
+            }
+        }
+    }
+
     fn launch(&self, cx: &dyn PluginCx) {
         cx.clear_decorations(None);
         let mut st = lock(&self.state);
         *st = State::default();
-        if let Some(git) = &self.git {
-            match git.version() {
-                Ok(v) => st.version = Some(v),
-                Err(e) => {
-                    let why = e.to_string();
-                    eprintln!("terminescu: git plugin stopped: {why}");
-                    st.stopped = Some(why);
-                    return;
-                }
-            }
-        }
         drop(st);
+        if !self.check_version(cx) {
+            return;
+        }
         self.set_github(cx);
         let mut st = lock(&self.state);
         let panes = cx.panes();
@@ -625,14 +654,38 @@ impl GitPlugin {
             .worktree_add(&facts.root, branch, &base, &at)
             .map_err(failed)?;
         self.vcs.forget(&main);
-        let cwd = at.to_string_lossy();
-        let row = cx.new_row(&at_pane.window, Some(&at_pane.side_tab), branch, &cwd)?;
-        cx.set_row_data(
-            &row,
-            WORKTREE_ROW,
-            Some(json!({ "worktree": at, "repo": main })),
-        )?;
+        let mark = json!({ "worktree": at, "repo": main, "branch": branch });
+        let row = self.marked_row(&at_pane, branch, &at, &main, mark, cx)?;
         Ok(json!({ "row": row, "path": at, "branch": branch, "base": base }))
+    }
+
+    /// A row in the new worktree `at`, after the pane's row, carrying `mark`. When the row
+    /// cannot be made, the worktree goes again (never with `--force`), so a retry finds the
+    /// path free; the branch stays.
+    fn marked_row(
+        &self,
+        at_pane: &Located,
+        title: &str,
+        at: &Path,
+        main: &Path,
+        mark: Value,
+        cx: &dyn PluginCx,
+    ) -> Result<Id, PluginError> {
+        let cwd = at.to_string_lossy();
+        let made = cx
+            .new_row(&at_pane.window, Some(&at_pane.side_tab), title, &cwd)
+            .and_then(|row| {
+                cx.set_row_data(&row, WORKTREE_ROW, Some(mark))?;
+                Ok(row)
+            });
+        made.map_err(|e| {
+            let undone = match self.vcs.worktree_remove(main, at, false) {
+                Ok(()) => "the worktree was removed again".to_string(),
+                Err(rm) => format!("the worktree stays at {}: {rm}", at.display()),
+            };
+            self.vcs.forget(main);
+            PluginError::Failed(format!("no row for the worktree ({e}); {undone}"))
+        })
     }
 
     fn forge(&self) -> Result<Arc<dyn Forge>, PluginError> {
@@ -696,14 +749,18 @@ impl GitPlugin {
             return Err(PluginError::Failed(e.to_string()));
         }
         self.vcs.forget(&main);
-        let cwd = at.to_string_lossy();
+        // The branch `gh` made, which can differ from the one asked for (a fork's).
+        let made = self
+            .vcs
+            .worktrees(&main)
+            .ok()
+            .and_then(|l| l.into_iter().find(|w| same_path(&w.path, &at))?.branch);
+        let mut mark = json!({ "worktree": at, "repo": main });
+        if let Some(b) = made {
+            mark["branch"] = json!(b);
+        }
         let title = format!("#{number} {branch}");
-        let row = cx.new_row(&at_pane.window, Some(&at_pane.side_tab), &title, &cwd)?;
-        cx.set_row_data(
-            &row,
-            WORKTREE_ROW,
-            Some(json!({ "worktree": at, "repo": main })),
-        )?;
+        let row = self.marked_row(&at_pane, &title, &at, &main, mark, cx)?;
         Ok(json!({ "row": row, "path": at }))
     }
 
@@ -764,7 +821,10 @@ impl GitPlugin {
             let cwd = tree.to_string_lossy();
             let row = cx.new_row(&at_pane.window, Some(&after), &title, &cwd)?;
             if !w.main {
-                let mark = json!({ "worktree": tree, "repo": main });
+                let mut mark = json!({ "worktree": tree, "repo": main });
+                if let Some(b) = &w.branch {
+                    mark["branch"] = json!(b);
+                }
                 cx.set_row_data(&row, WORKTREE_ROW, Some(mark))?;
             }
             opened.push(json!({ "row": row, "path": tree, "title": title }));
@@ -854,6 +914,26 @@ impl GitPlugin {
                 .ok_or_else(|| PluginError::Failed("the row's worktree mark is broken".into()))
         };
         let (worktree, repo) = (path("worktree")?, path("repo")?);
+        let list = self.vcs.worktrees(&repo).map_err(failed)?;
+        let listed = list.iter().find(|w| same_path(&w.path, &worktree));
+        let marked = mark.get("branch").and_then(Value::as_str);
+        // The mark may be older than what is there now: a worktree removed by hand and a new
+        // one made at the same path. Then the row lets go of it and nothing is removed.
+        let stale = match listed {
+            None => Some("git no longer lists it as a worktree of the repository"),
+            Some(w) if w.main || w.bare => Some("it is the repository's main working tree"),
+            Some(w) if marked.is_some() && w.branch.as_deref() != marked => {
+                Some("it now holds another branch")
+            }
+            Some(_) => None,
+        };
+        if let Some(why) = stale {
+            cx.set_row_data(row, WORKTREE_ROW, None)?;
+            return Err(PluginError::Failed(format!(
+                "{} was not removed: {why}. The row no longer asks about it.",
+                worktree.display()
+            )));
+        }
         match self.vcs.worktree_remove(&repo, &worktree, force) {
             Ok(()) => {
                 self.vcs.forget(&repo);
@@ -873,6 +953,12 @@ struct Located {
     side_tab: Id,
     window: Id,
     cwd: Option<String>,
+}
+
+/// Two paths name one folder, links resolved where the folders exist.
+fn same_path(a: &Path, b: &Path) -> bool {
+    let real = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+    a == b || real(a) == real(b)
 }
 
 fn arg<'a>(args: &'a Value, key: &str) -> Result<&'a str, PluginError> {
@@ -1041,7 +1127,9 @@ impl Plugin for GitPlugin {
             CoreEvent::SideTabClosed { side_tab } => self.side_tab_closed(side_tab, cx),
             CoreEvent::SideTabSelected { side_tab, .. } => self.selected(side_tab, cx),
             CoreEvent::Timer { token } => {
-                if let Some(pane) = token.strip_prefix(TIMER) {
+                if token == VERSION_TIMER {
+                    self.check_version(cx);
+                } else if let Some(pane) = token.strip_prefix(TIMER) {
                     self.refresh(pane, cx);
                 } else if let Some(pane) = token.strip_prefix(PR_READY) {
                     self.pr_ready(pane, cx);
