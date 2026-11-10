@@ -5,6 +5,7 @@
 pub mod agent;
 pub mod baseline;
 pub mod hook;
+pub mod insights;
 pub mod transcript;
 
 use serde_json::{Value, json};
@@ -13,8 +14,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use terminescu_plugin_api::{
-    Agent, AgentAdapter, AgentEvent, CoreEvent, Helper, Manifest, Plugin, PluginCx, PluginError,
-    is_session_id,
+    Agent, AgentAdapter, AgentEvent, CoreEvent, Decoration, Helper, LineTail, Manifest, Plugin,
+    PluginCx, PluginError, Target, is_session_id,
 };
 
 pub const ID: &str = "claude";
@@ -169,7 +170,98 @@ struct State {
     sessions: HashMap<String, String>,
     /// Sessions whose snapshot runs now, on a thread of its own.
     snapshotting: HashSet<String>,
+    /// What each pane's session shows (add-claude-insights group 2).
+    live: HashMap<String, Live>,
+    /// The tail timer is set.
+    ticking: bool,
 }
+
+/// One pane's session as its tab shows it.
+#[derive(Debug)]
+struct Live {
+    session: String,
+    insight: insights::Insight,
+    tail: Option<LineTail>,
+    /// The tab the decorations went on, and what they were.
+    tab: Option<String>,
+    shown: Vec<Decoration>,
+}
+
+impl Live {
+    fn new(session: &str) -> Self {
+        Self {
+            session: session.into(),
+            insight: insights::Insight::default(),
+            tail: None,
+            tab: None,
+            shown: Vec::new(),
+        }
+    }
+
+    /// Reads what the transcript gained. True when the todo list changed.
+    fn catch_up(&mut self, cx: &dyn PluginCx) -> bool {
+        if self.tail.is_none() {
+            self.tail = cx.agent_log(&self.session).map(LineTail::new);
+        }
+        let Some(tail) = self.tail.as_mut() else {
+            return false;
+        };
+        let before = self.insight.todos.clone();
+        for (_, line) in tail.read().unwrap_or_default() {
+            self.insight.on_line(&line);
+        }
+        self.insight.todos != before
+    }
+
+    /// Puts the decorations on the pane's tab when they changed, or when the pane moved.
+    fn publish(&mut self, pane: &str, cx: &dyn PluginCx) {
+        let tab = cx
+            .panes()
+            .into_iter()
+            .find(|p| p.pane == pane)
+            .map(|p| p.tab);
+        let look = insights::Look::from_settings(
+            cx.setting("meterThreshold"),
+            cx.setting("contextWindows"),
+        );
+        let next = tab
+            .as_deref()
+            .map(|t| self.insight.decorations(t, &look))
+            .unwrap_or_default();
+        if tab == self.tab && next == self.shown {
+            return;
+        }
+        if let Some(old) = &self.tab {
+            cx.clear_decorations(Some(&Target::Tab(old.clone())));
+        }
+        if let Some(t) = &tab
+            && self.tab.as_ref() != Some(t)
+        {
+            cx.clear_decorations(Some(&Target::Tab(t.clone())));
+        }
+        for d in &next {
+            cx.set_decoration(d.clone());
+        }
+        self.tab = tab;
+        self.shown = next;
+    }
+
+    fn take_down(&mut self, cx: &dyn PluginCx) {
+        if let Some(t) = self.tab.take() {
+            cx.clear_decorations(Some(&Target::Tab(t)));
+        }
+        self.shown.clear();
+    }
+}
+
+/// A transcript path a hook event names: absolute and a `.jsonl` file.
+fn transcript_of(event: &Value) -> Option<PathBuf> {
+    let path = PathBuf::from(event.get("transcript_path")?.as_str()?);
+    (path.is_absolute() && path.extension().is_some_and(|e| e == "jsonl")).then_some(path)
+}
+
+/// How often a running session's transcript is read: the meter and todos follow within 2 s.
+const TAIL_EVERY: Duration = Duration::from_secs(1);
 
 /// How often retention runs, and how soon after launch.
 const PRUNE_EVERY: Duration = Duration::from_secs(6 * 3600);
@@ -205,7 +297,7 @@ impl ClaudePlugin {
         self
     }
 
-    fn on_hook(&self, pane: &str, event: &Value) {
+    fn on_hook(&self, pane: &str, event: &Value, cx: &dyn PluginCx) {
         let name = event.get("hook_event_name").and_then(Value::as_str);
         let Some(session) = event
             .get("session_id")
@@ -227,6 +319,59 @@ impl ClaudePlugin {
                 }
             }
             _ => {}
+        }
+        self.follow(pane, session, name == Some("SessionEnd"), event, cx);
+    }
+
+    /// The pane's signals after one hook event: its tab's decorations and, while any session
+    /// runs, the tail timer.
+    fn follow(&self, pane: &str, session: &str, ended: bool, event: &Value, cx: &dyn PluginCx) {
+        let mut st = lock(&self.state);
+        if ended {
+            if let Some(mut live) = st.live.remove(pane) {
+                live.take_down(cx);
+                cx.emit("insights", json!({ "pane": pane }));
+            }
+            return;
+        }
+        let live = st
+            .live
+            .entry(pane.to_string())
+            .or_insert_with(|| Live::new(session));
+        if live.session != session {
+            live.take_down(cx);
+            *live = Live::new(session);
+        }
+        if let Some(path) = transcript_of(event)
+            && live.tail.as_ref().is_none_or(|t| t.path() != path)
+        {
+            live.tail = Some(LineTail::new(path));
+        }
+        live.insight.on_hook(event);
+        let todos = live.catch_up(cx);
+        live.publish(pane, cx);
+        if todos {
+            cx.emit("insights", json!({ "pane": pane }));
+        }
+        if !st.ticking {
+            st.ticking = true;
+            cx.schedule(TAIL_EVERY, "tail");
+        }
+    }
+
+    /// The tail timer: every followed session catches up with its transcript.
+    fn tick(&self, cx: &dyn PluginCx) {
+        let mut st = lock(&self.state);
+        for (pane, live) in st.live.iter_mut() {
+            let todos = live.catch_up(cx);
+            live.publish(pane, cx);
+            if todos {
+                cx.emit("insights", json!({ "pane": pane }));
+            }
+        }
+        st.ticking = !st.live.is_empty();
+        if st.ticking {
+            cx.schedule(TAIL_EVERY, "tail");
         }
     }
 
@@ -322,8 +467,29 @@ impl Plugin for ClaudePlugin {
 
     fn on_event(&self, event: &CoreEvent, cx: &dyn PluginCx) {
         match event {
-            CoreEvent::Hook { pane, event } => self.on_hook(pane, event),
-            CoreEvent::AppLaunched => cx.schedule(PRUNE_FIRST, "prune"),
+            CoreEvent::Hook { pane, event } => self.on_hook(pane, event, cx),
+            CoreEvent::AppLaunched => {
+                cx.schedule(PRUNE_FIRST, "prune");
+                // Switched on again: the decorations went with the switch, so they go back up.
+                let mut st = lock(&self.state);
+                for (pane, live) in st.live.iter_mut() {
+                    live.tab = None;
+                    live.shown.clear();
+                    live.publish(pane, cx);
+                }
+                if !st.live.is_empty() {
+                    st.ticking = true;
+                    cx.schedule(TAIL_EVERY, "tail");
+                }
+            }
+            CoreEvent::Timer { token } if token == "tail" => self.tick(cx),
+            CoreEvent::PaneClosed { pane } => {
+                let mut st = lock(&self.state);
+                st.sessions.remove(pane);
+                if let Some(mut live) = st.live.remove(pane) {
+                    live.take_down(cx);
+                }
+            }
             CoreEvent::Timer { token } if token == "prune" => {
                 self.store
                     .prune(baseline::KEEP, baseline::CAP_BYTES, baseline::now());
@@ -336,6 +502,7 @@ impl Plugin for ClaudePlugin {
     /// `read {session, offset}`: the transcript entries since `offset` (task 4.4).
     /// `changes {session | pane}`: what the session changed (add-claude-insights 1.3).
     /// `baseText {session | pane, path}`: a file before the session.
+    /// `todos {pane}`: the pane's session and its latest todo list, or null (2.2).
     fn call(&self, method: &str, args: Value, cx: &dyn PluginCx) -> Result<Value, PluginError> {
         match method {
             "changes" | "baseText" => {
@@ -363,6 +530,15 @@ impl Plugin for ClaudePlugin {
                     m.insert("session".into(), json!(session));
                 }
                 Ok(out)
+            }
+            "todos" => {
+                let args: SessionArgs = serde_json::from_value(args).map_err(bad)?;
+                let pane = args.pane.ok_or_else(|| bad("a pane"))?;
+                let st = lock(&self.state);
+                Ok(match st.live.get(&pane) {
+                    Some(l) => json!({ "session": l.session, "todos": l.insight.todos }),
+                    None => json!({ "session": null, "todos": null }),
+                })
             }
             "read" => {
                 let args: ReadArgs = serde_json::from_value(args)

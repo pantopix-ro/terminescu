@@ -60,6 +60,12 @@ assistant entry's `message.usage` and `message.model` per session. Used tokens a
 `input_tokens + cache_creation_input_tokens + cache_read_input_tokens`. The window comes from
 Settings › Claude per model, else 200,000. The meter is a `meter` decoration on the tab.
 
+The core's transcript tail feeds the adapter's `on_line`, which the plugin cannot see. So the
+plugin tails the transcript itself with the plugin-api `LineTail`: from the hook's
+`transcript_path`, else `PluginCx::agent_log`, on a one-second timer while any of its panes
+runs a session. It sets the meter, the chips, the subtitle and the badge on the pane's tab,
+and only when they change. Entries of subagents (`isSidechain`) do not count.
+
 ### D5. Todo mirror
 The reader keeps the latest `tool_use` named `TodoWrite` (input `todos[]` with `content`,
 `status`, `activeForm`). Another tool name or shape is ignored, so a Claude Code change hides
@@ -77,6 +83,12 @@ Waiting reason from `PermissionRequest` `tool_name` and `tool_input` (`command`,
 `permission_mode` on every event. Compaction from `PreCompact` until the next `SessionStart`
 with source `compact` or `Stop`. Subagents from `SubagentStart` and `SubagentStop` when Claude
 Code sends them; `hook_install` adds the three events.
+
+The waiting reason is a field of the shared agent type (`Agent.reason`), which the adapter
+sets on `PermissionRequest` and clears once the agent stops waiting. The core shows it
+without knowing Claude. The notification keeps the row and the tab as its title and puts the
+reason in the body, so macOS shows "PROJ-482 › api" over "Bash: npm publish --access public".
+A path inside the session's folder shows relative to it.
 
 ## Risks / Trade-offs
 

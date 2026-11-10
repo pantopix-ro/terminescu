@@ -187,6 +187,7 @@ export interface FakePlugin {
 }
 
 export interface MockOptions {
+  /** A plugin with id `claude` answers the Claude half's calls other than `read`. */
   plugins?: readonly FakePlugin[];
   /** False plays a build without the Claude plugin. */
   claude?: boolean;
@@ -272,19 +273,25 @@ const MOCK_PROFILE: TerminalProfile = {
 export function createMockHost(initial?: Workspace, options: MockOptions = {}): MockHost {
   // The browser build plays the app with the Claude plugin in it: its Rust half reads
   // transcripts (add-plugin-architecture 3.4).
+  // A `claude` entry in `plugins` extends this half instead of standing beside it.
+  const extra = options.claude === false ? undefined : options.plugins?.find((p) => p.id === "claude");
   const claude: FakePlugin = {
     id: "claude",
     name: "Claude",
     description: "Claude Code sessions: the amber row, transcripts, resume after reboot and the hook.",
-    call(method, args) {
-      if (method !== "read") throw new Error(`${method} is not a method of this plugin`);
+    call(method, args, host) {
+      // A test's `claude` half answers the insight calls (add-claude-insights group 2).
+      if (method !== "read") {
+        if (extra?.call) return extra.call(method, args, host);
+        throw new Error(`${method} is not a method of this plugin`);
+      }
       const { session, offset } = args as { session: string; offset: number };
       const list = transcripts.get(session);
       if (!list) throw new Error(`no transcript for session ${session}`);
       return { entries: list.slice(offset), offset: list.length, reset: false };
     },
   };
-  const fakePlugins = [...(options.claude === false ? [] : [claude]), ...(options.plugins ?? [])];
+  const fakePlugins = [...(options.claude === false ? [] : [claude]), ...(options.plugins ?? []).filter((p) => options.claude === false || p.id !== "claude")];
   const pluginOn = new Map(fakePlugins.map((p) => [p.id, true]));
   const pluginPaused = new Set<string>();
   let decorationList: Decoration[] = [];

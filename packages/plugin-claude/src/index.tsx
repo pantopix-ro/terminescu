@@ -1,13 +1,16 @@
 // The Claude plugin's UI half (add-plugin-architecture 3.4): the transcript pane, read through
-// the plugin's Rust half. The agent dot and the amber row stay the app's own.
+// the plugin's Rust half, and the todo mirror (add-claude-insights 2.2). The agent dot and the
+// amber row stay the app's own.
 
 import type { TranscriptChunk } from "@terminescu/host";
 import { definePlugin, type PaneViewProps } from "@terminescu/plugin-api";
 import { quoteOf } from "@terminescu/ui";
+import { TodoSection } from "./TodoSection";
 import { TranscriptPane } from "./TranscriptPane";
 import "./transcript.css";
 
 export { TranscriptPane, type Reveal, type TextEntry } from "./TranscriptPane";
+export { TodoSection, type Todo, type TodosAnswer } from "./TodoSection";
 
 function Transcript({ paneId, source, bridge, app }: PaneViewProps) {
   return (
@@ -38,4 +41,5 @@ export const claude = definePlugin({
   id: "claude",
   name: "Claude",
   paneViews: [{ kind: "transcript", render: Transcript }],
+  panelSections: [{ id: "todos", title: "Claude's plan", render: TodoSection }],
 });

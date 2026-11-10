@@ -19,15 +19,17 @@
 
 ## 2. Transcript and hook signals
 
-- [ ] 2.1 Usage and model per session from the transcript; meter decoration; window per model
+- [x] 2.1 Usage and model per session from the transcript; meter decoration; window per model
       setting. Verify: plugin test over a fixture transcript; `e2e/claude.spec.ts` "the meter
       turns amber at 80%".
-- [ ] 2.2 Todo mirror panel section. Verify: fixture test; `e2e/claude.spec.ts` "the todo list
+- [x] 2.2 Todo mirror panel section. Verify: fixture test; `e2e/claude.spec.ts` "the todo list
       shows Claude's plan".
-- [ ] 2.3 Waiting reason in notifications and the amber tip. Verify: plugin test over
+- [x] 2.3 Waiting reason in notifications and the amber tip. Verify: plugin test over
       `PermissionRequest` fixtures; `e2e/attention.spec.ts` tip text.
-- [ ] 2.4 Model and mode chips, compacting subtitle, subagent count; hook events `PreCompact`,
+- [x] 2.4 Model and mode chips, compacting subtitle, subagent count; hook events `PreCompact`,
       `SubagentStart`, `SubagentStop`. Verify: plugin tests; `e2e/claude.spec.ts` chips.
+      Done: `insights` unit tests, `a_fixture_transcript_fills_the_meter_chips_and_todos`,
+      `a_permission_request_names_what_it_waits_on`; the e2e play the Rust half (D4 note).
 
 ## 3. History and files
 

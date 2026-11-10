@@ -30,3 +30,11 @@
 .tr-del { background: var(--tint-red); color: var(--fg); }
 .tr-add { background: var(--tint-green); color: var(--fg); }
 .tr-compact { text-align: center; border-top: 1px dashed var(--line-strong); padding-top: var(--space-1); }
+
+/* The todo mirror (add-claude-insights 2.2). */
+.cl-todos { list-style: none; margin: 0; padding: 0 var(--space-2) var(--space-2); }
+.cl-todo { display: flex; gap: 6px; align-items: baseline; padding: 2px 0; }
+.cl-mark { flex: none; width: 12px; color: var(--dim); }
+.cl-inProgress .cl-mark, .cl-inProgress .cl-text { color: var(--fg); }
+.cl-completed .cl-text { color: var(--faint); text-decoration: line-through; }
+.pl-item.pl-meter { font-variant-numeric: tabular-nums; }

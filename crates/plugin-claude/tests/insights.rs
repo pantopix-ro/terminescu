@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
-use terminescu_plugin_api::{CoreEvent, Plugin};
+use terminescu_plugin_api::{CoreEvent, Plugin, Target, Tone};
 use terminescu_plugin_claude::ClaudePlugin;
 
 fn folder(name: &str) -> PathBuf {
@@ -134,4 +134,93 @@ fn uninstall_helpers_takes_the_baselines() {
     helper.install().unwrap();
     helper.uninstall().unwrap();
     assert!(!base.join("support/baselines").exists());
+}
+
+fn fixture(name: &str) -> PathBuf {
+    Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/hooks")).join(name)
+}
+
+#[test]
+fn a_fixture_transcript_fills_the_meter_chips_and_todos() {
+    let base = folder("meter");
+    // The transcript grows while the session runs: half now, the rest before the next tick.
+    let full = std::fs::read_to_string(fixture("transcript-insights.jsonl")).unwrap();
+    let lines: Vec<&str> = full.lines().collect();
+    let transcript = base.join("sess-9.jsonl");
+    std::fs::write(&transcript, format!("{}\n", lines[..3].join("\n"))).unwrap();
+    let plugin = ClaudePlugin::new(PathBuf::from("/opt/terminescu"), &base.join("support"));
+    let cx = Cx::one_pane("/Users/owner/src/shop-api");
+    let tab = Target::Tab("t1".into());
+    hook(
+        &plugin,
+        &cx,
+        json!({ "hook_event_name": "UserPromptSubmit", "session_id": "sess-9",
+                "permission_mode": "plan", "transcript_path": transcript }),
+    );
+    assert_eq!(cx.text(&tab, "context").as_deref(), Some("25%"));
+    assert_eq!(cx.text(&tab, "model").as_deref(), Some("opus-5-5"));
+    assert_eq!(cx.text(&tab, "mode").as_deref(), Some("plan"));
+    let todos = plugin.call("todos", json!({ "pane": "p1" }), &cx).unwrap();
+    assert_eq!(todos["todos"].as_array().unwrap().len(), 4);
+    assert_eq!(todos["todos"][0]["state"], "inProgress");
+    assert!(
+        cx.emits
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(e, _)| e == "insights")
+    );
+    assert_eq!(cx.timers.lock().unwrap().last().unwrap().1, "tail");
+
+    // A subagent's line does not count; the main session's latest entry does.
+    std::fs::write(&transcript, &full).unwrap();
+    plugin.on_event(
+        &CoreEvent::Timer {
+            token: "tail".into(),
+        },
+        &cx,
+    );
+    let meter = cx.decoration(&tab, "context").unwrap();
+    assert_eq!(meter.text, "86%");
+    assert_eq!(meter.tone, Tone::Warn);
+    assert_eq!(
+        meter.tip.as_deref(),
+        Some("172k of 200k tokens · claude-opus-5-5")
+    );
+
+    // A window set for the model brings it under the threshold.
+    cx.settings.lock().unwrap().insert(
+        "contextWindows".into(),
+        json!({ "claude-opus-5-5": 1_000_000 }),
+    );
+    plugin.on_event(
+        &CoreEvent::Timer {
+            token: "tail".into(),
+        },
+        &cx,
+    );
+    let meter = cx.decoration(&tab, "context").unwrap();
+    assert_eq!((meter.text.as_str(), meter.tone), ("17%", Tone::Neutral));
+
+    hook(
+        &plugin,
+        &cx,
+        json!({ "hook_event_name": "SessionEnd", "session_id": "sess-9" }),
+    );
+    assert!(
+        cx.decoration(&tab, "context").is_none(),
+        "an ended session takes its meter"
+    );
+    let timers = cx.timers.lock().unwrap().len();
+    plugin.on_event(
+        &CoreEvent::Timer {
+            token: "tail".into(),
+        },
+        &cx,
+    );
+    assert_eq!(
+        cx.timers.lock().unwrap().len(),
+        timers,
+        "no session, no tail timer"
+    );
 }

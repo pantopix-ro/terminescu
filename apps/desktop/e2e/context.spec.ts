@@ -155,7 +155,8 @@ test("Context, Pins and Prompts stack one under the other and the panel scrolls"
   await page.keyboard.press("Meta+Backslash");
   const panel = page.locator("aside.ctx-pinned");
   const heads = panel.locator(".ctx-sec-head");
-  await expect(heads).toHaveText(["Context", "Pins", "Prompts"]);
+  // The Claude plugin's section follows the app's own (add-claude-insights 2.2).
+  await expect(heads).toHaveText(["Context", "Pins", "Prompts", "Claude's plan"]);
   await expect(panel.getByRole("tab")).toHaveCount(0);
   const tops = await panel.locator(".ctx-section").evaluateAll((els) => els.map((e) => e.getBoundingClientRect().top));
   expect(tops[0]!).toBeLessThan(tops[1]!);

@@ -118,7 +118,8 @@ export function usePlugins(host: Host, appActions: readonly ActionDef[], halves:
 }
 
 // ---- Fake Rust halves: the browser build only. `?plugins=fake` plays every slot for
-// e2e/plugins.spec.ts; `?plugins=git` plays the git plugin's Rust half for e2e/git.spec.ts.
+// e2e/plugins.spec.ts; `?plugins=git` plays the git plugin's Rust half for e2e/git.spec.ts;
+// `?plugins=claude` the Claude half's insight calls for e2e/claude.spec.ts.
 
 const asked = (name: string) => typeof location !== "undefined" && (new URLSearchParams(location.search).get("plugins") ?? "").split(",").includes(name);
 const fakeOn = () => asked("fake");
@@ -261,9 +262,24 @@ const fakeGit = (): FakePlugin => ({
   },
 });
 
+/**
+ * The Claude half's insight calls, as a test sets them on `window.__fakeClaude` by pane: what
+ * `todos` answers (add-claude-insights group 2). The mock's own Claude half keeps `read`.
+ */
+const fakeClaude = (): FakePlugin => ({
+  id: "claude",
+  name: "Claude",
+  call(method, args) {
+    const a = (args ?? {}) as { pane?: string };
+    const all = (globalThis as { __fakeClaude?: Record<string, { todos?: unknown }> }).__fakeClaude ?? {};
+    if (method === "todos") return all[a.pane ?? ""]?.todos ?? { session: null, todos: null };
+    throw new Error(`${method} is not a method of this plugin`);
+  },
+});
+
 /** The fake plugins' Rust halves, played by the mock host. */
 export function fakeRustHalves(): FakePlugin[] {
-  const halves = asked("git") ? [fakeGit()] : [];
+  const halves = [...(asked("git") ? [fakeGit()] : []), ...(asked("claude") ? [fakeClaude()] : [])];
   if (!fakeOn()) return halves;
   return [
     ...halves,
