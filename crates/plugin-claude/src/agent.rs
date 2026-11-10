@@ -96,6 +96,11 @@ pub fn events(event: &Value) -> Vec<AgentEvent> {
         Some("PostToolUse") => out.extend(touched(event)),
         _ => {}
     }
+    let session = str_of(event, "session_id").filter(|s| is_session_id(s));
+    match str_of(event, "hook_event_name") {
+        Some("SessionEnd") => out.push(AgentEvent::Session(None)),
+        _ => out.extend(session.map(|s| AgentEvent::Session(Some(s.into())))),
+    }
     out
 }
 

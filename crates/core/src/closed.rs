@@ -162,46 +162,55 @@ impl Entry {
     }
 }
 
-/// The closed list, newest last.
+/// The closed list, newest last, and the closes still running. A running close's entry waits
+/// apart, so a reopen never takes a tab or row that is still open.
 #[derive(Debug, Default)]
-pub struct ClosedList(VecDeque<Entry>);
+pub struct ClosedList {
+    done: VecDeque<Entry>,
+    running: Vec<Entry>,
+}
 
 impl ClosedList {
     pub const fn new() -> Self {
-        Self(VecDeque::new())
+        Self {
+            done: VecDeque::new(),
+            running: Vec::new(),
+        }
     }
 
     /// Adds an entry before its close runs, so the close leaves a row's daemon variables
-    /// alone. The list may hold one too many until [`ClosedList::trim`].
+    /// alone. [`ClosedList::settle`] files it when the close is over.
     pub fn push(&mut self, entry: Entry) {
-        self.0.push_back(entry);
+        self.running.push(entry);
     }
 
-    /// After a close went through: the oldest entries beyond [`KEEP`], which leave the list.
-    pub fn trim(&mut self) -> Vec<Entry> {
-        let over = self.0.len().saturating_sub(KEEP);
-        self.0.drain(..over).collect()
+    /// The close of `key` is over. A done one joins the list; a failed one leaves quietly, as
+    /// its tab or row is still open. Returns the oldest entries beyond [`KEEP`], which leave.
+    pub fn settle(&mut self, key: &str, ok: bool) -> Vec<Entry> {
+        if let Some(at) = self.running.iter().rposition(|e| e.key() == key) {
+            let entry = self.running.remove(at);
+            if ok {
+                self.done.push_back(entry);
+            }
+        }
+        let over = self.done.len().saturating_sub(KEEP);
+        self.done.drain(..over).collect()
     }
 
+    /// The newest closed tab or row whose close is over.
     pub fn pop(&mut self) -> Option<Entry> {
-        self.0.pop_back()
-    }
-
-    /// Takes back the entry for `key` after its close failed, wherever it now is: a reopen or
-    /// another close may have run in between.
-    pub fn take(&mut self, key: &str) -> Option<Entry> {
-        let at = self.0.iter().rposition(|e| e.key() == key)?;
-        self.0.remove(at)
+        self.done.pop_back()
     }
 
     pub fn is_parked(&self, side_tab_id: &str) -> bool {
-        self.0
+        self.done
             .iter()
+            .chain(&self.running)
             .any(|e| e.parked_side_tab().map(String::as_str) == Some(side_tab_id))
     }
 
     pub fn drain(&mut self) -> Vec<Entry> {
-        self.0.drain(..).collect()
+        self.running.drain(..).chain(self.done.drain(..)).collect()
     }
 }
 
@@ -444,22 +453,27 @@ mod tests {
             },
             cwds: HashMap::new(),
         };
+        let key = |i: usize| format!("s{i}");
         for i in 0..KEEP {
             list.push(entry(i));
-            assert!(list.trim().is_empty());
+            assert!(list.settle(&key(i), true).is_empty());
         }
-        // Parked while its close runs, so the close keeps its variables.
+        // Parked while its close runs, so the close keeps its variables, but not reopened yet.
         list.push(entry(KEEP));
         assert!(list.is_parked("s0") && list.is_parked("s10"));
-        let out = list.trim();
+        let newest = list.pop().unwrap();
+        assert_eq!(newest.key(), "s9");
+        list.done.push_back(newest);
+        let out = list.settle(&key(KEEP), true);
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].parked_side_tab().unwrap(), "s0");
         assert!(!list.is_parked("s0") && list.is_parked("s1"));
-        // A failed close takes back its own entry, not the newest.
+        // A failed close drops its own entry, not the newest, and nothing leaves the list.
         list.push(entry(11));
         list.push(entry(12));
-        assert_eq!(list.take("s11").unwrap().key(), "s11");
-        assert!(list.take("s11").is_none());
+        assert!(list.settle("s11", false).is_empty());
+        assert!(!list.is_parked("s11") && list.is_parked("s12"));
+        assert_eq!(list.settle("s12", true)[0].key(), "s1");
         assert_eq!(list.pop().unwrap().parked_side_tab().unwrap(), "s12");
     }
 }

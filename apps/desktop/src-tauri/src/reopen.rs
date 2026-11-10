@@ -55,16 +55,10 @@ pub fn note(state: &AppState, cmd: &Command) -> Option<Id> {
     Some(key)
 }
 
-/// After the close ran: a failed one takes its own entry back; a done one lets the oldest
-/// entries go, with their rows' daemon variables.
+/// After the close ran: a done one can be reopened, a failed one is forgotten, and the oldest
+/// entries leave with their rows' daemon variables.
 pub fn done(state: &AppState, key: &str, ok: bool) {
-    let gone = {
-        let mut list = lock(&CLOSED);
-        if !ok {
-            list.take(key);
-        }
-        list.trim()
-    };
+    let gone = lock(&CLOSED).settle(key, ok);
     for old in &gone {
         drop_vars(state, old);
     }

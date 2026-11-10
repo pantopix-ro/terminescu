@@ -17,10 +17,24 @@ fn post(tool: &str, input: Value, response: Value) -> Value {
 }
 
 fn touched(event: &Value) -> Option<(String, bool)> {
-    match events(event).into_iter().next()? {
+    events(event).into_iter().find_map(|e| match e {
         AgentEvent::Touched { path, created, .. } => Some((path, created)),
-        AgentEvent::Reply(_) => None,
-    }
+        _ => None,
+    })
+}
+
+#[test]
+fn an_event_names_the_session_and_session_end_clears_it() {
+    let start = json!({"hook_event_name": "SessionStart", "session_id": "sess-0b5c"});
+    assert_eq!(
+        events(&start),
+        [AgentEvent::Session(Some("sess-0b5c".into()))]
+    );
+    let end = json!({"hook_event_name": "SessionEnd", "session_id": "sess-0b5c"});
+    assert_eq!(events(&end), [AgentEvent::Session(None)]);
+    // A session id that could name a path is not one.
+    let odd = json!({"hook_event_name": "Notification", "session_id": "../x"});
+    assert!(events(&odd).is_empty());
 }
 
 #[test]
@@ -70,13 +84,19 @@ fn only_file_editing_tools_after_they_ran_count() {
         json!({"type": "update"}),
     );
     assert_eq!(touched(&over).map(|t| t.1), Some(false));
-    assert!(events(&post("Read", json!({"file_path": "/tmp/x.md"}), json!({}))).is_empty());
-    assert!(events(&post("Bash", json!({"command": "ls"}), json!({}))).is_empty());
+    assert_eq!(
+        touched(&post("Read", json!({"file_path": "/tmp/x.md"}), json!({}))),
+        None
+    );
+    assert_eq!(
+        touched(&post("Bash", json!({"command": "ls"}), json!({}))),
+        None
+    );
     let mut pre = post("Write", json!({"file_path": "/tmp/x.md"}), json!({}));
     pre["hook_event_name"] = json!("PreToolUse");
-    assert!(events(&pre).is_empty());
+    assert_eq!(touched(&pre), None);
     // A relative path with no cwd has nothing to resolve against.
     let mut bare = post("Edit", json!({"file_path": "x.md"}), json!({}));
     bare.as_object_mut().unwrap().remove("cwd");
-    assert!(events(&bare).is_empty());
+    assert_eq!(touched(&bare), None);
 }

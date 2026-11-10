@@ -551,10 +551,7 @@ fn settings_get(state: State<'_, AppState>) -> Result<settings::Settings, String
 /// Adds or removes the plugins' helpers for a new answer; `Unasked` leaves them alone.
 fn apply_hook(consent: settings::HookConsent) -> Result<(), String> {
     let failed = terminescu_core::helpers::apply(&plugins::helpers(), consent);
-    match failed.into_iter().next() {
-        Some((_, e)) => Err(e.to_string()),
-        None => Ok(()),
-    }
+    terminescu_core::helpers::describe(&failed).map_or(Ok(()), Err)
 }
 
 #[tauri::command]

@@ -35,6 +35,17 @@ pub fn apply(helpers: &[Arc<dyn Helper>], consent: HookConsent) -> Failed {
         .collect()
 }
 
+/// The failures as one message, every helper named; `None` when all went well.
+pub fn describe(failed: &Failed) -> Option<String> {
+    (!failed.is_empty()).then(|| {
+        failed
+            .iter()
+            .map(|(id, e)| format!("{id}: {e}"))
+            .collect::<Vec<_>>()
+            .join("; ")
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,5 +117,18 @@ mod tests {
 
         assert!(apply(&list, HookConsent::Off).is_empty());
         assert!(!installed.installed());
+    }
+
+    #[test]
+    fn every_failure_is_named() {
+        assert_eq!(describe(&Vec::new()), None);
+        let failed: Failed = vec![
+            ("hook", PluginError::Failed("read-only".into())),
+            ("git", PluginError::Timeout),
+        ];
+        assert_eq!(
+            describe(&failed).as_deref(),
+            Some("hook: read-only; git: the plugin took longer than its budget")
+        );
     }
 }

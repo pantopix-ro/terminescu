@@ -1040,7 +1040,8 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
       return pluginInfos();
     },
     async helpers() {
-      // The browser build plays the app with the Claude plugin in it.
+      // The Claude plugin's hook, when the mock plays that plugin.
+      if (options.claude === false) return [];
       return [{ id: "hook", label: "Claude Code hook", description: HOOK_HELP, installed: claudeHook }];
     },
     async setPluginEnabled(plugin, enabled) {

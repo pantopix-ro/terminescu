@@ -662,7 +662,7 @@ function TerminalSettings({ host, onError }: SettingsSheetProps) {
 
 function ShellSettings({ host, onError }: SettingsSheetProps) {
   const [settings, change] = useAppSettings(host, onError);
-  const helpers = useHelpers(host);
+  const helpers = useHelpers(host, onError) ?? [];
   if (!settings) return null;
   return (
     <section aria-label="Shell">

@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, mpsc};
 use std::time::{Duration, Instant};
 use terminescu_plugin_api::{
-    AgentAdapter, CoreEvent, Helper, Manifest, Plugin, PluginCx, PluginError, PluginInfo,
+    AgentAdapter, CoreEvent, Manifest, Plugin, PluginCx, PluginError, PluginInfo,
 };
 
 /// Events waiting per plugin; a full queue drops its oldest.
@@ -232,11 +232,6 @@ impl PluginHost {
             .filter(|s| s.live())
             .filter_map(|s| s.plugin.agent_adapter())
             .collect()
-    }
-
-    /// Every plugin's helpers, on or off: uninstall must reach them all.
-    pub fn helpers(&self) -> Vec<Arc<dyn Helper>> {
-        self.slots.iter().flat_map(|s| s.plugin.helpers()).collect()
     }
 
     pub fn stop(&self) {

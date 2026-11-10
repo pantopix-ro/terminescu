@@ -4,7 +4,8 @@
 use crate::crashlog;
 use tauri::{AppHandle, Manager};
 use terminescu_core::feedback::{self, AppInfo, Route};
-use terminescu_core::uninstall;
+use terminescu_core::settings::HookConsent;
+use terminescu_core::{helpers, uninstall};
 use terminescu_protocol::paths;
 
 /// The menu items this module answers, in the app menu and Help. They have no chords, so they
@@ -67,9 +68,11 @@ fn open(args: &[&str]) -> Result<(), String> {
 /// with `app_quit` after the last note.
 #[tauri::command]
 pub fn uninstall_helpers(app: AppHandle, delete_data: bool) -> Result<(), String> {
-    // Every plugin's helpers, on or off, so no tool keeps calling a missing program.
-    for h in crate::plugins::helpers() {
-        h.uninstall().map_err(|e| e.to_string())?;
+    // Every plugin's helpers, on or off, so no tool keeps calling a missing program. Each one
+    // is tried; when one fails the binaries stay, since its tool still runs them.
+    let failed = helpers::apply(&crate::plugins::helpers(), HookConsent::Off);
+    if let Some(f) = helpers::describe(&failed) {
+        return Err(format!("not removed: {f}"));
     }
     // Stop reconnecting first: after the kill below, a reconnect would copy the daemon back
     // into bin/ and start it again, and it would outlive the uninstall.

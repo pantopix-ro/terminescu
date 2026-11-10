@@ -159,11 +159,16 @@ impl ClaudePlugin {
 
 impl Plugin for ClaudePlugin {
     fn manifest(&self) -> Manifest {
-        Manifest::new(
-            ID,
-            "Claude",
-            "Claude Code sessions: the amber row, transcripts, resume after reboot and the hook.",
-        )
+        Manifest {
+            // A first read parses up to 8 MB of transcript. Overruns count toward a pause, and
+            // a paused plugin takes its agents with it, so a slow disk gets room here.
+            call_budget: std::time::Duration::from_secs(10),
+            ..Manifest::new(
+                ID,
+                "Claude",
+                "Claude Code sessions: the amber row, transcripts, resume after reboot and the hook.",
+            )
+        }
     }
 
     fn on_event(&self, _event: &CoreEvent, _cx: &dyn PluginCx) {}

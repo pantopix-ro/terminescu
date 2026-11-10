@@ -33,7 +33,7 @@ impl AgentAdapter for Tool {
     }
     fn events(&self, event: &serde_json::Value) -> Vec<AgentEvent> {
         let s = |k: &str| event[k].as_str().map(String::from);
-        match event["hook_event_name"].as_str() {
+        let mut out: Vec<AgentEvent> = match event["hook_event_name"].as_str() {
             Some("Stop") => s("reply").map(AgentEvent::Reply).into_iter().collect(),
             Some("PostToolUse") => s("path")
                 .map(|path| AgentEvent::Touched {
@@ -45,7 +45,12 @@ impl AgentAdapter for Tool {
                 .into_iter()
                 .collect(),
             _ => Vec::new(),
+        };
+        match event["hook_event_name"].as_str() {
+            Some("SessionEnd") => out.push(AgentEvent::Session(None)),
+            _ => out.extend(s("session_id").map(|id| AgentEvent::Session(Some(id)))),
         }
+        out
     }
     fn resume_command(&self, session: &str) -> Option<String> {
         Some(format!("tool --resume {session}"))

@@ -7,12 +7,22 @@ import { NOT_AFFILIATED, PRIVACY_POINTS } from "./privacy";
 
 type Api = Pick<Host, "appInfo" | "feedbackOpen" | "uninstallHelpers" | "appQuit" | "openUrl" | "settings" | "setSettings" | "helpers">;
 
-/** The built-in plugins' helpers, such as the Claude Code hook; empty while they load. */
-export function useHelpers(host: Pick<Host, "helpers">): HelperInfo[] {
-  const [list, setList] = useState<HelperInfo[]>([]);
+/** The built-in plugins' helpers, such as the Claude Code hook; undefined while they load. A
+ * failed load reports through `onError` and lists none. */
+export function useHelpers(host: Pick<Host, "helpers">, onError?: (message: string) => void): HelperInfo[] | undefined {
+  const [list, setList] = useState<HelperInfo[]>();
+  const report = useRef(onError);
+  report.current = onError;
   useEffect(() => {
     let gone = false;
-    void host.helpers().then((h) => !gone && setList(h), () => undefined);
+    void host.helpers().then(
+      (h) => !gone && setList(h),
+      (e: unknown) => {
+        if (gone) return;
+        setList([]);
+        report.current?.(String(e));
+      },
+    );
     return () => {
       gone = true;
     };
@@ -280,11 +290,13 @@ export function FirstRunSheet({
   hook,
   setHook,
 }: AppSheetProps & { onPrivacy(): void; hook: boolean; setHook(on: boolean): void }) {
-  const helpers = useHelpers(host);
+  const loaded = useHelpers(host, onError);
+  const helpers = loaded ?? [];
+  // With no helpers listed there is nothing to consent to: the saved choice stays.
   const finish = (on: boolean) =>
     void host
       .settings()
-      .then((s) => host.setSettings({ ...s, hook: on ? "on" : "off", firstRunDone: true }))
+      .then((s) => host.setSettings({ ...s, ...(helpers.length > 0 && { hook: on ? "on" : "off" }), firstRunDone: true }))
       .then(onClose, (e: unknown) => onError(String(e)));
   return (
     <Sheet label="Welcome to Terminescu" className="first-run-sheet" backdrop={false} onClose={() => finish(false)}>
@@ -314,7 +326,7 @@ export function FirstRunSheet({
         <button type="button" className="ao-btn ghost" onClick={() => finish(false)}>
           Not now
         </button>
-        <button type="button" className="ao-btn primary" onClick={() => finish(hook && helpers.length > 0)}>
+        <button type="button" className="ao-btn primary" disabled={!loaded} onClick={() => finish(hook)}>
           Continue
         </button>
       </div>

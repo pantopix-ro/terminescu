@@ -890,24 +890,18 @@ impl Runtime {
             }
         };
         let mut touched = Vec::new();
+        let mut session = None;
         for e in events {
             match e {
                 AgentEvent::Reply(reply) => self.found(daemon, crate::extract::find(&reply)),
+                AgentEvent::Session(s) => session = Some(s),
                 touch @ AgentEvent::Touched { .. } => {
                     touched.extend(crate::files::Touch::of(touch))
                 }
             }
         }
-        let name = event.get("hook_event_name").and_then(|v| v.as_str());
-        let session = event
-            .get("session_id")
-            .and_then(|v| v.as_str())
-            .filter(|s| is_session_id(s))
-            .map(String::from);
-        let next = match name {
-            Some("SessionEnd") => None,
-            _ if session.is_some() => session,
-            _ => return touched,
+        let Some(next) = session else {
+            return touched;
         };
         self.update_meta(|panes| {
             let Some(pane) = panes.by_daemon.get(&daemon).cloned() else {
@@ -990,14 +984,16 @@ impl Runtime {
     /// The adapters of the enabled plugins, in plugin order. An agent whose adapter left goes,
     /// so a plugin switched off leaves no amber row behind.
     pub fn set_adapters(&self, adapters: Vec<Arc<dyn AgentAdapter>>) {
+        // Lock order: agents, then adapters. A hook reads the adapters under the agents lock,
+        // so no agent of a removed adapter comes back after the swap.
+        let mut agents = lock(&self.inner.agents);
         let ids: HashSet<&str> = adapters.iter().map(|a| a.id()).collect();
-        let gone: Vec<Id> = lock(&self.inner.agents)
+        let gone: Vec<Id> = agents
             .iter()
             .filter(|(_, l)| !ids.contains(l.adapter.id()))
             .map(|(p, _)| p.clone())
             .collect();
         *lock(&self.inner.adapters) = adapters;
-        let mut agents = lock(&self.inner.agents);
         let mut updates = Vec::new();
         for pane in gone {
             if agents.remove(&pane).is_some() {
@@ -1015,9 +1011,9 @@ impl Runtime {
     /// Applies a hook event to the pane's agent and tells the UI when it shows differently.
     /// Returns the replies and touched files the event carries.
     fn hook_agent(&self, pane: &str, event: &serde_json::Value) -> Vec<AgentEvent> {
-        // Lock order: adapters are copied out before agents is taken.
-        let adapters = lock(&self.inner.adapters).clone();
+        // Lock order: agents, then adapters (see `set_adapters`).
         let mut agents = lock(&self.inner.agents);
+        let adapters = lock(&self.inner.adapters).clone();
         let mut live = agents.remove(pane);
         let step = agent_step(&mut live, &adapters, event);
         let changed = step.as_ref().map(|(c, _)| *c);

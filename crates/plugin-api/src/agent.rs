@@ -73,6 +73,8 @@ pub enum AgentEvent {
         session: Option<String>,
         cwd: Option<String>,
     },
+    /// The session a reboot resumes in this pane; `None` when the session ended.
+    Session(Option<String>),
 }
 
 /// One coding tool (Strategy, D2). The runtime asks each adapter whether a hook event is its
@@ -86,7 +88,7 @@ pub trait AgentAdapter: Send + Sync {
     fn on_hook(&self, agent: Option<Agent>, event: &Value) -> Option<Agent>;
     /// One transcript line read while the agent runs or waits. True when the state changed.
     fn on_line(&self, agent: &mut Agent, line: &[u8]) -> bool;
-    /// Replies and touched files in a hook event.
+    /// Replies, touched files and the pane's session in a hook event.
     fn events(&self, event: &Value) -> Vec<AgentEvent>;
     /// The line that resumes `session` in a shell, typed without Enter by the caller.
     fn resume_command(&self, session: &str) -> Option<String>;
