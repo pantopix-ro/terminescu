@@ -178,6 +178,29 @@ const fakeGit = (): FakePlugin => ({
       if (!answers?.changes) throw new Error("the pane is not in a git repository");
       return answers.changes;
     }
+    if (method === "settings" || method === "setSetting") {
+      const KEY = "terminescu.fakeGit.settings";
+      const kept = JSON.parse(localStorage.getItem(KEY) ?? "{}") as { worktreeFolder?: string | null; github?: boolean };
+      if (method === "setSetting") {
+        const { key, value } = args as { key: string; value: unknown };
+        if (key === "worktreeFolder") {
+          const v = typeof value === "string" ? value.trim() : "";
+          if (v && !(v === "~" || v.startsWith("~/") || v.startsWith("/"))) throw new Error("the folder is a full path, or starts with ~/");
+          kept.worktreeFolder = v || null;
+        } else if (key === "github") kept.github = value === true;
+        else throw new Error(`no setting ${key}`);
+        localStorage.setItem(KEY, JSON.stringify(kept));
+        if (key === "github") host.pluginEmit("git", "github", { on: !!github && kept.github !== false });
+      }
+      const on = !!github && kept.github !== false;
+      return {
+        worktreeFolder: kept.worktreeFolder ?? null,
+        github: kept.github !== false,
+        githubOn: on,
+        githubOff: on ? null : kept.github === false ? "GitHub is off in Settings" : "gh is not installed",
+        version: "2.47.0",
+      };
+    }
     if (method === "status") return { version: "2.47.0", stopped: null, github: !!github, githubOff: github ? null : "gh is not installed" };
     if (method === "facts") {
       repo();

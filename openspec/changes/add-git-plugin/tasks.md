@@ -34,7 +34,7 @@
       "closing a worktree row with changes asks twice".
 - [x] 3.4 GitHub items: "Open pull request", "Check out pull request as a row…". Verify:
       `e2e/git.spec.ts` with and without `gh`.
-- [ ] 3.5 Settings › Git: worktree location, diff mode, GitHub switch. Verify:
+- [x] 3.5 Settings › Git: worktree location, diff mode, GitHub switch. Verify:
       `e2e/settings.spec.ts` "the worktree folder setting persists".
 
 ## 4. Gate

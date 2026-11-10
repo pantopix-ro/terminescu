@@ -789,6 +789,57 @@ impl GitPlugin {
         Ok(json!({ "worktree": worktree, "repo": mark.get("repo"), "changed": changed }))
     }
 
+    /// What Settings › Git shows: the worktree folder, the GitHub switch and whether `gh` is
+    /// on, with the reason when it is not.
+    fn settings(&self, cx: &dyn PluginCx) -> Value {
+        let folder = cx
+            .setting(WORKTREE_FOLDER)
+            .and_then(|v| v.as_str().map(String::from));
+        let st = lock(&self.state);
+        json!({
+            "worktreeFolder": folder,
+            "github": cx.setting(GITHUB) != Some(Value::Bool(false)),
+            "githubOn": st.github,
+            "githubOff": st.github_off,
+            "version": st.version,
+        })
+    }
+
+    /// Saves one setting from Settings › Git and answers the settings as they now are. A blank
+    /// folder puts worktrees next to the repository again; GitHub on or off checks `gh` again.
+    fn set_setting(&self, args: &Value, cx: &dyn PluginCx) -> Result<Value, PluginError> {
+        match arg(args, "key")? {
+            WORKTREE_FOLDER => {
+                let folder = match args.get("value") {
+                    None | Some(Value::Null) => None,
+                    Some(Value::String(s)) if s.trim().is_empty() => None,
+                    Some(Value::String(s)) => {
+                        let s = s.trim();
+                        if !(s == "~" || s.starts_with("~/") || Path::new(s).is_absolute()) {
+                            return Err(PluginError::BadArgs(
+                                "the folder is a full path, or starts with ~/".into(),
+                            ));
+                        }
+                        Some(json!(s))
+                    }
+                    Some(_) => return Err(PluginError::BadArgs("the folder is text".into())),
+                };
+                cx.set_setting(WORKTREE_FOLDER, folder)?;
+            }
+            GITHUB => {
+                let on = args
+                    .get("value")
+                    .and_then(Value::as_bool)
+                    .ok_or_else(|| PluginError::BadArgs("github is true or false".into()))?;
+                // On is the default, so it is kept as no setting at all.
+                cx.set_setting(GITHUB, (!on).then_some(json!(false)))?;
+                self.set_github(cx);
+            }
+            other => return Err(PluginError::BadArgs(format!("no setting {other}"))),
+        }
+        Ok(self.settings(cx))
+    }
+
     /// Only for a row this plugin marked, never with a branch delete.
     fn worktree_remove(&self, args: &Value, cx: &dyn PluginCx) -> Result<Value, PluginError> {
         let row = arg(args, "row")?;
@@ -1030,6 +1081,8 @@ impl Plugin for GitPlugin {
             "worktreeRemove" => self.worktree_remove(&args, cx),
             "openWorktrees" => self.open_worktrees(&args, cx),
             "rowWorktree" => self.row_worktree(&args, cx),
+            "settings" => Ok(self.settings(cx)),
+            "setSetting" => self.set_setting(&args, cx),
             other => Err(PluginError::UnknownMethod(other.into())),
         }
     }

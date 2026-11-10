@@ -160,3 +160,31 @@ test("a command deleted in Settings comes back with Undo", async ({ page }) => {
   await expect(dialog).toBeVisible();
   await expect(row).toHaveCount(1);
 });
+
+test("the worktree folder setting persists", async ({ page }) => {
+  // add-git-plugin 3.5: Settings › Git keeps the folder through a reload, refuses a relative path
+  // and switches the diff layout on the key the diff tab uses.
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/?plugins=git");
+  await expect(page.locator(".term-pane")).toHaveCount(1);
+  const git = await openSettings(page, "Plugins");
+  const folder = git.getByLabel("Worktree folder");
+  await folder.fill("worktrees");
+  await folder.press("Enter");
+  await expect(git.getByRole("alert")).toHaveText("the folder is a full path, or starts with ~/");
+  await folder.fill("~/worktrees");
+  await folder.press("Enter");
+  await expect(git.getByRole("alert")).toHaveCount(0);
+  await expect(git.locator(".git-settings")).toContainText("~/worktrees/<repo>/<branch>");
+  await git.getByRole("radio", { name: /Unified/ }).check();
+  await expect(git.locator(".git-github-state")).toHaveText("off: gh is not installed");
+
+  await page.reload();
+  await expect(page.locator(".term-pane")).toHaveCount(1);
+  const again = await openSettings(page, "Plugins");
+  await expect(again.getByLabel("Worktree folder")).toHaveValue("~/worktrees");
+  await expect(again.getByRole("radio", { name: /Unified/ })).toBeChecked();
+  await again.getByLabel("Worktree folder").fill("");
+  await again.getByLabel("Worktree folder").blur();
+  await expect(again.locator(".git-settings")).toContainText("<repo>-<branch> beside the repository");
+});

@@ -117,7 +117,12 @@ impl PluginCx for Cx {
     fn setting(&self, key: &str) -> Option<Value> {
         self.settings.lock().unwrap().get(key).cloned()
     }
-    fn set_setting(&self, _: &str, _: Option<Value>) -> Result<(), PluginError> {
+    fn set_setting(&self, key: &str, value: Option<Value>) -> Result<(), PluginError> {
+        let mut settings = self.settings.lock().unwrap();
+        match value {
+            Some(v) => settings.insert(key.into(), v),
+            None => settings.remove(key),
+        };
         Ok(())
     }
     fn row_data(&self, side_tab: &str, key: &str) -> Option<Value> {
@@ -984,4 +989,60 @@ fn the_github_setting_turns_the_part_off() {
         .map(|(_, p)| p["on"].clone())
         .collect();
     assert_eq!(told, [json!(true), json!(false)]);
+}
+
+#[test]
+fn settings_keep_the_worktree_folder_and_switch_github() {
+    let forge = Arc::new(FakeForge::default());
+    let (plugin, _, cx) = with_forge(forge);
+    let got = plugin.call("settings", Value::Null, &cx).unwrap();
+    assert_eq!(
+        (&got["worktreeFolder"], &got["github"], &got["githubOn"]),
+        (&Value::Null, &json!(true), &json!(true))
+    );
+    let set = |key: &str, value: Value| {
+        plugin.call("setSetting", json!({ "key": key, "value": value }), &cx)
+    };
+    let got = set(WORKTREE_FOLDER, json!(" ~/worktrees ")).unwrap();
+    assert_eq!(got["worktreeFolder"], json!("~/worktrees"));
+    assert!(matches!(
+        set(WORKTREE_FOLDER, json!("worktrees")),
+        Err(PluginError::BadArgs(_))
+    ));
+    assert_eq!(
+        cx.setting(WORKTREE_FOLDER),
+        Some(json!("~/worktrees")),
+        "a refused folder keeps the last one"
+    );
+    let got = set(WORKTREE_FOLDER, json!("")).unwrap();
+    assert_eq!(got["worktreeFolder"], Value::Null);
+    assert_eq!(cx.setting(WORKTREE_FOLDER), None);
+    // GitHub off: kept as false, the part goes off at once and the UI half hears it.
+    let got = set("github", json!(false)).unwrap();
+    assert_eq!(
+        (&got["github"], &got["githubOn"]),
+        (&json!(false), &json!(false))
+    );
+    assert_eq!(got["githubOff"], json!("GitHub is off in Settings"));
+    let last = |cx: &Cx| {
+        let emits = cx.emits.lock().unwrap();
+        emits
+            .iter()
+            .rev()
+            .find(|(e, _)| e == "github")
+            .map(|(_, p)| p["on"].clone())
+    };
+    assert_eq!(last(&cx), Some(json!(false)));
+    let got = set("github", json!(true)).unwrap();
+    assert_eq!(got["githubOn"], json!(true));
+    assert_eq!(
+        cx.setting("github"),
+        None,
+        "on is the default, kept as nothing"
+    );
+    assert_eq!(last(&cx), Some(json!(true)));
+    assert!(matches!(
+        set("colour", json!("red")),
+        Err(PluginError::BadArgs(_))
+    ));
 }

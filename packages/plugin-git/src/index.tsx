@@ -1,6 +1,6 @@
 // The git plugin's UI half (add-git-plugin group 3): branch and pull request chips on tabs and
-// rows, the Changes section, the diff tab and worktree rows. Everything it shows comes from its
-// Rust half.
+// rows, the Changes section, the diff tab, worktree rows, the GitHub items and Settings › Git.
+// Everything it shows comes from its Rust half.
 
 import { definePlugin } from "@terminescu/plugin-api";
 import { ChangesSection } from "./ChangesSection";
@@ -8,6 +8,7 @@ import { rowChips, tabChips } from "./chips";
 import { DIFF_KIND, DiffView } from "./DiffView";
 import { checkOutPullRequest, githubFlags, openPullRequest } from "./github";
 import { loadMode, saveMode, toggled } from "./mode";
+import { SettingsPage } from "./SettingsPage";
 import { beforeRowClose, newWorktreeRow, openWorktreeRows } from "./worktree";
 import "./git.css";
 
@@ -15,6 +16,7 @@ export { ChangesSection, markOf, type Change, type ChangesAnswer } from "./Chang
 export { MAX_BRANCH, rowChips, shortBranch, shortenMiddle, tabChips } from "./chips";
 export { baseNote, DIFF_KIND, DiffView, diffView, parseSource, type BaseText, type DiffSource } from "./DiffView";
 export { checkOutPullRequest, GITHUB, githubFlags, openPullRequest, type PullRequest } from "./github";
+export { SettingsPage, type GitSettings } from "./SettingsPage";
 export { beforeRowClose, newWorktreeRow, openWorktreeRows } from "./worktree";
 export { loadMode, MODE_KEY, parseMode, saveMode, toggled, type DiffMode } from "./mode";
 
@@ -34,4 +36,5 @@ export const git = definePlugin({
   ],
   beforeRowClose,
   flags: githubFlags,
+  settingsPage: SettingsPage,
 });
