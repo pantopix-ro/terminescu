@@ -105,10 +105,10 @@ test("dragging a split border resizes on release and stops at the minimum", asyn
 });
 
 // Task 8.79: a new terminal sits at the selected row's level. Beside a one-tab row it is a row of
-// its own right below it; in a folder it joins the folder. ⌘N always adds a row at the end.
+// its own right below it; in a folder it joins the folder. ⌘⇧N always adds a row at the end.
 test("⌘T and the sidebar's + add a terminal at the selected row's level", async ({ page }) => {
   await start(page);
-  await page.keyboard.press("Meta+n");
+  await page.keyboard.press("Meta+Shift+KeyN");
   await expect.poll(() => sideIds(page)).toHaveLength(2);
   const [first, second] = await sideIds(page);
   await page.locator(`[data-side="${first}"]`).click();
@@ -157,14 +157,26 @@ test("⌘T and the sidebar's + add a terminal at the selected row's level", asyn
   await expect(page.locator(".ao-st-kid")).toHaveCount(6);
   await expect.poll(() => sideIds(page)).toEqual([first, second]);
 
-  // ⌘N adds a row at the end.
-  await page.keyboard.press("Meta+n");
+  // ⌘⇧N adds a row at the end.
+  await page.keyboard.press("Meta+Shift+KeyN");
   await expect.poll(() => sideIds(page)).toHaveLength(3);
   expect((await sideIds(page)).slice(0, 2)).toEqual([first, second]);
   await expect(page.locator(".ao-st").last()).toHaveClass(/active/);
 });
 
-test("⌘T, ⌘N, ⌘1-⌘9 and ⌃⌘1-⌃⌘9 select; a side tab with tabs lists them", async ({ page }) => {
+// Task 8.81: ⌘N opens a window with one new tab; this window keeps its rows.
+test("⌘N opens a new window with one new tab", async ({ page }) => {
+  await start(page);
+  const before = (await mock(page)).ws.windows[0];
+  await page.keyboard.press("Meta+n");
+  await expect.poll(async () => (await mock(page)).ws.windows.length).toBe(2);
+  const ws = (await mock(page)).ws;
+  expect(ws.windows[0]).toEqual(before);
+  expect(ws.windows[1].sideTabs).toHaveLength(1);
+  expect(ws.windows[1].sideTabs[0].tabs).toHaveLength(1);
+});
+
+test("⌘T, ⌘⇧N, ⌘1-⌘9 and ⌃⌘1-⌃⌘9 select; a side tab with tabs lists them", async ({ page }) => {
   await start(page);
   await addTab(page);
   await addTab(page);
@@ -181,7 +193,7 @@ test("⌘T, ⌘N, ⌘1-⌘9 and ⌃⌘1-⌃⌘9 select; a side tab with tabs lis
   await page.keyboard.press("Meta+2");
   await expect(page.locator(".ao-tabs .ao-tab.active")).toHaveAttribute("data-tab", ids[1]!);
 
-  await page.keyboard.press("Meta+n");
+  await page.keyboard.press("Meta+Shift+KeyN");
   await expect(page.locator(".ao-st")).toHaveCount(2);
   await expect(page.locator(".ao-st").last()).toHaveClass(/active/);
   // The other folder stays open (task 8.57); its chevron closes it and opens it again.
@@ -325,7 +337,7 @@ const varsOf = (page: Page, side: string) =>
 
 test("dropping a side tab onto another merges them; without a clash, a toast offers undo", async ({ page }) => {
   await start(page);
-  await page.keyboard.press("Meta+n");
+  await page.keyboard.press("Meta+Shift+KeyN");
   await expect.poll(() => sideIds(page)).toHaveLength(2);
   const [first, second] = await sideIds(page);
   await setVar(page, first!, "repo", "acme/api");
@@ -344,7 +356,7 @@ test("dropping a side tab onto another merges them; without a clash, a toast off
 
 test("a clash asks: keep both renames the source's variable", async ({ page }) => {
   await start(page);
-  await page.keyboard.press("Meta+n");
+  await page.keyboard.press("Meta+Shift+KeyN");
   await expect.poll(() => sideIds(page)).toHaveLength(2);
   const [first, second] = await sideIds(page);
   await setVar(page, first!, "branch", "feature/PROJ-482");
@@ -399,7 +411,7 @@ test("a tab dropped outside every window moves to a new window; the palette does
   await expect.poll(() => tabIds(page)).toEqual([b, a]);
 
   await page.keyboard.press("Meta+p");
-  await page.locator(".palette-item", { hasText: "New window" }).click();
+  await page.locator(".palette-item", { hasText: /New window/ }).click();
   await expect.poll(() => tabIds(page)).toHaveLength(1);
   ws = (await mock(page)).ws;
   expect(ws.windows).toHaveLength(3);
@@ -411,7 +423,7 @@ test("a tab from another window lights the row under it and drops into it; its w
   await expect.poll(() => tabIds(page)).toHaveLength(2);
   const [a, b] = await tabIds(page);
   // Two side tabs here; tab b goes to a second window.
-  await page.keyboard.press("Meta+n");
+  await page.keyboard.press("Meta+Shift+KeyN");
   await expect(page.locator(".ao-st")).toHaveCount(2);
   await page.evaluate((b) => (window as any).__terminescu.host.send({ type: "MoveTabToNewWindow", tabId: b }), b);
   await page.keyboard.press("Control+Meta+1");
@@ -499,7 +511,7 @@ test("closing a tab that runs a program asks; Cancel keeps it, Close ends it", a
 
 test("a removal still on its toast is done before a merge, so the merge does not bring it along", async ({ page }) => {
   await start(page);
-  await page.keyboard.press("Meta+n");
+  await page.keyboard.press("Meta+Shift+KeyN");
   await expect.poll(() => sideIds(page)).toHaveLength(2);
   const [first, second] = await sideIds(page);
   await setVar(page, second!, "stale", "old");

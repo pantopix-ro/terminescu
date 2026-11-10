@@ -247,6 +247,8 @@ impl DockSide {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all_fields = "camelCase")]
 pub enum Command {
+    /// A new window holding one new side tab with one new tab (task 8.81).
+    CreateWindow,
     /// A new side tab with one new tab, at `index` in the window's sidebar (end when absent).
     CreateSideTab {
         window_id: Id,
@@ -854,6 +856,20 @@ impl Core {
             })
         };
         Ok(match cmd {
+            Command::CreateWindow => {
+                let window_id = (self.new_id)();
+                let side_tab = self.new_side_tab();
+                vec![
+                    Patch::WindowCreated {
+                        window_id: window_id.clone(),
+                    },
+                    Patch::SideTabCreated {
+                        window_id,
+                        index: 0,
+                        side_tab,
+                    },
+                ]
+            }
             Command::CreateSideTab { window_id, index } => {
                 let w = ws
                     .windows
@@ -1607,6 +1623,19 @@ mod tests {
             .unwrap();
         assert_eq!(b.rev, 2);
         assert_eq!(shape(&c), vec![vec![vec!["id2", "id5"]]]);
+    }
+
+    #[test]
+    fn create_window_opens_a_window_with_one_new_tab() {
+        let mut c = core();
+        let before = c.workspace().windows[0].clone();
+        c.handle(Command::CreateWindow).unwrap();
+        let ws = c.workspace();
+        assert_eq!(ws.windows.len(), 2);
+        assert_eq!(ws.windows[0], before, "the first window keeps its rows");
+        let w = &ws.windows[1];
+        assert_eq!(w.side_tabs.len(), 1);
+        assert_eq!(w.side_tabs[0].tabs.len(), 1);
     }
 
     #[test]

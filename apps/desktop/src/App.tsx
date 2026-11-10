@@ -888,6 +888,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     switch (id) {
       case "new_tab":
         return newBeside();
+      // ⌘N opens a window with one new tab (task 8.81).
+      case "new_window":
+        return void send({ type: "CreateWindow" });
       case "new_side_tab":
         followNewSide();
         return void send({ type: "CreateSideTab", windowId });
@@ -1564,7 +1567,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const menuItems = (target: MenuTarget): MenuEntry[] => {
     if (target.kind === "list") {
       return [
-        { id: "new-side", label: "New side tab", hint: "⌘N", run: () => act("new_side_tab") },
+        { id: "new-side", label: "New side tab", hint: "⇧⌘N", run: () => act("new_side_tab") },
+        { id: "new-window", label: "New window", hint: "⌘N", run: () => act("new_window") },
         "-",
         {
           id: "sort",
@@ -1580,7 +1584,15 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       return [
         { id: "rename", label: "Rename…", run: () => setRenaming({ id: side.id, in: "list" }) },
         { id: "icon", label: "Change icon…", run: () => menu && setPicking({ id: side.id, x: menu.x, y: menu.y }) },
-        { id: "new-tab", label: "New tab", run: () => void send({ type: "CreateTab", sideTabId: side.id }) },
+        // Adds into this row, so on a one-tab row it makes a folder (task 8.81).
+        {
+          id: "new-tab",
+          label: side.tabs.length > 1 ? "Add tab to this folder" : "Add tab to this row",
+          run: () => {
+            followNewTab(side.id);
+            void send({ type: "CreateTab", sideTabId: side.id });
+          },
+        },
         { id: "status", label: "Edit status…", run: () => editStatus(side.id) },
         "-",
         {

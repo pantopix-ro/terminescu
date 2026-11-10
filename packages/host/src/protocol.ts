@@ -144,6 +144,7 @@ export interface Workspace {
 export type DockSide = "left" | "right" | "up" | "down";
 
 export type Command =
+  | { type: "CreateWindow" }
   | { type: "CreateSideTab"; windowId: Id; index?: number | null }
   | { type: "CreateTab"; sideTabId: Id }
   | { type: "CloseTab"; tabId: Id }

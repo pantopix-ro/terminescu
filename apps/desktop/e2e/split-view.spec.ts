@@ -23,7 +23,7 @@ const tabOf = async (page: Page, side: string) => (await firstTab(page, side)).i
 
 async function addRow(page: Page) {
   const before = (await sideIds(page)).length;
-  await page.keyboard.press("Meta+n");
+  await page.keyboard.press("Meta+Shift+KeyN");
   await expect.poll(async () => (await sideIds(page)).length).toBe(before + 1);
   return (await sideIds(page)).at(-1)!;
 }

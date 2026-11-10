@@ -24,7 +24,7 @@ test("the status line counts waiting sessions and ⌘⇧A jumps to the oldest", 
   await page.locator(".term-pane").first().click();
   await page.keyboard.press("Meta+D");
   await expect(page.locator(".term-pane")).toHaveCount(2);
-  await page.keyboard.press("Meta+N");
+  await page.keyboard.press("Meta+Shift+KeyN");
   await expect(page.locator(".ao-st[data-side]")).toHaveCount(2);
   const [first, second] = await panes(page);
   const [a, b] = first as [string, string];

@@ -760,6 +760,10 @@ buffers once per sheet.
       into the selected folder, or a text row right below a one-tab row. A row dropped on a
       row puts its tabs last in the folder, opens the folder and selects the dropped tab. The
       sidebar's `+` reads "New terminal". Verify: `windows.spec.ts`, `text.spec.ts`.
+- [x] 8.81 New window. `⌘N` opens a window with one new terminal tab (core `CreateWindow`);
+      New Side Tab moves to `⌘⇧N`. A row's edit dialog says "Add tab to this row" or "Add
+      tab to this folder", and that tab is selected. Verify: core `create_window` test,
+      `windows.spec.ts`, `settings.spec.ts`.
 - [ ] 8.72 Sidebar drags, part 3. A row dragged between rows reorders (hand-sorted only), and
       out of every window opens a new one; the cross-window drag carries a row, not only a tab.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with

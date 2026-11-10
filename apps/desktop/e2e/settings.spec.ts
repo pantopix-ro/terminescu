@@ -104,6 +104,7 @@ test("Keys: rebind New Side Tab to ⌘J, refuse ⌘T as a clash, reset", async (
 
   const sides = page.locator(".ao-st");
   await page.locator(".term-pane").first().click();
+  // ⌘N opens a window now (task 8.81); this one keeps its one row.
   await page.keyboard.press("Meta+N");
   await expect(sides).toHaveCount(1);
   await page.keyboard.press("Meta+J");
@@ -111,7 +112,7 @@ test("Keys: rebind New Side Tab to ⌘J, refuse ⌘T as a clash, reset", async (
 
   const again = await openSettings(page, "Keys");
   await again.getByRole("button", { name: "Reset New Side Tab" }).click();
-  await expect(again.getByRole("button", { name: "Shortcut for New Side Tab" })).toHaveText("⌘N");
+  await expect(again.getByRole("button", { name: "Shortcut for New Side Tab" })).toHaveText("⇧⌘N");
   await expect.poll(() => mock(page, "keyBindings")).toEqual({});
 });
 

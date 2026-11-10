@@ -33,7 +33,7 @@ test("a selected one-tab row reaches the panes, the others keep a gap", async ({
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/?top-tabs");
   await page.locator(".term-pane").first().click();
-  await page.keyboard.press("Meta+n");
+  await page.keyboard.press("Meta+Shift+KeyN");
   const rows = page.locator(".ao-st");
   await expect(rows).toHaveCount(2);
   const edge = await sideRight(page);
@@ -75,7 +75,7 @@ test("a selected row's status and chord stay in line with the other rows", async
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/?top-tabs");
   await page.locator(".term-pane").first().click();
-  await page.keyboard.press("Meta+n");
+  await page.keyboard.press("Meta+Shift+KeyN");
   for (let i = 0; i < 2; i++) await page.getByRole("button", { name: "New tab", exact: true }).click();
   const right = async (l: Locator) => {
     const b = await box(l);

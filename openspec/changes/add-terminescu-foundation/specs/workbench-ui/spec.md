@@ -16,7 +16,7 @@ same tokens. Amber SHALL mean needs you, focus and drop targets only.
 
 ### Requirement: Keyboard model
 Plain keys SHALL always go to the focused pane. App actions SHALL be `⌘` chords: `⌘P`, `⌘K`, `⌘T`,
-`⌘N`, `⌘D`, `⌘⇧D`, `⌘W`, `⌘1`-`⌘9`, `⌃⌘1`-`⌃⌘9`, `⌘I`, `⌘E`, `⌘⇧P`, `⌘⇧S`, `⌘⇧A`, `⌘\`,
+`⌘N`, `⌘⇧N`, `⌘D`, `⌘⇧D`, `⌘W`, `⌘1`-`⌘9`, `⌃⌘1`-`⌃⌘9`, `⌘I`, `⌘E`, `⌘⇧P`, `⌘⇧S`, `⌘⇧A`, `⌘\`,
 `⌥⌘T`, `⌘O`. Each SHALL be a native menu item, so the chord wins over the webview and over the
 text editor. Every shortcut SHALL be editable in Settings › Keys, which SHALL flag conflicts.
 

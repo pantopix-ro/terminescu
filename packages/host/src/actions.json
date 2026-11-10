@@ -50,10 +50,16 @@
    "accel": "Cmd+T"
   },
   {
+   "id": "new_window",
+   "label": "New Window",
+   "menu": "Shell",
+   "accel": "Cmd+N"
+  },
+  {
    "id": "new_side_tab",
    "label": "New Side Tab",
    "menu": "Shell",
-   "accel": "Cmd+N"
+   "accel": "Cmd+Shift+N"
   },
   {
    "id": "split_right",

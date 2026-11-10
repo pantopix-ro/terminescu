@@ -8,7 +8,7 @@ test("new side tabs open with different neon edges", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/?top-tabs");
   await page.locator(".term-pane").first().click();
-  for (let i = 0; i < 3; i++) await page.keyboard.press("Meta+n");
+  for (let i = 0; i < 3; i++) await page.keyboard.press("Meta+Shift+KeyN");
   await expect(page.locator(".ao-st")).toHaveCount(4);
 
   const accents: string[] = (await workspace(page)).windows[0].sideTabs.map((s: { accent?: string }) => s.accent);
@@ -72,7 +72,7 @@ test("a side tab's tabs show their neons on their icons and squares", async ({ p
     await expect(page.locator(`.ao-tab[data-tab="${side.tabs[i].id}"] .ao-i`)).toHaveAttribute("style", `color: var(--neon-${neons[i]});`);
   }
   // A one-tab row is one line with no squares; its icon edge wears its tab's neon (task 8.77).
-  await page.keyboard.press("Meta+n");
+  await page.keyboard.press("Meta+Shift+KeyN");
   const single = page.locator(".ao-st").nth(1);
   await expect(single).toHaveClass(/single/);
   await expect(single.locator(".ao-cell")).toHaveCount(0);
