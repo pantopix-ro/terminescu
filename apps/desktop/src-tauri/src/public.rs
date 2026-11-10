@@ -4,7 +4,7 @@
 use crate::crashlog;
 use tauri::{AppHandle, Manager};
 use terminescu_core::feedback::{self, AppInfo, Route};
-use terminescu_core::{hook_install, uninstall};
+use terminescu_core::uninstall;
 use terminescu_protocol::paths;
 
 /// The menu items this module answers, in the app menu and Help. They have no chords, so they
@@ -62,12 +62,15 @@ fn open(args: &[&str]) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-/// Removes the helpers in D9's order: the hook, the daemon and its shells (the person agreed
+/// Removes the helpers in D9's order: the plugins' helpers (the Claude Code hook), the daemon and its shells (the person agreed
 /// in the dialog), the copied binaries and sockets, then the data when asked. The app quits
 /// with `app_quit` after the last note.
 #[tauri::command]
 pub fn uninstall_helpers(app: AppHandle, delete_data: bool) -> Result<(), String> {
-    hook_install::uninstall(&hook_install::user_settings()).map_err(|e| e.to_string())?;
+    // Every plugin's helpers, on or off, so no tool keeps calling a missing program.
+    for h in crate::plugins::helpers() {
+        h.uninstall().map_err(|e| e.to_string())?;
+    }
     // Stop reconnecting first: after the kill below, a reconnect would copy the daemon back
     // into bin/ and start it again, and it would outlive the uninstall.
     if let Some(state) = app.try_state::<crate::AppState>() {

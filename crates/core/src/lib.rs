@@ -1,7 +1,7 @@
 //! Terminescu core: the single source of truth for windows, side tabs, tabs and their
 //! contexts (D6), persisted in SQLite (D18).
 
-mod atomic;
+pub(crate) use terminescu_plugin_api::atomic;
 pub mod attention;
 pub mod closed;
 pub mod commands;
@@ -14,7 +14,7 @@ pub mod documents;
 pub mod extract;
 pub mod feedback;
 pub mod files;
-pub mod hook_install;
+pub mod helpers;
 pub mod keys;
 pub mod labels;
 pub mod launcher;

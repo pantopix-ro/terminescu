@@ -716,6 +716,7 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
     | { kind: "row"; windowId: string; index: number; sideTab: SideTab }
     | { kind: "tab"; windowId: string; sideTabId: string; index: number; tab: Tab };
   const closedList: ClosedEntry[] = [];
+  const HOOK_HELP = "Claude Code then tells Terminescu when a session starts, waits or ends. Without it the terminals work, but Claude status and the transcript pane stay off.";
   // As closed.rs: a tab comes back with its terminal panes only, none offering a resume.
   const freshTab = (t: Tab): Tab | undefined => {
     let layout: Tab["layout"] | null | undefined = structuredClone(t.layout);
@@ -1021,6 +1022,10 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
     },
     async plugins() {
       return pluginInfos();
+    },
+    async helpers() {
+      // The browser build plays the app with the Claude plugin in it.
+      return [{ id: "hook", label: "Claude Code hook", description: HOOK_HELP, installed: claudeHook }];
     },
     async setPluginEnabled(plugin, enabled) {
       if (!pluginOn.has(plugin)) throw new Error(`no plugin ${plugin}`);

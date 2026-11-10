@@ -1,6 +1,7 @@
 import type { ActionDef, KeyBindings } from "./keys";
 import type {
   Decoration,
+  HelperInfo,
   PluginInfo,
   TerminalProfile,
   AgentUpdate,
@@ -303,6 +304,8 @@ export interface Host {
   onPluginEvent(plugin: string, listener: (event: string, payload: unknown) => void): Promise<() => void>;
   /** The plugins the app is built with, in plugin order. */
   plugins(): Promise<PluginInfo[]>;
+  /** Every built-in plugin's helpers, on or off; one consent (`settings.hook`) covers them. */
+  helpers(): Promise<HelperInfo[]>;
   /** Switches a plugin; resolves with the new list. */
   setPluginEnabled(plugin: string, enabled: boolean): Promise<PluginInfo[]>;
   /** A plugin switched, or paused after errors. */

@@ -3,13 +3,14 @@
 //! folder. The core drives agents through [`ClaudeAdapter`] and never names Claude.
 
 pub mod agent;
+pub mod hook;
 pub mod transcript;
 
 use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::Arc;
 use terminescu_plugin_api::{
-    Agent, AgentAdapter, AgentEvent, CoreEvent, Manifest, Plugin, PluginCx, PluginError,
+    Agent, AgentAdapter, AgentEvent, CoreEvent, Helper, Manifest, Plugin, PluginCx, PluginError,
     is_session_id,
 };
 
@@ -58,9 +59,65 @@ impl AgentAdapter for ClaudeAdapter {
     }
 }
 
-/// The plugin: the adapter now; transcripts, helpers and its UI calls follow (tasks 3.3, 3.4).
-#[derive(Debug, Default)]
-pub struct ClaudePlugin;
+/// `terminescu hook` in Claude Code's user settings (D34, D36): the first-run entry and what
+/// Uninstall Helpers takes out.
+#[derive(Debug, Clone)]
+pub struct ClaudeHook {
+    /// Claude Code's `settings.json`.
+    pub settings: PathBuf,
+    /// The `terminescu` CLI the hook runs.
+    pub cli: PathBuf,
+}
+
+impl Helper for ClaudeHook {
+    fn id(&self) -> &'static str {
+        "hook"
+    }
+
+    fn label(&self) -> &'static str {
+        "Claude Code hook"
+    }
+
+    fn description(&self) -> &'static str {
+        "Claude Code then tells Terminescu when a session starts, waits or ends. Without it the \
+         terminals work, but Claude status and the transcript pane stay off."
+    }
+
+    fn installed(&self) -> bool {
+        hook::present(&self.settings)
+    }
+
+    /// Idempotent: an entry for an older CLI path moves to this one.
+    fn install(&self) -> Result<(), PluginError> {
+        hook::install(&self.settings, &self.cli)
+            .map(drop)
+            .map_err(|e| PluginError::Failed(e.to_string()))
+    }
+
+    fn uninstall(&self) -> Result<(), PluginError> {
+        hook::uninstall(&self.settings)
+            .map(drop)
+            .map_err(|e| PluginError::Failed(e.to_string()))
+    }
+}
+
+/// The plugin: the adapter and the hook; its UI calls follow (task 3.4).
+#[derive(Debug, Clone)]
+pub struct ClaudePlugin {
+    hook: ClaudeHook,
+}
+
+impl ClaudePlugin {
+    /// The hook goes in Claude Code's user settings and runs `cli`.
+    pub fn new(cli: PathBuf) -> Self {
+        Self {
+            hook: ClaudeHook {
+                settings: hook::user_settings(),
+                cli,
+            },
+        }
+    }
+}
 
 impl Plugin for ClaudePlugin {
     fn manifest(&self) -> Manifest {
@@ -75,6 +132,10 @@ impl Plugin for ClaudePlugin {
 
     fn call(&self, method: &str, _args: Value, _cx: &dyn PluginCx) -> Result<Value, PluginError> {
         Err(PluginError::UnknownMethod(method.into()))
+    }
+
+    fn helpers(&self) -> Vec<Arc<dyn Helper>> {
+        vec![Arc::new(self.hook.clone())]
     }
 
     fn agent_adapter(&self) -> Option<Arc<dyn AgentAdapter>> {

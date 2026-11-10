@@ -25,7 +25,6 @@ use terminescu_core::context;
 use terminescu_core::core_socket;
 use terminescu_core::daemon::DaemonClient;
 use terminescu_core::db::{Db, DbAccess};
-use terminescu_core::hook_install;
 use terminescu_core::keys;
 use terminescu_core::labels::PaneLabel;
 use terminescu_core::launcher;
@@ -549,17 +548,13 @@ fn settings_get(state: State<'_, AppState>) -> Result<settings::Settings, String
     settings::get(&lock(&state.db)).map_err(|e| e.to_string())
 }
 
-/// Adds or removes the Claude Code hook for a new answer; `Unasked` leaves the file alone.
+/// Adds or removes the plugins' helpers for a new answer; `Unasked` leaves them alone.
 fn apply_hook(consent: settings::HookConsent) -> Result<(), String> {
-    let file = hook_install::user_settings();
-    let done = match consent {
-        settings::HookConsent::On => {
-            hook_install::install(&file, &paths::bin_dir().join("terminescu"))
-        }
-        settings::HookConsent::Off => hook_install::uninstall(&file),
-        settings::HookConsent::Unasked => return Ok(()),
-    };
-    done.map(|_| ()).map_err(|e| e.to_string())
+    let failed = terminescu_core::helpers::apply(&plugins::helpers(), consent);
+    match failed.into_iter().next() {
+        Some((_, e)) => Err(e.to_string()),
+        None => Ok(()),
+    }
 }
 
 #[tauri::command]
@@ -1403,18 +1398,16 @@ fn sidecar(name: &str) -> std::io::Result<PathBuf> {
     Ok(path)
 }
 
-/// Installs the hook when the person agreed; an entry already in Claude Code's settings counts
-/// as consent and ends the first run, as on a Mac that had Terminescu before consent (D5, D6).
-fn hook_at_launch(db: &Arc<Mutex<Db>>, cli: &Path) {
+/// Installs the plugins' helpers when the person agreed; one already installed counts as
+/// consent and ends the first run, as on a Mac that had Terminescu before consent (D5, D6).
+fn hook_at_launch(db: &Arc<Mutex<Db>>) {
     let db = lock(db);
     let Ok(mut s) = settings::get(&db) else {
         return;
     };
-    let (now, done) = hook_install::at_launch(&hook_install::user_settings(), cli, s.hook);
-    match done {
-        Ok(true) => eprintln!("terminescu: Claude Code hooks installed"),
-        Ok(false) => {}
-        Err(e) => eprintln!("terminescu: Claude Code hooks not installed: {e}"),
+    let (now, failed) = terminescu_core::helpers::at_launch(&plugins::helpers(), s.hook);
+    for (id, e) in failed {
+        eprintln!("terminescu: helper {id} not installed: {e}");
     }
     if now != s.hook {
         s.hook = now;
@@ -1440,7 +1433,7 @@ fn start_runtime(
     match launcher::install_cli(&sidecar("terminescu")?, &bin) {
         // Claude Code runs the hook from the copy, whose path survives updates (D36), and only
         // once the person agreed (add-public-release D5).
-        Ok(cli) => hook_at_launch(&db, &cli),
+        Ok(_) => hook_at_launch(&db),
         Err(e) => eprintln!("terminescu: CLI copy failed: {e}"),
     }
     let run = paths::run_paths();
@@ -2154,6 +2147,7 @@ fn main() {
             edit::edit_command,
             plugins::plugin_call,
             plugins::plugin_menu,
+            plugins::helpers_list,
             plugins::plugin_row_selected,
             plugins::plugin_list,
             plugins::plugin_set_enabled,

@@ -13,7 +13,7 @@ use terminescu_core::runtime::Runtime;
 use terminescu_core::state::{Command, Id};
 use terminescu_core::{context, files, plugin_store};
 use terminescu_plugin_api::{
-    CoreEvent, Decoration, PaneInfo, Plugin, PluginCx, PluginError, PluginInfo, Target,
+    CoreEvent, Decoration, Helper, PaneInfo, Plugin, PluginCx, PluginError, PluginInfo, Target,
 };
 
 pub const DECORATIONS_EVENT: &str = "host://decorations";
@@ -50,7 +50,37 @@ pub fn menu_items(app: &AppHandle) -> Vec<MenuAction> {
 
 /// The plugins compiled in, in the order their decorators compose.
 fn registered() -> Vec<Arc<dyn Plugin>> {
-    vec![Arc::new(terminescu_plugin_claude::ClaudePlugin)]
+    let cli = crate::paths::bin_dir().join("terminescu");
+    vec![Arc::new(terminescu_plugin_claude::ClaudePlugin::new(cli))]
+}
+
+/// Every compiled-in plugin's helpers, on or off: the first run and Uninstall Helpers reach
+/// them all.
+pub fn helpers() -> Vec<Arc<dyn Helper>> {
+    registered().iter().flat_map(|p| p.helpers()).collect()
+}
+
+/// A helper as the first-run screen and Settings › Shell show it.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HelperInfo {
+    pub id: String,
+    pub label: String,
+    pub description: String,
+    pub installed: bool,
+}
+
+#[tauri::command]
+pub fn helpers_list() -> Vec<HelperInfo> {
+    helpers()
+        .iter()
+        .map(|h| HelperInfo {
+            id: h.id().into(),
+            label: h.label().into(),
+            description: h.description().into(),
+            installed: h.installed(),
+        })
+        .collect()
 }
 
 /// The runtime drives agents through the adapters of the plugins that are on (D2).

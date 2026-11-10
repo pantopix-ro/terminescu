@@ -4443,6 +4443,7 @@ dependencies = [
  "serde",
  "serde_json",
  "terminescu-plugin-api",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

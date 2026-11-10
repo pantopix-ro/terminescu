@@ -4,6 +4,7 @@
 //! The core never names a plugin.
 
 mod agent;
+pub mod atomic;
 mod decoration;
 mod tail;
 

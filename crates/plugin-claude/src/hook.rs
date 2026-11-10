@@ -167,22 +167,6 @@ pub fn install(path: &Path, cli: &Path) -> Result<bool, InstallError> {
     edit(path, |s| apply(s, &command))
 }
 
-/// The launch step (add-public-release D5): resolves the answer, where an entry already in the
-/// file counts as consent, and installs the hook only for `On`. Returns the resolved answer.
-pub fn at_launch(
-    path: &Path,
-    cli: &Path,
-    consent: crate::settings::HookConsent,
-) -> (crate::settings::HookConsent, Result<bool, InstallError>) {
-    let now = consent.at_launch(present(path));
-    let done = if now == crate::settings::HookConsent::On {
-        install(path, cli)
-    } else {
-        Ok(false)
-    };
-    (now, done)
-}
-
 /// Removes every Terminescu entry from the settings file at `path` and leaves the rest as it
 /// was; a missing file stays missing.
 pub fn uninstall(path: &Path) -> Result<bool, InstallError> {
@@ -227,7 +211,7 @@ fn edit(
     let mut text = serde_json::to_string_pretty(&settings).expect("a JSON map serializes");
     text.push('\n');
     // The settings may hold API keys: the temp file starts private and takes the file's mode.
-    crate::atomic::write(path, text.as_bytes())?;
+    terminescu_plugin_api::atomic::write(path, text.as_bytes())?;
     Ok(true)
 }
 
@@ -237,8 +221,18 @@ mod tests {
 
     const CLI: &str = "/Users/owner/Library/Application Support/Terminescu/bin/terminescu";
 
+    fn unique() -> u32 {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static NEXT: AtomicU32 = AtomicU32::new(0);
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    }
+
     fn temp() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("terminescu-hooks-{}", crate::new_id()));
+        let dir = std::env::temp_dir().join(format!(
+            "terminescu-hooks-{}-{}",
+            std::process::id(),
+            unique()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         dir.join("settings.json")
     }
@@ -385,31 +379,5 @@ mod tests {
         };
         assert!(!remove(map).unwrap());
         assert_eq!(empty, json!({ "hooks": {} }));
-    }
-
-    #[test]
-    fn hook_off_leaves_settings() {
-        use crate::settings::HookConsent;
-        let path = temp();
-        install(&path, Path::new("/old/place/terminescu")).unwrap();
-        let before = std::fs::read(&path).unwrap();
-        let (now, done) = at_launch(&path, Path::new(CLI), HookConsent::Off);
-        assert_eq!(now, HookConsent::Off);
-        assert!(!done.unwrap());
-        assert_eq!(std::fs::read(&path).unwrap(), before, "byte for byte");
-
-        let fresh = temp();
-        std::fs::write(&fresh, "{}\n").unwrap();
-        let (now, _) = at_launch(&fresh, Path::new(CLI), HookConsent::Unasked);
-        assert_eq!(now, HookConsent::Unasked);
-        assert_eq!(
-            std::fs::read_to_string(&fresh).unwrap(),
-            "{}\n",
-            "no consent, no edit"
-        );
-
-        let (now, done) = at_launch(&path, Path::new(CLI), HookConsent::Unasked);
-        assert_eq!(now, HookConsent::On, "an existing entry counts as consent");
-        assert!(done.unwrap(), "the entry moves to the current CLI");
     }
 }

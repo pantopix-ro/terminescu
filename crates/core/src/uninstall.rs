@@ -1,6 +1,6 @@
 //! Help › Uninstall Terminescu Helpers (add-public-release D9): the files Terminescu put outside
-//! its bundle. The hook comes out first (`hook_install::uninstall`), so a later failure never
-//! leaves Claude Code calling a missing program; the person's data goes only on request.
+//! its bundle. The plugins' helpers come out first, so a later failure never leaves another
+//! tool calling a missing program; the person's data goes only on request.
 
 use std::io;
 use std::path::{Path, PathBuf};

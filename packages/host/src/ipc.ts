@@ -6,6 +6,7 @@ import type { Host, PaneView } from "./host";
 import { ACTIONS, plusActionFor, withBindings, type KeyBindings } from "./keys";
 import type {
   Decoration,
+  HelperInfo,
   PluginInfo,
   TerminalProfile,
   AgentUpdate,
@@ -93,6 +94,7 @@ export function createIpcHost(): Host {
         if (e.payload.plugin === plugin) listener(e.payload.event, e.payload.payload);
       }),
     plugins: () => invoke<PluginInfo[]>("plugin_list"),
+    helpers: () => invoke<HelperInfo[]>("helpers_list"),
     setPluginEnabled: (plugin, enabled) => invoke<PluginInfo[]>("plugin_set_enabled", { plugin, enabled }),
     onPlugins: (listener) => listen<PluginInfo[]>(PLUGINS_EVENT, (e) => listener(e.payload)),
     decorations: () => invoke<Decoration[]>("decorations"),

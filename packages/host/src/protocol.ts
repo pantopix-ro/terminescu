@@ -803,6 +803,14 @@ export interface Decoration {
   tip?: string;
 }
 /** A plugin the app is built with, from `plugin_list`. */
+/** What a plugin puts in another tool's settings, as the hook (add-plugin-architecture 3.3). */
+export interface HelperInfo {
+  id: string;
+  label: string;
+  description: string;
+  installed: boolean;
+}
+
 export interface PluginInfo {
   id: string;
   name: string;

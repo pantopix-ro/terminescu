@@ -1,11 +1,27 @@
 // The public release's sheets (add-public-release): first run, About, Licenses, Privacy,
 // Feedback and Uninstall. Each opens over the window like the other sheets; Esc closes it.
 
-import { MAKER, MAKER_URL, PUBLIC_REPO, type AppInfo, type FeedbackRoute, type Host } from "@terminescu/host";
+import { MAKER, MAKER_URL, PUBLIC_REPO, type AppInfo, type FeedbackRoute, type HelperInfo, type Host } from "@terminescu/host";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { NOT_AFFILIATED, PRIVACY_POINTS } from "./privacy";
 
-type Api = Pick<Host, "appInfo" | "feedbackOpen" | "uninstallHelpers" | "appQuit" | "openUrl" | "settings" | "setSettings">;
+type Api = Pick<Host, "appInfo" | "feedbackOpen" | "uninstallHelpers" | "appQuit" | "openUrl" | "settings" | "setSettings" | "helpers">;
+
+/** The built-in plugins' helpers, such as the Claude Code hook; empty while they load. */
+export function useHelpers(host: Pick<Host, "helpers">): HelperInfo[] {
+  const [list, setList] = useState<HelperInfo[]>([]);
+  useEffect(() => {
+    let gone = false;
+    void host.helpers().then((h) => !gone && setList(h), () => undefined);
+    return () => {
+      gone = true;
+    };
+  }, [host]);
+  return list;
+}
+
+/** One consent covers every helper: their labels, joined. */
+export const helpersLabel = (list: readonly HelperInfo[]) => list.map((h) => h.label).join(", ");
 
 function Sheet({
   label,
@@ -264,6 +280,7 @@ export function FirstRunSheet({
   hook,
   setHook,
 }: AppSheetProps & { onPrivacy(): void; hook: boolean; setHook(on: boolean): void }) {
+  const helpers = useHelpers(host);
   const finish = (on: boolean) =>
     void host
       .settings()
@@ -276,17 +293,19 @@ export function FirstRunSheet({
       <p className="small">To do that, Terminescu keeps two helpers in its support folder, outside the app:</p>
       <ul className="small">
         <li>
-          the <code>terminescu</code> command, which your shells and the hook run
+          the <code>terminescu</code> command, which your shells{helpers.length > 0 && " and the hook"} run
         </li>
         <li>the shell daemon, which keeps your shells running across app restarts and updates</li>
       </ul>
-      <label className="srow">
-        <input type="checkbox" checked={hook} onChange={(e) => setHook(e.target.checked)} />
-        <span>Add the Claude Code hook</span>
-        <span className="small ao-dim grow">
-          Claude Code then tells Terminescu when a session starts, waits or ends. Without it the terminals work, but Claude status and the transcript pane stay off. Settings › Shell changes this later.
-        </span>
-      </label>
+      {helpers.length > 0 && (
+        <label className="srow">
+          <input type="checkbox" checked={hook} onChange={(e) => setHook(e.target.checked)} />
+          <span>Add the {helpersLabel(helpers)}</span>
+          <span className="small ao-dim grow">
+            {helpers.map((h) => h.description).join(" ")} Settings › Shell changes this later.
+          </span>
+        </label>
+      )}
       <div className="srow">
         <button type="button" className="link small" onClick={onPrivacy}>
           Privacy
@@ -295,7 +314,7 @@ export function FirstRunSheet({
         <button type="button" className="ao-btn ghost" onClick={() => finish(false)}>
           Not now
         </button>
-        <button type="button" className="ao-btn primary" onClick={() => finish(hook)}>
+        <button type="button" className="ao-btn primary" onClick={() => finish(hook && helpers.length > 0)}>
           Continue
         </button>
       </div>
