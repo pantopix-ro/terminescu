@@ -120,19 +120,41 @@ test("⌘T and the sidebar's + add a terminal at the selected row's level", asyn
   await expect(page.locator(`[data-side="${ids[1]}"]`)).toHaveClass(/active/);
   await expect(page.locator(".ao-st-kid")).toHaveCount(0);
 
-  // A one-tab row dropped on another makes a folder.
+  // A one-tab row dropped on another makes a folder; the dropped tab goes last, selected.
+  const dropped = (await mock(page)).ws.windows[0].sideTabs[1].tabs[0].id;
   await drag(page, `[data-side="${ids[1]}"]`, await center(page, `[data-side="${first}"]`));
   await expect.poll(() => sideIds(page)).toEqual([first, second]);
   await expect(page.locator(".ao-st-kid")).toHaveCount(2);
   await expect(page.locator(`[data-side="${first}"] .ao-i-folder`)).toHaveCount(1);
+  await expect(page.locator(".ao-st-kid").last()).toHaveAttribute("data-kid", dropped);
+  await expect(page.locator(".ao-st-kid").last()).toHaveClass(/active/);
+
+  // ⌥⌘T follows ⌘T: below a one-tab row it opens a text row of its own.
+  await page.locator(`[data-side="${second}"]`).click();
+  await page.keyboard.press("Alt+Meta+t");
+  await expect.poll(() => sideIds(page)).toHaveLength(3);
+  const text = (await sideIds(page))[2]!;
+  await expect(page.locator(`[data-side="${text}"]`)).toHaveClass(/active/);
+  await expect(page.locator(".app-pane .text-pane:not([hidden])")).toHaveCount(1);
+  // A row dropped on a closed folder opens it.
+  await page.getByLabel("Collapse side tab").click();
+  await expect(page.locator(".ao-st-kid")).toHaveCount(0);
+  await drag(page, `[data-side="${text}"]`, await center(page, `[data-side="${first}"]`));
+  await expect.poll(() => sideIds(page)).toEqual([first, second]);
+  await expect(page.locator(".ao-st-kid")).toHaveCount(3);
+  await expect(page.locator(".ao-st-kid").last()).toHaveClass(/active/);
+  // In a folder, ⌥⌘T adds a text tab to it.
+  await page.keyboard.press("Alt+Meta+t");
+  await expect(page.locator(".ao-st-kid")).toHaveCount(4);
+  await expect.poll(() => sideIds(page)).toEqual([first, second]);
 
   // Inside the folder, ⌘T and the sidebar's + add to it.
   await page.locator(".ao-st-kid").first().click();
   await page.keyboard.press("Meta+t");
-  await expect(page.locator(".ao-st-kid")).toHaveCount(3);
+  await expect(page.locator(".ao-st-kid")).toHaveCount(5);
   await expect(page.locator(".ao-st-kid").last()).toHaveClass(/active/);
-  await page.getByRole("button", { name: "Add a side tab" }).click();
-  await expect(page.locator(".ao-st-kid")).toHaveCount(4);
+  await page.getByRole("button", { name: "New terminal" }).click();
+  await expect(page.locator(".ao-st-kid")).toHaveCount(6);
   await expect.poll(() => sideIds(page)).toEqual([first, second]);
 
   // ⌘N adds a row at the end.

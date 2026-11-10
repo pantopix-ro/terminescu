@@ -74,7 +74,7 @@ test("a tab's status chip opens the quick pick on that tab; Edit status opens th
 
 test("the empty space under the last side tab shows a + that adds one", async ({ page }) => {
   await start(page);
-  const add = page.getByRole("button", { name: "Add a side tab" });
+  const add = page.getByRole("button", { name: "New terminal" });
   await expect(add).toHaveCSS("opacity", "0");
   await page.locator(".side-fill").hover();
   await expect(add).toHaveCSS("opacity", "1");

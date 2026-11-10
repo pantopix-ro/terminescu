@@ -756,6 +756,10 @@ buffers once per sheet.
       one-tab row right below a selected one-tab row, or a tab to the selected folder; only a
       drag of a row onto a row makes a folder. `⌘N` still adds a row at the end, and the tab
       bar's `+` adds to the tabs it shows. Verify: `windows.spec.ts`, the whole e2e suite.
+- [x] 8.80 Text tabs and dropped rows. `⌥⌘T` and the sidebar's `+ ▾ › Text` follow `⌘T`:
+      into the selected folder, or a text row right below a one-tab row. A row dropped on a
+      row puts its tabs last in the folder, opens the folder and selects the dropped tab. The
+      sidebar's `+` reads "New terminal". Verify: `windows.spec.ts`, `text.spec.ts`.
 - [ ] 8.72 Sidebar drags, part 3. A row dragged between rows reorders (hand-sorted only), and
       out of every window opens a new one; the cross-window drag carries a row, not only a tab.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
