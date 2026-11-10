@@ -1691,12 +1691,55 @@ fn zoom_of(s: &settings::Settings) -> f64 {
     f64::from(s.zoom_percent) / 100.0
 }
 
+/// A new window's size in points.
+const WINDOW_SIZE: (f64, f64) = (1200.0, 760.0);
+/// How far right and down a new window opens from the focused one, in points (task 8.82).
+const CASCADE: f64 = 28.0;
+
+/// Where a window of `size` opens below and right of one at `from`, as Terminal.app cascades.
+/// When it would leave the screen's work `area` (x, y, width, height), it starts again at the
+/// area's top left. All in points.
+fn cascade(from: (f64, f64), size: (f64, f64), area: (f64, f64, f64, f64)) -> (f64, f64) {
+    let (x, y) = (from.0 + CASCADE, from.1 + CASCADE);
+    let (ax, ay, aw, ah) = area;
+    if x + size.0 > ax + aw || y + size.1 > ay + ah {
+        (ax + CASCADE, ay + CASCADE)
+    } else {
+        (x, y)
+    }
+}
+
+/// The cascaded spot for a new window, from the focused Terminescu window; none when no
+/// window has the focus, as at launch.
+fn cascade_spot(app: &AppHandle, new_id: &str) -> Option<(f64, f64)> {
+    let w = app.webview_windows().into_values().find(|w| {
+        w.label() != new_id && w.label() != drag::GHOST && w.is_focused().unwrap_or(false)
+    })?;
+    let scale = w.scale_factor().ok()?;
+    let at = w.outer_position().ok()?.to_logical::<f64>(scale);
+    let monitor = w.current_monitor().ok()??;
+    let wa = monitor.work_area();
+    let ms = monitor.scale_factor();
+    let area = (
+        f64::from(wa.position.x) / ms,
+        f64::from(wa.position.y) / ms,
+        f64::from(wa.size.width) / ms,
+        f64::from(wa.size.height) / ms,
+    );
+    Some(cascade((at.x, at.y), WINDOW_SIZE, area))
+}
+
 fn open_window(app: &AppHandle, window_id: &str, at: Option<(f64, f64, f64)>) -> tauri::Result<()> {
     let builder = WebviewWindowBuilder::new(app, window_id, WebviewUrl::App("index.html".into()))
         .title("Terminescu")
-        .inner_size(1200.0, 760.0)
+        .inner_size(WINDOW_SIZE.0, WINDOW_SIZE.1)
         .min_inner_size(640.0, 400.0)
         .visible(at.is_none());
+    // A window not dropped by a drag opens cascaded from the focused one (task 8.82).
+    let builder = match (at, cascade_spot(app, window_id)) {
+        (None, Some((x, y))) => builder.position(x, y),
+        _ => builder,
+    };
     #[cfg(target_os = "macos")]
     let builder = builder
         .title_bar_style(tauri::TitleBarStyle::Overlay)
@@ -2081,6 +2124,16 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn a_new_window_cascades_and_wraps_at_the_screen_edge() {
+        let area = (0.0, 25.0, 1728.0, 1080.0);
+        assert_eq!(cascade((100.0, 60.0), WINDOW_SIZE, area), (128.0, 88.0));
+        // 528 + 1200 fits a 1728-point screen exactly; one more step would not.
+        assert_eq!(cascade((500.0, 60.0), WINDOW_SIZE, area), (528.0, 88.0));
+        assert_eq!(cascade((501.0, 60.0), WINDOW_SIZE, area), (28.0, 53.0));
+        assert_eq!(cascade((100.0, 400.0), WINDOW_SIZE, area), (28.0, 53.0));
+    }
 
     #[test]
     fn every_action_has_a_unique_id_a_known_menu_and_a_chord() {
