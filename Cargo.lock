@@ -4447,6 +4447,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "terminescu-plugin-git"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "terminescu-plugin-api",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "terminescu-protocol"
 version = "0.1.0"
 dependencies = [

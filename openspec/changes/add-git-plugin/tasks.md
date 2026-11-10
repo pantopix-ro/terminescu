@@ -2,7 +2,7 @@
 
 ## 1. Provider
 
-- [ ] 1.1 `crates/plugin-git` with the `Vcs` trait and `GitCli` facts and changes from
+- [x] 1.1 `crates/plugin-git` with the `Vcs` trait and `GitCli` facts and changes from
       porcelain v2 and numstat. Verify: `cargo test -p terminescu-plugin-git` against temp
       repositories (clean, dirty, ahead/behind, detached, rebase stopped, untracked, rename).
 - [ ] 1.2 `TimedVcs`, `CachedVcs` and `CoalescingVcs`. Verify: unit tests over a fake provider

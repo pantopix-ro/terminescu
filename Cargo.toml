@@ -4,6 +4,7 @@ members = [
   "crates/core",
   "crates/plugin-api",
   "crates/plugin-claude",
+  "crates/plugin-git",
   "crates/protocol",
   "crates/ptyd",
   "crates/cli",
@@ -24,6 +25,7 @@ terminescu-core = { path = "crates/core" }
 terminescu-protocol = { path = "crates/protocol" }
 terminescu-plugin-api = { path = "crates/plugin-api" }
 terminescu-plugin-claude = { path = "crates/plugin-claude" }
+terminescu-plugin-git = { path = "crates/plugin-git" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 thiserror = "2"
