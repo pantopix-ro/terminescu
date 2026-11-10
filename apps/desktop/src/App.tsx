@@ -44,6 +44,7 @@ import {
   type Prompt,
   type SavedCommand,
   type Command,
+  type DragItem,
   type DragPoint,
   type DragEnd,
   type DockSide,
@@ -1723,6 +1724,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const remoteRef = useRef<(p: DragPoint) => void>(() => {});
   remoteRef.current = (p: DragPoint) => {
     setRemote(null);
+    if (p.sideTabId !== undefined) return remoteRow(p.sideTabId, p.x, p.y);
     // A side tab's only tab merges its side tab in first, so its variables and pins come
     // along (task 8.70); a gap moves the whole side tab in the core.
     const from = ws.windows.flatMap((w) => w.sideTabs).find((s) => s.tabs.some((t) => t.id === p.tabId));
@@ -1775,6 +1777,21 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               : { type: "MoveTabToNewSideTab", tabId: p.tabId, windowId, index: 0 };
     followTab(p.tabId);
     send(cmd).then(refocus, report);
+  };
+  /**
+   * A folder row from another window, dropped here (task 8.86): on a row or a tab under a
+   * folder it merges into that row, on a pane's edge it shows beside that tab, and anywhere
+   * else it joins this window as a row, at a gap or at the end.
+   */
+  const remoteRow = (id: string, x: number, y: number) => {
+    const docked = dockAt(`side:${id}`, x, y);
+    if (docked && docked.side !== "center" && !docked.small) return placeBeside(`side:${id}`, docked.area, docked.side);
+    const target = remoteTarget(x, y);
+    if (target?.kind === "side") return startMerge(id, target.id);
+    if (target?.kind === "kid") return startMerge(id, target.folder);
+    const index = target?.kind === "gap" ? target.index : sideTabs.length;
+    setFollow((w) => sidesOf(w).some((s) => s.id === id) && (setSideTabId(id), refocus(), true));
+    void send({ type: "MoveSideTab", sideTabId: id, windowId, index });
   };
   useEffect(() => {
     const offs: (() => void)[] = [];
@@ -1864,7 +1881,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   // A tab from another window docks the same way; the core sends where its cursor is.
   useEffect(() => {
     if (!remote) return;
-    const d = dockAtRef.current(remote.tabId, remote.x, remote.y);
+    const d = dockAtRef.current(remote.sideTabId !== undefined ? `side:${remote.sideTabId}` : remote.tabId, remote.x, remote.y);
     setDock((p) => (sameDock(p, d) ? p : d));
     return () => setDock(undefined);
   }, [remote]);
@@ -1962,7 +1979,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     }
     const beside = docked && docked.side !== "center" && !docked.small ? docked : undefined;
     if (tabId.startsWith("side:")) {
-      // A one-tab row's drag is also the core's (task 8.83): released over another window it
+      // A row's drag is also the core's (tasks 8.83, 8.86): released over another window it
       // drops there, and this window, emptied, closes. A drop in this window cancels it.
       const begun = dragBegun.current;
       dragBegun.current = undefined;
@@ -2116,11 +2133,17 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           const id = String(active.id);
           setDragging(id);
           // A tab of the tab bar, or one listed under a folder in the sidebar (task 8.70). A
-          // one-tab row carries its tab too, so it can go to another window (task 8.83).
+          // one-tab row carries its tab, which takes the row along (task 8.83); a folder row
+          // carries itself (task 8.86). Either can go to another window.
           const row = id.startsWith("side:") ? sideTabs.find((s) => s.id === id.slice(5)) : undefined;
           const tab = row ? (row.tabs.length === 1 ? row.tabs[0] : undefined) : allTabs.find((t) => t.id === tabOfDrag(id));
-          dragBegun.current = tab
-            ? host.dragBegin(tab.id, tabName(tab, docs)).catch((e: unknown) => {
+          const item: [DragItem, string] | undefined = tab
+            ? [{ tabId: tab.id }, tabName(tab, docs)]
+            : row
+              ? [{ sideTabId: row.id }, sideTabName(row, docs)]
+              : undefined;
+          dragBegun.current = item
+            ? host.dragBegin(...item).catch((e: unknown) => {
                 report(e);
                 return undefined;
               })

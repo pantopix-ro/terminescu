@@ -1,4 +1,4 @@
-//! Tab drags across windows (task 8.1, D20). Inside one window dnd-kit runs the drag. The core
+//! Tab and row drags across windows (tasks 8.1 and 8.86, D20). Inside one window dnd-kit runs the drag. The core
 //! tracks the global cursor while it lasts: over another window it tells that window where the
 //! cursor is, so the window lights the drop target under it; outside every window a small ghost
 //! window follows the cursor. On release the core says where the drop landed: back in the
@@ -6,7 +6,7 @@
 //! of them, where a new window opens with the tab.
 
 use crate::AppState;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
@@ -44,11 +44,34 @@ pub struct Drags {
     generation: AtomicU64,
 }
 
+/// What a drag carries: a tab, or a whole row with its tabs (task 8.86). A one-tab row is
+/// dragged as its tab, which takes its row along.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DragItem {
+    TabId(Id),
+    SideTabId(Id),
+}
+
+impl DragItem {
+    /// The command that moves the item to a new window, for a drop outside every window.
+    fn to_new_window(&self) -> Command {
+        match self {
+            DragItem::TabId(tab_id) => Command::MoveTabToNewWindow {
+                tab_id: tab_id.clone(),
+            },
+            DragItem::SideTabId(side_tab_id) => Command::MoveSideTabToNewWindow {
+                side_tab_id: side_tab_id.clone(),
+            },
+        }
+    }
+}
+
 #[derive(Clone)]
 struct Drag {
     token: u64,
     source: String,
-    tab_id: Id,
+    item: DragItem,
     title: String,
     /// The other window that last got a hover, to clear when the cursor leaves it.
     hovered: Option<String>,
@@ -60,7 +83,9 @@ struct Drag {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Point {
-    tab_id: Id,
+    /// `{"tabId": …}` or `{"sideTabId": …}`, beside the point.
+    #[serde(flatten)]
+    item: DragItem,
     x: f64,
     y: f64,
 }
@@ -184,7 +209,7 @@ fn track(app: &AppHandle, drags: &Drags, token: u64) {
         && sent != Some((*x, *y))
     {
         let point = Point {
-            tab_id: drag.tab_id.clone(),
+            item: drag.item.clone(),
             x: *x,
             y: *y,
         };
@@ -252,14 +277,14 @@ pub fn cancel_from(app: &AppHandle, label: &str) {
     }
 }
 
-/// A tab drag started in `window` (dnd-kit passed its activation distance). Returns the
-/// drag's token for `drag_end`.
+/// A tab or row drag started in `window` (dnd-kit passed its activation distance). Returns
+/// the drag's token for `drag_end`.
 #[tauri::command(async)]
 pub fn drag_begin(
     app: AppHandle,
     window: WebviewWindow,
     state: State<'_, AppState>,
-    tab_id: Id,
+    item: DragItem,
     title: String,
 ) -> u64 {
     finish(&app, &state.drags, None, None);
@@ -267,7 +292,7 @@ pub fn drag_begin(
     *lock(&state.drags.current) = Some(Drag {
         token,
         source: window.label().to_string(),
-        tab_id,
+        item,
         title: title.clone(),
         hovered: None,
         sent: None,
@@ -325,7 +350,7 @@ pub fn drag_end(
         Some((label, ..)) if label == drag.source => Ok(DragEnd::Local),
         Some((label, x, y)) => {
             let point = Point {
-                tab_id: drag.tab_id,
+                item: drag.item,
                 x,
                 y,
             };
@@ -345,14 +370,41 @@ pub fn drag_end(
                 .map(|m| m.scale_factor())
                 .unwrap_or(1.0);
             *lock(&NEXT_WINDOW_AT) = Some((pos.x, pos.y, scale));
-            let moved = state.runtime.command(Command::MoveTabToNewWindow {
-                tab_id: drag.tab_id,
-            });
+            let moved = state.runtime.command(drag.item.to_new_window());
             if let Err(e) = moved {
                 lock(&NEXT_WINDOW_AT).take();
                 return Err(e.to_string());
             }
             Ok(DragEnd::NewWindow)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_drag_carries_a_tab_or_a_row() {
+        let row: DragItem = serde_json::from_str(r#"{"sideTabId":"s1"}"#).unwrap();
+        assert_eq!(row, DragItem::SideTabId("s1".into()));
+        let point = Point {
+            item: row.clone(),
+            x: 4.0,
+            y: 8.0,
+        };
+        assert_eq!(
+            serde_json::to_value(&point).unwrap(),
+            serde_json::json!({ "sideTabId": "s1", "x": 4.0, "y": 8.0 })
+        );
+        assert!(matches!(
+            row.to_new_window(),
+            Command::MoveSideTabToNewWindow { side_tab_id } if side_tab_id == "s1"
+        ));
+        let tab: DragItem = serde_json::from_str(r#"{"tabId":"t1"}"#).unwrap();
+        assert!(matches!(
+            tab.to_new_window(),
+            Command::MoveTabToNewWindow { tab_id } if tab_id == "t1"
+        ));
     }
 }

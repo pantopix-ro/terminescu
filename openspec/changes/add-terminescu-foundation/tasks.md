@@ -784,7 +784,7 @@ buffers once per sheet.
       strip is off every screen moves into the main screen's work area and shrinks to fit. A drag's drop point, then the saved frame,
       then the cascade. Verify: desktop unit test `a_saved_frame_fits_the_screens`; core test
       `window_frames_persist`; manual: move two windows, ⌘Q, reopen.
-- [ ] 8.86 Folder drag across windows. The core drag carries a row or a tab; a folder row
+- [x] 8.86 Folder drag across windows. The core drag carries a row or a tab; a folder row
       dropped on another window's row merges (clash dialog), on a gap, the end or the panes
       moves as a row, and outside every window opens a new window at the cursor. Verify: desktop
       unit test for the drag item; `windows.spec.ts` "a folder drags to another window".

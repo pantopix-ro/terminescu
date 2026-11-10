@@ -4,6 +4,7 @@ import type {
   AgentUpdate,
   PaneLabel,
   DragEnd,
+  DragItem,
   DragPoint,
   AttentionSettings,
   AppSettings,
@@ -244,15 +245,15 @@ export interface Host {
   /** Undoes a merge within `MERGE_UNDO_MS`. */
   undoMerge(undoId: Id): Promise<void>;
   /**
-   * A tab drag started here; the core tracks the cursor across windows until `dragEnd`.
-   * Resolves to the drag's token.
+   * A tab or row drag started here; the core tracks the cursor across windows until
+   * `dragEnd`. Resolves to the drag's token.
    */
-  dragBegin(tabId: Id, title: string): Promise<number>;
+  dragBegin(item: DragItem, title: string): Promise<number>;
   /** The drag `token` ended: `drop` false for a cancel. Says where it landed. */
   dragEnd(token: number, drop: boolean): Promise<DragEnd>;
   /** A drag from another window is over this one at a point, or left it (`null`). */
   onDragHover(listener: (point: DragPoint | null) => void): Promise<() => void>;
-  /** A tab from another window was dropped here at a point. */
+  /** A tab or row from another window was dropped here at a point. */
   onDragDrop(listener: (point: DragPoint) => void): Promise<() => void>;
   /** Pastes `text` into a terminal pane, bracketed when it has line breaks, with no Enter (D13). */
   sendText(paneId: Id, text: string): Promise<void>;

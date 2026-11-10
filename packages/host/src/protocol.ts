@@ -395,12 +395,14 @@ export interface MergeDone {
   renames: [string, string][];
 }
 
+/** What a drag across windows carries: a tab, or a whole row with its tabs (task 8.86). */
+export type DragItem = { tabId: Id; sideTabId?: undefined } | { sideTabId: Id; tabId?: undefined };
+
 /** A point in this window's coordinates (CSS pixels), during a drag from another window. */
-export interface DragPoint {
-  tabId: Id;
+export type DragPoint = DragItem & {
   x: number;
   y: number;
-}
+};
 
 /**
  * Where a tab drag ended (task 8.1): over its own window, which drops it itself; over another
