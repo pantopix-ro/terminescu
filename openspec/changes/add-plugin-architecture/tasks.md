@@ -2,7 +2,7 @@
 
 ## 1. Plugin API and host in Rust
 
-- [ ] 1.1 `crates/plugin-api`: `Plugin`, `Manifest`, `CoreEvent`, `PluginCx`, `Decoration`,
+- [x] 1.1 `crates/plugin-api`: `Plugin`, `Manifest`, `CoreEvent`, `PluginCx`, `Decoration`,
       `Helper`, `AgentAdapter` and the moved `AgentState`, `AgentView`, `AgentUpdate`. Verify:
       `cargo test -p terminescu-plugin-api` (a fake plugin and adapter compile and run).
 - [ ] 1.2 Core plugin host: registry, a worker and bounded queue per plugin, budgets,

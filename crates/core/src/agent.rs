@@ -1,60 +1,16 @@
 //! A Claude session's state in its pane, driven by hook events and, while it waits, by the
 //! transcript (task 4.2, D34). Pure: the runtime feeds it events and entries and shows the result.
 
-use crate::runtime::is_session_id;
 use crate::transcript::Entry;
-use serde::Serialize;
 use serde_json::Value;
 use std::path::PathBuf;
+use terminescu_plugin_api::is_session_id;
 
 /// Longest `last_assistant_message` kept from `Stop`, in characters.
 const LAST_MESSAGE_CHARS: usize = 2000;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum AgentState {
-    /// Started, no prompt yet.
-    Idle,
-    Running,
-    /// Needs the person: a permission prompt or a question (amber).
-    Waiting,
-    Done,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Agent {
-    pub session: String,
-    pub transcript: Option<PathBuf>,
-    pub state: AgentState,
-    /// Claude's last reply from `Stop`, cut to a preview.
-    pub last_message: Option<String>,
-}
-
-/// What the UI gets per pane.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AgentView {
-    pub session: String,
-    pub state: AgentState,
-    pub last_message: Option<String>,
-}
-
-/// One pane's agent changed; `agent: None` means the pane shows its shell again.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct AgentUpdate {
-    pub pane: String,
-    pub agent: Option<AgentView>,
-}
-
-impl Agent {
-    pub fn view(&self) -> AgentView {
-        AgentView {
-            session: self.session.clone(),
-            state: self.state,
-            last_message: self.last_message.clone(),
-        }
-    }
-}
+// The agent types are shared with the adapters (add-plugin-architecture D2).
+pub use terminescu_plugin_api::{Agent, AgentState, AgentUpdate, AgentView};
 
 fn str_of<'a>(event: &'a Value, key: &str) -> Option<&'a str> {
     event.get(key).and_then(Value::as_str)

@@ -1,0 +1,13 @@
+[package]
+name = "terminescu-plugin-api"
+description = "Terminescu plugin API: the traits and types a built-in plugin and the core share"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

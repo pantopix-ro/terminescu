@@ -109,14 +109,8 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// A Claude session id as hooks report it. Anything else never reaches a pane as typed text.
-/// It starts with a letter or digit, so it can never read as a `claude` option.
-pub fn is_session_id(s: &str) -> bool {
-    s.len() <= 128
-        && s.as_bytes().first().is_some_and(u8::is_ascii_alphanumeric)
-        && s.bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
-}
+// A Claude session id as hooks report it; anything else never reaches a pane as typed text.
+pub use terminescu_plugin_api::is_session_id;
 
 enum Effect {
     Spawn {
@@ -1539,24 +1533,6 @@ fn diff_effects(before: &[(Id, Id)], after: &[(Id, Id)], cwd: Option<String>) ->
         }
     }
     out
-}
-
-#[cfg(test)]
-mod session_id_tests {
-    use super::is_session_id;
-
-    #[test]
-    fn a_session_id_never_reads_as_an_option() {
-        assert!(is_session_id("00000000-0000-4000-8000-000000000001"));
-        assert!(is_session_id("sess-0b5c"));
-        assert!(!is_session_id("--dangerously-skip-permissions"));
-        assert!(!is_session_id("-x"));
-        assert!(!is_session_id("a b"));
-        assert!(!is_session_id("a;rm"));
-        assert!(!is_session_id(""));
-        assert!(!is_session_id(&"a".repeat(129)));
-        assert!(is_session_id(&"a".repeat(128)));
-    }
 }
 
 #[cfg(test)]
