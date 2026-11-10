@@ -14,7 +14,7 @@ pub const KEEP: usize = 10;
 
 /// The tables that hold a row's context, each with the rows that belong to it. Parents come
 /// before children, so a restore inserts statuses before their rules.
-const TABLES: [(&str, &str); 6] = [
+const TABLES: [(&str, &str); 7] = [
     ("context_items", "side_tab_id = ?2"),
     ("pins", "side_tab_id = ?2"),
     ("context_files", "side_tab_id = ?2"),
@@ -24,6 +24,7 @@ const TABLES: [(&str, &str); 6] = [
         "status_rules",
         "status_id IN (SELECT id FROM statuses WHERE side_tab_id = ?2)",
     ),
+    ("plugin_side_tab_data", "side_tab_id = ?2"),
 ];
 
 #[derive(Debug, Clone)]
@@ -33,7 +34,8 @@ struct TableRows {
     rows: Vec<Vec<Value>>,
 }
 
-/// A copy of a row's context: variables, pins, touched files, local commands and statuses.
+/// A copy of a row's context: variables, pins, touched files, local commands, statuses and
+/// plugin row data.
 #[derive(Debug, Clone, Default)]
 pub struct ContextRows(Vec<TableRows>);
 

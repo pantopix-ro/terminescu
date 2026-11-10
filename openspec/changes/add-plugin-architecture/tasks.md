@@ -9,7 +9,7 @@
       `catch_unwind`, pause after 5 failures a minute, switches. Verify: core tests
       `a_hanging_plugin_does_not_block_patches`, `a_panicking_plugin_is_paused`,
       `a_disabled_plugin_gets_no_events`.
-- [ ] 1.3 Migration `0013_plugins.sql` with `plugin_settings` and `plugin_side_tab_data`, and
+- [x] 1.3 Migration `0013_plugins.sql` with `plugin_settings` and `plugin_side_tab_data`, and
       their store. Verify: core tests `plugin_settings_persist`,
       `row_data_goes_with_its_row`.
 - [ ] 1.4 Decorations store, `host://decorations` event, Tauri commands `plugin_call`,

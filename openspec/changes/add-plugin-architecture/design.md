@@ -93,9 +93,10 @@ migration. It changes the saved layout for no behaviour gain today.
 
 ### D10. Storage: migration `0013_plugins.sql`
 `plugin_settings(owner_id, plugin_id, key, value_json, PRIMARY KEY(owner_id, plugin_id, key))`
-holds the switches and plugin settings. `plugin_side_tab_data(side_tab_id REFERENCES
+holds the switches and plugin settings. `plugin_side_tab_data(owner_id, side_tab_id REFERENCES
 side_tabs ON DELETE CASCADE, plugin_id, key, value_json, PRIMARY KEY(side_tab_id, plugin_id,
-key))` holds per-row facts, such as "this row is a worktree", that die with the row.
+key))` holds per-row facts, such as "this row is a worktree", that die with the row. It
+carries `owner_id` like the other context tables, so undo close copies and restores it.
 
 ### D11. The seam is checked
 `scripts/check-plugins.mjs` (run by `pnpm check:plugins`, part of `pnpm -r test`) fails when
