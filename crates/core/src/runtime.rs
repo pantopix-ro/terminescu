@@ -147,7 +147,7 @@ enum Effect {
 struct Panes {
     by_id: HashMap<Id, PaneId>,
     by_daemon: HashMap<PaneId, Id>,
-    /// Last cwd and Claude session per pane, kept across daemon restarts.
+    /// Last cwd and agent session per pane, kept across daemon restarts.
     meta: HashMap<Id, PaneRecord>,
     /// Daemon panes closed while offline; the next connection to the same daemon closes them.
     orphans: Vec<PaneId>,
@@ -703,21 +703,27 @@ impl Runtime {
 
     /// The cwd the shell integration reports now, else the last one seen.
     pub fn live_cwd(&self, pane: &str) -> Option<String> {
-        let client = self.daemon();
-        let d = self.daemon_of(pane);
-        if let (Some(client), Some(d)) = (client, d)
-            && let Ok(list) = client.list()
-            && let Some(cwd) = list
-                .into_iter()
-                .find(|i| i.pane == d)
-                .and_then(|i| i.shell.cwd)
-        {
-            return Some(cwd);
-        }
-        lock(&self.inner.panes)
-            .meta
-            .get(pane)
-            .and_then(|r| r.cwd.clone())
+        self.live_cwds(&[pane.to_string()]).remove(pane)
+    }
+
+    /// [`Runtime::live_cwd`] of each pane, from one daemon list.
+    pub fn live_cwds(&self, panes: &[Id]) -> HashMap<Id, String> {
+        let live: HashMap<PaneId, String> = self
+            .daemon()
+            .and_then(|c| c.list().ok())
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|i| Some((i.pane, i.shell.cwd?)))
+            .collect();
+        let meta = lock(&self.inner.panes);
+        panes
+            .iter()
+            .filter_map(|p| {
+                let now = meta.by_id.get(p).and_then(|d| live.get(d)).cloned();
+                let cwd = now.or_else(|| meta.meta.get(p).and_then(|r| r.cwd.clone()))?;
+                Some((p.clone(), cwd))
+            })
+            .collect()
     }
 
     fn run(&self, effects: Vec<Effect>) {

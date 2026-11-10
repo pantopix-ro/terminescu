@@ -401,6 +401,8 @@ export interface MergeDone {
 
 /** Where ⇧⌘T put a reopened tab or row back (task 8.87). */
 export interface Reopened {
+  /** The window it came back to; another than the one asking comes forward and shows it. */
+  windowId: Id;
   sideTabId: Id;
   tabId: Id;
 }

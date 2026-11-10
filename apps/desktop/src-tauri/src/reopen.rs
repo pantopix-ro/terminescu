@@ -4,9 +4,8 @@
 
 use crate::{AppState, lock, merged};
 use serde::Serialize;
-use std::collections::HashMap;
 use std::sync::Mutex;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use terminescu_core::closed::{self, Closed, ClosedList, Entry};
 use terminescu_core::state::{Command, Id};
 
@@ -27,38 +26,48 @@ fn drop_vars(state: &AppState, entry: &Entry) {
     }
 }
 
-/// Before `cmd` runs: notes the tab or row it closes, with its context and cwds. True when
-/// something was noted, for [`forget`] should the command fail.
-pub fn note(state: &AppState, cmd: &Command) -> bool {
+/// Before `cmd` runs: notes the tab or row it closes, with its context and cwds, so the close
+/// leaves its daemon variables alone. Returns the entry's key for [`done`].
+pub fn note(state: &AppState, cmd: &Command) -> Option<Id> {
+    if !closed::may_close(cmd) {
+        return None;
+    }
     let ws = state.runtime.workspace();
-    let found = closed::closing(&lock(&state.db), &ws, cmd);
-    let closed = match found {
-        Ok(Some(c)) => c,
-        Ok(None) => return false,
+    let closed = match closed::closing(&lock(&state.db), &ws, cmd) {
+        Ok(c) => c?,
         Err(e) => {
             eprintln!("terminescu: closed tab not kept for reopening: {e}");
-            return false;
+            return None;
         }
     };
-    let tabs = match &closed {
+    let panes: Vec<Id> = match &closed {
         Closed::Row { side_tab, .. } => side_tab.tabs.iter().collect::<Vec<_>>(),
         Closed::Tab { tab, .. } => vec![tab],
-    };
-    let cwds: HashMap<Id, String> = tabs
-        .iter()
-        .flat_map(|t| t.layout.terminals())
-        .filter_map(|p| state.runtime.live_cwd(p).map(|c| (p.clone(), c)))
-        .collect();
-    let out = lock(&CLOSED).push(Entry { closed, cwds });
-    if let Some(old) = out {
-        drop_vars(state, &old);
     }
-    true
+    .into_iter()
+    .flat_map(|t| t.layout.terminals())
+    .cloned()
+    .collect();
+    let cwds = state.runtime.live_cwds(&panes);
+    let entry = Entry { closed, cwds };
+    let key = entry.key().clone();
+    lock(&CLOSED).push(entry);
+    Some(key)
 }
 
-/// The close failed: its entry goes again.
-pub fn forget() {
-    lock(&CLOSED).pop();
+/// After the close ran: a failed one takes its own entry back; a done one lets the oldest
+/// entries go, with their rows' daemon variables.
+pub fn done(state: &AppState, key: &str, ok: bool) {
+    let gone = {
+        let mut list = lock(&CLOSED);
+        if !ok {
+            list.take(key);
+        }
+        list.trim()
+    };
+    for old in &gone {
+        drop_vars(state, old);
+    }
 }
 
 /// The app quits: the list ends, and its rows' daemon variables with it.
@@ -72,6 +81,7 @@ pub fn end(state: &AppState) {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Reopened {
+    window_id: Id,
     side_tab_id: Id,
     tab_id: Id,
 }
@@ -88,11 +98,17 @@ pub fn reopen_closed(
         return Ok(None);
     };
     let cmd = entry.reopen(&state.runtime.workspace(), &window_id);
+    let target = match &cmd {
+        Command::ReopenSideTab { window_id, .. } | Command::ReopenTab { window_id, .. } => {
+            window_id.clone()
+        }
+        _ => window_id.clone(),
+    };
     if let Err(e) = state.runtime.command_in(cmd, &entry.cwds) {
         drop_vars(&state, &entry);
         return Err(e.to_string());
     }
-    match &entry.closed {
+    let (side_tab_id, tab_id) = match &entry.closed {
         Closed::Row {
             side_tab, context, ..
         } => {
@@ -100,18 +116,34 @@ pub fn reopen_closed(
                 eprintln!("terminescu: context of a reopened side tab not restored: {e}");
             }
             merged(&app, &state, &side_tab.id);
-            Ok(Some(Reopened {
-                side_tab_id: side_tab.id.clone(),
-                tab_id: side_tab.tabs[0].id.clone(),
-            }))
+            (side_tab.id.clone(), side_tab.tabs[0].id.clone())
         }
         Closed::Tab { tab, .. } => {
             let ws = state.runtime.workspace();
             let (side, _) = ws.locate_tab(&tab.id).ok_or("the tab did not come back")?;
-            Ok(Some(Reopened {
-                side_tab_id: side.id.clone(),
-                tab_id: tab.id.clone(),
-            }))
+            (side.id.clone(), tab.id.clone())
+        }
+    };
+    // Back in another window than the one pressed: that window comes forward and shows it.
+    if target != window_id {
+        if let Some(w) = app.get_webview_window(&target) {
+            let _ = w.unminimize();
+            let _ = w.set_focus();
+        }
+        let pane = state
+            .runtime
+            .workspace()
+            .tab(&tab_id)
+            .and_then(|t| t.layout.terminals().first().cloned().cloned());
+        if let Some(pane) = pane
+            && let Err(e) = app.emit_to(target.as_str(), crate::REVEAL_EVENT, &pane)
+        {
+            eprintln!("terminescu: reopened tab not shown: {e}");
         }
     }
+    Ok(Some(Reopened {
+        window_id: target,
+        side_tab_id,
+        tab_id,
+    }))
 }

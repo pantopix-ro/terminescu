@@ -111,6 +111,14 @@ pub struct Entry {
 }
 
 impl Entry {
+    /// The id of the tab or row the entry brings back.
+    pub fn key(&self) -> &Id {
+        match &self.closed {
+            Closed::Row { side_tab, .. } => &side_tab.id,
+            Closed::Tab { tab, .. } => &tab.id,
+        }
+    }
+
     /// The row whose daemon variables wait on this entry.
     pub fn parked_side_tab(&self) -> Option<&Id> {
         match &self.closed {
@@ -163,22 +171,27 @@ impl ClosedList {
         Self(VecDeque::new())
     }
 
-    /// Adds an entry; returns the oldest one when the list was full.
-    pub fn push(&mut self, entry: Entry) -> Option<Entry> {
+    /// Adds an entry before its close runs, so the close leaves a row's daemon variables
+    /// alone. The list may hold one too many until [`ClosedList::trim`].
+    pub fn push(&mut self, entry: Entry) {
         self.0.push_back(entry);
-        (self.0.len() > KEEP).then(|| self.0.pop_front()).flatten()
+    }
+
+    /// After a close went through: the oldest entries beyond [`KEEP`], which leave the list.
+    pub fn trim(&mut self) -> Vec<Entry> {
+        let over = self.0.len().saturating_sub(KEEP);
+        self.0.drain(..over).collect()
     }
 
     pub fn pop(&mut self) -> Option<Entry> {
         self.0.pop_back()
     }
 
-    /// Takes back the newest entry when it is for `side_tab_id`, after its close failed.
-    pub fn unpush(&mut self, side_tab_id: &str) -> Option<Entry> {
-        let last = self.0.back()?;
-        (last.parked_side_tab().map(String::as_str) == Some(side_tab_id))
-            .then(|| self.0.pop_back())
-            .flatten()
+    /// Takes back the entry for `key` after its close failed, wherever it now is: a reopen or
+    /// another close may have run in between.
+    pub fn take(&mut self, key: &str) -> Option<Entry> {
+        let at = self.0.iter().rposition(|e| e.key() == key)?;
+        self.0.remove(at)
     }
 
     pub fn is_parked(&self, side_tab_id: &str) -> bool {
@@ -187,13 +200,17 @@ impl ClosedList {
             .any(|e| e.parked_side_tab().map(String::as_str) == Some(side_tab_id))
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
     pub fn drain(&mut self) -> Vec<Entry> {
         self.0.drain(..).collect()
     }
+}
+
+/// The command may close a tab or a row: the cheap test before [`closing`].
+pub fn may_close(cmd: &Command) -> bool {
+    matches!(
+        cmd,
+        Command::CloseSideTab { .. } | Command::CloseTab { .. } | Command::ClosePane { .. }
+    )
 }
 
 /// The tab or row `cmd` would close, as it is now. None when it closes nothing, or nothing
@@ -428,11 +445,21 @@ mod tests {
             cwds: HashMap::new(),
         };
         for i in 0..KEEP {
-            assert!(list.push(entry(i)).is_none());
+            list.push(entry(i));
+            assert!(list.trim().is_empty());
         }
-        let out = list.push(entry(KEEP)).unwrap();
-        assert_eq!(out.parked_side_tab().unwrap(), "s0");
+        // Parked while its close runs, so the close keeps its variables.
+        list.push(entry(KEEP));
+        assert!(list.is_parked("s0") && list.is_parked("s10"));
+        let out = list.trim();
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].parked_side_tab().unwrap(), "s0");
         assert!(!list.is_parked("s0") && list.is_parked("s1"));
-        assert_eq!(list.pop().unwrap().parked_side_tab().unwrap(), "s10");
+        // A failed close takes back its own entry, not the newest.
+        list.push(entry(11));
+        list.push(entry(12));
+        assert_eq!(list.take("s11").unwrap().key(), "s11");
+        assert!(list.take("s11").is_none());
+        assert_eq!(list.pop().unwrap().parked_side_tab().unwrap(), "s12");
     }
 }

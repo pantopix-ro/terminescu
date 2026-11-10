@@ -716,11 +716,24 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
     | { kind: "row"; windowId: string; index: number; sideTab: SideTab }
     | { kind: "tab"; windowId: string; sideTabId: string; index: number; tab: Tab };
   const closedList: ClosedEntry[] = [];
+  // As closed.rs: a tab comes back with its terminal panes only, none offering a resume.
+  const freshTab = (t: Tab): Tab | undefined => {
+    let layout: Tab["layout"] | null | undefined = structuredClone(t.layout);
+    for (const p of panesOf(t.layout).filter((x) => !terminalsOf(t.layout).includes(x))) layout = layout && removePane(layout, p);
+    if (!layout) return undefined;
+    for (const p of terminalsOf(layout)) {
+      const l = leaf(layout, p);
+      if (l && "resume" in l) delete l.resume;
+    }
+    return { ...structuredClone(t), layout };
+  };
   const closingOf = (c: Command): ClosedEntry | undefined => {
     const rowOf = (sideTabId: string): ClosedEntry | undefined => {
       const w = ws.windows.find((x) => x.sideTabs.some((s) => s.id === sideTabId));
       const index = w?.sideTabs.findIndex((s) => s.id === sideTabId) ?? -1;
-      return w && index >= 0 ? { kind: "row", windowId: w.id, index, sideTab: structuredClone(w.sideTabs[index]!) } : undefined;
+      if (!w || index < 0) return undefined;
+      const tabs = w.sideTabs[index]!.tabs.flatMap((t) => freshTab(t) ?? []);
+      return tabs.length ? { kind: "row", windowId: w.id, index, sideTab: { ...structuredClone(w.sideTabs[index]!), tabs } } : undefined;
     };
     let tabId: string;
     if (c.type === "CloseSideTab") return rowOf(c.sideTabId);
@@ -736,7 +749,8 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
     if (side.tabs.length === 1) return rowOf(side.id);
     const w = ws.windows.find((x) => x.sideTabs.includes(side))!;
     const index = side.tabs.findIndex((t) => t.id === tabId);
-    return { kind: "tab", windowId: w.id, sideTabId: side.id, index, tab: structuredClone(side.tabs[index]!) };
+    const tab = freshTab(side.tabs[index]!);
+    return tab && { kind: "tab", windowId: w.id, sideTabId: side.id, index, tab };
   };
   function plan(c: Command): Patch[] {
     switch (c.type) {
@@ -1066,17 +1080,18 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
       if (e.kind === "row") {
         const index = Math.min(e.index, w.sideTabs.length);
         await commit([{ type: "SideTabCreated", windowId: w.id, index, sideTab: e.sideTab }]);
-        return { sideTabId: e.sideTab.id, tabId: e.sideTab.tabs[0]!.id };
+        return { windowId: w.id, sideTabId: e.sideTab.id, tabId: e.sideTab.tabs[0]!.id };
       }
       const side = allSideTabs().find((s) => s.id === e.sideTabId);
       if (side) {
         await commit([{ type: "TabCreated", sideTabId: side.id, index: Math.min(e.index, side.tabs.length), tab: e.tab }]);
-        return { sideTabId: side.id, tabId: e.tab.id };
+        const home = ws.windows.find((x) => x.sideTabs.some((s) => s.id === side.id)) ?? w;
+        return { windowId: home.id, sideTabId: side.id, tabId: e.tab.id };
       }
       const sid = id();
       const created: SideTab = { id: sid, title: null, tabs: [e.tab], accent: pickNeon(sid), name: pickName(sid) };
       await commit([{ type: "SideTabCreated", windowId: w.id, index: w.sideTabs.length, sideTab: created }]);
-      return { sideTabId: sid, tabId: e.tab.id };
+      return { windowId: w.id, sideTabId: sid, tabId: e.tab.id };
     },
     async mergePreview(from, into, label) {
       sideTab(from);

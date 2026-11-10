@@ -81,8 +81,6 @@ pub const NEONS: &[&str] = &[
     "cyan", "pink", "lime", "violet", "mint", "blue", "rose", "ice",
 ];
 
-/// The neon a new side tab opens with: one no other row in the workspace uses yet, picked from
-/// its id like [`pick_icon`]. When every neon is taken it reuses one.
 /// A reopened tab's ids are all free: neither the tab nor any of its panes came back already.
 fn absent(ws: &Workspace, tab: &Tab) -> bool {
     ws.tab(&tab.id).is_none()
@@ -93,6 +91,8 @@ fn absent(ws: &Workspace, tab: &Tab) -> bool {
             .all(|p| ws.locate_pane(p).is_none())
 }
 
+/// The neon a new side tab opens with: one no other row in the workspace uses yet, picked from
+/// its id like [`pick_icon`]. When every neon is taken it reuses one.
 pub fn pick_neon(ws: &Workspace, side_tab_id: &str) -> String {
     let used: Vec<&str> = ws
         .windows
