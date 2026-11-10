@@ -5,11 +5,13 @@
 
 mod agent;
 mod decoration;
+mod tail;
 
 pub use agent::{
     Agent, AgentAdapter, AgentEvent, AgentState, AgentUpdate, AgentView, is_session_id,
 };
 pub use decoration::{Decoration, Slot, Target, Tone};
+pub use tail::LineTail;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

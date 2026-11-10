@@ -3,7 +3,7 @@
 Run on 2026-11-04 against Claude Code 2.1.318, model Haiku, `--permission-mode default`, in a
 throwaway git repo with invented files. A logging hook was registered for every event that D34
 names. It wrote stdin plus a timestamp to a file, only when `TERMINESCU_PANE_ID` was set.
-Fixtures with paths, ids and session ids replaced live in `crates/core/tests/fixtures/hooks/`.
+Fixtures with paths, ids and session ids replaced live in `crates/plugin-claude/tests/fixtures/hooks/`.
 `sequences.json` there holds the measured order and timing for each case below.
 
 ## Results

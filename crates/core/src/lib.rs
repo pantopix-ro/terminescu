@@ -1,7 +1,6 @@
 //! Terminescu core: the single source of truth for windows, side tabs, tabs and their
 //! contexts (D6), persisted in SQLite (D18).
 
-pub mod agent;
 mod atomic;
 pub mod attention;
 pub mod closed;
@@ -32,7 +31,6 @@ pub mod state;
 pub mod status;
 pub mod status_store;
 pub mod term_import;
-pub mod transcript;
 pub mod uninstall;
 pub mod vars;
 pub mod views;

@@ -19,7 +19,6 @@ use std::time::Duration;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WebviewUrl, WebviewWindowBuilder, Wry};
-use terminescu_core::agent::AgentUpdate;
 use terminescu_core::attention::{self, Attention};
 use terminescu_core::commands::{self, NewCommand, SavedCommand, Target};
 use terminescu_core::context;
@@ -43,6 +42,7 @@ use terminescu_core::status_store::{self, SavedStatus, StatusConfig};
 use terminescu_core::term_import;
 use terminescu_core::vars;
 use terminescu_core::views::ViewId;
+use terminescu_plugin_api::AgentUpdate;
 use terminescu_protocol::core::{CoreMessage, CoreReply, CoreRequest};
 use terminescu_protocol::paths;
 
@@ -852,13 +852,13 @@ fn host_snapshot(state: State<'_, AppState>) -> Snapshot {
 }
 
 #[tauri::command]
-fn host_agents(state: State<'_, AppState>) -> Vec<terminescu_core::agent::AgentUpdate> {
+fn host_agents(state: State<'_, AppState>) -> Vec<AgentUpdate> {
     state.runtime.agents()
 }
 
 #[derive(serde::Serialize)]
 struct TranscriptChunk {
-    entries: Vec<terminescu_core::transcript::Entry>,
+    entries: Vec<terminescu_plugin_claude::transcript::Entry>,
     /// Where the next read starts.
     offset: u64,
     /// The file shrank or was replaced: `entries` start over from the top.
@@ -878,7 +878,7 @@ fn transcript_read(
         .runtime
         .transcript_path(&session)
         .ok_or_else(|| format!("no transcript for session {session}"))?;
-    let mut tail = terminescu_core::transcript::Tail::at(path, offset);
+    let mut tail = terminescu_plugin_claude::transcript::Tail::at(path, offset);
     let entries = tail.read().map_err(|e| e.to_string())?;
     let reset = tail.offset() < offset || entries.first().is_some_and(|e| e.offset < offset);
     Ok(TranscriptChunk {

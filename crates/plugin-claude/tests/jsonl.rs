@@ -2,7 +2,18 @@
 
 use std::io::Write;
 use std::path::PathBuf;
-use terminescu_core::transcript::{Edit, EntryKind, Hunk, Tail, parse_line};
+use terminescu_plugin_claude::transcript::{Edit, EntryKind, Hunk, Tail, parse_line};
+
+/// A fresh folder name per call: the process id and a counter.
+fn unique() -> String {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static N: AtomicU32 = AtomicU32::new(0);
+    format!(
+        "{}-{}",
+        std::process::id(),
+        N.fetch_add(1, Ordering::SeqCst)
+    )
+}
 
 const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/hooks");
 
@@ -11,7 +22,7 @@ fn fixture(name: &str) -> Vec<u8> {
 }
 
 fn temp_file() -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("terminescu-jsonl-{}", terminescu_core::new_id()));
+    let dir = std::env::temp_dir().join(format!("terminescu-jsonl-{}", unique()));
     std::fs::create_dir_all(&dir).unwrap();
     dir.join("session.jsonl")
 }
@@ -171,11 +182,11 @@ fn a_session_transcript_is_found_by_its_id() {
     std::fs::create_dir_all(root.join("-Users-owner-src-other")).unwrap();
     std::fs::write(project.join("sess-0b5c.jsonl"), "").unwrap();
     assert_eq!(
-        terminescu_core::transcript::find_in(&root, "sess-0b5c"),
+        terminescu_plugin_claude::transcript::find_in(&root, "sess-0b5c"),
         Some(project.join("sess-0b5c.jsonl"))
     );
     assert_eq!(
-        terminescu_core::transcript::find_in(&root, "sess-none"),
+        terminescu_plugin_claude::transcript::find_in(&root, "sess-none"),
         None
     );
     let _ = std::fs::remove_dir_all(&root);

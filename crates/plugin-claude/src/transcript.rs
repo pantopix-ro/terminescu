@@ -5,12 +5,8 @@
 
 use serde::Serialize;
 use serde_json::Value;
-use std::io::{Read, Seek, SeekFrom};
-use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
-
-/// Longest stretch read in one call; a transcript that grew more catches up over later reads.
-const MAX_READ: usize = 8 * 1024 * 1024;
+use terminescu_plugin_api::LineTail;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -391,94 +387,43 @@ fn kinds_of(v: &Value) -> Vec<(Option<usize>, EntryKind)> {
     }
 }
 
-/// A cursor into one transcript file.
+/// A transcript read as it grows: the shared line tail, parsed as Claude's JSONL.
 #[derive(Debug, Clone)]
-pub struct Tail {
-    path: PathBuf,
-    offset: u64,
-    inode: Option<u64>,
-    /// Inside a line longer than [`MAX_READ`]: drop bytes up to its end.
-    skipping: bool,
-}
+pub struct Tail(LineTail);
 
 impl Tail {
     /// From the start of the file, for the transcript pane.
     pub fn new(path: impl Into<PathBuf>) -> Self {
-        Self {
-            path: path.into(),
-            offset: 0,
-            inode: None,
-            skipping: false,
-        }
+        Self(LineTail::new(path))
     }
 
     /// From the file's current end, for watching what comes next. A missing file starts at 0.
     pub fn from_end(path: impl Into<PathBuf>) -> Self {
-        let mut tail = Self::new(path);
-        if let Ok(meta) = std::fs::metadata(&tail.path) {
-            tail.offset = meta.len();
-            tail.inode = Some(meta.ino());
-        }
-        tail
+        Self(LineTail::from_end(path))
     }
 
     /// From a byte offset an earlier read returned, for a reader that keeps its own cursor.
     pub fn at(path: impl Into<PathBuf>, offset: u64) -> Self {
-        let mut tail = Self::new(path);
-        tail.offset = offset;
-        tail
+        Self(LineTail::at(path, offset))
     }
 
     pub fn path(&self) -> &Path {
-        &self.path
+        self.0.path()
     }
 
     pub fn offset(&self) -> u64 {
-        self.offset
+        self.0.offset()
     }
 
     /// The entries of every complete line added since the last read. A file that shrank or was
     /// replaced is read again from the start.
     pub fn read(&mut self) -> std::io::Result<Vec<Entry>> {
-        let mut file = match std::fs::File::open(&self.path) {
-            Ok(f) => f,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(e) => return Err(e),
-        };
-        let meta = file.metadata()?;
-        if meta.len() < self.offset || self.inode.is_some_and(|i| i != meta.ino()) {
-            self.offset = 0;
-            self.skipping = false;
-        }
-        self.inode = Some(meta.ino());
-        file.seek(SeekFrom::Start(self.offset))?;
-        let mut buf = Vec::new();
-        file.take(MAX_READ as u64).read_to_end(&mut buf)?;
-        let Some(last) = buf.iter().rposition(|&b| b == b'\n') else {
-            if buf.len() == MAX_READ {
-                // One line fills the whole read: skip it rather than stall here.
-                self.offset += buf.len() as u64;
-                self.skipping = true;
-            }
-            return Ok(Vec::new());
-        };
-        let mut out = Vec::new();
-        let mut start = 0;
-        for (i, &b) in buf[..=last].iter().enumerate() {
-            if b != b'\n' {
-                continue;
-            }
-            let line = &buf[start..i];
-            let at = self.offset + start as u64;
-            if self.skipping {
-                self.skipping = false;
-            } else {
-                out.extend(parse_line(line, at));
-            }
-            start = i + 1;
-        }
-        self.offset += last as u64 + 1;
-        Ok(out)
+        Ok(self
+            .0
+            .read()?
+            .into_iter()
+            .flat_map(|(at, line)| parse_line(&line, at))
+            .collect())
     }
 }
 

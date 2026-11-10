@@ -3,8 +3,8 @@
 
 use crate::transcript::Entry;
 use serde_json::Value;
-use std::path::PathBuf;
-use terminescu_plugin_api::is_session_id;
+use std::path::{Path, PathBuf};
+use terminescu_plugin_api::{AgentEvent, is_session_id};
 
 /// Longest `last_assistant_message` kept from `Stop`, in characters.
 const LAST_MESSAGE_CHARS: usize = 2000;
@@ -80,6 +80,52 @@ pub fn on_hook(agent: Option<Agent>, event: &Value) -> Option<Agent> {
         _ => {}
     }
     Some(a)
+}
+
+/// What a hook event says besides the state: Claude's reply at the end of a turn (D13), and the
+/// file a `PostToolUse` for Write, Edit, MultiEdit or NotebookEdit touched (D30). A touched path
+/// is absolute: a relative one joins the session's cwd, and without one it is dropped.
+pub fn events(event: &Value) -> Vec<AgentEvent> {
+    let mut out = Vec::new();
+    match str_of(event, "hook_event_name") {
+        Some("Stop") => {
+            if let Some(reply) = str_of(event, "last_assistant_message") {
+                out.push(AgentEvent::Reply(reply.into()));
+            }
+        }
+        Some("PostToolUse") => out.extend(touched(event)),
+        _ => {}
+    }
+    out
+}
+
+fn touched(event: &Value) -> Option<AgentEvent> {
+    let tool = str_of(event, "tool_name")?;
+    let input = event.get("tool_input")?;
+    let path = match tool {
+        "Write" | "Edit" | "MultiEdit" => str_of(input, "file_path")?,
+        "NotebookEdit" => str_of(input, "notebook_path")?,
+        _ => return None,
+    };
+    let cwd = str_of(event, "cwd").filter(|c| Path::new(c).is_absolute());
+    let path = if Path::new(path).is_absolute() {
+        PathBuf::from(path)
+    } else {
+        Path::new(cwd?).join(path)
+    };
+    // Write reports `"type": "create"` for a new file and `"update"` over an old one.
+    let created = tool == "Write"
+        && event
+            .get("tool_response")
+            .and_then(|r| r.get("type"))
+            .and_then(Value::as_str)
+            == Some("create");
+    Some(AgentEvent::Touched {
+        path: path.display().to_string(),
+        created,
+        session: str_of(event, "session_id").map(String::from),
+        cwd: cwd.map(String::from),
+    })
 }
 
 /// A transcript line read while the agent works or waits. A denied prompt and an interrupt fire

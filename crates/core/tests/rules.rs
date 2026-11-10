@@ -2,11 +2,11 @@
 //! and the needs-you marker shows over all of them.
 
 use std::collections::HashMap;
-use terminescu_core::agent::AgentState;
 use terminescu_core::state::{Command, Core, Workspace};
 use terminescu_core::status::{
     Auto, Engine, Look, ManualStatus, PaneFacts, Rule, RuleKind, Source, Until, compute,
 };
+use terminescu_plugin_api::AgentState;
 use terminescu_protocol::ShellState;
 
 fn look(label: &str, accent: &str) -> Look {

@@ -2,8 +2,8 @@
 
 use serde_json::{Value, json};
 use std::path::Path;
-use terminescu_core::agent::{Agent, AgentState, on_entry, on_hook};
-use terminescu_core::transcript::parse_line;
+use terminescu_plugin_claude::agent::{Agent, AgentState, on_entry, on_hook};
+use terminescu_plugin_claude::transcript::parse_line;
 
 const SESSION: &str = "00000000-0000-4000-8000-000000000001";
 

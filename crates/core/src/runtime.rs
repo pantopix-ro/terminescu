@@ -18,14 +18,12 @@
 //! reattach, the others get a fresh login shell in their last cwd, and a pane that ran a Claude
 //! session offers to resume it (D23).
 
-use crate::agent::{self, Agent, AgentState, AgentUpdate};
 use crate::context::Variable;
 use crate::daemon::{DaemonClient, DaemonError, DaemonEvent};
 use crate::layout::Layout;
 use crate::persist::{PaneRecord, Saved};
 use crate::state::{Command, CommandError, Core, Id, Patch, PatchBatch, Snapshot, Workspace};
 use crate::status::{self, Engine, Look, PaneFacts, Rule, Shown, Until};
-use crate::transcript::Tail;
 use crate::views::{Action, Queued, Sink, ViewId, Views};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -33,7 +31,9 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
-use terminescu_plugin_api::{CoreEvent, Target};
+use terminescu_plugin_api::{
+    Agent, AgentAdapter, AgentState, AgentUpdate, CoreEvent, LineTail, Target,
+};
 use terminescu_protocol::core::Expiry;
 use terminescu_protocol::{PaneId, PaneInfo, ShellState, SpawnSpec};
 
@@ -52,6 +52,13 @@ const EARLY_EXITS: usize = 64;
 const TAIL_POLL: Duration = Duration::from_millis(250);
 
 pub type Emit = Box<dyn Fn(&PatchBatch) + Send + Sync>;
+
+/// A pane's agent, the adapter that drives it, and its log tail while it works or waits.
+struct Live {
+    agent: Agent,
+    adapter: Arc<dyn AgentAdapter>,
+    tail: Option<LineTail>,
+}
 /// Receives each change of a pane's Claude session state (task 4.2).
 pub type AgentSink = Box<dyn Fn(&AgentUpdate) + Send + Sync>;
 /// Every tab's and side tab's status, sent whenever one changes (D15).
@@ -185,8 +192,11 @@ struct Inner {
     instance: Mutex<String>,
     panes: Mutex<Panes>,
     views: Mutex<Views>,
-    /// The Claude session per pane, with a transcript tail while it waits (D34).
-    agents: Mutex<HashMap<Id, (Agent, Option<Tail>)>>,
+    /// The agent per pane, with the adapter that drives it and a log tail while it works or
+    /// waits (D34, add-plugin-architecture D2).
+    agents: Mutex<HashMap<Id, Live>>,
+    /// The agent adapters of the enabled plugins, asked in order.
+    adapters: Mutex<Vec<Arc<dyn AgentAdapter>>>,
     agent_sink: Mutex<Option<AgentSink>>,
     /// Transcript files found by session id, so a polled transcript pane walks the projects
     /// folder once.
@@ -349,6 +359,7 @@ impl Runtime {
                 panes: Mutex::new(panes),
                 views: Mutex::new(Views::default()),
                 agents: Mutex::default(),
+                adapters: Mutex::default(),
                 agent_sink: Mutex::default(),
                 paths: Mutex::default(),
                 shells: Mutex::default(),
@@ -902,15 +913,16 @@ impl Runtime {
         }
         let known = lock(&self.inner.agents)
             .values()
-            .find(|(a, _)| a.session == session)
-            .and_then(|(a, _)| a.transcript.clone());
+            .find(|l| l.agent.session == session)
+            .and_then(|l| l.agent.transcript.clone());
         if known.is_some() {
             return known;
         }
         if let Some(p) = lock(&self.inner.paths).get(session).filter(|p| p.is_file()) {
             return Some(p.clone());
         }
-        let found = crate::transcript::find_in(&crate::transcript::projects_dir(), session)?;
+        let adapters = lock(&self.inner.adapters).clone();
+        let found = adapters.iter().find_map(|a| a.find_transcript(session))?;
         lock(&self.inner.paths).insert(session.into(), found.clone());
         Some(found)
     }
@@ -924,9 +936,9 @@ impl Runtime {
     pub fn agents(&self) -> Vec<AgentUpdate> {
         lock(&self.inner.agents)
             .iter()
-            .map(|(pane, (a, _))| AgentUpdate {
+            .map(|(pane, l)| AgentUpdate {
                 pane: pane.clone(),
-                agent: Some(a.view()),
+                agent: Some(l.agent.view()),
             })
             .collect()
     }
@@ -957,34 +969,46 @@ impl Runtime {
         self.mark_status();
     }
 
+    /// The adapters of the enabled plugins, in plugin order. An agent whose adapter left goes,
+    /// so a plugin switched off leaves no amber row behind.
+    pub fn set_adapters(&self, adapters: Vec<Arc<dyn AgentAdapter>>) {
+        let ids: HashSet<&str> = adapters.iter().map(|a| a.id()).collect();
+        let gone: Vec<Id> = lock(&self.inner.agents)
+            .iter()
+            .filter(|(_, l)| !ids.contains(l.adapter.id()))
+            .map(|(p, _)| p.clone())
+            .collect();
+        *lock(&self.inner.adapters) = adapters;
+        let mut agents = lock(&self.inner.agents);
+        let mut updates = Vec::new();
+        for pane in gone {
+            if agents.remove(&pane).is_some() {
+                updates.push(AgentUpdate { pane, agent: None });
+            }
+        }
+        let changed = !updates.is_empty();
+        self.tell(updates);
+        drop(agents);
+        if changed {
+            self.mark_status();
+        }
+    }
+
     /// Applies a hook event to the pane's agent and tells the UI when it shows differently.
     fn hook_agent(&self, pane: &str, event: &serde_json::Value) {
+        // Lock order: adapters are copied out before agents is taken.
+        let adapters = lock(&self.inner.adapters).clone();
         let mut agents = lock(&self.inner.agents);
-        let update = {
-            let (old, old_tail) = match agents.remove(pane) {
-                Some((a, t)) => (Some(a), t),
-                None => (None, None),
-            };
-            let shown = old.as_ref().map(Agent::view);
-            let next = agent::on_hook(old, event);
-            let after = next.as_ref().map(Agent::view);
-            if let Some(a) = next {
-                // A working or waiting session needs its transcript read: a denial and an
-                // interrupt fire no hook.
-                let tail = match (a.state, &a.transcript) {
-                    (AgentState::Waiting | AgentState::Running, Some(path)) => match old_tail {
-                        Some(t) if t.path() == path => Some(t),
-                        _ => Some(Tail::from_end(path)),
-                    },
-                    _ => None,
-                };
-                agents.insert(pane.into(), (a, tail));
-            }
-            (shown != after).then(|| AgentUpdate {
-                pane: pane.into(),
-                agent: after,
-            })
-        };
+        let mut live = agents.remove(pane);
+        let changed = agent_step(&mut live, &adapters, event);
+        let after = live.as_ref().map(|l| l.agent.view());
+        if let Some(l) = live {
+            agents.insert(pane.into(), l);
+        }
+        let update = (changed == Some(true)).then(|| AgentUpdate {
+            pane: pane.into(),
+            agent: after,
+        });
         let changed = update.is_some();
         self.tell(update.into_iter().collect());
         drop(agents);
@@ -993,46 +1017,52 @@ impl Runtime {
         }
     }
 
-    /// Reads the transcripts of working and waiting sessions: a denied prompt, an interrupt or
-    /// a finished turn ends them (D34).
+    /// Reads the logs of working and waiting sessions: a denied prompt, an interrupt or a
+    /// finished turn ends them (D34). The pane's adapter reads each line.
     fn tail_agents(self) {
         while !self.inner.stopped.load(Ordering::SeqCst) {
             std::thread::sleep(TAIL_POLL);
             // Read the files with no lock held, then apply what was read to agents that still
             // wait on the same file.
-            let waiting: Vec<(Id, String, Tail)> = lock(&self.inner.agents)
+            let waiting: Vec<(Id, String, LineTail)> = lock(&self.inner.agents)
                 .iter()
-                .filter_map(|(pane, (a, t))| Some((pane.clone(), a.session.clone(), t.clone()?)))
+                .filter_map(|(pane, l)| {
+                    Some((pane.clone(), l.agent.session.clone(), l.tail.clone()?))
+                })
                 .collect();
             let read: Vec<_> = waiting
                 .into_iter()
                 .filter_map(|(pane, session, mut t)| {
                     let from = t.offset();
-                    let entries = t.read().ok()?;
-                    Some((pane, session, from, t, entries))
+                    let lines = t.read().ok()?;
+                    Some((pane, session, from, t, lines))
                 })
                 .collect();
             let mut agents = lock(&self.inner.agents);
             let mut updates = Vec::new();
-            for (pane, session, from, t, entries) in read {
-                let Some((a, tail)) = agents.get_mut(&pane) else {
+            for (pane, session, from, t, lines) in read {
+                let Some(l) = agents.get_mut(&pane) else {
                     continue;
                 };
-                if a.session != session
-                    || tail
+                if l.agent.session != session
+                    || l.tail
                         .as_ref()
                         .is_none_or(|c| c.path() != t.path() || c.offset() != from)
                 {
                     continue;
                 }
-                if entries.iter().any(|e| agent::on_entry(a, e)) {
-                    *tail = None;
+                let adapter = l.adapter.clone();
+                if lines
+                    .iter()
+                    .any(|(_, line)| adapter.on_line(&mut l.agent, line))
+                {
+                    l.tail = None;
                     updates.push(AgentUpdate {
                         pane,
-                        agent: Some(a.view()),
+                        agent: Some(l.agent.view()),
                     });
                 } else {
-                    *tail = Some(t);
+                    l.tail = Some(t);
                 }
             }
             let changed = !updates.is_empty();
@@ -1288,7 +1318,7 @@ impl Runtime {
         let ws = self.workspace();
         let agents: HashMap<Id, AgentState> = lock(&self.inner.agents)
             .iter()
-            .map(|(p, (a, _))| (p.clone(), a.state))
+            .map(|(p, l)| (p.clone(), l.agent.state))
             .collect();
         let shells = lock(&self.inner.shells).clone();
         let foreground = lock(&self.inner.foreground).clone();
@@ -1616,6 +1646,43 @@ impl Runtime {
     }
 }
 
+/// One hook event on a pane's agent (add-plugin-architecture D2): the pane's own adapter takes
+/// it, else the first adapter that accepts it, and another tool's agent in the pane ends where
+/// this one starts. Returns whether the agent shows differently, or `None` when no adapter took
+/// the event and `live` stays as it was.
+fn agent_step(
+    live: &mut Option<Live>,
+    adapters: &[Arc<dyn AgentAdapter>],
+    event: &Value,
+) -> Option<bool> {
+    let adapter = match live.as_ref().filter(|l| l.adapter.accepts(event)) {
+        Some(l) => l.adapter.clone(),
+        None => adapters.iter().find(|a| a.accepts(event))?.clone(),
+    };
+    let shown = live.as_ref().map(|l| l.agent.view());
+    let (old, old_tail) = match live.take() {
+        Some(l) if l.adapter.id() == adapter.id() => (Some(l.agent), l.tail),
+        _ => (None, None),
+    };
+    *live = adapter.on_hook(old, event).map(|agent| {
+        // A working or waiting session needs its log read: a denial and an interrupt fire no
+        // hook.
+        let tail = match (agent.state, &agent.transcript) {
+            (AgentState::Waiting | AgentState::Running, Some(path)) => match old_tail {
+                Some(t) if t.path() == path => Some(t),
+                _ => Some(LineTail::from_end(path)),
+            },
+            _ => None,
+        };
+        Live {
+            agent,
+            adapter,
+            tail,
+        }
+    });
+    Some(shown != live.as_ref().map(|l| l.agent.view()))
+}
+
 fn set_resume(ws: &mut Workspace, pane: &str, session: Option<String>) {
     for t in ws
         .windows
@@ -1788,5 +1855,109 @@ mod command_tests {
         .unwrap();
         assert_eq!(end.ms, 5_000);
         assert!(starts.contains_key("p"));
+    }
+}
+
+#[cfg(test)]
+mod adapter_tests {
+    use super::{Live, agent_step};
+    use serde_json::{Value, json};
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    use terminescu_plugin_api::{Agent, AgentAdapter, AgentEvent, AgentState};
+
+    /// A tool whose hook events carry `tool` and `state`; a log line `done` ends its turn.
+    struct Fake(&'static str);
+
+    impl AgentAdapter for Fake {
+        fn id(&self) -> &'static str {
+            self.0
+        }
+        fn accepts(&self, event: &Value) -> bool {
+            event["tool"] == self.0
+        }
+        fn on_hook(&self, agent: Option<Agent>, event: &Value) -> Option<Agent> {
+            let state = match event["state"].as_str()? {
+                "running" => AgentState::Running,
+                "waiting" => AgentState::Waiting,
+                "done" => AgentState::Done,
+                _ => return None,
+            };
+            let mut a = agent.unwrap_or(Agent {
+                session: "s-1".into(),
+                transcript: Some(PathBuf::from("/tmp/terminescu-fake.log")),
+                state,
+                last_message: None,
+            });
+            a.state = state;
+            Some(a)
+        }
+        fn on_line(&self, agent: &mut Agent, line: &[u8]) -> bool {
+            let ends = line == b"done" && agent.state != AgentState::Done;
+            if ends {
+                agent.state = AgentState::Done;
+            }
+            ends
+        }
+        fn events(&self, _: &Value) -> Vec<AgentEvent> {
+            Vec::new()
+        }
+        fn resume_command(&self, session: &str) -> Option<String> {
+            Some(format!("fake resume {session}"))
+        }
+        fn find_transcript(&self, _: &str) -> Option<PathBuf> {
+            None
+        }
+    }
+
+    fn adapters() -> Vec<Arc<dyn AgentAdapter>> {
+        vec![Arc::new(Fake("one")), Arc::new(Fake("two"))]
+    }
+
+    fn step(mut live: Option<Live>, event: Value) -> (Option<Live>, bool) {
+        let changed = agent_step(&mut live, &adapters(), &event).expect("no adapter took it");
+        (live, changed)
+    }
+
+    #[test]
+    fn the_runtime_drives_an_agent_through_its_adapter() {
+        let (live, changed) = step(None, json!({ "tool": "one", "state": "running" }));
+        let mut live = live.unwrap();
+        assert!(changed);
+        assert_eq!(
+            (live.adapter.id(), live.agent.state),
+            ("one", AgentState::Running)
+        );
+        // Working: its log is read; the adapter's line ends the turn.
+        assert!(live.tail.is_some());
+        assert!(live.adapter.clone().on_line(&mut live.agent, b"done"));
+        let (live, changed) = step(Some(live), json!({ "tool": "one", "state": "done" }));
+        assert!(!changed);
+        assert!(live.unwrap().tail.is_none());
+    }
+
+    #[test]
+    fn an_event_no_adapter_takes_leaves_the_pane_alone() {
+        let (mut live, _) = step(None, json!({ "tool": "one", "state": "waiting" }));
+        let other = json!({ "hook_event_name": "Stop" });
+        assert_eq!(agent_step(&mut live, &adapters(), &other), None);
+        assert_eq!(live.unwrap().agent.state, AgentState::Waiting);
+        // With no adapter at all (the plugin is off), nothing starts.
+        let mut none = None;
+        let waiting = json!({ "tool": "one", "state": "waiting" });
+        assert_eq!(agent_step(&mut none, &[], &waiting), None);
+        assert!(none.is_none());
+    }
+
+    #[test]
+    fn another_tool_in_the_pane_replaces_the_agent() {
+        let (live, _) = step(None, json!({ "tool": "one", "state": "waiting" }));
+        let (live, changed) = step(live, json!({ "tool": "two", "state": "running" }));
+        assert!(changed);
+        let live = live.unwrap();
+        assert_eq!(
+            (live.adapter.id(), live.agent.state),
+            ("two", AgentState::Running)
+        );
     }
 }

@@ -2,11 +2,11 @@
 //! and since when. Pure: the app feeds agent updates and shows the count, the dock badge and
 //! notifications, and `⌘⇧A` jumps to the oldest wait.
 
-use crate::agent::{AgentState, AgentUpdate};
 use crate::db::Db;
 use crate::state::{Id, Workspace};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use terminescu_plugin_api::{AgentState, AgentUpdate};
 
 const SETTINGS_KEY: &str = "attention.settings";
 
@@ -176,7 +176,7 @@ pub fn place_of(ws: &Workspace, pane: &str) -> Option<Place> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::AgentView;
+    use terminescu_plugin_api::AgentView;
 
     fn u(pane: &str, state: Option<AgentState>) -> AgentUpdate {
         AgentUpdate {

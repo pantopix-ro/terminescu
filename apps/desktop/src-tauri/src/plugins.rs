@@ -50,7 +50,16 @@ pub fn menu_items(app: &AppHandle) -> Vec<MenuAction> {
 
 /// The plugins compiled in, in the order their decorators compose.
 fn registered() -> Vec<Arc<dyn Plugin>> {
-    Vec::new()
+    vec![Arc::new(terminescu_plugin_claude::ClaudePlugin)]
+}
+
+/// The runtime drives agents through the adapters of the plugins that are on (D2).
+fn refresh_adapters(app: &AppHandle) {
+    if let (Some(plugins), Some(state)) =
+        (app.try_state::<Arc<Plugins>>(), app.try_state::<AppState>())
+    {
+        state.runtime.set_adapters(plugins.host.adapters());
+    }
 }
 
 impl Plugins {
@@ -78,6 +87,7 @@ impl Plugins {
             if !live {
                 forget_plugin(&handle, &held, id);
             }
+            refresh_adapters(&handle);
         }));
         Self {
             host,
@@ -107,6 +117,7 @@ impl Plugins {
 
 /// Core events reach the plugins; a closed pane, tab or row takes its decorations with it.
 pub fn observe(app: &AppHandle, runtime: &Runtime, plugins: Arc<Plugins>) {
+    runtime.set_adapters(plugins.host.adapters());
     let app = app.clone();
     runtime.on_event(Box::new(move |event| {
         let gone = match &event {

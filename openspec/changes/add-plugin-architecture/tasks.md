@@ -37,7 +37,7 @@
 
 ## 3. The Claude plugin
 
-- [ ] 3.1 `crates/plugin-claude` with `ClaudeAdapter`: `agent.rs` and `transcript.rs` move in;
+- [x] 3.1 `crates/plugin-claude` with `ClaudeAdapter`: `agent.rs` and `transcript.rs` move in;
       the runtime drives agents through the adapter list. Verify: the moved unit tests pass in
       the new crate; core tests pass with a fake adapter; `pnpm check:rust`.
 - [ ] 3.2 Replies and touched files become adapter events; `files.rs` keeps storage only; the

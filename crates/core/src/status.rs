@@ -3,10 +3,10 @@
 //! that hooks and the shell integration produce. The amber needs-you marker shows over all of
 //! them. Pure: the runtime feeds facts and events in and sends the result to the UI.
 
-use crate::agent::AgentState;
 use crate::state::{Id, Workspace};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
+use terminescu_plugin_api::AgentState;
 use terminescu_protocol::ShellState;
 
 /// Accent hues a status may take. Amber stays reserved for "needs you" (D16).
