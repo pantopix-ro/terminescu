@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { loadMode, MODE_KEY, parseMode, saveMode, toggled } from "../src/mode";
+import { DIFF_MODE_KEY as MODE_KEY, loadDiffMode as loadMode, parseDiffMode as parseMode, saveDiffMode as saveMode, toggledDiffMode as toggled } from "../src/diff-mode";
 
 const memory = () => {
   const data = new Map<string, string>();

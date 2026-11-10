@@ -14,9 +14,6 @@
     "react": "^19.3.0"
   },
   "dependencies": {
-    "@codemirror/merge": "6.12.3",
-    "@codemirror/state": "6.7.6",
-    "@codemirror/view": "6.43.15",
     "@terminescu/host": "workspace:*",
     "@terminescu/plugin-api": "workspace:*",
     "@terminescu/ui": "workspace:*"

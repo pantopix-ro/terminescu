@@ -38,3 +38,14 @@
 .cl-inProgress .cl-mark, .cl-inProgress .cl-text { color: var(--fg); }
 .cl-completed .cl-text { color: var(--faint); text-decoration: line-through; }
 .pl-item.pl-meter { font-variant-numeric: tabular-nums; }
+
+/* What Claude changed (add-claude-insights 3.2). */
+.cl-untracked { padding: 4px var(--space-3); }
+.cl-change { gap: var(--space-2); }
+.cl-change-mark { font-size: 11px; min-width: 1.4em; text-align: center; color: var(--amber); }
+.cl-change-mark.cl-A { color: var(--green); }
+.cl-change-mark.cl-D { color: var(--red); }
+.cl-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cl-lines { white-space: nowrap; }
+.cl-added { color: var(--green); }
+.cl-removed { color: var(--red); }

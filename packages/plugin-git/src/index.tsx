@@ -7,18 +7,17 @@ import { ChangesSection } from "./ChangesSection";
 import { rowChips, tabChips } from "./chips";
 import { DIFF_KIND, DiffView } from "./DiffView";
 import { checkOutPullRequest, githubFlags, openPullRequest } from "./github";
-import { loadMode, saveMode, toggled } from "./mode";
+import { loadDiffMode, saveDiffMode, toggledDiffMode } from "@terminescu/ui";
 import { SettingsPage } from "./SettingsPage";
 import { beforeRowClose, newWorktreeRow, openWorktreeRows } from "./worktree";
 import "./git.css";
 
 export { ChangesSection, markOf, type Change, type ChangesAnswer } from "./ChangesSection";
 export { MAX_BRANCH, rowChips, shortBranch, shortenMiddle, tabChips } from "./chips";
-export { baseNote, DIFF_KIND, DiffView, diffView, parseSource, type BaseText, type DiffSource } from "./DiffView";
+export { DIFF_KIND, DiffView, diffView, parseSource, type BaseText, type DiffSource } from "./DiffView";
 export { checkOutPullRequest, GITHUB, githubFlags, openPullRequest, type PullRequest } from "./github";
 export { SettingsPage, type GitSettings } from "./SettingsPage";
 export { beforeRowClose, newWorktreeRow, openWorktreeRows } from "./worktree";
-export { loadMode, MODE_KEY, parseMode, saveMode, toggled, type DiffMode } from "./mode";
 
 export const git = definePlugin({
   id: "git",
@@ -32,7 +31,7 @@ export const git = definePlugin({
     openWorktreeRows,
     openPullRequest,
     checkOutPullRequest,
-    { id: "diffLayout", label: "Toggle Diff Layout", menu: "View", accel: "Cmd+Alt+U", run: () => saveMode(toggled(loadMode())) },
+    { id: "diffLayout", label: "Toggle Diff Layout", menu: "View", accel: "Cmd+Alt+U", run: () => saveDiffMode(toggledDiffMode(loadDiffMode())) },
   ],
   beforeRowClose,
   flags: githubFlags,

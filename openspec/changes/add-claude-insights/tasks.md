@@ -35,9 +35,11 @@
 
 - [x] 3.1 Session history in row data, "Resume…" that types without Enter. Verify: plugin test
       `history_keeps_50_newest`; `e2e/claude.spec.ts` "resume types the command and no Enter".
-- [ ] 3.2 "What Claude changed" panel section and diff tabs through the git plugin's diff view
+- [x] 3.2 "What Claude changed" panel section and diff tabs through the git plugin's diff view
       (plain text view when git is off). Verify: `e2e/claude.spec.ts` "a session's changes open
       as diffs".
+      Done: the diff view moved to `@terminescu/ui` as `DiffPane` (D5a), so the diff works with
+      the git plugin off and no plain text fallback is needed.
 - [x] 3.3 Open `CLAUDE.md`, `~/.claude/CLAUDE.md` and the transcript folder. Verify:
       `e2e/claude.spec.ts` "a missing CLAUDE.md opens unsaved".
 - [ ] 3.4 Settings › Claude: threshold, windows, cap, retention. Verify: `e2e/settings.spec.ts`.

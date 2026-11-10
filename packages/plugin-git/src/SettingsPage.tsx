@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from "react";
 import type { SettingsPageProps } from "@terminescu/plugin-api";
-import { loadMode, MODE_EVENT, saveMode, type DiffMode } from "./mode";
+import { DIFF_MODE_EVENT, loadDiffMode, saveDiffMode, type DiffMode } from "@terminescu/ui";
 
 /** The Rust half's `settings` answer. */
 export interface GitSettings {
@@ -26,7 +26,7 @@ export function SettingsPage({ bridge }: SettingsPageProps) {
   const [settings, setSettings] = useState<GitSettings>();
   const [folder, setFolder] = useState("");
   const [error, setError] = useState<string>();
-  const [mode, setMode] = useState<DiffMode>(() => loadMode());
+  const [mode, setMode] = useState<DiffMode>(() => loadDiffMode());
 
   useEffect(() => {
     let gone = false;
@@ -47,8 +47,8 @@ export function SettingsPage({ bridge }: SettingsPageProps) {
 
   useEffect(() => {
     const follow = (e: Event) => setMode((e as CustomEvent<DiffMode>).detail);
-    window.addEventListener(MODE_EVENT, follow);
-    return () => window.removeEventListener(MODE_EVENT, follow);
+    window.addEventListener(DIFF_MODE_EVENT, follow);
+    return () => window.removeEventListener(DIFF_MODE_EVENT, follow);
   }, []);
 
   const save = (key: string, value: unknown) =>
@@ -91,7 +91,7 @@ export function SettingsPage({ bridge }: SettingsPageProps) {
       <div role="radiogroup" aria-label="Diff layout">
         {LAYOUTS.map((l) => (
           <label key={l.mode} className="srow">
-            <input type="radio" name="git-diff-mode" checked={mode === l.mode} onChange={() => saveMode(l.mode)} />
+            <input type="radio" name="git-diff-mode" checked={mode === l.mode} onChange={() => saveDiffMode(l.mode)} />
             <span>{l.label}</span>
             <span className="small ao-dim grow">{l.hint}</span>
           </label>

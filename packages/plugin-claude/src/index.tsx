@@ -1,17 +1,31 @@
 // The Claude plugin's UI half (add-plugin-architecture 3.4): the transcript pane, read through
-// the plugin's Rust half, and the todo mirror (add-claude-insights 2.2). The agent dot and the
+// the plugin's Rust half, the todo mirror (add-claude-insights 2.2) and what a session changed
+// (3.2). The agent dot and the
 // amber row stay the app's own.
 
 import type { TranscriptChunk } from "@terminescu/host";
 import { definePlugin, type PaneViewProps } from "@terminescu/plugin-api";
 import { quoteOf } from "@terminescu/ui";
 import { openMemory, openUserMemory, resume, revealTranscripts } from "./actions";
+import { CLAUDE_DIFF, ChangesSection, ClaudeDiffView } from "./ChangesSection";
 import { TodoSection } from "./TodoSection";
 import { TranscriptPane } from "./TranscriptPane";
 import "./transcript.css";
 
 export { TranscriptPane, type Reveal, type TextEntry } from "./TranscriptPane";
 export { TodoSection, type Todo, type TodosAnswer } from "./TodoSection";
+export {
+  ChangesSection,
+  changeMark,
+  CLAUDE_DIFF,
+  claudeDiff,
+  ClaudeDiffView,
+  parseClaudeDiff,
+  splitUnder,
+  type ClaudeChange,
+  type ClaudeChanges,
+  type ClaudeDiffSource,
+} from "./ChangesSection";
 export { openMemory, openUserMemory, resume, revealTranscripts, startedAt, type PastSession } from "./actions";
 
 function Transcript({ paneId, source, bridge, app }: PaneViewProps) {
@@ -42,7 +56,13 @@ function Transcript({ paneId, source, bridge, app }: PaneViewProps) {
 export const claude = definePlugin({
   id: "claude",
   name: "Claude",
-  paneViews: [{ kind: "transcript", render: Transcript }],
-  panelSections: [{ id: "todos", title: "Claude's plan", render: TodoSection }],
+  paneViews: [
+    { kind: "transcript", render: Transcript },
+    { kind: CLAUDE_DIFF, render: ClaudeDiffView },
+  ],
+  panelSections: [
+    { id: "todos", title: "Claude's plan", render: TodoSection },
+    { id: "changes", title: "What Claude changed", render: ChangesSection },
+  ],
   actions: [resume, openMemory, openUserMemory, revealTranscripts],
 });

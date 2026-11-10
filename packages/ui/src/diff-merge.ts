@@ -1,11 +1,11 @@
-// The diff tab's editors (add-git-plugin D6): the text pane's own editor, inside a merge view.
+// A diff tab's editors (add-git-plugin D6): the text pane's own editor, inside a merge view.
 // The working side keeps every extension the pane gives it, so saving and line endings work
 // as in a text tab.
 
 import { MergeView, unifiedMergeView } from "@codemirror/merge";
 import { EditorState, type Extension } from "@codemirror/state";
 import { EditorView, lineNumbers } from "@codemirror/view";
-import { editorTheme, type MountEditor } from "@terminescu/ui";
+import { editorTheme, type MountEditor } from "./TextPane";
 
 /** Side by side: the base on the left, read-only; the working copy on the right. */
 export function sideBySide(original: string): MountEditor {

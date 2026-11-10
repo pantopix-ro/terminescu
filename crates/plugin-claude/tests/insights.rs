@@ -83,6 +83,20 @@ fn a_session_in_a_repository_snapshots_and_lists_its_changes() {
         repo.join("retry.ts").display().to_string()
     );
     assert_eq!(got["files"][0]["added"], 1);
+    assert_eq!(got["base"], repo.display().to_string());
+    // A tool result tells the UI half to read the list again.
+    cx.emits.lock().unwrap().clear();
+    hook(
+        &plugin,
+        &cx,
+        json!({ "hook_event_name": "PostToolUse", "session_id": "sess-1", "tool_name": "Bash" }),
+    );
+    assert!(
+        cx.emits
+            .lock()
+            .unwrap()
+            .contains(&("changed".to_string(), json!({ "pane": "p1" })))
+    );
     let text = plugin
         .call(
             "baseText",

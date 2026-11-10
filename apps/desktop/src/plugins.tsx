@@ -265,16 +265,28 @@ const fakeGit = (): FakePlugin => ({
 /**
  * The Claude half's insight calls, as a test sets them on `window.__fakeClaude`: by pane what
  * `todos` answers, by row the `history` that `resume` reads (add-claude-insights groups 2 and
- * 3), and by row its folder `root` and newest `transcript`. The mock's own Claude half keeps
- * `read`.
+ * 3), and by row its folder `root` and newest `transcript`; by pane its `changes`; and on
+ * `window.__fakeClaudeBases` each path's text before the session. The mock's own Claude half
+ * keeps `read`.
  */
 const fakeClaude = (): FakePlugin => ({
   id: "claude",
   name: "Claude",
   async call(method, args, host) {
     const a = (args ?? {}) as { pane?: string; row?: string; session?: string };
-    const all = (globalThis as { __fakeClaude?: Record<string, { todos?: unknown; history?: { id: string; cwd: string }[]; root?: string; transcript?: string }> }).__fakeClaude ?? {};
+    const all = (globalThis as { __fakeClaude?: Record<string, { todos?: unknown; changes?: unknown; history?: { id: string; cwd: string }[]; root?: string; transcript?: string }> }).__fakeClaude ?? {};
     if (method === "todos") return all[a.pane ?? ""]?.todos ?? { session: null, todos: null };
+    if (method === "changes") {
+      const c = all[a.pane ?? ""]?.changes;
+      if (!c) throw new Error("no Claude session");
+      return c;
+    }
+    if (method === "baseText") {
+      const path = (args as { path?: string }).path ?? "";
+      const base = (globalThis as { __fakeClaudeBases?: Record<string, unknown> }).__fakeClaudeBases?.[path];
+      if (!base) throw new Error("no copy of the file");
+      return base;
+    }
     if (method === "history") return all[a.row ?? ""]?.history ?? [];
     if (method === "resume") {
       const s = all[a.row ?? ""]?.history?.find((h) => h.id === a.session);

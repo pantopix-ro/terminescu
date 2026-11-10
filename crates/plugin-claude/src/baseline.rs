@@ -103,6 +103,8 @@ pub struct Changes {
     pub files: Vec<Changed>,
     /// A git snapshot covers the session: Bash and formatter edits show.
     pub tree: bool,
+    /// The folder the paths read from: the repository's top folder, else the session's cwd.
+    pub base: String,
 }
 
 /// A file's text before the session, as the diff view reads it.
@@ -402,6 +404,7 @@ impl Store {
         Ok(Changes {
             files,
             tree: tree.is_some() && repo.is_some(),
+            base: meta.root.clone().unwrap_or(meta.cwd.clone()),
         })
     }
 

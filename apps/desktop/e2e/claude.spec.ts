@@ -154,3 +154,45 @@ test("a missing CLAUDE.md opens unsaved", async ({ page }) => {
   await page.keyboard.press("Meta+Alt+Shift+KeyR");
   await expect(page.locator(".ao-error, [role=alert]").first()).toContainText("no transcript yet");
 });
+
+test("a session's changes open as diffs", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/?plugins=claude");
+  const { pane } = await first(page);
+  const root = "/Users/owner/src/shop-api";
+  const file = (rel: string, extra: object) => ({ path: `${root}/${rel}`, added: 1, removed: 1, created: false, deleted: false, ...extra });
+  await page.locator(".term-pane").first().click();
+  await page.keyboard.press("Meta+Backslash");
+  const section = page.locator('aside.ctx-pinned section[data-section="claude.changes"]');
+  await expect(section.locator("h3")).toHaveText("What Claude changed");
+  await expect(section.locator(".ctx-empty")).toHaveText("No Claude session in this tab.");
+  await page.evaluate(
+    ({ pane, root, files }) => {
+      (window as any).__fakeClaude = { [pane]: { changes: { session: "sess-1", tree: true, base: root, files } } };
+      (window as any).__fakeClaudeBases = { [`${root}/src/retry.ts`]: { exists: true, binary: false, large: false, text: "const tries = 3;\n" } };
+      (window as any).__terminescu.host.files.set(`${root}/src/retry.ts`, "const tries = 5;\n");
+    },
+    { pane, root, files: [file("src/retry.ts", {}), file("src/new.ts", { created: true, removed: 0 }), file("data/dump.sql", { added: null, removed: null, none: "too large" })] },
+  );
+  await host(page, "pluginEmit", "claude", "changed", { pane });
+  const rows = section.locator(".cl-change");
+  await expect(rows).toHaveCount(3);
+  await expect(section.locator(".cl-untracked")).toHaveCount(0);
+  const retry = section.locator(`.cl-change[data-path="${root}/src/retry.ts"]`);
+  await expect(retry.locator(".cl-name")).toHaveText("retry.ts");
+  await expect(retry.locator(".cl-dir")).toHaveText("src/");
+  await expect(retry.locator(".cl-lines")).toHaveText("+1 −1");
+  await expect(section.locator(`.cl-change[data-path="${root}/src/new.ts"] .cl-change-mark`)).toHaveText("A");
+  await expect(section.locator(`.cl-change[data-path="${root}/data/dump.sql"]`)).toContainText("Too large to compare");
+  // The diff: the file before the session on the left, the working copy on the right.
+  await retry.locator(".cl-path").click();
+  const sides = page.locator(".cm-mergeView .cm-editor");
+  await expect(sides).toHaveCount(2);
+  await expect(sides.nth(0)).toContainText("const tries = 3;");
+  await expect(sides.nth(1)).toContainText("const tries = 5;");
+  await expect(page.locator(".diff-note")).toHaveText("Changes since the session started.");
+  // Outside git the list says what it cannot see.
+  await page.evaluate(({ pane, root }) => ((window as any).__fakeClaude[pane].changes = { session: "sess-1", tree: false, base: root, files: [] }), { pane, root });
+  await host(page, "pluginEmit", "claude", "changed", { pane });
+  await expect(section.locator(".cl-untracked")).toContainText("Bash edits are not tracked");
+});

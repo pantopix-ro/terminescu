@@ -369,6 +369,13 @@ impl ClaudePlugin {
             live.tail = Some(LineTail::new(path));
         }
         live.insight.on_hook(event);
+        // A tool result or a finished turn may have changed files (3.2).
+        if matches!(
+            event.get("hook_event_name").and_then(Value::as_str),
+            Some("PostToolUse" | "Stop")
+        ) {
+            cx.emit("changed", json!({ "pane": pane }));
+        }
         let todos = live.catch_up(cx);
         live.publish(pane, cx);
         if todos {

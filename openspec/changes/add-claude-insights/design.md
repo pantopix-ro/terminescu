@@ -71,6 +71,17 @@ The reader keeps the latest `tool_use` named `TodoWrite` (input `todos[]` with `
 `status`, `activeForm`). Another tool name or shape is ignored, so a Claude Code change hides
 the section instead of breaking it. The panel section is the plugin's.
 
+### D5a. One diff pane for both plugins
+The git plugin's diff tab moved to `@terminescu/ui` as `DiffPane`: the text pane inside a
+CodeMirror merge view, side by side or unified, over a base text a plugin reads. The git plugin
+reads HEAD (`git-diff`); the Claude plugin registers its own pane view, `claude-diff`, whose
+source is `{session, path}` and whose base is the plugin's `baseText`. Neither plugin imports the
+other, so "What Claude changed" opens real diffs with the git plugin off. The layout key is now
+`terminescu.diffMode`, shared by both; its `⌥⌘U` action stays in the git plugin. The section
+reads `changes {pane}` again on a `changed` event, which the Rust half sends after each
+`PostToolUse` and `Stop`. Outside git it says Bash edits are not tracked; a file over the cap
+shows "Too large to compare".
+
 ### D6. Session history in row data
 On `SessionStart` and `SessionEnd`, and on the first `UserPromptSubmit` (for the prompt's first
 line, at most 80 characters), the plugin updates `plugin_side_tab_data` key `sessions` for the

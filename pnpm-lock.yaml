@@ -148,15 +148,6 @@ importers:
 
   packages/plugin-git:
     dependencies:
-      '@codemirror/merge':
-        specifier: 6.12.3
-        version: 6.12.3
-      '@codemirror/state':
-        specifier: 6.7.6
-        version: 6.7.6
-      '@codemirror/view':
-        specifier: 6.43.15
-        version: 6.43.15
       '@terminescu/host':
         specifier: workspace:*
         version: link:../host
@@ -203,6 +194,9 @@ importers:
       '@codemirror/lint':
         specifier: 6.9.7
         version: 6.9.7
+      '@codemirror/merge':
+        specifier: 6.12.3
+        version: 6.12.3
       '@codemirror/search':
         specifier: 6.7.2
         version: 6.7.2

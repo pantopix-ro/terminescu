@@ -119,7 +119,7 @@ test("a diff tab edits and saves, and switches between side by side and unified"
   await expect(sides).toHaveCount(2);
   await expect(sides.nth(0)).toContainText("const tries = 3;");
   await expect(sides.nth(1)).toContainText("const tries = 5;");
-  await expect(page.locator(".git-diff-note")).toHaveText("Changes since HEAD.");
+  await expect(page.locator(".diff-note")).toHaveText("Changes since HEAD.");
   await expect(page.locator(".cm-mergeView .cm-changedLine").first()).toBeVisible();
   await expect(sides.nth(0).locator(".cm-content")).toHaveAttribute("contenteditable", "false");
   // The working side is the text tab's own document: typing and ⌘S write the file.
@@ -129,7 +129,7 @@ test("a diff tab edits and saves, and switches between side by side and unified"
   await page.keyboard.press("Meta+KeyS");
   await expect.poll(async () => (await files(page))[`${root}/src/retry.ts`]).toBe("// retry on timeout\nconst tries = 5;\nexport { tries };\n");
   // Unified: one editor, the removed line above the one that replaced it.
-  await page.locator(".git-diff-mode").click();
+  await page.locator(".diff-mode").click();
   await expect(page.locator(".cm-mergeView")).toHaveCount(0);
   await expect(page.locator(".text-pane .cm-deletedChunk")).toContainText("const tries = 3;");
   await expect(page.locator(".text-pane .cm-content")).toContainText("// retry on timeout");
@@ -151,7 +151,7 @@ test("a new file's diff tab compares with nothing", async ({ page }) => {
   );
   await page.keyboard.press("Meta+Backslash");
   await page.locator('aside.ctx-pinned .git-change[data-path="src/new.ts"] .git-path').click();
-  await expect(page.locator(".git-diff-note")).toHaveText("New file: not in HEAD.");
+  await expect(page.locator(".diff-note")).toHaveText("New file: not in HEAD.");
   await expect(page.locator(".cm-mergeView .cm-editor").nth(1)).toContainText("export const added = true;");
 });
 
