@@ -5,7 +5,9 @@
 
 mod agent;
 pub mod atomic;
+pub mod baseline;
 mod decoration;
+pub mod process;
 mod tail;
 
 pub use agent::{

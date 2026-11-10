@@ -4386,6 +4386,7 @@ name = "terminescu-cli"
 version = "0.1.0"
 dependencies = [
  "serde_json",
+ "terminescu-plugin-api",
  "terminescu-protocol",
  "terminescu-ptyd",
 ]
@@ -4432,6 +4433,7 @@ dependencies = [
 name = "terminescu-plugin-api"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
@@ -4451,7 +4453,6 @@ dependencies = [
 name = "terminescu-plugin-git"
 version = "0.1.0"
 dependencies = [
- "libc",
  "serde",
  "serde_json",
  "terminescu-plugin-api",

@@ -110,3 +110,64 @@ fn session_start_adds_the_env_line_once() {
     assert!(text.contains("eval \"$('"), "{text}");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// The first-touch copy (add-claude-insights D3): the options name the session and the path
+/// in the event; the copy happens once, before the edit, and the hook stays silent and fast.
+#[test]
+fn first_touch_copies_once_and_hook_stays_under_100_ms() {
+    use std::io::Write;
+    let dir = std::env::temp_dir().join(format!("terminescu-baseline-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("notes")).unwrap();
+    let file = dir.join("notes/todo.md");
+    // A 5 MB file is the size the design measures (a clone reads none of it).
+    std::fs::write(&file, vec![b'a'; 5 * 1024 * 1024]).unwrap();
+    let socket = dir.join("no-core.sock");
+    let event = format!(
+        r#"{{"hook_event_name":"PreToolUse","session_id":"sess-1","cwd":"{}","tool_name":"Edit","tool_input":{{"file_path":"todo.md"}}}}"#,
+        dir.join("notes").display()
+    );
+    let hook = |event: &str| {
+        let start = Instant::now();
+        let mut child = hook_in_pane(&socket)
+            .env("TERMINESCU_HOME", &dir)
+            .args([
+                "--baseline-session",
+                "/session_id",
+                "--baseline-path",
+                "/tool_input/file_path",
+                "--baseline-path",
+                "/tool_input/notebook_path",
+                "--baseline-cwd",
+                "/cwd",
+            ])
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(event.as_bytes())
+            .unwrap();
+        let out = child.wait_with_output().unwrap();
+        assert!(out.status.success());
+        assert!(out.stdout.is_empty());
+        let took = start.elapsed();
+        assert!(took < Duration::from_millis(100), "{took:?}");
+    };
+    hook(&event);
+    std::fs::write(&file, "edited\n").unwrap();
+    hook(&event);
+    let files = dir.join("baselines/sess-1/files");
+    let copies: Vec<_> = std::fs::read_dir(&files)
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(copies.len(), 2, "{copies:?}");
+    let copy = copies.iter().find(|n| !n.ends_with(".path")).unwrap();
+    assert_eq!(
+        std::fs::metadata(files.join(copy)).unwrap().len(),
+        5 * 1024 * 1024
+    );
+}

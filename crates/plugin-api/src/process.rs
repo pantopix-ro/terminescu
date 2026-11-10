@@ -1,5 +1,6 @@
 //! Runs a program with a time limit, reading its output on threads so a full pipe never
-//! stalls it. Shared by the git and gh strategies.
+//! stalls it. Shared by the plugins that run a program: git and gh for the git plugin, git for
+//! the Claude plugin's baselines.
 //!
 //! The program runs in a process group of its own, so a timeout ends what it started too:
 //! `gh pr checkout`'s `git fetch`, a hook, an LFS filter.

@@ -47,6 +47,13 @@ snapshot is ready, too: a per-file copy wins over the tree snapshot. Every step 
 `stat`, one `clonefile`, no reads of file contents. The hook still exits 0, prints nothing and
 returns within 100 ms; on any error it skips the copy.
 
+The CLI must not depend on a plugin (add-plugin-architecture D11), so it knows no Claude
+payload. The plugin installs the entry as `terminescu hook --baseline-session /session_id
+--baseline-path /tool_input/file_path --baseline-path /tool_input/notebook_path --baseline-cwd
+/cwd`: JSON pointers into the event. With them the hook copies and forwards nothing. The store
+layout and the copy live in `terminescu-plugin-api` (`baseline`), which both use, and so does
+the timed program runner the git plugin had (`process`).
+
 ### D4. Context meter from the transcript
 The transcript reader already tails waiting and running sessions. It now keeps the last
 assistant entry's `message.usage` and `message.model` per session. Used tokens are

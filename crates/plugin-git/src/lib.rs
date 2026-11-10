@@ -6,7 +6,8 @@ pub mod cli;
 pub mod forge;
 pub mod layers;
 pub mod plugin;
-pub mod process;
+/// The timed runner moved to the plugin API, which the Claude plugin uses too.
+pub use terminescu_plugin_api::process;
 pub mod vcs;
 pub mod worktree;
 

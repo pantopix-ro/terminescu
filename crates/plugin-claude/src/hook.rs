@@ -5,8 +5,8 @@
 use serde_json::{Map, Value, json};
 use std::path::{Path, PathBuf};
 
-/// The events D34 listens to. `PreToolUse` stays out: it fires before the prompt and tells
-/// nothing the other events don't.
+/// The events D34 listens to, and the compaction and subagent signals of add-claude-insights
+/// D7. `PreToolUse` has its own entry, [`BEFORE_EDIT`], for edit tools only.
 pub const EVENTS: &[&str] = &[
     "SessionStart",
     "UserPromptSubmit",
@@ -17,7 +17,18 @@ pub const EVENTS: &[&str] = &[
     "Notification",
     "Stop",
     "SessionEnd",
+    "PreCompact",
+    "SubagentStart",
+    "SubagentStop",
 ];
+
+/// The tools whose `PreToolUse` gets the first-touch copy (add-claude-insights D3).
+pub const EDIT_TOOLS: &str = "Write|Edit|MultiEdit|NotebookEdit";
+
+/// The options that make `terminescu hook` copy the file an edit tool names before the edit,
+/// instead of forwarding the event: JSON pointers into Claude Code's `PreToolUse` payload.
+pub const BEFORE_EDIT: &str = "--baseline-session /session_id --baseline-path /tool_input/file_path \
+     --baseline-path /tool_input/notebook_path --baseline-cwd /cwd";
 
 /// Seconds Claude Code waits for the hook; it returns in under 100 ms (D34).
 pub const TIMEOUT_SECS: u64 = 5;
@@ -54,7 +65,11 @@ pub fn command_for(cli: &Path) -> String {
 
 /// A command that runs some `terminescu` binary's `hook`, wherever it was installed.
 fn is_ours(command: &str) -> bool {
-    let Some(program) = command.trim().strip_suffix(" hook") else {
+    let command = command.trim();
+    let command = command
+        .find(" hook --baseline-")
+        .map_or(command, |at| &command[..at + " hook".len()]);
+    let Some(program) = command.strip_suffix(" hook") else {
         return false;
     };
     let program = program.trim().trim_matches(|c| c == '"' || c == '\'');
@@ -152,6 +167,20 @@ fn rewrite(settings: &mut Map<String, Value>, command: Option<&str>) -> Result<b
             "hooks": [{ "type": "command", "command": command, "timeout": TIMEOUT_SECS }]
         }));
     }
+    let groups = hooks
+        .entry("PreToolUse")
+        .or_insert_with(|| Value::Array(Vec::new()));
+    let Value::Array(groups) = groups else {
+        return Err("a non-array hook event");
+    };
+    groups.push(json!({
+        "matcher": EDIT_TOOLS,
+        "hooks": [{
+            "type": "command",
+            "command": format!("{command} {BEFORE_EDIT}"),
+            "timeout": TIMEOUT_SECS
+        }]
+    }));
     Ok(!same_order(&before, settings))
 }
 
@@ -272,13 +301,35 @@ mod tests {
             assert_eq!(count_ours(&v, event), 1, "{event}");
         }
         assert_eq!(v["hooks"]["Stop"][0], theirs["hooks"]["Stop"][0]);
-        assert_eq!(v["hooks"]["PreToolUse"], theirs["hooks"]["PreToolUse"]);
+        // Their PreToolUse group stays first; ours follows, for edit tools only.
+        assert_eq!(
+            v["hooks"]["PreToolUse"][0],
+            theirs["hooks"]["PreToolUse"][0]
+        );
+        assert_eq!(count_ours(&v, "PreToolUse"), 1);
+        let edit = &v["hooks"]["PreToolUse"][1];
+        assert_eq!(edit["matcher"], EDIT_TOOLS);
+        assert_eq!(
+            edit["hooks"][0]["command"],
+            format!("'{CLI}' hook {BEFORE_EDIT}")
+        );
         assert_eq!(v["permissions"], theirs["permissions"]);
         let keys: Vec<&String> = v.as_object().unwrap().keys().collect();
         assert_eq!(keys, ["model", "hooks", "permissions"], "key order stays");
         let ours = &v["hooks"]["SessionStart"][0]["hooks"][0];
         assert_eq!(ours["command"], format!("'{CLI}' hook"));
         assert_eq!(ours["timeout"], 5);
+    }
+
+    #[test]
+    fn uninstall_takes_the_before_edit_entry_too() {
+        let path = temp();
+        install(&path, Path::new(CLI)).unwrap();
+        assert!(present(&path));
+        assert!(uninstall(&path).unwrap());
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("baseline"), "{text}");
+        assert!(!present(&path));
     }
 
     #[test]
