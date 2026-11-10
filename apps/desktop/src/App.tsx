@@ -133,6 +133,10 @@ import {
   QuickStatus,
   StatusLine,
   SettingsSheet,
+  ChordContext,
+  loadDiffMode,
+  saveDiffMode,
+  toggledDiffMode,
   type SettingsSection,
   AboutSheet,
   FeedbackSheet,
@@ -153,7 +157,7 @@ import {
   AskDialog,
 } from "@terminescu/ui";
 import type { Terminal } from "@xterm/xterm";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { useStore } from "zustand";
 import type { Answer, PaneApp, PaneReveal, Question, TextView } from "@terminescu/plugin-api";
@@ -1028,6 +1032,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           };
           if (!pick(wsNow.current)) setFollow(pick);
         }, report);
+      case "diff_layout":
+        // Every diff tab follows the shared layout, whichever plugin drew it.
+        return saveDiffMode(toggledDiffMode(loadDiffMode()));
       case "maximize_pane":
         if (!activeTab || !focused || panes.length < 2) return;
         if (maxPane) restore(activeTab.id);
@@ -1422,7 +1429,17 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   }, [host]);
   // The enabled plugins' contributions, composed in plugin order (add-plugin-architecture D7).
   const boundActions = useMemo(() => withBindings(ACTIONS, keyBindings), [keyBindings]);
-  const plugins = usePlugins(host, boundActions);
+  const plugins = usePlugins(host, boundActions, keyBindings);
+  // Hints name each chord as bound now (add-configurable-shortcuts D6).
+  const chordOf = useCallback(
+    (id: string) => (id.includes(".") ? plugins.composed.actions.find((a) => a.id === id)?.accel : boundActions.find((a) => a.id === id)?.accel) || undefined,
+    [boundActions, plugins.composed.actions],
+  );
+  const chordText = (id: string) => {
+    const accel = chordOf(id);
+    return accel ? chordLabel(accel) : undefined;
+  };
+
   const decorate = useMemo<Decorate>(
     () => ({
       row: (side) => plugins.composed.rowItems({ id: side.id, tabIds: side.tabs.map((t) => t.id), shownTabId: pick(side.tabs.map((t) => t.id), tabBySide[side.id]) }),
@@ -1766,8 +1783,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const menuItems = (target: MenuTarget): MenuEntry[] => {
     if (target.kind === "list") {
       return [
-        { id: "new-side", label: "New side tab", hint: "⇧⌘N", run: () => act("new_side_tab") },
-        { id: "new-window", label: "New window", hint: "⌘N", run: () => act("new_window") },
+        { id: "new-side", label: "New side tab", hint: chordText("new_side_tab"), run: () => act("new_side_tab") },
+        { id: "new-window", label: "New window", hint: chordText("new_window"), run: () => act("new_window") },
         "-",
         {
           id: "sort",
@@ -2325,7 +2342,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     return paneSubtitle(labels[paneId], !!agents[paneId]) ?? "shell";
   };
   return (
-    <>
+    <ChordContext.Provider value={chordOf}>
       <DndContext
         sensors={sensors}
         collisionDetection={collide}
@@ -3006,6 +3023,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           plugins={plugins.infos}
           pluginPages={plugins.composed.settingsPages.map((p) => ({ plugin: p.plugin, body: <p.render bridge={plugins.bridge(p.plugin)} /> }))}
           onPluginSwitch={(id, on) => void host.setPluginEnabled(id, on).catch((e: unknown) => setError(String(e)))}
+          pluginKeys={plugins.composed.keyActions}
         />
       )}
       {picking &&
@@ -3265,6 +3283,6 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           }}
         />
       )}
-    </>
+    </ChordContext.Provider>
   );
 }

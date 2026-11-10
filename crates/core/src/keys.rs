@@ -61,8 +61,23 @@ pub fn normal(accel: &str) -> String {
     out.join("+")
 }
 
+/// The saved chords, unchecked.
 pub fn get(db: &Db) -> crate::db::Result<Bindings> {
     Ok(crate::settings::read(db, KEY)?.unwrap_or_default())
+}
+
+/// The saved chords as they stand against `defaults`: an entry that no longer passes the checks
+/// (an action gone, a default moved onto it) drops alone, and the rest stay (D3).
+pub fn read(db: &Db, defaults: &[(String, String)]) -> crate::db::Result<Bindings> {
+    let mut kept = Bindings::new();
+    for (id, accel) in get(db)? {
+        let mut next = kept.clone();
+        next.insert(id, accel);
+        if let Ok(ok) = check(defaults, next) {
+            kept = ok;
+        }
+    }
+    Ok(kept)
 }
 
 /// Checks `bindings` against the default chords (id, accel) and saves them. A binding equal to
@@ -77,20 +92,40 @@ pub fn set(
     Ok(kept)
 }
 
-/// The chord of each action with `bindings` applied, after the checks.
+/// A plugin action's id, `plugin.action`: the core does not know its default (D1).
+fn plugin_id(id: &str) -> bool {
+    id.split_once('.')
+        .is_some_and(|(p, a)| !p.is_empty() && !a.is_empty() && !a.contains('.'))
+}
+
+/// The chords with `bindings` applied, after the checks. An app binding equal to its default
+/// drops; a plugin binding stays, since only the plugin knows its default. An empty chord is
+/// off (D2) and clashes with nothing.
 pub fn check(defaults: &[(String, String)], bindings: Bindings) -> Result<Bindings, KeysError> {
     let mut kept = Bindings::new();
     for (id, accel) in bindings {
-        let Some((_, default)) = defaults.iter().find(|(d, _)| *d == id) else {
-            return Err(KeysError::UnknownAction(id));
-        };
-        if normal(&accel) != normal(default) {
-            kept.insert(id, accel);
+        match defaults.iter().find(|(d, _)| *d == id) {
+            Some((_, default)) => {
+                if accel.trim().is_empty() || normal(&accel) != normal(default) {
+                    kept.insert(id, accel.trim().to_string());
+                }
+            }
+            None if plugin_id(&id) => {
+                kept.insert(id, accel.trim().to_string());
+            }
+            None => return Err(KeysError::UnknownAction(id)),
         }
     }
+    let plugins = kept.iter().filter(|(id, _)| plugin_id(id));
+    let all = defaults
+        .iter()
+        .map(|(id, d)| (id, kept.get(id).unwrap_or(d)))
+        .chain(plugins);
     let mut seen: BTreeMap<String, &str> = BTreeMap::new();
-    for (id, default) in defaults {
-        let accel = kept.get(id).unwrap_or(default);
+    for (id, accel) in all {
+        if accel.is_empty() {
+            continue;
+        }
         let n = normal(accel);
         // `Cmd++` splits into empty parts, and `Cmd+Shift` has no key at all.
         let key = n.rsplit('+').next().unwrap_or_default();

@@ -191,6 +191,13 @@ test("a session's changes open as diffs", async ({ page }) => {
   await expect(sides.nth(0)).toContainText("const tries = 3;");
   await expect(sides.nth(1)).toContainText("const tries = 5;");
   await expect(page.locator(".diff-note")).toHaveText("Changes since the session started.");
+  // The layout chord is the app's: it works with the git plugin off.
+  await expect(page.locator(".diff-mode")).toHaveAttribute("title", "Switch the diff layout (⌥⌘U)");
+  await sides.nth(1).locator(".cm-content").click();
+  await page.keyboard.press("Meta+Alt+KeyU");
+  await expect(page.locator(".cm-mergeView")).toHaveCount(0);
+  await page.keyboard.press("Meta+Alt+KeyU");
+  await expect(sides).toHaveCount(2);
   // Outside git the list says what it cannot see.
   await page.evaluate(({ pane, root }) => ((window as any).__fakeClaude[pane].changes = { session: "sess-1", tree: false, base: root, files: [] }), { pane, root });
   await host(page, "pluginEmit", "claude", "changed", { pane });

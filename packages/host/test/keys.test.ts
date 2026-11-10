@@ -113,3 +113,23 @@ describe("stepZoom", () => {
     expect(stepZoom(105, -1)).toBe(100);
   });
 });
+
+describe("plugin and off chords (add-configurable-shortcuts)", () => {
+  it("keeps plugin bindings and off chords, and refuses what the core refuses", async () => {
+    const { checkBindings, isPluginAction, withBindings, actionFor, ACTIONS: all } = await import("../src/keys");
+    expect(isPluginAction("git.newWorktreeRow")).toBe(true);
+    expect(isPluginAction("new_tab")).toBe(false);
+    expect(isPluginAction("git.a.b")).toBe(false);
+    expect(checkBindings({ new_tab: "", "git.newWorktreeRow": "Cmd+Alt+W", open_file: "Cmd+O" })).toEqual({ new_tab: "", "git.newWorktreeRow": "Cmd+Alt+W" });
+    // A freed chord can go to a plugin; a held one cannot.
+    expect(checkBindings({ new_tab: "", "git.x": "Cmd+T" })).toEqual({ new_tab: "", "git.x": "Cmd+T" });
+    expect(() => checkBindings({ "git.x": "Cmd+T" })).toThrow(/already New Tab/);
+    expect(() => checkBindings({ "git.x": "Cmd+Q" })).toThrow(/Quit/);
+    expect(() => checkBindings({ nope: "Cmd+Alt+J" })).toThrow(/no action nope/);
+    // An action that is off answers no key.
+    const off = withBindings(all, { new_tab: "" });
+    const e = { code: "KeyT", key: "t", metaKey: true, ctrlKey: false, altKey: false, shiftKey: false } as KeyboardEvent;
+    expect(actionFor(e, all)).toBe("new_tab");
+    expect(actionFor(e, off)).toBeUndefined();
+  });
+});

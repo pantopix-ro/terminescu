@@ -40,6 +40,8 @@ import {
   type StatusConfig,
 } from "@terminescu/host";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import type { Composed } from "@terminescu/plugin-api";
+import { useChord } from "./chords";
 import { MODE_HINT, MODE_LABEL } from "./ExtractDialog";
 import { EXTRACTION_RULES, parseTtl, ttlText } from "./names";
 import { ANSI_SLOTS, schemeTheme, terminalFontOptions } from "./xterm-theme";
@@ -145,6 +147,8 @@ export interface SettingsSheetProps {
   /** Each enabled plugin's own settings page, drawn by the plugin. */
   pluginPages?: readonly { plugin: string; body: ReactNode }[];
   onPluginSwitch?(plugin: string, enabled: boolean): void;
+  /** Every enabled plugin's actions with their chords, for Settings › Keys. */
+  pluginKeys?: Composed["keyActions"];
 }
 
 /** The Settings screen (D25): one sheet, a section list on the left. `⌘,` opens it. */
@@ -415,6 +419,8 @@ function NumberField({ label, value, range, onSave }: { label: string; value: nu
 
 /** Settings › Terminal (task 8.36): the terminal's font and spacing, and the tab text size. */
 function TerminalSettings({ host, onError }: SettingsSheetProps) {
+  const zoomIn = useChord("zoom_in");
+  const zoomOut = useChord("zoom_out");
   const [settings, save] = useAppSettings(host, onError);
   const [family, setFamily] = useState("");
   const [imported, setImported] = useState<string>();
@@ -461,7 +467,7 @@ function TerminalSettings({ host, onError }: SettingsSheetProps) {
       <div className="srow">
         <span>Size</span>
         <NumberField label="Font size" value={settings.terminalFontSize} range={FONT_SIZES} onSave={(v) => save({ terminalFontSize: v })} />
-        <span className="small ao-dim grow">px, {FONT_SIZES[0]} to {FONT_SIZES[1]}; ⌘+ and ⌘- zoom everything on top</span>
+        <span className="small ao-dim grow">px, {FONT_SIZES[0]} to {FONT_SIZES[1]}{zoomIn && zoomOut ? `; ${zoomIn} and ${zoomOut} zoom everything on top` : ""}</span>
       </div>
       <div className="srow">
         <span>Line height</span>
@@ -661,6 +667,7 @@ function TerminalSettings({ host, onError }: SettingsSheetProps) {
 }
 
 function ShellSettings({ host, onError }: SettingsSheetProps) {
+  const returnChord = useChord("return_edit");
   const [settings, change] = useAppSettings(host, onError);
   const helpers = useHelpers(host, onError) ?? [];
   if (!settings) return null;
@@ -677,7 +684,7 @@ function ShellSettings({ host, onError }: SettingsSheetProps) {
           Set <code>VISUAL</code> and <code>EDITOR</code> to <code>terminescu edit --wait</code>
         </span>
         <span id="editor-hint" className="small ao-dim grow">
-          new shells only: git and Claude Code then open their editor in a pane beside yours, ⌘↵ returns
+          new shells only: git and Claude Code then open their editor in a pane beside yours{returnChord ? `, ${returnChord} returns` : ""}
         </span>
       </label>
       {helpers.length > 0 && (
@@ -715,7 +722,64 @@ function terminalKeyProblem(id: keyof TerminalKeys, accel: string, keys: Termina
   return undefined;
 }
 
-function KeysSettings({ host, onError }: SettingsSheetProps) {
+/** Who holds `accel`: an action other than `id`, or macOS. */
+function takenBy(accel: string, id: string, actions: readonly ActionDef[]): string {
+  const want = normalAccel(accel);
+  const reserved = RESERVED.find((r) => normalAccel(r.accel) === want);
+  if (reserved) return reserved.label;
+  const other = actions.find((a) => a.id !== id && a.accel && normalAccel(a.accel) === want);
+  if (other) return other.label;
+  return /(^|\+)cmd(\+|$)/i.test(accel) ? "another plugin" : "the terminal, since it has no ⌘";
+}
+
+/** One action in Settings › Keys: its chord, which records a new one, and reset and off. */
+function KeyRow(p: {
+  id: string;
+  label: string;
+  menu: string;
+  accel: string;
+  changed: boolean;
+  clash: boolean;
+  taken?: string | undefined;
+  recording: string | undefined;
+  problem: { id: string; text: string } | undefined;
+  onRecord(id: string): void;
+  onReset(id: string): void;
+  onOff(id: string): void;
+}) {
+  const note = p.problem?.id === p.id ? p.problem.text : p.taken;
+  return (
+    <div className={`srow${p.clash ? " key-clash" : ""}`} data-action={p.id}>
+      <span className="grow">{p.label}</span>
+      {note && (
+        <span className="small key-problem" role="alert">
+          {note}
+        </span>
+      )}
+      <span className="small ao-dim">{p.menu}</span>
+      {p.changed && (
+        <button type="button" className="link small" aria-label={`Reset ${p.label}`} onClick={() => p.onReset(p.id)}>
+          reset
+        </button>
+      )}
+      {p.accel && (
+        <button type="button" className="link small" aria-label={`Turn off ${p.label}`} onClick={() => p.onOff(p.id)}>
+          off
+        </button>
+      )}
+      <button
+        type="button"
+        className={`ao-btn ghost set-chord${p.recording === p.id ? " recording" : ""}`}
+        aria-label={`Shortcut for ${p.label}`}
+        onClick={() => p.onRecord(p.id)}
+      >
+        {p.recording === p.id ? "press a chord" : p.accel ? <kbd>{chordLabel(p.accel)}</kbd> : <span className="ao-dim">off</span>}
+      </button>
+    </div>
+  );
+}
+
+function KeysSettings({ host, onError, pluginKeys = [] }: SettingsSheetProps) {
   const [settings, change] = useAppSettings(host, onError);
   const [bindings, setBindings] = useState<KeyBindings>({});
   const [recording, setRecording] = useState<string>();
@@ -737,7 +801,9 @@ function KeysSettings({ host, onError }: SettingsSheetProps) {
     void host.recordKeys(true).catch((e: unknown) => onError(String(e)));
     return () => void host.recordKeys(false).catch((e: unknown) => onError(String(e)));
   }, [host, onError, recording]);
-  const actions = withBindings(ACTIONS, bindings);
+  const appActions = withBindings(ACTIONS, bindings);
+  // App and plugin chords together, so a new chord clashes with either.
+  const actions: ActionDef[] = [...appActions, ...pluginKeys.map(({ id, label, menu, accel }) => ({ id, label, menu, accel }))];
   const clashing = conflicts(actions);
   const save = (next: KeyBindings) => void host.setKeyBindings(next).then(setBindings, (e: unknown) => onError(String(e)));
 
@@ -774,42 +840,44 @@ function KeysSettings({ host, onError }: SettingsSheetProps) {
     // `save` reads only host and onError, both in the deps; the rest comes from `latest`.
   }, [host, onError, recording]);
 
+  const rowProps = {
+    recording,
+    problem,
+    onRecord: (id: string) => {
+      setProblem(undefined);
+      setRecording(recording === id ? undefined : id);
+    },
+    onReset: (id: string) => {
+      const { [id]: _, ...rest } = bindings;
+      save(rest);
+    },
+    onOff: (id: string) => save({ ...bindings, [id]: "" }),
+  };
+
   return (
     <section aria-label="Keys">
       <h3 className="ao-pixel ao-dim">Keys</h3>
-      {actions.map((a) => (
-        <div key={a.id} className={`srow${clashing.has(a.id) ? " key-clash" : ""}`} data-action={a.id}>
-          <span className="grow">{a.label}</span>
-          {problem?.id === a.id && (
-            <span className="small key-problem" role="alert">
-              {problem.text}
-            </span>
-          )}
-          <span className="small ao-dim">{a.menu}</span>
-          {bindings[a.id] && (
-            <button
-              type="button"
-              className="link small"
-              aria-label={`Reset ${a.label}`}
-              onClick={() => {
-                const { [a.id]: _, ...rest } = bindings;
-                save(rest);
-              }}
-            >
-              reset
-            </button>
-          )}
-          <button
-            type="button"
-            className={`ao-btn ghost set-chord${recording === a.id ? " recording" : ""}`}
-            aria-label={`Shortcut for ${a.label}`}
-            onClick={() => {
-              setProblem(undefined);
-              setRecording(recording === a.id ? undefined : a.id);
-            }}
-          >
-            {recording === a.id ? "press a chord" : <kbd>{chordLabel(a.accel)}</kbd>}
-          </button>
+      {appActions.map((a) => (
+        <KeyRow key={a.id} id={a.id} label={a.label} menu={a.menu} accel={a.accel} changed={Object.hasOwn(bindings, a.id)} clash={clashing.has(a.id)} {...rowProps} />
+      ))}
+      {[...new Set(pluginKeys.map((k) => k.pluginName))].map((name) => (
+        <div key={name} className="key-plugin" aria-label={`${name} shortcuts`} role="group">
+          <h4 className="small ao-dim key-plugin-head">{name}</h4>
+          {pluginKeys
+            .filter((k) => k.pluginName === name)
+            .map((k) => (
+              <KeyRow
+                key={k.id}
+                id={k.id}
+                label={k.label}
+                menu={k.menu}
+                accel={k.accel}
+                changed={k.bound}
+                clash={clashing.has(k.id)}
+                taken={k.lostAccel && `Wants ${chordLabel(k.lostAccel)}, taken by ${takenBy(k.lostAccel, k.id, actions)}.`}
+                {...rowProps}
+              />
+            ))}
         </div>
       ))}
       <div className="srow">

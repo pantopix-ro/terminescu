@@ -5,6 +5,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { sideBySide, unified } from "./diff-merge";
 import { DIFF_MODE_EVENT, loadDiffMode, saveDiffMode, toggledDiffMode, type DiffMode } from "./diff-mode";
+import { useChord, withChord } from "./chords";
 
 /** A file's base text, as both plugins' `baseText` calls answer it. */
 export interface DiffBase {
@@ -44,13 +45,12 @@ export interface DiffPaneProps {
   /** Signals that the base may have changed (a commit); returns the unsubscribe. */
   subscribe?(again: () => void): () => void;
   notes: DiffNotes;
-  /** The chord of the plugin's layout action, for the button's tip. */
-  chord?: string;
   /** The plugin's `app.renderText`. */
   renderText?(options?: { mount?: unknown; bar?: ReactNode }): ReactNode;
 }
 
-export function DiffPane({ readKey, read, subscribe, notes, chord, renderText }: DiffPaneProps) {
+export function DiffPane({ readKey, read, subscribe, notes, renderText }: DiffPaneProps) {
+  const chord = useChord("diff_layout");
   const [mode, setMode] = useState<DiffMode>(() => loadDiffMode());
   const [base, setBase] = useState<Base>();
   // Counts base texts that differ from the last, so the editor is built again around each.
@@ -105,7 +105,7 @@ export function DiffPane({ readKey, read, subscribe, notes, chord, renderText }:
     <div className="text-bar diff-bar" data-mode={mode}>
       <span className="diff-note">{diffNote(base, notes)}</span>
       {mount && (
-        <button type="button" className="btn diff-mode" title={chord ?? "Switch the diff layout"} onClick={() => saveDiffMode(toggledDiffMode(mode))}>
+        <button type="button" className="btn diff-mode" title={withChord("Switch the diff layout", chord)} onClick={() => saveDiffMode(toggledDiffMode(mode))}>
           {mode === "side" ? "Unified" : "Side by side"}
         </button>
       )}

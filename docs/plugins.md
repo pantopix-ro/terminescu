@@ -97,8 +97,10 @@ pane views, actions and the settings page are slots the app fills.
 - A pane view draws one leaf kind. The view gets the leaf's `source` and a `PaneApp` facade for
   pins, extract, prompts and focus. With no view for the kind, the pane keeps its place and
   names the plugin that draws it.
-- Every action needs a `⌘` chord. A chord that `actions.json` or the person already uses wins,
-  and the plugin action keeps no chord.
+- An action may ask for a `⌘` chord. The person's chords from Settings › Keys come first, then
+  `actions.json`, then each plugin's in plugin order. An action that loses its chord keeps none,
+  and Settings › Keys says who holds it. An action hidden by its `when` flag still holds its
+  chord.
 - An action asks through `cx.ask({ title, text, fields, pick, choices })`, which the app draws
   as its own dialog. The first choice answers Enter; Escape answers `null`. `cx.openUrl` opens
   an http or https link in the browser.

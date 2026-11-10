@@ -39,7 +39,6 @@ export function DiffView({ source, bridge, app }: PaneViewProps) {
       read={() => (src ? bridge.call<BaseText>("baseText", { root: src.root, path: src.path }) : Promise.reject(new Error("the tab names no file")))}
       subscribe={(again) => bridge.on("facts", again)}
       notes={NOTES}
-      chord="⌥⌘U"
       renderText={app.renderText}
     />
   );

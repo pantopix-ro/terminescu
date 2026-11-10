@@ -2,7 +2,7 @@
 // plans commands like crates/core/src/state.rs, with readable ids (m1, m2, ...).
 
 import type { Host, PaneView } from "./host";
-import { ACTIONS, actionFor, bindingProblem, normalAccel, terminalChordProblem, withBindings, type ActionDef, type KeyBindings } from "./keys";
+import { ACTIONS, actionFor, checkBindings, normalAccel, terminalChordProblem, withBindings, type ActionDef, type KeyBindings } from "./keys";
 import { PromptStore } from "./prompt-store";
 import { dockPlace, hasSplit, holdsWork, isSessionId, leaf, panesOf, removePane, resizeSplit, splitAt, splitPane, terminalsOf } from "./layout";
 import {
@@ -1618,17 +1618,7 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
     },
     // As keys::set in the core: checks every chord, drops the ones equal to the default.
     async setKeyBindings(next) {
-      const kept: KeyBindings = {};
-      for (const [id, accel] of Object.entries(next)) {
-        const a = ACTIONS.find((x) => x.id === id);
-        if (!a) throw new Error(`no action ${id}`);
-        if (normalAccel(accel) !== normalAccel(a.accel)) kept[id] = accel;
-      }
-      const actions = withBindings(ACTIONS, kept);
-      for (const a of actions) {
-        const problem = bindingProblem(a.id, a.accel, actions);
-        if (problem) throw new Error(problem);
-      }
+      const kept = checkBindings(next, pluginActions);
       keyBindings = kept;
       keyListeners.forEach((l) => l());
       return { ...kept };

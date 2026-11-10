@@ -3,7 +3,7 @@
 // components take the composed lists as props, knowing no plugin.
 
 import type { ComponentType, ReactNode } from "react";
-import { normalAccel, RESERVED, type ActionDef, type Decoration, type DecorationSlot, type DecorationTone, type Id } from "@terminescu/host";
+import { normalAccel, RESERVED, type ActionDef, type KeyBindings, type Decoration, type DecorationSlot, type DecorationTone, type Id } from "@terminescu/host";
 
 /** What a plugin's UI parts call through: its own Rust half and its own events. */
 export interface PluginBridge {
@@ -249,8 +249,12 @@ export const toItems = (ds: readonly Decoration[]): RenderItem[] => ds.map(item)
 
 export interface ComposedAction extends ActionDef {
   plugin: string;
-  /** The chord the plugin asked for, when it lost it to the app or the person. */
+  /** The chord the plugin asks for; empty when it asks for none. */
+  wantAccel: string;
+  /** The chord the plugin asked for, when it lost it to the app, the person or another plugin. */
   lostAccel?: string;
+  /** The person set this action's chord in Settings › Keys (empty is off). */
+  bound: boolean;
   newMenu: boolean;
   rowMenu: boolean;
   run: PluginAction["run"];
@@ -265,6 +269,8 @@ export interface Composed {
   /** Kinds an installed but disabled plugin draws, for the missing-view notice. */
   offKinds: ReadonlySet<string>;
   actions: readonly ComposedAction[];
+  /** Every action of the enabled plugins, hidden ones too, for Settings › Keys. */
+  keyActions: readonly (ComposedAction & { pluginName: string; hidden: boolean })[];
   /** The enabled plugins' close hooks, in plugin order. */
   beforeRowClose: readonly { plugin: string; run: BeforeRowClose }[];
   settingsPages: readonly { plugin: string; name: string; render: ComponentType<SettingsPageProps> }[];
@@ -279,14 +285,19 @@ export interface ComposeInput {
   appActions: readonly ActionDef[];
   /** Each plugin's raised flags; an action whose `when` is not raised is left out. */
   flags?: ReadonlyMap<string, ReadonlySet<string>>;
+  /** The person's chords from Settings › Keys; plugin actions read `plugin.action`. */
+  bindings?: KeyBindings;
 }
 
 /**
  * Composes the enabled plugins (D7). Decorators run in plugin order, each over the items so
  * far; a plugin's items keep only what that plugin produced, so one plugin cannot drop
- * another's. A chord the app, macOS or an earlier plugin holds goes: the action stays, chordless.
+ * another's. The person's chords come first, then each plugin's in plugin order; a chord the
+ * app, macOS, the person or an earlier plugin holds goes, and the action stays, chordless. A
+ * hidden action holds its chord too, so a flag rising never moves one
+ * (add-configurable-shortcuts D4).
  */
-export function compose({ plugins, enabled, decorations, appActions, flags }: ComposeInput): Composed {
+export function compose({ plugins, enabled, decorations, appActions, flags, bindings = {} }: ComposeInput): Composed {
   const on = plugins.filter((p) => enabled.has(p.id));
   const mine = new Map(on.map((p) => [p.id, decorations.filter((d) => d.plugin === p.id)]));
   const run = <V>(view: V, pick: (p: UiPlugin) => readonly Decorator<V>[]) =>
@@ -297,25 +308,47 @@ export function compose({ plugins, enabled, decorations, appActions, flags }: Co
     }, []);
 
   const taken = new Set([...appActions.map((a) => normalAccel(a.accel)), ...RESERVED.map((r) => normalAccel(r.accel))].filter((a) => a));
-  const actions: ComposedAction[] = [];
-  for (const p of on)
-    for (const a of p.actions ?? []) {
-      if (a.when !== undefined && !flags?.get(p.id)?.has(a.when)) continue;
-      const want = a.accel ? normalAccel(a.accel) : "";
-      const free = want !== "" && /(^|\+)Cmd(\+|$)/.test(want) && !taken.has(want);
-      if (free) taken.add(want);
-      actions.push({
-        id: `${p.id}.${a.id}`,
-        label: a.label,
-        menu: a.menu ?? "Plugins",
-        accel: free ? a.accel! : "",
-        plugin: p.id,
-        newMenu: a.newMenu === true,
-        rowMenu: a.rowMenu === true,
-        run: a.run,
-        ...(a.accel && !free ? { lostAccel: a.accel } : {}),
-      });
+  const isCmd = (n: string) => n !== "" && /(^|\+)Cmd(\+|$)/.test(n);
+  const all = on.flatMap((p) => (p.actions ?? []).map((a) => ({ p, a, id: `${p.id}.${a.id}` })));
+  const chord = new Map<string, string>();
+  // The person's chords first, then the plugins' in plugin order.
+  for (const { id } of all)
+    if (Object.hasOwn(bindings, id)) {
+      const want = normalAccel(bindings[id]!);
+      if (isCmd(want) && !taken.has(want)) {
+        taken.add(want);
+        chord.set(id, bindings[id]!);
+      }
     }
+  for (const { a, id } of all)
+    if (!Object.hasOwn(bindings, id) && a.accel) {
+      const want = normalAccel(a.accel);
+      if (isCmd(want) && !taken.has(want)) {
+        taken.add(want);
+        chord.set(id, a.accel);
+      }
+    }
+  const keyActions = all.map(({ p, a, id }) => {
+    const bound = Object.hasOwn(bindings, id);
+    const accel = chord.get(id) ?? "";
+    const want = bound ? bindings[id]! : (a.accel ?? "");
+    return {
+      id,
+      label: a.label,
+      menu: a.menu ?? "Plugins",
+      accel,
+      wantAccel: a.accel ?? "",
+      bound,
+      plugin: p.id,
+      pluginName: p.name,
+      hidden: a.when !== undefined && !flags?.get(p.id)?.has(a.when),
+      newMenu: a.newMenu === true,
+      rowMenu: a.rowMenu === true,
+      run: a.run,
+      ...(want && !accel ? { lostAccel: want } : {}),
+    };
+  });
+  const actions: ComposedAction[] = keyActions.filter((k) => !k.hidden).map(({ pluginName: _n, hidden: _h, ...rest }) => rest);
 
   const views = new Map<string, PaneViewDef & { plugin: string }>();
   for (const p of on) for (const v of p.paneViews ?? []) if (!views.has(v.kind)) views.set(v.kind, { ...v, plugin: p.id });
@@ -328,6 +361,7 @@ export function compose({ plugins, enabled, decorations, appActions, flags }: Co
     paneView: (kind) => views.get(kind),
     offKinds,
     actions,
+    keyActions,
     beforeRowClose: on.flatMap((p) => (p.beforeRowClose ? [{ plugin: p.id, run: p.beforeRowClose }] : [])),
     settingsPages: on.flatMap((p) => (p.settingsPage ? [{ plugin: p.id, name: p.name, render: p.settingsPage }] : [])),
   };

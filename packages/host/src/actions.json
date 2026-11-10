@@ -158,6 +158,12 @@
    "accel": "Cmd+Shift+A"
   },
   {
+   "id": "diff_layout",
+   "label": "Toggle Diff Layout",
+   "menu": "View",
+   "accel": "Cmd+Alt+U"
+  },
+  {
    "id": "zoom_in",
    "label": "Zoom In",
    "menu": "View",

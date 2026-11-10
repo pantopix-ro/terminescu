@@ -1,4 +1,5 @@
 export { colors, type ColorToken } from "./generated/colors";
+export { ChordContext, defaultChord, useChord, useChordOf, withChord, type ChordOf } from "./chords";
 export { ANSI_SLOTS, terminalBehaviour, terminalFont, terminalFontOptions, xtermTheme, schemeTheme, isLight, LIGHT_TINT, type TerminalBehaviourSettings, type TerminalFont } from "./xterm-theme";
 export { PasteDialog, type PasteDialogProps } from "./PasteDialog";
 export { pasteRisk } from "./paste";

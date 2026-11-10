@@ -30,6 +30,7 @@ import { INSERT_EVENT, type InsertDetail } from "./events";
 import { claimPane, paneElement, releasePane } from "./pane-registry";
 import { eolOf, exactConfig, fitBreaks, textOf, type Eol } from "./text";
 import { refreshChips, varChips, type VarInfo } from "./varchips";
+import { useChord } from "./chords";
 
 /** How long typing pauses before the text goes to the core (D28). */
 export const SYNC_MS = 300;
@@ -179,6 +180,7 @@ interface Cursor {
  * after a pause; the core sends reloads and the changed-on-disk state back.
  */
 export function TextPane({ paneId, docId, visible, focused, onFocus, host, onDoc, variables, mount = plainEditor, bar }: TextPaneProps) {
+  const saveChord = useChord("save");
   const holder = useRef<HTMLDivElement>(null);
   const editor = useRef<EditorView | null>(null);
   const [doc, setDoc] = useState<DocView | null>(null);
@@ -418,7 +420,7 @@ export function TextPane({ paneId, docId, visible, focused, onFocus, host, onDoc
       )}
       {bar}
       {doc?.note && <div className="text-bar text-bar-warn">{doc.note}</div>}
-      {doc?.missing && !doc.conflict && <div className="text-bar">Not on disk yet. ⌘S creates it.</div>}
+      {doc?.missing && !doc.conflict && <div className="text-bar">Not on disk yet. {saveChord ? `${saveChord} creates it.` : "Save creates it."}</div>}
       {error && (
         <div className="text-bar text-bar-error" role="alert">
           {error}

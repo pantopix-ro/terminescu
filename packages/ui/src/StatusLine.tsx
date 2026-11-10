@@ -1,4 +1,5 @@
 import type { Agents } from "./agents";
+import { useChord, withChord } from "./chords";
 
 export interface StatusLineProps {
   /** Claude sessions by pane, in every window: the counts are app-wide, as the dock badge. */
@@ -26,11 +27,13 @@ export function attentionCounts(agents: Agents): { waiting: number; running: num
  */
 export function StatusLine({ agents, sideTabs, tabs, onJump }: StatusLineProps) {
   const { waiting, running } = attentionCounts(agents);
+  const jump = useChord("jump_waiting");
+  const palette = useChord("palette");
   const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
   return (
     <footer className="ao-status app-status">
       {waiting > 0 && (
-        <button type="button" className="need" onClick={onJump} title="Jump to the session waiting longest (⌘⇧A)">
+        <button type="button" className="need" onClick={onJump} title={withChord("Jump to the session waiting longest", jump)}>
           <span className="ao-pixel">{waiting} needs you</span>
         </button>
       )}
@@ -43,10 +46,11 @@ export function StatusLine({ agents, sideTabs, tabs, onJump }: StatusLineProps) 
         {plural(sideTabs, "side tab", "side tabs")} · {plural(tabs, "tab", "tabs")}
       </span>
       <span className="spacer" />
-      <span className="seg">
-        <span className="ao-key">⌘</span>
-        <span className="ao-key">K</span>
-      </span>
+      {palette && (
+        <span className="seg" title="Command Palette">
+          <span className="ao-key">{palette}</span>
+        </span>
+      )}
     </footer>
   );
 }

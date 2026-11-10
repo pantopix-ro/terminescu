@@ -2,7 +2,7 @@
 // only the composed lists; which plugins exist is decided here and in the Rust build.
 
 import { useEffect, useMemo, useState } from "react";
-import type { ActionDef, Decoration, Host, PluginInfo } from "@terminescu/host";
+import type { ActionDef, Decoration, Host, KeyBindings, PluginInfo } from "@terminescu/host";
 import type { FakePlugin } from "@terminescu/host/mock";
 import { compose, definePlugin, type Composed, type PluginBridge, type UiPlugin } from "@terminescu/plugin-api";
 import { claude } from "@terminescu/plugin-claude";
@@ -45,8 +45,10 @@ export interface Plugins {
   bridge(plugin: string): PluginBridge;
 }
 
+const NO_BINDINGS: KeyBindings = {};
+
 /** Follows the plugin list and the decorations and composes the enabled plugins (D7). */
-export function usePlugins(host: Host, appActions: readonly ActionDef[], halves: readonly UiPlugin[] = HALVES): Plugins {
+export function usePlugins(host: Host, appActions: readonly ActionDef[], bindings: KeyBindings = NO_BINDINGS, halves: readonly UiPlugin[] = HALVES): Plugins {
   const [infos, setInfos] = useState<PluginInfo[]>([]);
   const [decorations, setDecorations] = useState<Decoration[]>([]);
   useEffect(() => {
@@ -102,7 +104,7 @@ export function usePlugins(host: Host, appActions: readonly ActionDef[], halves:
     return () => stops.forEach((s) => s());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [host, following]);
-  const composed = useMemo(() => compose({ plugins, enabled, decorations, appActions, flags }), [plugins, enabled, decorations, appActions, flags]);
+  const composed = useMemo(() => compose({ plugins, enabled, decorations, appActions, flags, bindings }), [plugins, enabled, decorations, appActions, flags, bindings]);
   // The native menu (and the mock's chords) follow the composed actions.
   const menuKey = composed.actions.map((a) => `${a.id}|${a.label}|${a.menu}|${a.accel}`).join("\n");
   useEffect(() => {

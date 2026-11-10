@@ -481,8 +481,7 @@ fn commands_list(
 
 #[tauri::command]
 fn keys_get(state: State<'_, AppState>) -> Result<keys::Bindings, String> {
-    let saved = keys::get(&lock(&state.db)).map_err(|e| e.to_string())?;
-    Ok(keys::check(&default_chords(), saved).unwrap_or_default())
+    keys::read(&lock(&state.db), &default_chords()).map_err(|e| e.to_string())
 }
 
 /// Saves the person's chords and rebuilds the menu, so the new chord wins at once (D17).
@@ -503,8 +502,7 @@ fn keys_set(
 
 /// Builds the menu from the saved chords, with them or without them.
 pub(crate) fn set_chords(app: &AppHandle, db: &Mutex<Db>, chords: bool) -> Result<(), String> {
-    let saved = keys::get(&lock(db)).map_err(|e| e.to_string())?;
-    let bindings = keys::check(&default_chords(), saved).unwrap_or_default();
+    let bindings = keys::read(&lock(db), &default_chords()).map_err(|e| e.to_string())?;
     let menu = build_menu(app, &bindings, chords).map_err(|e| e.to_string())?;
     app.set_menu(menu).map_err(|e| e.to_string())?;
     Ok(())
@@ -1905,7 +1903,9 @@ fn build_menu(
     let mut sections: Vec<(String, Vec<MenuItem<Wry>>)> = Vec::new();
     for a in &file.actions {
         let accel = bindings.get(&a.id).unwrap_or(&a.accel);
-        let item = MenuItem::with_id(app, &a.id, &a.label, true, chords.then_some(accel))?;
+        // An empty chord is off (add-configurable-shortcuts D2).
+        let accel = (chords && !accel.is_empty()).then_some(accel.as_str());
+        let item = MenuItem::with_id(app, &a.id, &a.label, true, accel)?;
         match sections.iter_mut().find(|(name, _)| *name == a.menu) {
             Some((_, items)) => items.push(item),
             None => sections.push((a.menu.clone(), vec![item])),
@@ -2064,14 +2064,13 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         refresh_launchers(&lock(&db), &runtime);
         rerun_launchers(&db, &runtime);
         let db = lock(&db);
-        // Chords from Settings › Keys; ones that no longer pass the checks (an action
-        // renamed, a new default that clashes) fall back to the defaults.
-        let saved = keys::get(&db).unwrap_or_default();
-        if !saved.is_empty() {
-            let bindings = keys::check(&default_chords(), saved).unwrap_or_else(|e| {
-                eprintln!("terminescu: saved shortcuts not applied: {e}");
-                keys::Bindings::new()
-            });
+        // Chords from Settings › Keys; each one that no longer passes the checks (an action
+        // renamed, a new default that clashes) falls back to its default alone.
+        let bindings = keys::read(&db, &default_chords()).unwrap_or_else(|e| {
+            eprintln!("terminescu: saved shortcuts not read: {e}");
+            keys::Bindings::new()
+        });
+        if !bindings.is_empty() {
             app.set_menu(build_menu(app.handle(), &bindings, true)?)?;
         }
     }

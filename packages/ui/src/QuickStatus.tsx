@@ -3,6 +3,7 @@ import { useState, type KeyboardEvent } from "react";
 import { usePopover } from "./popover";
 import { StatusChip } from "./StatusChip";
 import type { Chip } from "./status";
+import { useChord } from "./chords";
 
 export interface QuickStatusProps {
   /** Under the clicked chip, in window pixels. */
@@ -33,6 +34,7 @@ const lookOf = (s: SavedStatus): ManualStatus => ({ statusId: s.id, label: s.lab
  * holds, the arrows walk the list, Esc closes.
  */
 export function QuickStatus(props: QuickStatusProps) {
+  const editChord = useChord("status_editor");
   const { current, local, global } = props;
   const { ref, style } = usePopover(props.x, props.y, [".qs-input"]);
   const [text, setText] = useState("");
@@ -97,7 +99,7 @@ export function QuickStatus(props: QuickStatusProps) {
         </div>
         <button type="button" className="qs-item qs-edit" onClick={() => (props.onClose(), props.onEdit())}>
           <span className="grow">Edit status…</span>
-          <span className="ctx-hint">⌘⇧S</span>
+          {editChord && <span className="ctx-hint">{editChord}</span>}
         </button>
       </div>
     </div>

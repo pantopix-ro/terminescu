@@ -119,4 +119,32 @@ describe("compose", () => {
     expect(ids(new Map([["claude", new Set(["github"])]]))).toEqual([]);
     expect(ids(new Map([["git", new Set(["github"])]]))).toEqual(["git.pr"]);
   });
+
+  it("gives the person's chords first and lets them turn a chord off", () => {
+    const bound = compose({
+      plugins: [git, claude],
+      enabled: new Set(["git", "claude"]),
+      decorations: [],
+      appActions: app,
+      // The person moves Focus Waiting onto git's default and turns Plain Key off.
+      bindings: { "claude.focus": "Cmd+Alt+W", "claude.plain": "" },
+    });
+    const by = new Map(bound.keyActions.map((a) => [a.id, a]));
+    expect(by.get("claude.focus")).toMatchObject({ accel: "Cmd+Alt+W", bound: true, wantAccel: "alt+Cmd+w" });
+    expect(by.get("git.worktree")).toMatchObject({ accel: "", lostAccel: "Cmd+Alt+W", bound: false });
+    expect(by.get("claude.plain")).toMatchObject({ accel: "", bound: true });
+    expect(by.get("claude.plain")?.lostAccel).toBeUndefined();
+    expect(by.get("git.worktree")?.pluginName).toBe("Git");
+  });
+
+  it("keeps a hidden action's chord, so a rising flag moves nothing", () => {
+    const gh = definePlugin({ id: "git", name: "Git", actions: [{ id: "pr", label: "Open Pull Request", accel: "Cmd+Alt+G", when: "github", run: noop }] });
+    const late = definePlugin({ id: "late", name: "Late", actions: [{ id: "grab", label: "Grab", accel: "Cmd+Alt+G", run: noop }] });
+    const at = (flags?: Map<string, Set<string>>) => compose({ plugins: [gh, late], enabled: new Set(["git", "late"]), decorations: [], appActions: app, flags });
+    const hidden = at();
+    expect(hidden.actions.map((a) => a.id)).toEqual(["late.grab"]);
+    expect(hidden.actions[0]).toMatchObject({ accel: "", lostAccel: "Cmd+Alt+G" });
+    expect(hidden.keyActions.find((a) => a.id === "git.pr")).toMatchObject({ hidden: true, accel: "Cmd+Alt+G" });
+    expect(at(new Map([["git", new Set(["github"])]])).actions.find((a) => a.id === "git.pr")?.accel).toBe("Cmd+Alt+G");
+  });
 });

@@ -89,6 +89,7 @@ export function actionFor(e: KeyboardEvent, actions: readonly ActionDef[] = ACTI
   const key = keyOf(e);
   const find = (shift: boolean) =>
     actions.find((a) => {
+      if (!a.accel) return false;
       const c = parseAccel(a.accel);
       return c.key === key && c.meta === e.metaKey && c.ctrl === e.ctrlKey && c.alt === e.altKey && c.shift === shift;
     })?.id;
@@ -134,12 +135,48 @@ export function chordLabel(accel: string): string {
   return `${c.ctrl ? "⌃" : ""}${c.alt ? "⌥" : ""}${c.shift ? "⇧" : ""}${c.meta ? "⌘" : ""}${key}`;
 }
 
-/** Chords the person changed in Settings › Keys, by action id; the rest keep actions.json. */
+/**
+ * Chords the person changed in Settings › Keys, by action id; the rest keep their defaults.
+ * A plugin action's id reads `plugin.action`, and an empty chord is off
+ * (add-configurable-shortcuts D1, D2).
+ */
 export type KeyBindings = Record<string, string>;
+
+/** Whether `id` names a plugin action, `plugin.action`. */
+export const isPluginAction = (id: string) => /^[^.]+\.[^.]+$/.test(id);
 
 /** The actions with the person's chords in place of the defaults. */
 export function withBindings(actions: readonly ActionDef[], bindings: KeyBindings): ActionDef[] {
-  return actions.map((a) => (bindings[a.id] ? { ...a, accel: bindings[a.id]! } : a));
+  return actions.map((a) => (Object.hasOwn(bindings, a.id) ? { ...a, accel: bindings[a.id]! } : a));
+}
+
+/**
+ * The bindings as the core keeps them, or the first problem (`crates/core/src/keys.rs` check):
+ * an app binding equal to its default drops, a plugin binding stays, an unknown id is refused.
+ * `plugins` are the plugin actions with their chords, for the clash check.
+ */
+export function checkBindings(next: KeyBindings, plugins: readonly ActionDef[] = [], defaults: readonly ActionDef[] = ACTIONS): KeyBindings {
+  const kept: KeyBindings = {};
+  for (const [id, raw] of Object.entries(next)) {
+    const accel = raw.trim();
+    const a = defaults.find((x) => x.id === id);
+    if (a) {
+      if (!accel || normalAccel(accel) !== normalAccel(a.accel)) kept[id] = accel;
+    } else if (isPluginAction(id)) kept[id] = accel;
+    else throw new Error(`no action ${id}`);
+  }
+  const pluginRows = Object.entries(kept)
+    .filter(([id]) => isPluginAction(id))
+    .map(([id, accel]) => ({ id, accel, label: plugins.find((p) => p.id === id)?.label ?? id, menu: "" }));
+  const actions = [...withBindings(defaults, kept), ...pluginRows];
+  // The person's chords first, so a clash names the action they hit.
+  const order = [...actions.filter((a) => Object.hasOwn(kept, a.id)), ...actions.filter((a) => !Object.hasOwn(kept, a.id))];
+  for (const a of order) {
+    // Only a chord the person set can be refused as one macOS keeps, as in the core.
+    const problem = bindingProblem(a.id, a.accel, actions, Object.hasOwn(kept, a.id));
+    if (problem) throw new Error(problem);
+  }
+  return kept;
 }
 
 /** A chord in one spelling, so `Shift+Cmd+p` and `Cmd+Shift+P` compare equal. */
@@ -179,14 +216,15 @@ export const RESERVED: readonly { accel: string; label: string }[] = [
  * Why `accel` cannot be `id`'s chord, or undefined when it can (D17): it needs ⌘ so plain keys
  * stay with the pane, and it may not be another action's chord or one macOS keeps.
  */
-export function bindingProblem(id: string, accel: string, actions: readonly ActionDef[]): string | undefined {
+export function bindingProblem(id: string, accel: string, actions: readonly ActionDef[], checkReserved = true): string | undefined {
+  if (!accel) return undefined;
   const key = parseAccel(accel).key.toLowerCase();
   if (!key || ["cmd", "ctrl", "alt", "shift"].includes(key)) return "A shortcut needs a key besides the modifiers.";
   if (!parseAccel(accel).meta) return "An app shortcut needs ⌘, so plain keys stay with the terminal.";
   const want = normalAccel(accel);
-  const reserved = RESERVED.find((r) => normalAccel(r.accel) === want);
+  const reserved = checkReserved && RESERVED.find((r) => normalAccel(r.accel) === want);
   if (reserved) return `${chordLabel(accel)} is ${reserved.label}.`;
-  const other = actions.find((a) => a.id !== id && normalAccel(a.accel) === want);
+  const other = actions.find((a) => a.id !== id && a.accel && normalAccel(a.accel) === want);
   if (other) return `${chordLabel(accel)} is already ${other.label}.`;
   return undefined;
 }
@@ -194,7 +232,7 @@ export function bindingProblem(id: string, accel: string, actions: readonly Acti
 /** Each action whose chord another action also has. */
 export function conflicts(actions: readonly ActionDef[]): Set<string> {
   const by = new Map<string, string[]>();
-  for (const a of actions) by.set(normalAccel(a.accel), [...(by.get(normalAccel(a.accel)) ?? []), a.id]);
+  for (const a of actions) if (a.accel) by.set(normalAccel(a.accel), [...(by.get(normalAccel(a.accel)) ?? []), a.id]);
   return new Set([...by.values()].filter((ids) => ids.length > 1).flat());
 }
 

@@ -116,6 +116,48 @@ test("Keys: rebind New Side Tab to ⌘J, refuse ⌘T as a clash, reset", async (
   await expect.poll(() => mock(page, "keyBindings")).toEqual({});
 });
 
+// add-configurable-shortcuts: plugin chords rebind and turn off, app chords turn off, and the
+// hints read the chords as bound.
+test("Keys: plugin chords rebind and turn off; hints follow the bindings", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/?plugins=git&top-tabs");
+  await expect(page.locator(".term-pane")).toHaveCount(1);
+  await expect(page.locator(".tabs-hint")).toHaveText("⌘D split · ⇧⌘D split down");
+  const dialog = await openSettings(page, "Keys");
+  const git = dialog.getByRole("group", { name: "Git shortcuts" });
+  const row = git.getByRole("button", { name: "Shortcut for New Row from Worktree…" });
+  await expect(row).toHaveText("⌥⌘N");
+  await row.click();
+  await page.keyboard.press("Meta+Alt+KeyW");
+  await expect(row).toHaveText("⌥⌘W");
+  await expect.poll(() => mock(page, "keyBindings")).toEqual({ "git.newWorktreeRow": "Alt+Cmd+W" });
+  await expect.poll(async () => (await mock(page, "pluginActions")).find((a: { id: string }) => a.id === "git.newWorktreeRow")?.accel).toBe("Alt+Cmd+W");
+  // The plugin's chord is taken for an app action, as any other.
+  const text = dialog.getByRole("button", { name: "Shortcut for New Text Tab" });
+  await text.click();
+  await page.keyboard.press("Meta+Alt+KeyW");
+  await expect(dialog.getByRole("alert")).toHaveText("⌥⌘W is already New Row from Worktree….");
+  await page.keyboard.press("Escape");
+  // Off, for a plugin action and an app action alike.
+  await git.getByRole("button", { name: "Turn off New Row from Worktree…" }).click();
+  await expect(row).toHaveText("off");
+  await dialog.getByRole("button", { name: "Turn off Split Right" }).click();
+  await expect(dialog.getByRole("button", { name: "Shortcut for Split Right" })).toHaveText("off");
+  await expect.poll(() => mock(page, "keyBindings")).toEqual({ "git.newWorktreeRow": "", split_right: "" });
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator(".tabs-hint")).toHaveText("⇧⌘D split down");
+  // ⌘D reaches the pane now: no split.
+  await page.locator(".term-pane").first().click();
+  await page.keyboard.press("Meta+KeyD");
+  await expect(page.locator(".term-pane")).toHaveCount(1);
+
+  const again = await openSettings(page, "Keys");
+  await again.getByRole("button", { name: "Reset all" }).click();
+  await expect.poll(() => mock(page, "keyBindings")).toEqual({});
+  await expect(again.getByRole("group", { name: "Git shortcuts" }).getByRole("button", { name: "Shortcut for New Row from Worktree…" })).toHaveText("⌥⌘N");
+});
+
 // Task 8.53: the terminal's editing chords are editable; ⇧↵ as the new line chord sends Esc CR.
 test("Keys: set ⇧↵ as the terminal's new line, refuse ⌘P, turn ⌘⌫ off", async ({ page }) => {
   await start(page);

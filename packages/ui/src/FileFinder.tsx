@@ -2,6 +2,7 @@ import type { FileList } from "@terminescu/host";
 import { Command } from "cmdk";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { rankFiles } from "./files";
+import { useChord } from "./chords";
 
 export interface FileFinderProps {
   /** Files under the focused pane's cwd; undefined while they load. */
@@ -17,6 +18,7 @@ const BROWSE = "browse…";
 
 /** `⌘O`: files under the side tab's cwd, filtered as you type, then "Browse…" (D27). */
 export function FileFinder({ list, onOpen, onBrowse, onClose }: FileFinderProps) {
+  const openChord = useChord("open_file");
   const [query, setQuery] = useState("");
   const [value, setValue] = useState("");
   const input = useRef<HTMLInputElement>(null);
@@ -59,7 +61,7 @@ export function FileFinder({ list, onOpen, onBrowse, onClose }: FileFinderProps)
           {list?.truncated && <div className="palette-empty small ao-dim">Large folder: only part of it is listed.</div>}
           <Command.Item value={BROWSE} className="palette-item" onSelect={() => open(BROWSE, false)}>
             <span className="grow">Browse…</span>
-            <span className="small ao-dim">⌘O</span>
+            {openChord && <span className="small ao-dim">{openChord}</span>}
           </Command.Item>
         </Command.List>
         <div className="finder-foot small ao-dim">↵ open · ⌥↵ open beside</div>

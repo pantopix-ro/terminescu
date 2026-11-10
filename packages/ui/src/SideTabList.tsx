@@ -11,6 +11,7 @@ import { PluginItems } from "./PluginItems";
 import type { RenderItem } from "@terminescu/plugin-api";
 import { ShellPicker, usePicker } from "./ShellPicker";
 import { Tip, useTip } from "./Tip";
+import { defaultChord, useChord, useChordOf, withChord } from "./chords";
 
 type Tips = ReturnType<typeof useTip>;
 type Picker = ReturnType<typeof usePicker>;
@@ -181,10 +182,13 @@ export const tabDirty = (t: Tab, docs: DocMarks = {}) => docsOf(t).some((d) => d
 /** A tab holds a document a program waits on: it needs the person, as a waiting Claude does. */
 export const tabRequest = (t: Tab, docs: DocMarks = {}) => docsOf(t).some((d) => docs[d]?.request);
 
-/** `⌘1` to `⌘8` for the first tabs, `⌘9` for the last one, as the Window menu does. */
-export function tabChord(i: number, count: number): string | undefined {
-  if (i === count - 1 && count > 1) return "⌘9";
-  return i < 8 ? `⌘${i + 1}` : undefined;
+/**
+ * `⌘1` to `⌘8` for the first tabs, `⌘9` for the last one, as the Window menu does; `chordOf`
+ * reads each as bound now.
+ */
+export function tabChord(i: number, count: number, chordOf: (id: string) => string | undefined = defaultChord): string | undefined {
+  if (i === count - 1 && count > 1) return chordOf("tab_9");
+  return i < 8 ? chordOf(`tab_${i + 1}`) : undefined;
 }
 
 /** Drop ids: into a side tab, into the gap before side tab `i`, or after the last one. */
@@ -453,6 +457,7 @@ function Row(props: {
  */
 /** A tab listed under its folder. It drags as a tab of the tab bar does (task 8.70). */
 function Kid(props: Parameters<typeof Row>[0] & { tab: Tab; index: number }) {
+  const chordOf = useChordOf();
   const { side, tab: t, index: i, active, dragging, draggingSide, draggingTab, agents, statuses, builtins, docs, tips } = props;
   const id = dragKid(t.id);
   const drag = useDraggable({ id, disabled: props.renaming === t.id });
@@ -528,7 +533,7 @@ function Kid(props: Parameters<typeof Row>[0] & { tab: Tab; index: number }) {
           onClick={props.onStatus && ((at) => props.onStatus!(side.id, t.id, at))}
         />
       )}
-      {active && <span>{tabChord(i, side.tabs.length)}</span>}
+      {active && <span>{tabChord(i, side.tabs.length, chordOf)}</span>}
     </div>
   );
 }
@@ -597,6 +602,9 @@ export function SideTabList({
   collapsed = false,
   decorate,
 }: SideTabListProps) {
+  const newChord = useChord("new_tab");
+  const sideFirst = useChord("side_1");
+  const sideLast = useChord("side_9");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   useEffect(() => {
     if (reveal) setExpanded((e) => (e[reveal.id] === false ? { ...e, [reveal.id]: true } : e));
@@ -672,18 +680,21 @@ export function SideTabList({
               onMenu(menuAt(e), { kind: "list" });
             }}
           >
-            <button type="button" className="side-add" aria-label="New terminal" title="New terminal (⌘T)" onClick={onNew}>
+            <button type="button" className="side-add" aria-label="New terminal" title={withChord("New terminal", newChord)} onClick={onNew}>
               <i className="ao-i ao-i-plus" />
             </button>
             {onNewText && (
-              <NewMenu onNew={onNew} onNewText={() => onNewText()} hints={["⌘T"]} textTitle="A new side tab with an untitled text" className="side-add more" label="Choose side tab kind" extra={newExtra} />
+              <NewMenu onNew={onNew} onNewText={() => onNewText()} hints={[newChord ?? ""]} textTitle="A new side tab with an untitled text" className="side-add more" label="Choose side tab kind" extra={newExtra} />
             )}
           </div>
         )}
       </div>
       <div className="side-foot small ao-dim">
-        <span className="ao-key">⌃⌘</span>
-        <span className="ao-key">1</span>–<span className="ao-key">9</span> switch side tab
+        {sideFirst && sideLast && (
+          <>
+            <span className="ao-key">{sideFirst}</span>–<span className="ao-key">{sideLast}</span> switch side tab
+          </>
+        )}
       </div>
       <Tip tip={tips.tip} />
       {picker.at && picked && !dragging && (

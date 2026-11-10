@@ -1,6 +1,7 @@
 import { VAR_MODES, type Item, type ItemKind, type NewVariable, type Pin, type Prompt, type TouchedFile, type Variable, type VarMode, type VariableChange } from "@terminescu/host";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { parseTtl, timeAgo, timeLeft } from "./names";
+import { useChord } from "./chords";
 
 export type ContextMode = "pinned" | "auto";
 
@@ -239,6 +240,8 @@ function AddItem({ props, fail }: { props: ContextPanelProps; fail(e: unknown): 
 }
 
 function Items(props: ContextPanelProps & { section: Section }) {
+  const extractChord = useChord("extract");
+  const libraryChord = useChord("prompt_library");
   const { section, variables = [], items = [], pins = [], files = [], onOpenPin, onRemovePin } = props;
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string>();
@@ -268,7 +271,7 @@ function Items(props: ContextPanelProps & { section: Section }) {
             ))}
           </ul>
         ) : (
-          <p className="small ao-dim ctx-empty">No variables yet. Select text and press ⌘E.</p>
+          <p className="small ao-dim ctx-empty">No variables yet. Select text{extractChord ? ` and press ${extractChord}` : " and extract it from the Edit menu"}.</p>
         )}
         <div className="ctx-group">
           <span className="ao-pixel ao-dim">Links and text</span>
@@ -345,7 +348,7 @@ function Items(props: ContextPanelProps & { section: Section }) {
           <span className="small ao-dim">{prompts.length} saved</span>
           <span className="grow" />
           <button type="button" className="ao-btn ghost ctx-mode" onClick={() => onOpenPrompt?.()}>
-            library ⌘⇧I
+            library{libraryChord && ` ${libraryChord}`}
           </button>
         </div>
         <ul className="ctx-list" aria-label="Prompts">

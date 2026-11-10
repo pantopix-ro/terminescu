@@ -49,8 +49,8 @@ Window            an OS window
 - **Drag like a browser.** Drag a tab to reorder it. Drop it on the sidebar to make a new side
   tab, on a side tab to move it there, or outside the window to open a new window. Drop one
   side tab onto another to merge them.
-- **Keys.** Plain keys always reach the terminal. App actions are `⌘` chords, and every one of
-  them can be rebound.
+- **Keys.** Plain keys always reach the terminal. App and plugin actions are `⌘` chords. Settings
+  › Keys rebinds each one or turns it off, and the hints in the app follow.
 
 ## Architecture
 

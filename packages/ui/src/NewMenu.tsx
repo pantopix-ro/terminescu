@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useChord } from "./chords";
 
 /** A plugin's entry after Terminal and Text, such as "New row from worktree…". */
 export interface NewMenuItem {
@@ -12,7 +13,7 @@ export interface NewMenuItem {
 export function NewMenu({
   onNew,
   onNewText,
-  hints = ["⌘T", "⌥⌘T"],
+  hints,
   textTitle = "Hold ⌥ to split the focused pane",
   className = "ao-tab-new more",
   label = "Choose tab kind",
@@ -26,6 +27,9 @@ export function NewMenu({
   label?: string;
   extra?: readonly NewMenuItem[];
 }) {
+  const newTab = useChord("new_tab");
+  const newText = useChord("new_text");
+  const [termHint, textHint] = hints ?? [newTab, newText];
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLSpanElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -68,7 +72,7 @@ export function NewMenu({
             }}
           >
             <span className="grow">Terminal</span>
-            <span className="small ao-dim">{hints[0]}</span>
+            {termHint && <span className="small ao-dim">{termHint}</span>}
           </button>
           <button
             type="button"
@@ -80,7 +84,7 @@ export function NewMenu({
             }}
           >
             <span className="grow">Text</span>
-            {hints[1] && <span className="small ao-dim">{hints[1]}</span>}
+            {textHint && <span className="small ao-dim">{textHint}</span>}
           </button>
           {extra.map((x) => (
             <button

@@ -11,6 +11,8 @@ export {
   bindingProblem,
   chordEvent,
   chordLabel,
+  checkBindings,
+  isPluginAction,
   conflicts,
   normalAccel,
   parseAccel,

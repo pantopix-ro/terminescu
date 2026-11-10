@@ -77,7 +77,7 @@ CodeMirror merge view, side by side or unified, over a base text a plugin reads.
 reads HEAD (`git-diff`); the Claude plugin registers its own pane view, `claude-diff`, whose
 source is `{session, path}` and whose base is the plugin's `baseText`. Neither plugin imports the
 other, so "What Claude changed" opens real diffs with the git plugin off. The layout key is now
-`terminescu.diffMode`, shared by both; its `⌥⌘U` action stays in the git plugin. The section
+`terminescu.diffMode`, shared by both; its `⌥⌘U` action stays in the git plugin (since moved to an app action, add-configurable-shortcuts D5). The section
 reads `changes {pane}` again on a `changed` event, which the Rust half sends after each
 `PostToolUse` and `Stop`. Outside git it says Bash edits are not tracked; a file over the cap
 shows "Too large to compare".
