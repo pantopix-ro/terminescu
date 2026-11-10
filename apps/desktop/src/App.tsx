@@ -467,6 +467,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const [mode, setMode] = useState<ContextMode>(loadMode);
   const [dragging, setDragging] = useState<string>();
   // A side tab merge waiting on the clash dialog (D5).
+  const [openFolder, setOpenFolder] = useState<{ id: string }>();
   const [merging, setMerging] = useState<{ from: SideTab; into: SideTab; clashes: MergeClash[]; after?: AfterMerge }>();
   // The undo toast for the last merge or removed variable. `done` runs once the toast goes
   // without Undo: a removed variable is deleted only then.
@@ -564,6 +565,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     const until = Date.now() + FOLLOW_MS;
     follow.current = (w) => Date.now() > until || check(w);
   };
+  const wsNow = useRef(ws);
+  wsNow.current = ws;
   const sidesOf = (w: Workspace) => w.windows.find((x) => x.id === windowId)?.sideTabs ?? [];
   const followNewSide = () => {
     const before = new Set(sideTabs.map((s) => s.id));
@@ -575,7 +578,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   };
   // The sidebar's + ▾ › Text (task 8.59): a new side tab that holds an untitled text. The side
   // tab starts with a shell, which closes once the text is in.
-  const newTextSide = () => {
+  const newTextSide = (index?: number) => {
     const before = new Set(sideTabs.map((s) => s.id));
     setFollow((w) => {
       const added = sidesOf(w).find((s) => !before.has(s.id));
@@ -591,7 +594,14 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       );
       return true;
     });
-    void send({ type: "CreateSideTab", windowId });
+    void send({ type: "CreateSideTab", windowId, index });
+  };
+  // ⌥⌘T and the sidebar's + ▾ › Text follow ⌘T (task 8.80): into the selected folder, or a
+  // row of its own right below a one-tab row.
+  const newTextBeside = () => {
+    if (!activeSide) return;
+    if (activeSide.tabs.length > 1) return void host.newText(activeSide.id).then((d) => revealDoc(d.id), setError);
+    newTextSide(sideTabs.findIndex((s) => s.id === activeSide.id) + 1);
   };
   const followTab = (tabId: string) => {
     setFollow((w) => {
@@ -900,8 +910,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         if (!activeTab || !focused || activeTab.layout.type !== "split") return;
         return paneToTab(focused, tabs.indexOf(activeTab) + 1);
       case "new_text":
-        if (!activeSide) return;
-        return void host.newText(activeSide.id).then((d) => revealDoc(d.id), setError);
+        return newTextBeside();
       case "save":
       case "save_as":
         return void saveFocused(id === "save_as");
@@ -1934,7 +1943,23 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     const beside = docked && docked.side !== "center" && !docked.small ? docked : undefined;
     // A merge may open its dialog, which takes the focus; it gives it back when it closes.
     if (tabId.startsWith("side:") && beside) return placeBeside(tabId, beside.area, beside.side as DockSide);
-    if (tabId.startsWith("side:") && at?.startsWith("into:")) return startMerge(tabId.slice(5), at.slice(5));
+    if (tabId.startsWith("side:") && at?.startsWith("into:")) {
+      // The dropped row's tabs go last in the folder, open, with its first tab selected (task 8.80).
+      const into = at.slice(5);
+      const first = sideTabs.find((s) => s.id === tabId.slice(5))?.tabs[0]?.id;
+      const run = () => {
+        setOpenFolder({ id: into });
+        // The merge's workspace update may already be in; else wait for it.
+        const pick = (w: Workspace) => {
+          const ok = !!first && sidesOf(w).some((s) => s.id === into && s.tabs.some((t) => t.id === first));
+          if (ok) selectTab(into, first!);
+          return ok;
+        };
+        if (!pick(wsNow.current)) setFollow(pick);
+        refocus();
+      };
+      return startMerge(tabId.slice(5), into, { run });
+    }
     if (tabId.startsWith("side:")) return refocus();
     // The core saw where the cursor was (task 8.1): only a release over this window drops here.
     // A fast flick ends before `dragBegin` answers, so the end waits for its token. A drag the
@@ -2136,6 +2161,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               draggingSide={dragSideTab?.id}
               draggingTab={dragTab?.id}
               open={openTabs}
+              reveal={openFolder}
               agents={agents}
               onSelect={(id) => {
                 setSideTabId(id);
@@ -2146,7 +2172,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                 refocus();
               }}
               onNew={newBeside}
-              onNewText={newTextSide}
+              onNewText={newTextBeside}
               onNewTab={(sideId) => {
                 followNewTab(sideId);
                 void send({ type: "CreateTab", sideTabId: sideId });

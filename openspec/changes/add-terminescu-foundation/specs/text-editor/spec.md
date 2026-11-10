@@ -3,13 +3,18 @@
 ## ADDED Requirements
 
 ### Requirement: Open a text tab
-`⌥⌘T` and `+ ▾ › Text` SHALL open an Untitled text tab, and `⌘O` SHALL search files under the
+`⌥⌘T` and `+ ▾ › Text` SHALL open an Untitled text tab at the selected row's level, as `⌘T`
+does a terminal, and `⌘O` SHALL search files under the
 side tab's cwd, with a second `⌘O` opening the macOS open dialog. `⌘T` SHALL keep opening a
 terminal. Holding `⌥` with any opener SHALL split the focused pane instead of adding a tab.
 
 #### Scenario: Untitled tab
-- **WHEN** the person presses `⌥⌘T` in PROJ-482
+- **WHEN** the person presses `⌥⌘T` in the folder PROJ-482
 - **THEN** an Untitled text tab opens in PROJ-482 with the cursor in the editor
+
+#### Scenario: Untitled row
+- **WHEN** the person presses `⌥⌘T` with a one-tab row selected
+- **THEN** an Untitled text opens as a row of its own right below it
 
 #### Scenario: Open as a split
 - **WHEN** the person holds `⌥` and picks `notes.md` in the `⌘O` search

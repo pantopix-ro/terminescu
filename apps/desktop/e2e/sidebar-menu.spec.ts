@@ -80,7 +80,7 @@ test("the row colour comes from the neons and the tab bar opens a tab's dialog",
 
 test("merge into is a drop-down of the other side tabs", async ({ page }) => {
   await start(page);
-  await page.getByRole("button", { name: "Add a side tab" }).click();
+  await page.getByRole("button", { name: "New terminal" }).click();
   await expect(page.locator(".ao-side .ao-st")).toHaveCount(2);
   const ws = await workspace(page);
   const [a, b] = ws.windows[0].sideTabs;
@@ -97,7 +97,7 @@ test("merge into is a drop-down of the other side tabs", async ({ page }) => {
 
 test("move a side tab to a new window keeps its id; close asks first", async ({ page }) => {
   await start(page);
-  await page.getByRole("button", { name: "Add a side tab" }).click();
+  await page.getByRole("button", { name: "New terminal" }).click();
   await expect(page.locator(".ao-side .ao-st")).toHaveCount(2);
   const second = (await workspace(page)).windows[0].sideTabs[1];
 

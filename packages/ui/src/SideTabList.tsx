@@ -35,6 +35,8 @@ export interface SideTabListProps {
    * the row holding it, is marked open and the selected one takes the focus border.
    */
   open?: readonly string[];
+  /** A folder to open: a row just dropped on a row shows its new folder open (task 8.80). */
+  reveal?: { id: string };
   /** Claude sessions by pane: a side tab with one waiting gets the amber marker (D34). */
   agents?: Agents;
   /** Shown statuses by tab and side tab id (D15). */
@@ -556,6 +558,7 @@ export function SideTabList({
   draggingSide,
   draggingTab,
   open = [],
+  reveal,
   agents = {},
   statuses = {},
   builtins = {},
@@ -573,6 +576,9 @@ export function SideTabList({
   collapsed = false,
 }: SideTabListProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    if (reveal) setExpanded((e) => (e[reveal.id] === false ? { ...e, [reveal.id]: true } : e));
+  }, [reveal]);
   const tips = useTip();
   const picker = usePicker();
   const { hide } = tips;
@@ -643,7 +649,7 @@ export function SideTabList({
               onMenu(menuAt(e), { kind: "list" });
             }}
           >
-            <button type="button" className="side-add" aria-label="Add a side tab" title="New terminal (⌘T)" onClick={onNew}>
+            <button type="button" className="side-add" aria-label="New terminal" title="New terminal (⌘T)" onClick={onNew}>
               <i className="ao-i ao-i-plus" />
             </button>
             {onNewText && (

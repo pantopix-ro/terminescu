@@ -10,14 +10,23 @@ async function start(page: Page) {
   await page.locator(".term-pane").first().click();
 }
 
+/** A text tab in the shown row, from the tab bar's + ▾ › Text; ⌥⌘T would open a row of its own. */
+async function textHere(page: Page) {
+  await page.getByRole("button", { name: "Choose tab kind" }).click();
+  await page.getByRole("menuitem", { name: /Text/ }).click();
+}
+
 const files = (page: Page) =>
   page.evaluate(() => Object.fromEntries((window as any).__terminescu.host.files)) as Promise<Record<string, string>>;
 
 test("⌥⌘T opens an Untitled text tab; ⌘S asks for a path and writes the text", async ({ page }) => {
   await start(page);
+  // On a one-tab row, ⌥⌘T opens the text as a row of its own (task 8.80).
   await page.keyboard.press("Meta+Alt+KeyT");
-  const tab = page.locator(".app-main .ao-tab").nth(1);
+  await expect(page.locator(".ao-st")).toHaveCount(2);
+  const tab = page.locator(".app-main .ao-tab.active");
   await expect(tab).toContainText("Untitled");
+  await expect(page.locator(".app-main .ao-tab")).toHaveCount(1);
   const editor = page.locator(".text-pane .cm-content");
   await expect(editor).toBeFocused();
   await page.keyboard.type("# Notes for PROJ-482");
@@ -64,7 +73,7 @@ test("a change on disk reloads a clean buffer and puts a bar over a dirty one", 
 });
 
 async function dirtyText(page: Page, text: string) {
-  await page.keyboard.press("Meta+Alt+KeyT");
+  await textHere(page);
   await expect(page.locator(".text-pane .cm-content")).toBeFocused();
   await page.keyboard.type(text);
   await expect(page.locator(".app-main .ao-tab .tab-dirty")).toBeVisible();
@@ -104,7 +113,7 @@ test("Save on close writes the file first; a cancelled Save dialog keeps the tab
 
 test("a clean text tab closes without asking", async ({ page }) => {
   await start(page);
-  await page.keyboard.press("Meta+Alt+KeyT");
+  await textHere(page);
   await expect(page.locator(".app-main .ao-tab")).toHaveCount(2);
   await page.keyboard.press("Meta+KeyW");
   await expect(page.locator(".app-main .ao-tab")).toHaveCount(1);
@@ -311,7 +320,7 @@ test("{{variables}} show as chips, an unknown name is underlined, a secret compl
       h.addVariable(side, { name: "API_TOKEN", value: "tok-example", mode: "secret", source: "typed", originTabId: null }),
     ]);
   }, side);
-  await page.keyboard.press("Meta+Alt+KeyT");
+  await textHere(page);
   const editor = page.locator(".text-pane .cm-content");
   await expect(editor).toBeFocused();
   await page.keyboard.insertText("Fix {{ticket}} not {{tikcet}} ");
@@ -337,7 +346,7 @@ test("{{variables}} show as chips, an unknown name is underlined, a secret compl
 test("Send to Tab pastes the selection into another tab's terminal with no Enter", async ({ page }) => {
   await start(page);
   const first = (await page.locator(".ao-tp").first().getAttribute("data-pane"))!;
-  await page.keyboard.press("Meta+Alt+KeyT");
+  await textHere(page);
   const editor = page.locator(".text-pane .cm-content");
   await expect(editor).toBeFocused();
   await page.keyboard.insertText("git log --oneline\ngit status");
