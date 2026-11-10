@@ -88,6 +88,10 @@ each drag SHALL have a palette equivalent.
 - **WHEN** the person drags a tab over a second window's side tab row and releases
 - **THEN** the row lights while the cursor is over it, the tab moves into that side tab, and a source window left empty closes
 
+#### Scenario: Merge all windows
+- **WHEN** three windows are open and the person presses `⌃⌘M` in the first
+- **THEN** every row of the other two joins the end of the first window's sidebar with its context, and the other two windows close
+
 #### Scenario: Drag a window's only row back
 - **WHEN** a second window holds one side tab with one tab and the person drags that row from its sidebar into the first window and releases
 - **THEN** the row joins the first window with its context and the second window closes

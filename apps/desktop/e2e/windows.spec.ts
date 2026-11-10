@@ -179,6 +179,23 @@ test("the sidebar's + and ⌘T add a row to a window with no rows", async ({ pag
   await expect.poll(() => sideIds(page)).toHaveLength(1);
 });
 
+// Task 8.84: ⌃⌘M pulls every other window's rows into this one, as rows; their windows close.
+test("merge all windows moves every row here and closes the others", async ({ page }) => {
+  await start(page);
+  await page.keyboard.press("Meta+p");
+  await expect(page.locator(".palette-item", { hasText: "Merge All Windows" }), "hidden with one window").toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Meta+n");
+  await page.keyboard.press("Meta+n");
+  await expect.poll(async () => (await mock(page)).ws.windows.length).toBe(3);
+  const ws = (await mock(page)).ws;
+  const all = ws.windows.flatMap((w: any) => w.sideTabs.map((s: any) => s.id));
+  await page.locator(".term-pane").first().click();
+  await page.keyboard.press("Control+Meta+m");
+  await expect.poll(() => sideIds(page)).toEqual(all);
+  expect((await mock(page)).ws.windows).toHaveLength(1);
+});
+
 // Task 8.81: ⌘N opens a window with one new tab; this window keeps its rows.
 test("⌘N opens a new window with one new tab", async ({ page }) => {
   await start(page);

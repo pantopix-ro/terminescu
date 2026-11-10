@@ -159,6 +159,7 @@ export type Command =
   | { type: "CloseSideTab"; sideTabId: Id }
   /** A new window holding the side tab, its tabs and its context (task 8.7). */
   | { type: "MoveSideTabToNewWindow"; sideTabId: Id }
+  | { type: "MergeAllWindows"; windowId: Id }
   /**
    * A side tab with its tabs and context to the gap before side tab `index` of a window,
    * counted before it leaves its place (task 8.70). The only tab of a side tab dropped on a

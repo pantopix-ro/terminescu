@@ -314,6 +314,11 @@ pub enum Command {
         window_id: Id,
         index: usize,
     },
+    /// Every other window's side tabs to the end of `window_id`, in window order, as side tabs;
+    /// the emptied windows close (task 8.84).
+    MergeAllWindows {
+        window_id: Id,
+    },
     /// Drop a side tab onto another (D5): its tabs move to the end of `into` and it closes.
     /// The contexts merge outside the workspace, in [`crate::merge`].
     MergeSideTab {
@@ -1251,6 +1256,33 @@ impl Core {
                     },
                 ]
             }
+            Command::MergeAllWindows { window_id } => {
+                let w = ws
+                    .windows
+                    .iter()
+                    .find(|w| w.id == window_id)
+                    .ok_or(CommandError::UnknownWindow(window_id.clone()))?;
+                let start = w.side_tabs.len();
+                // The same side tabs, ids and all, so their saved contexts follow them.
+                ws.windows
+                    .iter()
+                    .filter(|o| o.id != window_id)
+                    .flat_map(|o| o.side_tabs.iter())
+                    .enumerate()
+                    .flat_map(|(i, side_tab)| {
+                        [
+                            Patch::SideTabClosed {
+                                side_tab_id: side_tab.id.clone(),
+                            },
+                            Patch::SideTabCreated {
+                                window_id: window_id.clone(),
+                                index: start + i,
+                                side_tab: side_tab.clone(),
+                            },
+                        ]
+                    })
+                    .collect()
+            }
             Command::SplitPane { .. } | Command::OpenTranscript { .. } => {
                 let (pane_id, dir, new) = match cmd {
                     Command::SplitPane { pane_id, dir } => {
@@ -1623,6 +1655,47 @@ mod tests {
             .unwrap();
         assert_eq!(b.rev, 2);
         assert_eq!(shape(&c), vec![vec![vec!["id2", "id5"]]]);
+    }
+
+    #[test]
+    fn merge_windows_moves_every_row() {
+        let mut c = core();
+        let first = c.workspace().windows[0].id.clone();
+        let rows = |c: &Core| -> Vec<Vec<Id>> {
+            c.workspace()
+                .windows
+                .iter()
+                .map(|w| w.side_tabs.iter().map(|s| s.id.clone()).collect())
+                .collect()
+        };
+        c.handle(Command::CreateWindow).unwrap();
+        c.handle(Command::CreateWindow).unwrap();
+        let before = rows(&c);
+        let b = c
+            .handle(Command::MergeAllWindows {
+                window_id: first.clone(),
+            })
+            .unwrap();
+        let ws = c.workspace();
+        assert_eq!(ws.windows.len(), 1, "the emptied windows close");
+        assert_eq!(
+            rows(&c),
+            vec![before.concat()],
+            "rows keep their ids, in window order"
+        );
+        let closed = b
+            .patches
+            .iter()
+            .filter(|p| matches!(p, Patch::WindowClosed { .. }))
+            .count();
+        assert_eq!(closed, 2);
+        // With one window it changes nothing.
+        assert!(
+            c.handle(Command::MergeAllWindows { window_id: first })
+                .unwrap()
+                .patches
+                .is_empty()
+        );
     }
 
     #[test]
