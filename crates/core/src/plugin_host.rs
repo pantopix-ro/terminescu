@@ -106,6 +106,9 @@ impl PluginCx for HostCx {
     fn type_in_new_tab(&self, side_tab: &str, cwd: &str, line: &str) -> Result<(), PluginError> {
         self.inner.type_in_new_tab(side_tab, cwd, line)
     }
+    fn reveal(&self, path: &str) -> Result<(), PluginError> {
+        self.inner.reveal(path)
+    }
     fn new_row(
         &self,
         window: &str,
@@ -258,6 +261,9 @@ impl PluginCx for Guarded {
     }
     fn type_in_new_tab(&self, side_tab: &str, cwd: &str, line: &str) -> Result<(), PluginError> {
         self.inner.type_in_new_tab(side_tab, cwd, line)
+    }
+    fn reveal(&self, path: &str) -> Result<(), PluginError> {
+        self.inner.reveal(path)
     }
     fn new_row(&self, a: &str, b: Option<&str>, c: &str, d: &str) -> Result<Id, PluginError> {
         self.inner.new_row(a, b, c, d)
@@ -620,6 +626,9 @@ pub(crate) mod tests {
         fn type_in_new_tab(&self, _: &str, _: &str, _: &str) -> Result<(), PluginError> {
             Ok(())
         }
+        fn reveal(&self, _: &str) -> Result<(), PluginError> {
+            Ok(())
+        }
         fn new_row(&self, _: &str, _: Option<&str>, _: &str, _: &str) -> Result<Id, PluginError> {
             Ok(String::new())
         }
@@ -677,6 +686,9 @@ pub(crate) mod tests {
             Ok(())
         }
         fn type_in_new_tab(&self, _: &str, _: &str, _: &str) -> Result<(), PluginError> {
+            Ok(())
+        }
+        fn reveal(&self, _: &str) -> Result<(), PluginError> {
             Ok(())
         }
         fn new_row(&self, _: &str, _: Option<&str>, _: &str, _: &str) -> Result<Id, PluginError> {

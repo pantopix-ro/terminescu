@@ -151,6 +151,8 @@ pub trait PluginCx: Send + Sync {
     fn open_text(&self, side_tab: &str, path: &str) -> Result<(), PluginError>;
     /// A new login-shell tab in the row, in `cwd`, with `line` typed and no Enter.
     fn type_in_new_tab(&self, side_tab: &str, cwd: &str, line: &str) -> Result<(), PluginError>;
+    /// Shows an absolute path that exists in Finder, a file selected in its folder.
+    fn reveal(&self, path: &str) -> Result<(), PluginError>;
     /// A new row below `after` (the end when absent), named `title`, whose first shell starts
     /// in `cwd`. Returns its id.
     fn new_row(
@@ -278,6 +280,9 @@ mod tests {
             Ok(())
         }
         fn type_in_new_tab(&self, _: &str, _: &str, _: &str) -> Result<(), PluginError> {
+            Ok(())
+        }
+        fn reveal(&self, _: &str) -> Result<(), PluginError> {
             Ok(())
         }
         fn new_row(&self, _: &str, _: Option<&str>, _: &str, _: &str) -> Result<Id, PluginError> {

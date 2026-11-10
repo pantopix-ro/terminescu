@@ -47,3 +47,41 @@ export const resume: PluginAction = {
     await cx.bridge.call("resume", { row, session: a.values.pick ?? list[0]!.id });
   },
 };
+
+/** The row and its shown shell, for the calls that need the row's folder. */
+const rowArgs = (cx: ActionContext) => ({ row: needRow(cx), ...(cx.shellPaneId ? { pane: cx.shellPaneId } : {}) });
+
+// ⌥⌘M stays free: macOS reads it as Minimize All.
+export const openMemory: PluginAction = {
+  id: "openMemory",
+  label: "Open CLAUDE.md",
+  menu: "File",
+  accel: "Cmd+Alt+C",
+  rowMenu: true,
+  async run(cx) {
+    await cx.bridge.call("memory", { ...rowArgs(cx), which: "project" });
+  },
+};
+
+export const openUserMemory: PluginAction = {
+  id: "openUserMemory",
+  label: "Open User CLAUDE.md",
+  menu: "File",
+  accel: "Cmd+Alt+Shift+C",
+  rowMenu: true,
+  async run(cx) {
+    await cx.bridge.call("memory", { ...rowArgs(cx), which: "user" });
+  },
+};
+
+export const revealTranscripts: PluginAction = {
+  id: "revealTranscripts",
+  label: "Reveal Transcript Folder",
+  menu: "File",
+  accel: "Cmd+Alt+Shift+R",
+  rowMenu: true,
+  // A row Claude never ran in says so in the app's error bar.
+  async run(cx) {
+    await cx.bridge.call("revealTranscripts", rowArgs(cx));
+  },
+};

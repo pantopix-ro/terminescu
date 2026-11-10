@@ -323,10 +323,13 @@ impl PluginCx for Cx {
         }
     }
 
+    /// The file shows once open, as a file `terminescu edit` opens does.
     fn open_text(&self, side_tab: &str, path: &str) -> Result<(), PluginError> {
-        crate::docs::doc_open_file(self.state()?, side_tab.into(), path.into(), None)
-            .map(|_| ())
-            .map_err(failed)
+        let state = self.state()?;
+        let view = crate::docs::doc_open_file(state.clone(), side_tab.into(), path.into(), None)
+            .map_err(failed)?;
+        crate::docs::reveal(&self.app, &state.runtime, &view.id);
+        Ok(())
     }
 
     fn type_in_new_tab(&self, side_tab: &str, cwd: &str, line: &str) -> Result<(), PluginError> {
@@ -341,8 +344,31 @@ impl PluginCx for Cx {
             .runtime
             .command_then_type_in(cmd, Some(cwd), line.as_bytes().to_vec())
             .map_err(failed)?;
-        pane.map(|_| ())
-            .ok_or_else(|| failed("the tab did not open"))
+        let pane = pane.ok_or_else(|| failed("the tab did not open"))?;
+        // The new tab shows, so Enter there runs the line.
+        let ws = state.runtime.workspace();
+        if let Some(place) = crate::attention::place_of(&ws, &pane)
+            && let Err(e) = self
+                .app
+                .emit_to(place.window.as_str(), crate::REVEAL_EVENT, &pane)
+        {
+            eprintln!("terminescu: the new tab not shown: {e}");
+        }
+        Ok(())
+    }
+
+    fn reveal(&self, path: &str) -> Result<(), PluginError> {
+        let p = std::path::Path::new(path);
+        if !p.is_absolute() || !p.exists() {
+            return Err(PluginError::BadArgs(format!("no file {path}")));
+        }
+        // An absolute path never reads as an `open` option.
+        std::process::Command::new("/usr/bin/open")
+            .arg("-R")
+            .arg(p)
+            .spawn()
+            .map(drop)
+            .map_err(failed)
     }
 
     fn new_row(

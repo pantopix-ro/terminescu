@@ -143,7 +143,7 @@ fn pane_of_doc(runtime: &Runtime, doc: &str) -> Option<(Id, String)> {
 }
 
 /// Raises the window that shows a document and focuses its pane.
-fn reveal(app: &AppHandle, runtime: &Runtime, doc: &str) {
+pub(crate) fn reveal(app: &AppHandle, runtime: &Runtime, doc: &str) {
     let Some((pane, window)) = pane_of_doc(runtime, doc) else {
         return;
     };

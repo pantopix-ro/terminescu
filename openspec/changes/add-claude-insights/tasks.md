@@ -38,7 +38,7 @@
 - [ ] 3.2 "What Claude changed" panel section and diff tabs through the git plugin's diff view
       (plain text view when git is off). Verify: `e2e/claude.spec.ts` "a session's changes open
       as diffs".
-- [ ] 3.3 Open `CLAUDE.md`, `~/.claude/CLAUDE.md` and the transcript folder. Verify:
+- [x] 3.3 Open `CLAUDE.md`, `~/.claude/CLAUDE.md` and the transcript folder. Verify:
       `e2e/claude.spec.ts` "a missing CLAUDE.md opens unsaved".
 - [ ] 3.4 Settings › Claude: threshold, windows, cap, retention. Verify: `e2e/settings.spec.ts`.
 

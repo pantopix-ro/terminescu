@@ -265,14 +265,15 @@ const fakeGit = (): FakePlugin => ({
 /**
  * The Claude half's insight calls, as a test sets them on `window.__fakeClaude`: by pane what
  * `todos` answers, by row the `history` that `resume` reads (add-claude-insights groups 2 and
- * 3). The mock's own Claude half keeps `read`.
+ * 3), and by row its folder `root` and newest `transcript`. The mock's own Claude half keeps
+ * `read`.
  */
 const fakeClaude = (): FakePlugin => ({
   id: "claude",
   name: "Claude",
   async call(method, args, host) {
     const a = (args ?? {}) as { pane?: string; row?: string; session?: string };
-    const all = (globalThis as { __fakeClaude?: Record<string, { todos?: unknown; history?: { id: string; cwd: string }[] }> }).__fakeClaude ?? {};
+    const all = (globalThis as { __fakeClaude?: Record<string, { todos?: unknown; history?: { id: string; cwd: string }[]; root?: string; transcript?: string }> }).__fakeClaude ?? {};
     if (method === "todos") return all[a.pane ?? ""]?.todos ?? { session: null, todos: null };
     if (method === "history") return all[a.row ?? ""]?.history ?? [];
     if (method === "resume") {
@@ -280,6 +281,19 @@ const fakeClaude = (): FakePlugin => ({
       if (!s) throw new Error(`${a.session} is not a session of this row`);
       await host.typeInNewTab(a.row!, s.cwd, `claude --resume ${s.id}`);
       return null;
+    }
+    // The row's folder is its `root`; the Rust test covers finding the repository root.
+    if (method === "memory") {
+      const which = (args as { which?: string }).which;
+      const path = which === "user" ? "/Users/owner/.claude/CLAUDE.md" : `${all[a.row ?? ""]?.root ?? "/Users/owner"}/CLAUDE.md`;
+      await host.openTextFor(a.row!, path);
+      return { path };
+    }
+    if (method === "revealTranscripts") {
+      const path = all[a.row ?? ""]?.transcript;
+      if (!path) throw new Error("Claude has written no transcript yet");
+      ((globalThis as { __fakeClaudeRevealed?: string[] }).__fakeClaudeRevealed ??= []).push(path);
+      return { path };
     }
     throw new Error(`${method} is not a method of this plugin`);
   },

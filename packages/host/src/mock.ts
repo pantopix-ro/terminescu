@@ -125,6 +125,8 @@ export interface MockHost extends Host {
    * `cwd`, with `line` typed and no Enter. Returns the new pane.
    */
   typeInNewTab(sideTabId: Id, cwd: string, line: string): Promise<Id>;
+  /** Plays the core's `open_text` for a plugin's Rust half: the file opens in the row and shows. */
+  openTextFor(sideTabId: Id, path: string): Promise<void>;
   /** Plays OSC 0/2 in a pane: the terminal title, spinner and all; null clears it. */
   setTitle(pane: string, title: string | null): void;
   /** Appends entries to a session's fake transcript. */
@@ -1344,7 +1346,15 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
       const pane = tab.layout.id;
       host.setCwd(pane, cwd);
       typeInto(pane, line);
+      for (const l of revealListeners) l(pane);
       return pane;
+    },
+    async openTextFor(sideTabId, path) {
+      const view = await host.openFile(sideTabId, path);
+      const shownIn = ws.windows
+        .flatMap((w) => w.sideTabs.flatMap((s) => s.tabs))
+        .flatMap((t) => panesOf(t.layout).filter((p) => leaf(t.layout, p)?.doc === view.id));
+      for (const p of shownIn.slice(0, 1)) for (const l of revealListeners) l(p);
     },
     setTitle(pane, title) {
       // As the daemon does: no spinner, and a blank title clears it.

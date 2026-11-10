@@ -7,6 +7,7 @@ pub mod baseline;
 pub mod history;
 pub mod hook;
 pub mod insights;
+pub mod memory;
 pub mod transcript;
 
 use serde_json::{Value, json};
@@ -162,6 +163,8 @@ pub struct ClaudePlugin {
     hook: ClaudeHook,
     store: baseline::Store,
     state: Arc<Mutex<State>>,
+    /// Claude Code's own folder, for `CLAUDE.md` and the transcripts (3.3).
+    config: PathBuf,
 }
 
 /// What the plugin follows between events.
@@ -289,7 +292,16 @@ impl ClaudePlugin {
             },
             store,
             state: Arc::default(),
+            config: memory::config_dir(),
         }
+    }
+
+    /// Claude Code's folder somewhere else, as `CLAUDE_CONFIG_DIR` sets it; tests use a
+    /// temporary one.
+    pub fn with_config(mut self, dir: PathBuf) -> Self {
+        self.hook.settings = dir.join("settings.json");
+        self.config = dir;
+        self
     }
 
     /// The same plugin with another `git`, for tests.
@@ -465,6 +477,31 @@ struct RowArgs {
     row: String,
     #[serde(default)]
     session: Option<String>,
+    /// The row's shown shell, for its folder.
+    #[serde(default)]
+    pane: Option<String>,
+    /// `memory`: "project" or "user".
+    #[serde(default)]
+    which: Option<String>,
+}
+
+impl RowArgs {
+    /// The folder the row works in: its shell's cwd, else its newest session's.
+    fn cwd(&self, cx: &dyn PluginCx) -> Option<PathBuf> {
+        let panes = cx.panes();
+        self.pane
+            .as_deref()
+            .and_then(|p| panes.iter().find(|i| i.pane == p && i.side_tab == self.row))
+            .and_then(|i| i.cwd.clone())
+            .or_else(|| {
+                history::read(cx, &self.row)
+                    .into_iter()
+                    .next()
+                    .map(|s| s.cwd)
+            })
+            .map(PathBuf::from)
+            .filter(|p| p.is_absolute())
+    }
 }
 
 impl Plugin for ClaudePlugin {
@@ -521,6 +558,8 @@ impl Plugin for ClaudePlugin {
     /// `todos {pane}`: the pane's session and its latest todo list, or null (2.2).
     /// `history {row}`: the row's sessions, newest first (3.1).
     /// `resume {row, session}`: a new tab in the session's folder with the resume line typed.
+    /// `memory {row, pane?, which}`: opens the project's or the person's `CLAUDE.md` (3.3).
+    /// `revealTranscripts {row, pane?}`: shows the row's newest transcript in Finder.
     fn call(&self, method: &str, args: Value, cx: &dyn PluginCx) -> Result<Value, PluginError> {
         match method {
             "changes" | "baseText" => {
@@ -575,6 +614,36 @@ impl Plugin for ClaudePlugin {
                     .ok_or_else(|| bad("not a session id"))?;
                 cx.type_in_new_tab(&args.row, &s.cwd, &line)?;
                 Ok(Value::Null)
+            }
+            "memory" => {
+                let args: RowArgs = serde_json::from_value(args).map_err(bad)?;
+                let path = match args.which.as_deref() {
+                    Some("user") => memory::user_file(&self.config),
+                    Some("project") => memory::project_file(
+                        &args
+                            .cwd(cx)
+                            .ok_or_else(|| bad("the row's folder is not known"))?,
+                    ),
+                    _ => return Err(bad("which is project or user")),
+                };
+                let shown = path.display().to_string();
+                cx.open_text(&args.row, &shown)?;
+                Ok(json!({ "path": shown }))
+            }
+            "revealTranscripts" => {
+                let args: RowArgs = serde_json::from_value(args).map_err(bad)?;
+                let projects = self.config.join("projects");
+                let newest = history::read(cx, &args.row)
+                    .into_iter()
+                    .find_map(|s| transcript::find_in(&projects, &s.id));
+                let cwd = args.cwd(cx);
+                let target = memory::reveal_target(&self.config, cwd.as_deref(), newest)
+                    .ok_or_else(|| {
+                        PluginError::Failed("Claude has written no transcript yet".into())
+                    })?;
+                let shown = target.display().to_string();
+                cx.reveal(&shown)?;
+                Ok(json!({ "path": shown }))
             }
             "read" => {
                 let args: ReadArgs = serde_json::from_value(args)

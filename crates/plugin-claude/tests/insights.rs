@@ -292,3 +292,75 @@ fn history_keeps_50_newest() {
         "a session the row no longer keeps"
     );
 }
+
+#[test]
+fn memory_files_open_from_the_repository_root_and_transcripts_reveal() {
+    let base = folder("memory");
+    let config = base.join("claude-config");
+    let plugin = ClaudePlugin::new(PathBuf::from("/opt/terminescu"), &base.join("support"))
+        .with_config(config.clone());
+    let repo = base.join("shop-api");
+    std::fs::create_dir_all(repo.join(".git")).unwrap();
+    std::fs::create_dir_all(repo.join("src")).unwrap();
+    let cx = Cx::one_pane(repo.join("src").to_str().unwrap());
+
+    let out = plugin
+        .call(
+            "memory",
+            json!({ "row": "s1", "pane": "p1", "which": "project" }),
+            &cx,
+        )
+        .unwrap();
+    let project = repo.join("CLAUDE.md").display().to_string();
+    assert_eq!(out["path"], project.as_str());
+    let out = plugin
+        .call("memory", json!({ "row": "s1", "which": "user" }), &cx)
+        .unwrap();
+    let user = config.join("CLAUDE.md").display().to_string();
+    assert_eq!(out["path"], user.as_str());
+    assert_eq!(
+        cx.opened.lock().unwrap().as_slice(),
+        [("s1".to_string(), project), ("s1".to_string(), user)],
+        "a missing file still opens, empty, at its path"
+    );
+    assert!(
+        !repo.join("CLAUDE.md").exists(),
+        "nothing is written before ⌘S"
+    );
+    assert!(
+        plugin
+            .call("memory", json!({ "row": "s1", "which": "team" }), &cx)
+            .is_err()
+    );
+
+    // Before Claude writes a transcript there is nothing to show.
+    assert!(
+        plugin
+            .call(
+                "revealTranscripts",
+                json!({ "row": "s1", "pane": "p1" }),
+                &cx
+            )
+            .is_err()
+    );
+    let folder = config.join("projects/-x");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("sess-77.jsonl"), "{}\n").unwrap();
+    hook(
+        &plugin,
+        &cx,
+        json!({ "hook_event_name": "SessionStart", "session_id": "sess-77", "source": "startup",
+                "cwd": repo.join("src").display().to_string() }),
+    );
+    plugin
+        .call(
+            "revealTranscripts",
+            json!({ "row": "s1", "pane": "p1" }),
+            &cx,
+        )
+        .unwrap();
+    assert_eq!(
+        cx.revealed.lock().unwrap().as_slice(),
+        [folder.join("sess-77.jsonl").display().to_string()]
+    );
+}

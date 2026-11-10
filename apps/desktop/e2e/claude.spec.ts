@@ -125,3 +125,32 @@ test("resume types the command and no Enter", async ({ page }) => {
   await page.keyboard.type("resume");
   await expect(page.locator(".palette-item", { hasText: "Resume…" })).toContainText("⌥⌘R");
 });
+
+test("a missing CLAUDE.md opens unsaved", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/?plugins=claude&top-tabs");
+  const row = await page.evaluate(() => (window as any).__terminescu.host.workspace().windows[0].sideTabs[0].id as string);
+  await page.evaluate((row) => ((window as any).__fakeClaude = { [row]: { root: "/Users/owner/src/shop-api" } }), row);
+  const files = () => page.evaluate(() => Object.fromEntries((window as any).__terminescu.host.files)) as Promise<Record<string, string>>;
+  await page.locator(".term-pane").first().click();
+  await page.keyboard.press("Meta+Alt+KeyC");
+  const editor = page.locator(".text-pane .cm-content");
+  await expect(editor).toBeVisible();
+  await expect(page.locator(".app-main .ao-tab.active")).toContainText("CLAUDE.md");
+  await expect(editor).toHaveText("");
+  expect((await files())["/Users/owner/src/shop-api/CLAUDE.md"]).toBeUndefined();
+  await editor.click();
+  await page.keyboard.type("# shop-api");
+  expect((await files())["/Users/owner/src/shop-api/CLAUDE.md"], "nothing is written before ⌘S").toBeUndefined();
+  await page.keyboard.press("Meta+KeyS");
+  await expect.poll(async () => (await files())["/Users/owner/src/shop-api/CLAUDE.md"]).toBe("# shop-api");
+  expect(await page.evaluate(() => (window as any).__terminescu.host.dialogs), "saved at its path, no dialog").toEqual([]);
+  // The user file and the transcript folder are in the palette with their chords.
+  await page.keyboard.press("Meta+KeyP");
+  await page.keyboard.type("CLAUDE.md");
+  await expect(page.locator(".palette-item", { hasText: "Open User CLAUDE.md" })).toContainText("⌥⇧⌘C");
+  await page.keyboard.press("Escape");
+  await page.locator(".term-pane").first().click();
+  await page.keyboard.press("Meta+Alt+Shift+KeyR");
+  await expect(page.locator(".ao-error, [role=alert]").first()).toContainText("no transcript yet");
+});

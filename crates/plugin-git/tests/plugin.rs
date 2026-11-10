@@ -100,6 +100,9 @@ impl PluginCx for Cx {
     fn type_in_new_tab(&self, _: &str, _: &str, _: &str) -> Result<(), PluginError> {
         Ok(())
     }
+    fn reveal(&self, _: &str) -> Result<(), PluginError> {
+        Ok(())
+    }
     fn new_row(
         &self,
         window: &str,

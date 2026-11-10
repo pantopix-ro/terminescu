@@ -18,6 +18,7 @@ pub struct Cx {
     pub timers: Mutex<Vec<(Duration, String)>>,
     pub typed: Mutex<Vec<(String, String, String)>>,
     pub opened: Mutex<Vec<(String, String)>>,
+    pub revealed: Mutex<Vec<String>>,
     pub logs: Mutex<HashMap<String, PathBuf>>,
 }
 
@@ -95,6 +96,10 @@ impl PluginCx for Cx {
             .lock()
             .unwrap()
             .push((side_tab.into(), cwd.into(), line.into()));
+        Ok(())
+    }
+    fn reveal(&self, path: &str) -> Result<(), PluginError> {
+        self.revealed.lock().unwrap().push(path.into());
         Ok(())
     }
     fn new_row(&self, _: &str, _: Option<&str>, _: &str, _: &str) -> Result<Id, PluginError> {

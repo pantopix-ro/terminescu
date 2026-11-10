@@ -80,6 +80,16 @@ Note: "Resume…" (`⌥⌘R`) is a plugin action with `rowMenu: true`, a generic
 lists the action in the row's Edit dialog and runs it against that row's shown tab. The Rust
 call `resume` checks the session is in the row's history before it types the command.
 
+### D6a. Memory files and the transcript folder
+"Open CLAUDE.md" (`⌥⌘C`), "Open User CLAUDE.md" (`⌥⇧⌘C`) and "Reveal Transcript Folder"
+(`⌥⇧⌘R`) are row-menu actions. `⌥⌘M` stays free: macOS reads it as Minimize All. The plugin
+finds the repository root above the row's shell cwd (the nearest `.git`) and opens
+`CLAUDE.md` there through `open_text`; a missing file opens empty and is written only on `⌘S`.
+The user file and the transcripts sit in `CLAUDE_CONFIG_DIR`, else `~/.claude`. Revealing
+uses a new generic `PluginCx::reveal(path)` (`open -R`), which selects the row's newest
+transcript, else its project folder, else `projects/`. `open_text` and `type_in_new_tab` now
+bring the new pane forward, as `terminescu edit` does.
+
 ### D7. Signals from hooks
 Waiting reason from `PermissionRequest` `tool_name` and `tool_input` (`command`, `file_path`,
 `url`, else the first string field). Model from `SessionStart.model`, mode from
