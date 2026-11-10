@@ -51,12 +51,14 @@ branch. Rejected: a file watcher on each working tree. FSEvents on large trees i
 the shell events already mark every moment that matters.
 
 ### D4. A forge strategy for GitHub, through `gh`
-`trait Forge { fn pr_for(&self, root, branch) -> Option<PullRequest>; fn open_prs(&self, root)
--> Vec<PullRequest>; fn checkout_into(&self, root, number, at) }`, implemented by `GhCli`
-with `gh pr view --json number,url,state,statusCheckRollup` and `gh pr list --json`. The
-GitHub part is on when `gh auth status` succeeds and the setting allows it. `gh` keeps its own
-token; Terminescu never reads it. Rejected: the GitHub REST API with a token in the Keychain.
-It breaks the no-token rule's spirit and duplicates `gh`.
+`trait Forge { available; pr_for(root, branch); open_prs(root); checkout(dir, number) }`,
+implemented by `GhCli` with `gh pr list --state open --head <branch> --json ...` (so a merged
+pull request of the branch never shows) and `gh pr list --json`. A pull request row starts as a
+detached worktree; `gh pr checkout` then makes its branch inside it, forks included. Lookups run
+on a thread of their own, so a 3-second `gh` never holds the plugin's worker; short timers pick
+the answer up. The GitHub part is on when `gh auth status` succeeds and the setting allows it.
+`gh` keeps its own token; Terminescu never reads it. Rejected: the GitHub REST API with a token
+in the Keychain. It breaks the no-token rule's spirit and duplicates `gh`.
 
 ### D5. Worktree paths
 Default `<parent of repo root>/<repo name>-<branch slug>`; with a folder set,

@@ -1,15 +1,18 @@
 //! The git plugin (add-git-plugin D3, D5, D7). Shell events mark when a pane's repository may
 //! have moved; each sets a 300 ms timer for the pane, and the timer reads the facts. The tab
-//! shows the facts of its lead pane, the one that last moved or ran a command.
+//! shows the facts of its lead pane, the one that last moved or ran a command. With `gh` on,
+//! the lead pane's branch also looks up its pull request, on a thread of its own, at most once
+//! a minute and after each command; short timers pick the answer up (D4).
 
+use crate::forge::{Checks, Forge, ForgeError, GhCli, PullRequest};
 use crate::vcs::{DiffBase, RepoFacts, Vcs, VcsError};
 use crate::worktree::path_for;
 use crate::{CachedVcs, CoalescingVcs, GitCli, TimedVcs};
 use serde_json::{Value, json};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use terminescu_plugin_api::{
     CoreEvent, Decoration, Id, Manifest, PaneInfo, Plugin, PluginCx, PluginError, Slot, Target,
     Tone,
@@ -23,8 +26,32 @@ pub const MAX_CHANGES: usize = 500;
 pub const WORKTREE_FOLDER: &str = "worktreeFolder";
 /// Row data key: the worktree a row was made for, and its repository.
 pub const WORKTREE_ROW: &str = "worktree";
+/// Settings key: `false` turns the GitHub part off.
+pub const GITHUB: &str = "github";
+/// A branch's pull request is looked up at most this often, unless a command ended.
+pub const PR_EVERY: Duration = Duration::from_secs(60);
+/// How often a pane looks for the answer of a lookup that runs.
+pub const PR_POLL: Duration = Duration::from_millis(250);
 
 const TIMER: &str = "pane:";
+const PR_READY: &str = "prready:";
+const PR_TICK: &str = "prtick:";
+
+/// A branch of a working tree.
+type Branch = (PathBuf, String);
+
+#[derive(Default)]
+struct Prs {
+    known: HashMap<Branch, Known>,
+    running: HashSet<Branch>,
+    /// Set by a lookup that found `gh` gone or logged out.
+    lost: Option<String>,
+}
+
+struct Known {
+    at: Instant,
+    pr: Option<PullRequest>,
+}
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|p| p.into_inner())
@@ -34,6 +61,8 @@ pub struct GitPlugin {
     vcs: Arc<dyn Vcs>,
     /// Checked on launch; `None` in tests that bring their own provider.
     git: Option<GitCli>,
+    forge: Option<Arc<dyn Forge>>,
+    prs: Arc<Mutex<Prs>>,
     state: Mutex<State>,
 }
 
@@ -45,6 +74,10 @@ struct State {
     /// Why the plugin stopped: no git, or one too old.
     stopped: Option<String>,
     version: Option<String>,
+    /// The GitHub part answers: `gh` is there and logged in, and the setting allows it.
+    github: bool,
+    /// Why the GitHub part is off.
+    github_off: Option<String>,
 }
 
 struct PaneGit {
@@ -55,6 +88,8 @@ struct PaneGit {
     facts: Option<RepoFacts>,
     /// Facts were read for the current cwd; until then `None` means unknown, not "no repo".
     read: bool,
+    /// A command ended: the next read looks up the pull request whatever its age.
+    pr_due: bool,
 }
 
 impl PaneGit {
@@ -66,6 +101,7 @@ impl PaneGit {
             cwd: p.cwd.clone(),
             facts: None,
             read: false,
+            pr_due: false,
         }
     }
 }
@@ -87,17 +123,43 @@ impl GitPlugin {
         Self {
             vcs: Arc::new(vcs),
             git: Some(git),
+            forge: Some(Arc::new(GhCli::default())),
+            prs: Arc::default(),
             state: Mutex::default(),
         }
     }
 
-    /// Reads through `vcs` and skips the version check.
+    /// Reads through `vcs`, skips the version check and has no forge.
     pub fn with_vcs(vcs: Arc<dyn Vcs>) -> Self {
         Self {
             vcs,
             git: None,
+            forge: None,
+            prs: Arc::default(),
             state: Mutex::default(),
         }
+    }
+
+    pub fn with_forge(mut self, forge: Arc<dyn Forge>) -> Self {
+        self.forge = Some(forge);
+        self
+    }
+
+    /// Whether the GitHub part can answer now, and why not.
+    fn check_github(&self, cx: &dyn PluginCx) -> Result<(), String> {
+        if cx.setting(GITHUB) == Some(Value::Bool(false)) {
+            return Err("GitHub is off in Settings".into());
+        }
+        let forge = self.forge.as_ref().ok_or("no forge")?;
+        forge.available().map_err(|e| e.to_string())
+    }
+
+    fn set_github(&self, cx: &dyn PluginCx) {
+        let check = self.check_github(cx);
+        lock(&self.prs).lost = None;
+        let mut st = lock(&self.state);
+        st.github = check.is_ok();
+        st.github_off = check.err();
     }
 
     fn launch(&self, cx: &dyn PluginCx) {
@@ -115,6 +177,9 @@ impl GitPlugin {
                 }
             }
         }
+        drop(st);
+        self.set_github(cx);
+        let mut st = lock(&self.state);
         let panes = cx.panes();
         for p in &panes {
             st.lead
@@ -155,7 +220,7 @@ impl GitPlugin {
         if led.as_deref() != Some(pane)
             && let Some(facts) = known
         {
-            publish(cx, &tab, facts.as_ref());
+            self.show(cx, &tab, facts.as_ref());
         }
         cx.schedule(DEBOUNCE, &format!("{TIMER}{pane}"));
     }
@@ -197,6 +262,7 @@ impl GitPlugin {
         }
         p.facts = facts.clone();
         p.read = true;
+        let due = std::mem::take(&mut p.pr_due);
         let tab = p.tab.clone();
         let leads = st.lead.get(&tab).map(String::as_str) == Some(pane);
         drop(st);
@@ -208,9 +274,125 @@ impl GitPlugin {
             f.and_then(|f| f.head.branch().map(String::from)),
         );
         cx.set_variable(&target, "repo", f.map(RepoFacts::repo_name));
+        let pr = self.known_pr(f);
+        cx.set_variable(&target, "pr", pr.map(|p| p.number.to_string()));
         if leads {
-            publish(cx, &tab, f);
+            self.show(cx, &tab, f);
+            if let Some(key) = f.and_then(branch_of) {
+                self.look_up(pane, key, due, cx);
+            }
         }
+    }
+
+    /// The pull request last found for the facts' branch.
+    fn known_pr(&self, facts: Option<&RepoFacts>) -> Option<PullRequest> {
+        if !lock(&self.state).github {
+            return None;
+        }
+        let key = branch_of(facts?)?;
+        lock(&self.prs).known.get(&key)?.pr.clone()
+    }
+
+    /// What a tab shows for its lead pane's facts, and the pull request of their branch.
+    fn show(&self, cx: &dyn PluginCx, tab: &str, facts: Option<&RepoFacts>) {
+        let pr = self.known_pr(facts);
+        let github = lock(&self.state).github && facts.and_then(branch_of).is_some();
+        publish(cx, tab, facts, pr.as_ref(), github);
+    }
+
+    /// Starts a lookup of the branch's pull request unless one runs or a recent answer stands,
+    /// and keeps the minute tick going for the pane.
+    fn look_up(&self, pane: &str, key: Branch, due: bool, cx: &dyn PluginCx) {
+        let Some(forge) = self.forge.clone() else {
+            return;
+        };
+        if !lock(&self.state).github {
+            return;
+        }
+        cx.schedule(PR_EVERY, &format!("{PR_TICK}{pane}"));
+        let mut prs = lock(&self.prs);
+        if prs.running.contains(&key) {
+            drop(prs);
+            cx.schedule(PR_POLL, &format!("{PR_READY}{pane}"));
+            return;
+        }
+        let fresh = prs
+            .known
+            .get(&key)
+            .is_some_and(|k| k.at.elapsed() < PR_EVERY);
+        if fresh && !due {
+            return;
+        }
+        prs.running.insert(key.clone());
+        drop(prs);
+        let shared = self.prs.clone();
+        let started = std::thread::Builder::new()
+            .name("git-pr".into())
+            .spawn(move || {
+                let found = forge.pr_for(&key.0, &key.1);
+                let mut prs = lock(&shared);
+                prs.running.remove(&key);
+                let pr = match found {
+                    Ok(pr) => pr,
+                    Err(e @ (ForgeError::NoGh | ForgeError::LoggedOut)) => {
+                        prs.lost = Some(e.to_string());
+                        None
+                    }
+                    // Slow or failed: the last answer stands until the next minute.
+                    Err(e) => {
+                        eprintln!("terminescu: pull request for {}: {e}", key.1);
+                        prs.known.get(&key).and_then(|k| k.pr.clone())
+                    }
+                };
+                prs.known.insert(
+                    key,
+                    Known {
+                        at: Instant::now(),
+                        pr,
+                    },
+                );
+            });
+        match started {
+            Ok(_) => cx.schedule(PR_POLL, &format!("{PR_READY}{pane}")),
+            Err(e) => {
+                eprintln!("terminescu: pull request lookup not started: {e}");
+                lock(&self.prs).running.clear();
+            }
+        }
+    }
+
+    /// A lookup may have answered: show it on the pane's tab, or look again shortly.
+    fn pr_ready(&self, pane: &str, cx: &dyn PluginCx) {
+        if let Some(why) = lock(&self.prs).lost.take() {
+            eprintln!("terminescu: GitHub part off: {why}");
+            let mut st = lock(&self.state);
+            st.github = false;
+            st.github_off = Some(why);
+        }
+        let st = lock(&self.state);
+        let Some(p) = st.panes.get(pane) else {
+            return;
+        };
+        if st.lead.get(&p.tab).map(String::as_str) != Some(pane) {
+            return;
+        }
+        let (tab, facts) = (p.tab.clone(), p.facts.clone());
+        drop(st);
+        let running = facts
+            .as_ref()
+            .and_then(branch_of)
+            .is_some_and(|k| lock(&self.prs).running.contains(&k));
+        if running {
+            cx.schedule(PR_POLL, &format!("{PR_READY}{pane}"));
+            return;
+        }
+        let pr = self.known_pr(facts.as_ref());
+        cx.set_variable(
+            &Target::Pane(pane.into()),
+            "pr",
+            pr.map(|p| p.number.to_string()),
+        );
+        self.show(cx, &tab, facts.as_ref());
     }
 
     fn pane_closed(&self, pane: &str, cx: &dyn PluginCx) {
@@ -231,7 +413,7 @@ impl GitPlugin {
             None => st.lead.remove(&gone.tab),
         };
         drop(st);
-        publish(cx, &gone.tab, next.as_ref().and_then(|n| n.1.as_ref()));
+        self.show(cx, &gone.tab, next.as_ref().and_then(|n| n.1.as_ref()));
         if let Some((id, _)) = next {
             cx.schedule(Duration::ZERO, &format!("{TIMER}{id}"));
         }
@@ -242,7 +424,7 @@ impl GitPlugin {
         st.lead.remove(tab);
         st.panes.retain(|_, p| p.tab != tab);
         drop(st);
-        publish(cx, tab, None);
+        self.show(cx, tab, None);
     }
 
     fn side_tab_closed(&self, side_tab: &str, cx: &dyn PluginCx) {
@@ -259,7 +441,7 @@ impl GitPlugin {
         }
         drop(st);
         for t in tabs {
-            publish(cx, &t, None);
+            self.show(cx, &t, None);
         }
     }
 
@@ -376,6 +558,78 @@ impl GitPlugin {
             Some(json!({ "worktree": at, "repo": main })),
         )?;
         Ok(json!({ "row": row, "path": at, "branch": branch, "base": base }))
+    }
+
+    fn forge(&self) -> Result<Arc<dyn Forge>, PluginError> {
+        let st = lock(&self.state);
+        match (&self.forge, st.github) {
+            (Some(f), true) => Ok(f.clone()),
+            _ => Err(PluginError::Failed(
+                st.github_off
+                    .clone()
+                    .unwrap_or_else(|| "GitHub is off".into()),
+            )),
+        }
+    }
+
+    fn pull_requests(&self, args: &Value, cx: &dyn PluginCx) -> Result<Value, PluginError> {
+        let forge = self.forge()?;
+        let (_, facts) = self.pane_facts(args, cx)?;
+        let prs = forge
+            .open_prs(&facts.root)
+            .map_err(|e| PluginError::Failed(e.to_string()))?;
+        Ok(json!(prs))
+    }
+
+    /// A worktree for pull request `number`, checked out by `gh`, opened as a marked row.
+    fn pr_checkout(&self, args: &Value, cx: &dyn PluginCx) -> Result<Value, PluginError> {
+        let forge = self.forge()?;
+        let (at_pane, facts) = self.pane_facts(args, cx)?;
+        let number = args
+            .get("number")
+            .and_then(Value::as_u64)
+            .and_then(|n| u32::try_from(n).ok())
+            .filter(|n| *n > 0)
+            .ok_or_else(|| PluginError::BadArgs("number is missing".into()))?;
+        let branch = args
+            .get("branch")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|b| !b.is_empty())
+            .map(String::from)
+            .unwrap_or_else(|| format!("pr-{number}"));
+        let main = facts.main_root();
+        let at = path_for(
+            &main,
+            &facts.repo_name(),
+            &branch,
+            worktree_folder(cx).as_deref(),
+        );
+        // A detached worktree first ("HEAD" is no branch name): `gh` then makes the branch,
+        // from a fork too.
+        self.vcs
+            .worktree_checkout(&facts.root, "HEAD", &at)
+            .map_err(failed)?;
+        if let Err(e) = forge.checkout(&at, number) {
+            // Only the worktree just made goes; no branch was made.
+            if let Err(rm) = self.vcs.worktree_remove(&main, &at, true) {
+                eprintln!(
+                    "terminescu: worktree {} left after a failed checkout: {rm}",
+                    at.display()
+                );
+            }
+            return Err(PluginError::Failed(e.to_string()));
+        }
+        self.vcs.forget(&main);
+        let cwd = at.to_string_lossy();
+        let title = format!("#{number} {branch}");
+        let row = cx.new_row(&at_pane.window, Some(&at_pane.side_tab), &title, &cwd)?;
+        cx.set_row_data(
+            &row,
+            WORKTREE_ROW,
+            Some(json!({ "worktree": at, "repo": main })),
+        )?;
+        Ok(json!({ "row": row, "path": at }))
     }
 
     fn worktrees(&self, args: &Value, cx: &dyn PluginCx) -> Result<Value, PluginError> {
@@ -496,12 +750,46 @@ pub fn chip(tab: &str, f: &RepoFacts) -> Decoration {
     }
 }
 
-/// What a tab shows for its lead pane's facts; `None` clears it.
-fn publish(cx: &dyn PluginCx, tab: &str, facts: Option<&RepoFacts>) {
+/// The branch the facts are on, as the pull request cache keys it.
+fn branch_of(f: &RepoFacts) -> Option<Branch> {
+    Some((f.root.clone(), f.head.branch()?.to_string()))
+}
+
+/// The pull request chip: its number, toned by its checks; the tip names failing checks.
+pub fn pr_chip(tab: &str, pr: &PullRequest) -> Decoration {
+    let (tone, state) = match &pr.checks {
+        Checks::None => (Tone::Neutral, "No checks".to_string()),
+        Checks::Passing => (Tone::Good, "Checks passing".to_string()),
+        Checks::Running => (Tone::Warn, "Checks running".to_string()),
+        Checks::Failing(names) => (Tone::Bad, format!("Failing: {}", names.join(", "))),
+    };
+    Decoration {
+        target: Target::Tab(tab.into()),
+        slot: Slot::Chip,
+        key: "pr".into(),
+        text: format!("#{}", pr.number),
+        tone,
+        tip: Some(format!("{} · {state}", pr.title)),
+    }
+}
+
+/// What a tab shows; `None` facts clear it. `github` says a pull request answer counts: without
+/// it the checks fact is unknown rather than false.
+fn publish(
+    cx: &dyn PluginCx,
+    tab: &str,
+    facts: Option<&RepoFacts>,
+    pr: Option<&PullRequest>,
+    github: bool,
+) {
     let target = Target::Tab(tab.into());
-    match facts {
-        Some(f) => cx.set_decoration(chip(tab, f)),
-        None => cx.clear_decorations(Some(&target)),
+    // Clearing first takes away a chip of the branch the tab was on before.
+    cx.clear_decorations(Some(&target));
+    if let Some(f) = facts {
+        cx.set_decoration(chip(tab, f));
+    }
+    if let Some(pr) = pr {
+        cx.set_decoration(pr_chip(tab, pr));
     }
     cx.set_fact(&target, "pushed", facts.map(|f| Value::Bool(f.pushed())));
     cx.set_fact(
@@ -509,13 +797,17 @@ fn publish(cx: &dyn PluginCx, tab: &str, facts: Option<&RepoFacts>) {
         "conflict",
         facts.map(|f| Value::Bool(f.conflicted > 0)),
     );
+    let failed = pr.map(|p| matches!(p.checks, Checks::Failing(_)));
+    let failed = failed.or((github && facts.is_some()).then_some(false));
+    cx.set_fact(&target, "checksFailed", failed.map(Value::Bool));
 }
 
 impl Plugin for GitPlugin {
     fn manifest(&self) -> Manifest {
         Manifest {
-            // One git read takes up to a second; a worktree checkout can take minutes.
-            event_budget: Duration::from_secs(2),
+            // Launch reads the git version and `gh auth status` (3 s at most); other events
+            // take a git read of a second at most. A worktree checkout can take minutes.
+            event_budget: Duration::from_secs(5),
             call_budget: Duration::from_secs(120),
             ..Manifest::new(
                 "git",
@@ -531,10 +823,10 @@ impl Plugin for GitPlugin {
             CoreEvent::PaneSpawned { pane, cwd, .. } => self.touch(pane, cwd.as_deref(), cx),
             CoreEvent::CwdMoved { pane, cwd } => self.touch(pane, Some(cwd), cx),
             CoreEvent::CommandEnded { pane, .. } => {
-                let cwd = lock(&self.state)
-                    .panes
-                    .get(pane)
-                    .and_then(|p| p.cwd.clone());
+                let cwd = lock(&self.state).panes.get_mut(pane).and_then(|p| {
+                    p.pr_due = true;
+                    p.cwd.clone()
+                });
                 if let Some(cwd) = cwd {
                     self.vcs.forget(Path::new(&cwd));
                 }
@@ -547,6 +839,10 @@ impl Plugin for GitPlugin {
             CoreEvent::Timer { token } => {
                 if let Some(pane) = token.strip_prefix(TIMER) {
                     self.refresh(pane, cx);
+                } else if let Some(pane) = token.strip_prefix(PR_READY) {
+                    self.pr_ready(pane, cx);
+                } else if let Some(pane) = token.strip_prefix(PR_TICK) {
+                    self.refresh(pane, cx);
                 }
             }
             CoreEvent::CommandStarted { .. } | CoreEvent::Hook { .. } => {}
@@ -556,13 +852,24 @@ impl Plugin for GitPlugin {
     fn call(&self, method: &str, args: Value, cx: &dyn PluginCx) -> Result<Value, PluginError> {
         match method {
             "status" => {
+                if args.get("recheck").and_then(Value::as_bool) == Some(true) {
+                    self.set_github(cx);
+                }
                 let st = lock(&self.state);
-                Ok(json!({ "version": st.version, "stopped": st.stopped }))
+                Ok(json!({
+                    "version": st.version,
+                    "stopped": st.stopped,
+                    "github": st.github,
+                    "githubOff": st.github_off,
+                }))
             }
             "facts" => {
                 let (_, facts) = self.pane_facts(&args, cx)?;
-                Ok(json!(facts))
+                let pr = self.known_pr(Some(&facts));
+                Ok(json!({ "facts": facts, "pr": pr }))
             }
+            "pullRequests" => self.pull_requests(&args, cx),
+            "prCheckout" => self.pr_checkout(&args, cx),
             "changes" => self.changes(&args, cx),
             "baseText" => self.base_text(&args, cx),
             "worktreeAdd" => self.worktree_add(&args, cx),

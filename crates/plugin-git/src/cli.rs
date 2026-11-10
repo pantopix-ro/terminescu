@@ -1,19 +1,16 @@
 //! `GitCli`: the person's `git`, read-only unless asked (add-git-plugin D1). Every call runs
 //! with `--no-optional-locks`, so `status` never writes the index or takes its lock.
 
+use crate::process::{self, Output, RunError};
 use crate::vcs::{Change, DiffBase, Head, Op, RepoFacts, Vcs, VcsError, Worktree};
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
-use std::io::Read;
 use std::path::{Component, Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::process::Command;
+use std::time::Duration;
 
 /// Untracked files longer than this are not counted line by line.
 const COUNT_LINES_UP_TO: u64 = 1024 * 1024;
-/// How long to wait for the pipes to close after git exits. A hook's background process can
-/// keep them open; what git wrote is in by then.
-const DRAIN: Duration = Duration::from_millis(250);
 
 #[derive(Debug, Clone)]
 pub struct GitCli {
@@ -23,12 +20,6 @@ pub struct GitCli {
     /// The same for a change (worktree add, remove), which a kill would leave half done.
     change_limit: Duration,
     env: Vec<(OsString, OsString)>,
-}
-
-pub struct Output {
-    pub ok: bool,
-    pub stdout: Vec<u8>,
-    pub stderr: String,
 }
 
 impl Default for GitCli {
@@ -97,37 +88,14 @@ impl GitCli {
             .env_remove("GIT_DIR")
             .env_remove("GIT_WORK_TREE")
             .env_remove("GIT_INDEX_FILE")
-            .env_remove("GIT_COMMON_DIR")
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+            .env_remove("GIT_COMMON_DIR");
         for (k, v) in &self.env {
             cmd.env(k, v);
         }
-        let mut child = cmd.spawn().map_err(|e| match e.kind() {
-            std::io::ErrorKind::NotFound => VcsError::NoGit,
-            _ => VcsError::Failed(e.to_string()),
-        })?;
-        let out = drain(child.stdout.take().expect("piped"));
-        let err = drain(child.stderr.take().expect("piped"));
-        let end = Instant::now() + limit;
-        let status = loop {
-            match child.try_wait() {
-                Ok(Some(s)) => break s,
-                Ok(None) if Instant::now() >= end => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return Err(VcsError::Timeout);
-                }
-                Ok(None) => std::thread::sleep(Duration::from_millis(5)),
-                Err(e) => return Err(VcsError::Failed(e.to_string())),
-            }
-        };
-        let until = Instant::now() + DRAIN;
-        Ok(Output {
-            ok: status.success(),
-            stdout: out.take(until),
-            stderr: String::from_utf8_lossy(&err.take(until)).trim().to_string(),
+        process::run(&mut cmd, limit).map_err(|e| match e {
+            RunError::NotFound => VcsError::NoGit,
+            RunError::Timeout => VcsError::Timeout,
+            RunError::Io(e) => VcsError::Failed(e),
         })
     }
 
@@ -323,41 +291,6 @@ fn free(at: &Path) -> Result<(), VcsError> {
         return Err(VcsError::Exists(at.display().to_string()));
     }
     Ok(())
-}
-
-/// A pipe read on its own thread until it closes.
-struct Drain {
-    bytes: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
-    done: std::sync::mpsc::Receiver<()>,
-}
-
-fn drain(mut pipe: impl Read + Send + 'static) -> Drain {
-    let bytes = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    let (tx, done) = std::sync::mpsc::channel();
-    let sink = bytes.clone();
-    std::thread::spawn(move || {
-        let mut chunk = [0u8; 8192];
-        while let Ok(n) = pipe.read(&mut chunk) {
-            if n == 0 {
-                break;
-            }
-            sink.lock()
-                .unwrap_or_else(|p| p.into_inner())
-                .extend_from_slice(&chunk[..n]);
-        }
-        let _ = tx.send(());
-    });
-    Drain { bytes, done }
-}
-
-impl Drain {
-    /// What came in by `until`, closed or not.
-    fn take(self, until: Instant) -> Vec<u8> {
-        let _ = self
-            .done
-            .recv_timeout(until.saturating_duration_since(Instant::now()));
-        std::mem::take(&mut *self.bytes.lock().unwrap_or_else(|p| p.into_inner()))
-    }
 }
 
 /// A branch or base git cannot read as an option.

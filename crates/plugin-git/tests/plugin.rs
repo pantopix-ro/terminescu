@@ -13,7 +13,8 @@ use terminescu_plugin_api::{
 };
 use terminescu_plugin_git::plugin::{DEBOUNCE, MAX_CHANGES, WORKTREE_FOLDER, WORKTREE_ROW};
 use terminescu_plugin_git::{
-    Change, DiffBase, GitPlugin, Head, Op, RepoFacts, Vcs, VcsError, Worktree,
+    Change, Checks, DiffBase, Forge, ForgeError, GitPlugin, Head, Op, PullRequest, RepoFacts, Vcs,
+    VcsError, Worktree,
 };
 
 /// A new row: window, the row it goes after, title and cwd.
@@ -22,7 +23,7 @@ type NewRow = (String, Option<String>, String, String);
 #[derive(Default)]
 struct Cx {
     panes: Mutex<Vec<PaneInfo>>,
-    chips: Mutex<HashMap<Target, Decoration>>,
+    chips: Mutex<HashMap<(Target, String), Decoration>>,
     facts: Mutex<HashMap<(Target, String), Value>>,
     vars: Mutex<HashMap<(Target, String), String>>,
     timers: Mutex<Vec<(Duration, String)>>,
@@ -33,11 +34,8 @@ struct Cx {
 
 impl Cx {
     fn chip(&self, tab: &str) -> Option<Decoration> {
-        self.chips
-            .lock()
-            .unwrap()
-            .get(&Target::Tab(tab.into()))
-            .cloned()
+        let key = (Target::Tab(tab.into()), "branch".to_string());
+        self.chips.lock().unwrap().get(&key).cloned()
     }
     fn fact(&self, tab: &str, name: &str) -> Option<Value> {
         let key = (Target::Tab(tab.into()), name.to_string());
@@ -75,14 +73,15 @@ impl PluginCx for Cx {
         Ok(())
     }
     fn set_decoration(&self, d: Decoration) {
-        self.chips.lock().unwrap().insert(d.target.clone(), d);
+        self.chips
+            .lock()
+            .unwrap()
+            .insert((d.target.clone(), d.key.clone()), d);
     }
     fn clear_decorations(&self, target: Option<&Target>) {
         let mut chips = self.chips.lock().unwrap();
         match target {
-            Some(t) => {
-                chips.remove(t);
-            }
+            Some(t) => chips.retain(|k, _| &k.0 != t),
             None => chips.clear(),
         }
     }
@@ -592,4 +591,182 @@ fn a_new_worktree_row_from_a_real_repository() {
     assert!(at.join("a.txt").is_file());
     let branch = common::git(&at, &["branch", "--show-current"]);
     assert_eq!(branch.trim(), "PROJ-490-refunds");
+}
+
+/// A forge that answers one pull request per branch and counts its lookups.
+#[derive(Default)]
+struct FakeForge {
+    prs: Mutex<HashMap<String, PullRequest>>,
+    lookups: Mutex<usize>,
+    out: bool,
+}
+
+impl Forge for FakeForge {
+    fn available(&self) -> Result<(), ForgeError> {
+        if self.out {
+            Err(ForgeError::LoggedOut)
+        } else {
+            Ok(())
+        }
+    }
+    fn pr_for(&self, _: &Path, branch: &str) -> Result<Option<PullRequest>, ForgeError> {
+        *self.lookups.lock().unwrap() += 1;
+        Ok(self.prs.lock().unwrap().get(branch).cloned())
+    }
+    fn open_prs(&self, _: &Path) -> Result<Vec<PullRequest>, ForgeError> {
+        Ok(self.prs.lock().unwrap().values().cloned().collect())
+    }
+    fn checkout(&self, _: &Path, _: u32) -> Result<(), ForgeError> {
+        Ok(())
+    }
+}
+
+fn pr(number: u32, branch: &str, checks: Checks) -> PullRequest {
+    PullRequest {
+        number,
+        title: "Retry failed payments".into(),
+        url: format!("https://github.com/acme/shop-api/pull/{number}"),
+        branch: branch.into(),
+        checks,
+    }
+}
+
+fn with_forge(forge: Arc<FakeForge>) -> (GitPlugin, Arc<Fake>, Cx) {
+    let fake = Arc::new(Fake::default());
+    fake.set("/code/shop-api", Ok(Some(repo("feature/PROJ-482-retry"))));
+    let plugin = GitPlugin::with_vcs(fake.clone()).with_forge(forge);
+    let cx = Cx::default();
+    *cx.panes.lock().unwrap() = vec![pane("p1", "t1", "/code/shop-api")];
+    plugin.on_event(&CoreEvent::AppLaunched, &cx);
+    (plugin, fake, cx)
+}
+
+/// Fires timers until the tab shows a pull request chip, as the host would.
+fn until_pr(plugin: &GitPlugin, cx: &Cx) -> Option<Decoration> {
+    for _ in 0..200 {
+        let pr = cx
+            .chips
+            .lock()
+            .unwrap()
+            .values()
+            .find(|d| d.key == "pr")
+            .cloned();
+        if pr.is_some() {
+            return pr;
+        }
+        for (_, token) in cx.timers() {
+            if !token.starts_with("prtick:") {
+                plugin.on_event(&CoreEvent::Timer { token }, cx);
+            }
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    None
+}
+
+#[test]
+fn a_failing_check_shows_the_pr_in_red_and_sets_the_fact() {
+    let forge = Arc::new(FakeForge::default());
+    forge.prs.lock().unwrap().insert(
+        "feature/PROJ-482-retry".into(),
+        pr(
+            918,
+            "feature/PROJ-482-retry",
+            Checks::Failing(vec!["lint".into()]),
+        ),
+    );
+    let (plugin, _, cx) = with_forge(forge.clone());
+    let chip = until_pr(&plugin, &cx).expect("a pr chip");
+    assert_eq!(chip.text, "#918");
+    assert_eq!(chip.tone, Tone::Bad);
+    assert!(chip.tip.unwrap().contains("Failing: lint"));
+    assert_eq!(cx.fact("t1", "checksFailed"), Some(json!(true)));
+    assert_eq!(cx.var("p1", "pr").as_deref(), Some("918"));
+    // The branch chip stays beside it.
+    assert_eq!(cx.chip("t1").unwrap().key, "branch");
+    let status = plugin.call("status", Value::Null, &cx).unwrap();
+    assert_eq!(status["github"], json!(true));
+}
+
+#[test]
+fn a_lookup_runs_once_a_minute_unless_a_command_ended() {
+    let forge = Arc::new(FakeForge::default());
+    let (plugin, _, cx) = with_forge(forge.clone());
+    fire(&plugin, &cx);
+    let settled = || {
+        for _ in 0..200 {
+            if cx
+                .timers
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|t| !t.1.starts_with("prready:"))
+            {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+            fire(&plugin, &cx);
+        }
+    };
+    settled();
+    assert_eq!(*forge.lookups.lock().unwrap(), 1);
+    // No pull request: the fact says so instead of staying unknown.
+    assert_eq!(cx.fact("t1", "checksFailed"), Some(json!(false)));
+    plugin.on_event(
+        &CoreEvent::CwdMoved {
+            pane: "p1".into(),
+            cwd: "/code/shop-api".into(),
+        },
+        &cx,
+    );
+    fire(&plugin, &cx);
+    settled();
+    assert_eq!(*forge.lookups.lock().unwrap(), 1, "a recent answer stands");
+    plugin.on_event(
+        &CoreEvent::CommandEnded {
+            pane: "p1".into(),
+            command: "gh pr create".into(),
+            exit: Some(0),
+        },
+        &cx,
+    );
+    fire(&plugin, &cx);
+    settled();
+    assert_eq!(*forge.lookups.lock().unwrap(), 2);
+}
+
+#[test]
+fn without_gh_there_is_no_pr_chip_and_no_pr_calls() {
+    let forge = Arc::new(FakeForge {
+        out: true,
+        ..FakeForge::default()
+    });
+    let (plugin, _, cx) = with_forge(forge.clone());
+    fire(&plugin, &cx);
+    assert!(cx.chips.lock().unwrap().values().all(|d| d.key != "pr"));
+    assert_eq!(cx.fact("t1", "checksFailed"), None);
+    assert_eq!(*forge.lookups.lock().unwrap(), 0);
+    let status = plugin.call("status", Value::Null, &cx).unwrap();
+    assert_eq!(status["github"], json!(false));
+    assert!(status["githubOff"].as_str().unwrap().contains("logged in"));
+    assert!(
+        plugin
+            .call("pullRequests", json!({ "pane": "p1" }), &cx)
+            .is_err()
+    );
+}
+
+#[test]
+fn the_github_setting_turns_the_part_off() {
+    let forge = Arc::new(FakeForge::default());
+    let (plugin, _, cx) = with_forge(forge.clone());
+    cx.settings
+        .lock()
+        .unwrap()
+        .insert("github".into(), json!(false));
+    let status = plugin
+        .call("status", json!({ "recheck": true }), &cx)
+        .unwrap();
+    assert_eq!(status["github"], json!(false));
+    assert_eq!(status["githubOff"], json!("GitHub is off in Settings"));
 }
