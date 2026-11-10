@@ -5,7 +5,7 @@
 - [x] 1.1 `crates/plugin-git` with the `Vcs` trait and `GitCli` facts and changes from
       porcelain v2 and numstat. Verify: `cargo test -p terminescu-plugin-git` against temp
       repositories (clean, dirty, ahead/behind, detached, rebase stopped, untracked, rename).
-- [ ] 1.2 `TimedVcs`, `CachedVcs` and `CoalescingVcs`. Verify: unit tests over a fake provider
+- [x] 1.2 `TimedVcs`, `CachedVcs` and `CoalescingVcs`. Verify: unit tests over a fake provider
       (timeout drops, mtime invalidates, concurrent requests fold into one follow-up).
 - [ ] 1.3 Worktrees: add, list, remove, path rules and slugs. Verify: tests
       `worktree_goes_next_to_the_repo`, `worktree_goes_under_the_folder`,
