@@ -10,6 +10,7 @@ pub mod context;
 pub mod core_socket;
 pub mod daemon;
 pub mod db;
+pub mod decorations;
 pub mod documents;
 pub mod extract;
 pub mod feedback;

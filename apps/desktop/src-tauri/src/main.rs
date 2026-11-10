@@ -6,6 +6,7 @@ mod crashlog;
 mod docs;
 mod drag;
 mod edit;
+mod plugins;
 mod public;
 mod reopen;
 mod updates;
@@ -83,7 +84,7 @@ struct ActionDef {
     accel: String,
 }
 
-struct AppState {
+pub(crate) struct AppState {
     runtime: Runtime,
     db: Arc<Mutex<Db>>,
     attention: Arc<Mutex<Attention>>,
@@ -1598,7 +1599,7 @@ fn start_runtime(
     Ok((runtime, windows, updates))
 }
 
-fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+pub(crate) fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
@@ -2089,6 +2090,10 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             app.set_menu(build_menu(app.handle(), &bindings, true)?)?;
         }
     }
+    let plugins = Arc::new(plugins::Plugins::start(app.handle(), db.clone()));
+    plugins::observe(app.handle(), &runtime, plugins.clone());
+    plugins.dispatch(&terminescu_plugin_api::CoreEvent::AppLaunched);
+    app.manage(plugins);
     app.manage(AppState {
         runtime,
         db,
@@ -2126,6 +2131,10 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             edit::edit_command,
+            plugins::plugin_call,
+            plugins::plugin_list,
+            plugins::plugin_set_enabled,
+            plugins::decorations,
             public::app_info,
             public::feedback_open,
             public::uninstall_helpers,

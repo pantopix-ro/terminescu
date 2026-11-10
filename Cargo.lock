@@ -4421,6 +4421,7 @@ dependencies = [
  "tauri-plugin-notification",
  "tauri-plugin-updater",
  "terminescu-core",
+ "terminescu-plugin-api",
  "terminescu-protocol",
  "tokio",
 ]

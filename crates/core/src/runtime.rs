@@ -22,7 +22,7 @@ use crate::agent::{self, Agent, AgentState, AgentUpdate};
 use crate::daemon::{DaemonClient, DaemonError, DaemonEvent};
 use crate::layout::Layout;
 use crate::persist::{PaneRecord, Saved};
-use crate::state::{Command, CommandError, Core, Id, PatchBatch, Snapshot, Workspace};
+use crate::state::{Command, CommandError, Core, Id, Patch, PatchBatch, Snapshot, Workspace};
 use crate::status::{self, Engine, Look, PaneFacts, Rule, Shown, Until};
 use crate::transcript::Tail;
 use crate::views::{Action, Queued, Sink, ViewId, Views};
@@ -31,6 +31,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
+use terminescu_plugin_api::CoreEvent;
 use terminescu_protocol::core::Expiry;
 use terminescu_protocol::{PaneId, PaneInfo, ShellState, SpawnSpec};
 
@@ -97,6 +98,8 @@ pub type ContextSink = Box<dyn Fn(&str) + Send + Sync>;
 pub type FoundSink = Box<dyn Fn(&str, &str, Vec<crate::extract::Found>) + Send + Sync>;
 /// Hears the documents whose text panes left the layout (D28).
 pub type DocSink = Box<dyn Fn(&[Id]) + Send + Sync>;
+/// Hears what plugins observe (add-plugin-architecture D3). It must not block.
+pub type EventSink = Box<dyn Fn(CoreEvent) + Send + Sync>;
 /// How often expiries and Claude idle rules are checked when nothing else happens.
 const STATUS_TICK: Duration = Duration::from_secs(1);
 /// Makes sure a daemon runs, then connects to it. Called at start and after a drop.
@@ -208,6 +211,7 @@ struct Inner {
     /// Extraction over each daemon pane's output.
     scanners: Mutex<HashMap<PaneId, crate::extract::Scanner>>,
     doc_sink: Mutex<Option<DocSink>>,
+    event_sink: Mutex<Option<EventSink>>,
     /// Settings › Shell: new shells point `VISUAL` and `EDITOR` at `terminescu edit --wait`.
     editor: AtomicBool,
     /// Lines of history new shells keep in the daemon; 0 leaves the daemon's default (task 8.42).
@@ -218,6 +222,9 @@ struct Inner {
     persist: Persist,
     stopped: AtomicBool,
 }
+
+/// The [`Runtime::command_in`] key for every new pane the command does not name.
+pub const NEW_PANES: &str = "*";
 
 #[derive(Clone)]
 pub struct Runtime {
@@ -355,6 +362,7 @@ impl Runtime {
                 found_sink: Mutex::default(),
                 scanners: Mutex::default(),
                 doc_sink: Mutex::default(),
+                event_sink: Mutex::default(),
                 editor: AtomicBool::new(editor),
                 scrollback: AtomicU32::new(0),
                 queued: Condvar::new(),
@@ -553,7 +561,7 @@ impl Runtime {
     }
 
     /// As [`Self::command`], with the cwd each new pane's shell starts in: a reopened tab's
-    /// panes start where they were (task 8.87).
+    /// panes start where they were (task 8.87). [`NEW_PANES`] stands for any pane not named.
     pub fn command_in(
         &self,
         cmd: Command,
@@ -582,6 +590,17 @@ impl Runtime {
         };
         let batch = core.handle(cmd)?;
         (self.inner.emit)(&batch);
+        for p in &batch.patches {
+            match p {
+                Patch::TabClosed { tab_id } => self.observe(CoreEvent::TabClosed {
+                    tab: tab_id.clone(),
+                }),
+                Patch::SideTabClosed { side_tab_id } => self.observe(CoreEvent::SideTabClosed {
+                    side_tab: side_tab_id.clone(),
+                }),
+                _ => {}
+            }
+        }
         self.mark_status();
         let ws = core.workspace().clone();
         let guard = lock(&self.inner.effects);
@@ -590,7 +609,7 @@ impl Runtime {
         let mut effects = diff_effects(&before, &ws.terminal_sides(), cwd);
         for e in &mut effects {
             if let Effect::Spawn { pane, cwd, .. } = e
-                && let Some(at) = cwds.get(pane)
+                && let Some(at) = cwds.get(pane).or_else(|| cwds.get(NEW_PANES))
             {
                 *cwd = Some(at.clone());
             }
@@ -632,20 +651,34 @@ impl Runtime {
         cmd: Command,
         bytes: Vec<u8>,
     ) -> Result<(Option<Id>, bool), CommandError> {
+        self.command_then_type_in(cmd, None, bytes)
+    }
+
+    /// As [`Self::command_then_type`], with the new pane's shell started in `cwd`. Nothing is
+    /// typed when `bytes` is empty.
+    pub fn command_then_type_in(
+        &self,
+        cmd: Command,
+        cwd: Option<&str>,
+        bytes: Vec<u8>,
+    ) -> Result<(Option<Id>, bool), CommandError> {
         let before: std::collections::HashSet<Id> = self
             .workspace()
             .terminal_sides()
             .into_iter()
             .map(|(p, _)| p)
             .collect();
-        self.command(cmd)?;
+        let cwds: HashMap<Id, String> = cwd
+            .map(|c| HashMap::from([(NEW_PANES.to_string(), c.to_string())]))
+            .unwrap_or_default();
+        self.command_in(cmd, &cwds)?;
         let pane = self
             .workspace()
             .terminal_sides()
             .into_iter()
             .map(|(p, _)| p)
             .find(|p| !before.contains(p));
-        let typed = pane.as_ref().is_some_and(|p| self.type_into(p, bytes));
+        let typed = !bytes.is_empty() && pane.as_ref().is_some_and(|p| self.type_into(p, bytes));
         Ok((pane, typed))
     }
 
@@ -677,6 +710,7 @@ impl Runtime {
                 if let Effect::Close { pane } = e {
                     lock(&self.inner.views).remove_pane(&pane);
                     self.drop_agent(&pane);
+                    self.observe(CoreEvent::PaneClosed { pane: pane.clone() });
                     if let Some(d) = panes.unlink(&pane) {
                         panes.orphans.push(d);
                     }
@@ -691,7 +725,14 @@ impl Runtime {
                     pane,
                     side_tab,
                     cwd,
-                } => self.spawn_for(&client, &pane, &side_tab, cwd.as_deref()),
+                } => {
+                    self.spawn_for(&client, &pane, &side_tab, cwd.as_deref());
+                    self.observe(CoreEvent::PaneSpawned {
+                        pane,
+                        side_tab,
+                        cwd,
+                    });
+                }
                 Effect::Close { pane } => {
                     lock(&self.inner.views).remove_pane(&pane);
                     let daemon = {
@@ -705,6 +746,7 @@ impl Runtime {
                     if let Some(d) = daemon {
                         let _ = client.close(d);
                     }
+                    self.observe(CoreEvent::PaneClosed { pane });
                 }
                 Effect::SideTab { pane, side_tab } => {
                     if let Some(d) = self.daemon_of(&pane) {
@@ -811,6 +853,10 @@ impl Runtime {
             let panes = lock(&self.inner.panes);
             if let Some(pane) = panes.by_daemon.get(&daemon) {
                 self.hook_agent(pane, event);
+                self.observe(CoreEvent::Hook {
+                    pane: pane.clone(),
+                    event: event.clone(),
+                });
             }
         }
         let name = event.get("hook_event_name").and_then(|v| v.as_str());
@@ -1023,12 +1069,28 @@ impl Runtime {
             {
                 return;
             }
+            if next.started > prev.as_ref().map_or(0, |p| p.started)
+                && next.running
+                && let Some(command) = &next.command
+            {
+                self.observe(CoreEvent::CommandStarted {
+                    pane: pane.into(),
+                    command: command.clone(),
+                });
+            }
             shells.insert(pane.into(), next.clone());
             lock(&self.inner.status)
                 .engine
                 .shell(pane, prev.as_ref(), &next);
             self.command_edges(pane, prev.as_ref(), &next)
         };
+        if let Some(end) = &ended {
+            self.observe(CoreEvent::CommandEnded {
+                pane: end.pane.clone(),
+                command: end.command.clone().unwrap_or_default(),
+                exit: end.exit,
+            });
+        }
         if let Some(end) = ended
             && let Some(sink) = lock(&self.inner.command_sink).as_ref()
         {
@@ -1131,6 +1193,16 @@ impl Runtime {
     /// Where the document store hears that the last pane of a document closed.
     pub fn on_docs_closed(&self, sink: DocSink) {
         *lock(&self.inner.doc_sink) = Some(sink);
+    }
+
+    pub fn on_event(&self, sink: EventSink) {
+        *lock(&self.inner.event_sink) = Some(sink);
+    }
+
+    fn observe(&self, event: CoreEvent) {
+        if let Some(sink) = lock(&self.inner.event_sink).as_ref() {
+            sink(event);
+        }
     }
 
     /// Where PR links, artifact links and branch names found in output and replies go.
@@ -1330,22 +1402,25 @@ impl Runtime {
         for (pane, shell) in shells {
             self.shell_changed(&pane, shell);
         }
+        let mut moved = Vec::new();
         self.update_meta(|panes| {
-            let mut changed = false;
             for info in list {
                 let (Some(pane), Some(cwd)) =
                     (panes.by_daemon.get(&info.pane).cloned(), info.shell.cwd)
                 else {
                     continue;
                 };
-                let rec = panes.meta.entry(pane).or_default();
+                let rec = panes.meta.entry(pane.clone()).or_default();
                 if rec.cwd.as_deref() != Some(cwd.as_str()) {
-                    rec.cwd = Some(cwd);
-                    changed = true;
+                    rec.cwd = Some(cwd.clone());
+                    moved.push(CoreEvent::CwdMoved { pane, cwd });
                 }
             }
-            changed
+            !moved.is_empty()
         });
+        for event in moved {
+            self.observe(event);
+        }
     }
 
     fn events(self, mut rx: Receiver<DaemonEvent>) {
