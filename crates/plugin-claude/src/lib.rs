@@ -8,6 +8,7 @@ pub mod history;
 pub mod hook;
 pub mod insights;
 pub mod memory;
+pub mod settings;
 pub mod transcript;
 
 use serde_json::{Value, json};
@@ -551,9 +552,14 @@ impl Plugin for ClaudePlugin {
                 }
             }
             CoreEvent::Timer { token } if token == "prune" => {
-                self.store
-                    .prune(baseline::KEEP, baseline::CAP_BYTES, baseline::now());
+                let (keep, cap) = settings::limits(cx);
+                self.store.prune(keep, cap, baseline::now());
                 cx.schedule(PRUNE_EVERY, "prune");
+            }
+            // A lower limit in Settings › Claude applies now, outside the periodic chain.
+            CoreEvent::Timer { token } if token == "prune-now" => {
+                let (keep, cap) = settings::limits(cx);
+                self.store.prune(keep, cap, baseline::now());
             }
             _ => {}
         }
@@ -567,6 +573,7 @@ impl Plugin for ClaudePlugin {
     /// `resume {row, session}`: a new tab in the session's folder with the resume line typed.
     /// `memory {row, pane?, which}`: opens the project's or the person's `CLAUDE.md` (3.3).
     /// `revealTranscripts {row, pane?}`: shows the row's newest transcript in Finder.
+    /// `settings`, `setSetting {key, value}`: Settings › Claude (3.4).
     fn call(&self, method: &str, args: Value, cx: &dyn PluginCx) -> Result<Value, PluginError> {
         match method {
             "changes" | "baseText" => {
@@ -636,6 +643,24 @@ impl Plugin for ClaudePlugin {
                 let shown = path.display().to_string();
                 cx.open_text(&args.row, &shown)?;
                 Ok(json!({ "path": shown }))
+            }
+            "settings" => Ok(settings::view(cx)),
+            "setSetting" => {
+                let key = args
+                    .get("key")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| bad("a key"))?;
+                settings::set(cx, key, args.get("value").unwrap_or(&Value::Null))?;
+                if matches!(key, settings::CAP_MB | settings::KEEP_DAYS) {
+                    cx.schedule(Duration::ZERO, "prune-now");
+                } else {
+                    // The meter reads the new threshold or window at once.
+                    let mut st = lock(&self.state);
+                    for (pane, live) in st.live.iter_mut() {
+                        live.publish(pane, cx);
+                    }
+                }
+                Ok(settings::view(cx))
             }
             "revealTranscripts" => {
                 let args: RowArgs = serde_json::from_value(args).map_err(bad)?;

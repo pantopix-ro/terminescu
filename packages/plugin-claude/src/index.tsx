@@ -1,6 +1,6 @@
 // The Claude plugin's UI half (add-plugin-architecture 3.4): the transcript pane, read through
-// the plugin's Rust half, the todo mirror (add-claude-insights 2.2) and what a session changed
-// (3.2). The agent dot and the
+// the plugin's Rust half, the todo mirror (add-claude-insights 2.2), what a session changed
+// (3.2) and Settings › Claude (3.4). The agent dot and the
 // amber row stay the app's own.
 
 import type { TranscriptChunk } from "@terminescu/host";
@@ -8,11 +8,13 @@ import { definePlugin, type PaneViewProps } from "@terminescu/plugin-api";
 import { quoteOf } from "@terminescu/ui";
 import { openMemory, openUserMemory, resume, revealTranscripts } from "./actions";
 import { CLAUDE_DIFF, ChangesSection, ClaudeDiffView } from "./ChangesSection";
+import { SettingsPage } from "./SettingsPage";
 import { TodoSection } from "./TodoSection";
 import { TranscriptPane } from "./TranscriptPane";
 import "./transcript.css";
 
 export { TranscriptPane, type Reveal, type TextEntry } from "./TranscriptPane";
+export { SettingsPage, typedNumber, type ClaudeSettings } from "./SettingsPage";
 export { TodoSection, type Todo, type TodosAnswer } from "./TodoSection";
 export {
   ChangesSection,
@@ -65,4 +67,5 @@ export const claude = definePlugin({
     { id: "changes", title: "What Claude changed", render: ChangesSection },
   ],
   actions: [resume, openMemory, openUserMemory, revealTranscripts],
+  settingsPage: SettingsPage,
 });

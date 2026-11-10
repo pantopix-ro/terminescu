@@ -49,3 +49,9 @@
 .cl-lines { white-space: nowrap; }
 .cl-added { color: var(--green); }
 .cl-removed { color: var(--red); }
+
+/* Settings › Claude (add-claude-insights 3.4). */
+.cl-num { width: 9em; font-variant-numeric: tabular-nums; }
+.cl-settings-head { margin: var(--space-3) 0 var(--space-1); }
+.cl-window { gap: var(--space-2); }
+.cl-window-model { font-family: var(--mono, monospace); }

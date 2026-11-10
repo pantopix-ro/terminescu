@@ -188,3 +188,43 @@ test("the worktree folder setting persists", async ({ page }) => {
   await again.getByLabel("Worktree folder").blur();
   await expect(again.locator(".git-settings")).toContainText("<repo>-<branch> beside the repository");
 });
+
+test("Settings › Claude keeps the threshold, a model's window and the baseline limits", async ({ page }) => {
+  // add-claude-insights 3.4: the values persist through a reload; a bad one is refused.
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/?plugins=claude");
+  await expect(page.locator(".term-pane")).toHaveCount(1);
+  const dialog = await openSettings(page, "Plugins");
+  const claude = dialog.locator(".cl-settings");
+  const threshold = claude.getByLabel("Meter threshold");
+  await expect(threshold).toHaveValue("80");
+  await threshold.fill("150");
+  await threshold.press("Enter");
+  await expect(claude.getByRole("alert")).toHaveText("the threshold is a whole number from 1 to 100");
+  await threshold.fill("90");
+  await threshold.press("Enter");
+  await expect(claude.getByRole("alert")).toHaveCount(0);
+  await claude.getByLabel("Model id").fill("claude-opus-5");
+  await claude.getByLabel("Window in tokens").fill("1,000,000");
+  await claude.getByRole("button", { name: "Add" }).click();
+  await expect(claude.locator('.cl-window[data-model="claude-opus-5"]')).toContainText("1,000,000 tokens");
+  const days = claude.getByLabel("Keep for");
+  await days.fill("3");
+  await days.blur();
+  const cap = claude.getByLabel("Cap");
+  await cap.fill("250");
+  await cap.press("Enter");
+
+  await page.reload();
+  await expect(page.locator(".term-pane")).toHaveCount(1);
+  const again = (await openSettings(page, "Plugins")).locator(".cl-settings");
+  await expect(again.getByLabel("Meter threshold")).toHaveValue("90");
+  await expect(again.getByLabel("Keep for")).toHaveValue("3");
+  await expect(again.getByLabel("Cap")).toHaveValue("250");
+  await again.getByRole("button", { name: "Remove claude-opus-5" }).click();
+  await expect(again.locator(".cl-window")).toHaveCount(0);
+  // Blank puts the default back.
+  await again.getByLabel("Cap").fill("");
+  await again.getByLabel("Cap").press("Enter");
+  await expect(again.getByLabel("Cap")).toHaveValue("500");
+});

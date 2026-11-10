@@ -101,6 +101,14 @@ uses a new generic `PluginCx::reveal(path)` (`open -R`), which selects the row's
 transcript, else its project folder, else `projects/`. `open_text` and `type_in_new_tab` now
 bring the new pane forward, as `terminescu edit` does.
 
+### D6b. Settings › Claude
+The plugin's settings hold `meterThreshold` (1 to 100 %), `contextWindows` (`{model: tokens}`,
+1,000 to 10,000,000), `baselineCapMb` (10 to 100,000) and `baselineDays` (1 to 365). The Rust
+half checks each value and stores null for a blank field, which reads as the default. A new
+threshold or window republishes the meters at once; a new cap or retention prunes at once on a
+one-off `prune-now` timer, and the 6-hour prune reads both limits. The 5 MB per-file copy cap
+stays fixed: `terminescu hook` reads no settings, to stay under 100 ms.
+
 ### D7. Signals from hooks
 Waiting reason from `PermissionRequest` `tool_name` and `tool_input` (`command`, `file_path`,
 `url`, else the first string field). Model from `SessionStart.model`, mode from

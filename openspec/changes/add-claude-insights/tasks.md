@@ -42,7 +42,7 @@
       the git plugin off and no plain text fallback is needed.
 - [x] 3.3 Open `CLAUDE.md`, `~/.claude/CLAUDE.md` and the transcript folder. Verify:
       `e2e/claude.spec.ts` "a missing CLAUDE.md opens unsaved".
-- [ ] 3.4 Settings › Claude: threshold, windows, cap, retention. Verify: `e2e/settings.spec.ts`.
+- [x] 3.4 Settings › Claude: threshold, windows, cap, retention. Verify: `e2e/settings.spec.ts`.
 
 ## 4. Gate
 

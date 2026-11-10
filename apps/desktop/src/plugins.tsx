@@ -294,6 +294,33 @@ const fakeClaude = (): FakePlugin => ({
       await host.typeInNewTab(a.row!, s.cwd, `claude --resume ${s.id}`);
       return null;
     }
+    // As crates/plugin-claude/src/settings.rs, kept in localStorage across a reload.
+    if (method === "settings" || method === "setSetting") {
+      const KEY = "terminescu.fakeClaude.settings";
+      const kept = JSON.parse(localStorage.getItem(KEY) ?? "{}") as Record<string, unknown>;
+      const ranges: Record<string, [number, number]> = { meterThreshold: [1, 100], baselineCapMb: [10, 100000], baselineDays: [1, 365] };
+      if (method === "setSetting") {
+        const { key, value } = args as { key: string; value: unknown };
+        if (key === "contextWindows") {
+          const m = (value ?? {}) as Record<string, number>;
+          for (const n of Object.values(m)) if (!Number.isInteger(n) || n < 1000 || n > 10000000) throw new Error("a window is a whole number from 1000 to 10000000");
+          kept[key] = Object.keys(m).length ? m : undefined;
+        } else if (ranges[key]) {
+          const [lo, hi] = ranges[key];
+          if (value !== null && !(Number.isInteger(value) && (value as number) >= lo && (value as number) <= hi))
+            throw new Error(`${key === "meterThreshold" ? "the threshold" : key === "baselineCapMb" ? "the cap" : "the days"} is a whole number from ${lo} to ${hi}`);
+          kept[key] = value ?? undefined;
+        } else throw new Error(`no setting ${key}`);
+        localStorage.setItem(KEY, JSON.stringify(kept));
+      }
+      return {
+        meterThreshold: kept.meterThreshold ?? 80,
+        contextWindows: kept.contextWindows ?? {},
+        baselineCapMb: kept.baselineCapMb ?? 500,
+        baselineDays: kept.baselineDays ?? 7,
+        defaults: { meterThreshold: 80, window: 200000, baselineCapMb: 500, baselineDays: 7 },
+      };
+    }
     // The row's folder is its `root`; the Rust test covers finding the repository root.
     if (method === "memory") {
       const which = (args as { which?: string }).which;

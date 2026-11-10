@@ -378,3 +378,48 @@ fn memory_files_open_from_the_repository_root_and_transcripts_reveal() {
         [folder.join("sess-77.jsonl").display().to_string()]
     );
 }
+
+#[test]
+fn settings_check_their_values_and_reach_the_meter_and_the_prune() {
+    let base = folder("settings");
+    let plugin = ClaudePlugin::new(PathBuf::from("/opt/terminescu"), &base.join("support"));
+    let cx = Cx::one_pane("/Users/owner/src/shop-api");
+    let got = plugin.call("settings", json!({}), &cx).unwrap();
+    assert_eq!(got["meterThreshold"], 80);
+    assert_eq!(got["baselineCapMb"], 500);
+    assert_eq!(got["baselineDays"], 7);
+    assert_eq!(got["defaults"]["window"], 200_000);
+
+    let set = |key: &str, value: Value| {
+        plugin.call("setSetting", json!({ "key": key, "value": value }), &cx)
+    };
+    assert!(set("meterThreshold", json!(0)).is_err());
+    assert!(set("baselineCapMb", json!("lots")).is_err());
+    assert!(set("contextWindows", json!({ "": 1_000_000 })).is_err());
+    assert!(set("contextWindows", json!({ "claude-opus-5": 12 })).is_err());
+    assert!(set("color", json!(1)).is_err());
+    let got = set("contextWindows", json!({ " claude-opus-5 ": 1_000_000 })).unwrap();
+    assert_eq!(got["contextWindows"], json!({ "claude-opus-5": 1_000_000 }));
+    let got = set("baselineDays", json!(2)).unwrap();
+    assert_eq!(got["baselineDays"], 2);
+    assert!(
+        cx.timers
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(_, t)| t == "prune-now"),
+        "a new limit prunes at once"
+    );
+    // Null puts the default back.
+    let got = set("baselineDays", Value::Null).unwrap();
+    assert_eq!(got["baselineDays"], 7);
+    assert_eq!(
+        terminescu_plugin_claude::settings::limits(&cx),
+        (Duration::from_secs(7 * 24 * 3600), 500 * 1024 * 1024)
+    );
+    set("baselineCapMb", json!(20)).unwrap();
+    assert_eq!(
+        terminescu_plugin_claude::settings::limits(&cx).1,
+        20 * 1024 * 1024
+    );
+}
