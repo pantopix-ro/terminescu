@@ -7,6 +7,7 @@ mod docs;
 mod drag;
 mod edit;
 mod public;
+mod reopen;
 mod updates;
 
 use serde::Deserialize;
@@ -1255,17 +1256,31 @@ fn builtin_set(
 
 #[tauri::command]
 fn host_command(state: State<'_, AppState>, command: Command) -> Result<u64, CommandError> {
-    // These move contexts too; they go through `side_tab_merge` and its undo.
+    // These move contexts too; they go through `side_tab_merge` and its undo, or
+    // `reopen_closed`.
     if let Command::MergeSideTab { from, .. }
     | Command::RestoreSideTab {
         side_tab: SideTab { id: from, .. },
         ..
+    }
+    | Command::ReopenSideTab {
+        side_tab: SideTab { id: from, .. },
+        ..
+    }
+    | Command::ReopenTab {
+        side_tab_id: from, ..
     } = &command
     {
         return Err(CommandError::UnknownSideTab(from.clone()));
     }
+    // A close keeps what it takes for ⇧⌘T (task 8.87).
+    let noted = reopen::note(&state, &command);
     // The runtime emits each batch under its core lock, so windows see them in rev order.
-    state.runtime.command(command)
+    let done = state.runtime.command(command);
+    if noted && done.is_err() {
+        reopen::forget();
+    }
+    done
 }
 
 /// Opens a view of a pane. Output goes to `on_output` as raw bytes (D33).
@@ -1515,7 +1530,8 @@ fn start_runtime(
         if let (false, Some(rt)) = (gone.is_empty(), rt.get()) {
             // Session and secret variables end with their side tab (D21).
             if let Some(d) = rt.daemon().filter(|d| d.side_vars) {
-                for side in &gone {
+                // A closed row ⇧⌘T can reopen keeps them until it leaves the list.
+                for side in gone.iter().filter(|s| !reopen::is_parked(s)) {
                     if let Err(e) = d.side_vars_drop(side) {
                         eprintln!("terminescu: variables of a closed side tab not dropped: {e}");
                     }
@@ -2187,7 +2203,8 @@ fn main() {
             docs::doc_keep_mine,
             docs::doc_return,
             docs::doc_paste_image,
-            docs::files_list
+            docs::files_list,
+            reopen::reopen_closed
         ])
         .build(tauri::generate_context!())
         .unwrap_or_else(|e| crashlog::fail(&e));
@@ -2223,6 +2240,7 @@ fn main() {
             for (_, p) in lock(&state.merges).drain() {
                 merge::finish(daemon.as_deref(), &p.undo);
             }
+            reopen::end(&state);
             state.runtime.stop();
         }
     });

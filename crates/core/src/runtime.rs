@@ -555,6 +555,16 @@ impl Runtime {
     }
 
     pub fn command(&self, cmd: Command) -> Result<u64, CommandError> {
+        self.command_in(cmd, &HashMap::new())
+    }
+
+    /// As [`Self::command`], with the cwd each new pane's shell starts in: a reopened tab's
+    /// panes start where they were (task 8.87).
+    pub fn command_in(
+        &self,
+        cmd: Command,
+        cwds: &HashMap<Id, String>,
+    ) -> Result<u64, CommandError> {
         let mut core = lock(&self.inner.core);
         let before = core.workspace().terminal_sides();
         let docs_before = core.workspace().doc_panes();
@@ -584,6 +594,13 @@ impl Runtime {
         drop(core);
         let cwd = inherit.and_then(|p| self.live_cwd(&p));
         let mut effects = diff_effects(&before, &ws.terminal_sides(), cwd);
+        for e in &mut effects {
+            if let Effect::Spawn { pane, cwd, .. } = e
+                && let Some(at) = cwds.get(pane)
+            {
+                *cwd = Some(at.clone());
+            }
+        }
         if let Some((pane, text)) = typed {
             effects.push(Effect::Type { pane, text });
         }

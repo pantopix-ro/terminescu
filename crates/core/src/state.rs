@@ -83,6 +83,16 @@ pub const NEONS: &[&str] = &[
 
 /// The neon a new side tab opens with: one no other row in the workspace uses yet, picked from
 /// its id like [`pick_icon`]. When every neon is taken it reuses one.
+/// A reopened tab's ids are all free: neither the tab nor any of its panes came back already.
+fn absent(ws: &Workspace, tab: &Tab) -> bool {
+    ws.tab(&tab.id).is_none()
+        && tab
+            .layout
+            .panes()
+            .iter()
+            .all(|p| ws.locate_pane(p).is_none())
+}
+
 pub fn pick_neon(ws: &Workspace, side_tab_id: &str) -> String {
     let used: Vec<&str> = ws
         .windows
@@ -332,6 +342,21 @@ pub enum Command {
         index: usize,
         side_tab: SideTab,
         tab_ids: Vec<Id>,
+    },
+    /// Undo close (task 8.87): a closed row comes back at `index` in the window, ids and all,
+    /// so its saved context finds it again.
+    ReopenSideTab {
+        window_id: Id,
+        index: usize,
+        side_tab: SideTab,
+    },
+    /// Undo close: a closed tab comes back at `index` in its row or, when that row is gone, as
+    /// a new row at the end of `window_id`.
+    ReopenTab {
+        window_id: Id,
+        side_tab_id: Id,
+        index: usize,
+        tab: Tab,
     },
     /// A new pane beside `pane_id`: right for `row`, below for `column`.
     SplitPane {
@@ -1155,6 +1180,65 @@ impl Core {
                     });
                 }
                 patches
+            }
+            Command::ReopenSideTab {
+                window_id,
+                index,
+                side_tab,
+            } => {
+                let w = ws
+                    .windows
+                    .iter()
+                    .find(|w| w.id == window_id)
+                    .ok_or(CommandError::UnknownWindow(window_id.clone()))?;
+                if side_tab.tabs.is_empty()
+                    || ws.side_tab(&side_tab.id).is_some()
+                    || !side_tab.tabs.iter().all(|t| absent(ws, t))
+                {
+                    return Err(CommandError::UnknownSideTab(side_tab.id));
+                }
+                vec![Patch::SideTabCreated {
+                    window_id,
+                    index: index.min(w.side_tabs.len()),
+                    side_tab,
+                }]
+            }
+            Command::ReopenTab {
+                window_id,
+                side_tab_id,
+                index,
+                tab,
+            } => {
+                if !absent(ws, &tab) {
+                    return Err(CommandError::UnknownTab(tab.id));
+                }
+                if let Some(side) = ws.side_tab(&side_tab_id) {
+                    return Ok(vec![Patch::TabCreated {
+                        side_tab_id,
+                        index: index.min(side.tabs.len()),
+                        tab,
+                    }]);
+                }
+                let w = ws
+                    .windows
+                    .iter()
+                    .find(|w| w.id == window_id)
+                    .ok_or(CommandError::UnknownWindow(window_id.clone()))?;
+                let id = (self.new_id)();
+                let side_tab = SideTab {
+                    accent: Some(pick_neon(ws, &id)),
+                    name: Some(pick_name(ws, &id)),
+                    id,
+                    title: None,
+                    tabs: vec![tab],
+                    status: None,
+                    icon: None,
+                };
+                vec![Patch::SideTabCreated {
+                    window_id,
+                    index: w.side_tabs.len(),
+                    side_tab,
+                }]
             }
             Command::RenameTab { tab_id, title } => {
                 ws.locate_tab(&tab_id)

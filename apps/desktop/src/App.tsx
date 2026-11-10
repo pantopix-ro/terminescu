@@ -912,6 +912,20 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       case "close":
         if (focused) closePane(focused);
         return;
+      // The last closed tab or row comes back where it was, and shows (task 8.87).
+      case "reopen_closed":
+        return void host.reopenClosed(windowId).then((r) => {
+          if (!r) return refocus();
+          const pick = (w: Workspace) => {
+            const ok = sidesOf(w).some((s) => s.id === r.sideTabId && s.tabs.some((t) => t.id === r.tabId));
+            if (ok) {
+              selectTab(r.sideTabId, r.tabId);
+              refocus();
+            }
+            return ok;
+          };
+          if (!pick(wsNow.current)) setFollow(pick);
+        }, report);
       case "maximize_pane":
         if (!activeTab || !focused || panes.length < 2) return;
         if (maxPane) restore(activeTab.id);
