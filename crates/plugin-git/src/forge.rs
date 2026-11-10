@@ -44,7 +44,7 @@ pub enum ForgeError {
 }
 
 pub trait Forge: Send + Sync {
-    /// Ok when the forge can answer: `gh` is there and logged in.
+    /// Ok when the forge can answer: `gh` is there and logged in, or too slow to say.
     fn available(&self) -> Result<(), ForgeError>;
     /// The open pull request whose head is `branch`, with its checks.
     fn pr_for(&self, root: &Path, branch: &str) -> Result<Option<PullRequest>, ForgeError>;
@@ -73,7 +73,7 @@ impl GhCli {
         Self {
             program: program.into(),
             limit: Duration::from_secs(3),
-            checkout_limit: Duration::from_secs(110),
+            checkout_limit: crate::cli::CHANGE_LIMIT,
             env: Vec::new(),
         }
     }
@@ -124,6 +124,9 @@ impl Forge for GhCli {
             Ok(_) => Ok(()),
             // `gh auth status` fails when no host is logged in.
             Err(ForgeError::Failed(_)) => Err(ForgeError::LoggedOut),
+            // A slow network is not a lost login: lookups find out, and turn the part off
+            // when `gh` answers that it is gone or logged out.
+            Err(ForgeError::Timeout) => Ok(()),
             Err(e) => Err(e),
         }
     }

@@ -56,7 +56,10 @@ implemented by `GhCli` with `gh pr list --state open --head <branch> --json ...`
 pull request of the branch never shows) and `gh pr list --json`. A pull request row starts as a
 detached worktree; `gh pr checkout` then makes its branch inside it, forks included. Lookups run
 on a thread of their own, so a 3-second `gh` never holds the plugin's worker; short timers pick
-the answer up. The GitHub part is on when `gh auth status` succeeds and the setting allows it.
+the answer up. The GitHub part is on when `gh auth status` succeeds or times out, and the
+setting allows it; a lookup that finds `gh` gone or logged out turns it off. A command that ends
+during a lookup gets a second one after it. Git changes and `gh pr checkout` stop at 100 s each,
+and the call budget covers the longest chain of three, so a call never outlives its budget.
 `gh` keeps its own token; Terminescu never reads it. Rejected: the GitHub REST API with a token
 in the Keychain. It breaks the no-token rule's spirit and duplicates `gh`.
 

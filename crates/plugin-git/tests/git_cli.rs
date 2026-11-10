@@ -234,11 +234,11 @@ fn an_untracked_link_is_counted_as_one_line_and_never_followed() {
 }
 
 #[test]
-fn an_untracked_folder_counts_each_file_in_facts_and_changes() {
+fn an_untracked_folder_counts_once_in_facts_and_lists_each_file_in_changes() {
     let dir = repo("untracked-folder");
     write(&dir, "build/a.txt", "a\n");
     write(&dir, "build/b.txt", "b\n");
     let facts = git_cli().facts(&dir).unwrap().unwrap();
-    assert_eq!(facts.changed, 2);
+    assert_eq!(facts.changed, 1);
     assert_eq!(git_cli().changes(&dir).unwrap().len(), 2);
 }

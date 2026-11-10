@@ -35,10 +35,15 @@ struct Queue {
     /// Timers by token and when they come due. Locked after `events`, never before.
     timers: Mutex<HashMap<String, Instant>>,
     ready: Condvar,
+    /// False while the plugin is off or paused: a handler still running then sets no timer.
+    open: AtomicBool,
 }
 
 impl Queue {
+    /// Closes the queue, then drops what it held. `schedule` reads `open` under the timers
+    /// lock, so a timer set during the clear is either refused or dropped with the rest.
     fn clear(&self) {
+        self.open.store(false, Ordering::SeqCst);
         lock(&self.events).clear();
         lock(&self.timers).clear();
     }
@@ -141,6 +146,9 @@ impl PluginCx for HostCx {
     }
     fn schedule(&self, after: Duration, token: &str) {
         let mut timers = lock(&self.queue.timers);
+        if !self.queue.open.load(Ordering::SeqCst) {
+            return;
+        }
         if timers.len() >= QUEUE && !timers.contains_key(token) {
             eprintln!("terminescu: plugin {} has too many timers", self.id);
             return;
@@ -303,11 +311,11 @@ impl PluginHost {
             .into_iter()
             .map(|plugin| {
                 let manifest = plugin.manifest();
-                let on = Arc::new(AtomicBool::new(
-                    enabled.get(manifest.id).copied().unwrap_or(true),
-                ));
+                let start = enabled.get(manifest.id).copied().unwrap_or(true);
+                let on = Arc::new(AtomicBool::new(start));
                 let paused = Arc::new(AtomicBool::new(false));
                 let queue = Arc::new(Queue::default());
+                queue.open.store(start, Ordering::SeqCst);
                 Arc::new(Slot {
                     // Timers on the outside, the off-and-paused guard on decorations inside.
                     cx: Arc::new(HostCx {
@@ -463,6 +471,7 @@ impl PluginHost {
         if on {
             slot.paused.store(false, Ordering::SeqCst);
             lock(&slot.failures).clear();
+            slot.queue.open.store(true, Ordering::SeqCst);
             let mut q = lock(&slot.queue.events);
             q.push_back(CoreEvent::AppLaunched);
             drop(q);
@@ -566,7 +575,7 @@ fn watchdog_with(slots: &[Arc<Slot>], stopped: &AtomicBool, sink: &SharedSink, p
                     "terminescu: plugin {} is stuck in a handler and is paused",
                     slot.manifest.id
                 );
-                lock(&slot.queue.events).clear();
+                slot.queue.clear();
                 tell(sink, slot.manifest.id, false);
             }
         }
@@ -892,6 +901,9 @@ pub(crate) mod tests {
         host.set_enabled("timers", false);
         std::thread::sleep(Duration::from_millis(200));
         assert!(lock(&fired).is_empty());
+        // A handler that runs on past the switch-off sets no timer.
+        host.slots[0].cx.schedule(Duration::ZERO, "late");
+        assert!(lock(&host.slots[0].queue.timers).is_empty());
     }
 
     #[test]

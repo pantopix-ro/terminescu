@@ -22,6 +22,10 @@ pub struct GitCli {
     env: Vec<(OsString, OsString)>,
 }
 
+/// How long a change such as `worktree add` may run. The plugin's call budget covers the
+/// longest call: two changes and a `gh pr checkout` of the same length.
+pub const CHANGE_LIMIT: Duration = Duration::from_secs(100);
+
 impl Default for GitCli {
     fn default() -> Self {
         Self::new("git")
@@ -33,7 +37,7 @@ impl GitCli {
         Self {
             program: program.into(),
             limit: Duration::from_secs(1),
-            change_limit: Duration::from_secs(600),
+            change_limit: CHANGE_LIMIT,
             env: Vec::new(),
         }
     }
@@ -44,7 +48,7 @@ impl GitCli {
         self
     }
 
-    /// Kills a change such as `worktree add` after `limit`; ten minutes unless set.
+    /// Kills a change such as `worktree add` after `limit`; [`CHANGE_LIMIT`] unless set.
     pub fn with_change_limit(mut self, limit: Duration) -> Self {
         self.change_limit = limit;
         self
@@ -146,8 +150,9 @@ impl Vcs for GitCli {
                 "--porcelain=v2",
                 "--branch",
                 "-z",
-                // As `changes` lists them, so the count and the list agree.
-                "--untracked-files=all",
+                // An untracked folder counts once: `all` walks a stray build folder
+                // and runs past the read limit. `changes` lists each file.
+                "--untracked-files=normal",
             ],
         )?;
         if !status.ok {

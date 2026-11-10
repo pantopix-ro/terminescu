@@ -1,5 +1,5 @@
 //! `GhCli` over a fake `gh` (add-git-plugin 2.2): an open pull request with a failing check,
-//! no `gh`, and a `gh` that is logged out.
+//! no `gh`, a `gh` that is logged out, and one too slow to answer.
 
 mod common;
 
@@ -10,6 +10,9 @@ use terminescu_plugin_git::{Checks, Forge, ForgeError, GhCli};
 const FAKE: &str = r#"#!/bin/sh
 case "$1 $2" in
   "auth status")
+    if [ "$FAKE_GH" = "slow" ]; then
+      exec sleep 5
+    fi
     if [ "$FAKE_GH" = "out" ]; then
       echo "You are not logged into any GitHub hosts. To log in, run: gh auth login" >&2
       exit 1
@@ -65,6 +68,14 @@ fn an_open_pull_request_with_a_failing_check() {
     assert_eq!(gh.open_prs(&dir).unwrap().len(), 1);
     // A branch that reads as an option is never passed on.
     assert_eq!(gh.pr_for(&dir, "--web"), Ok(None));
+}
+
+#[test]
+fn a_slow_auth_check_leaves_the_forge_available() {
+    let dir = folder("gh-slow");
+    let (gh, _) = fake(&dir, "slow");
+    let gh = gh.with_limit(std::time::Duration::from_millis(200));
+    assert_eq!(gh.available(), Ok(()));
 }
 
 #[test]

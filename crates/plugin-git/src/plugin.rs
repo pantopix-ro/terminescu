@@ -32,6 +32,8 @@ pub const GITHUB: &str = "github";
 pub const PR_EVERY: Duration = Duration::from_secs(60);
 /// How often a pane looks for the answer of a lookup that runs.
 pub const PR_POLL: Duration = Duration::from_millis(250);
+/// An answer younger than this stands; the margin keeps the minute tick from just missing it.
+const PR_FRESH: Duration = Duration::from_secs(58);
 
 const TIMER: &str = "pane:";
 const PR_READY: &str = "prready:";
@@ -44,13 +46,27 @@ type Branch = (PathBuf, String);
 struct Prs {
     known: HashMap<Branch, Known>,
     running: HashSet<Branch>,
+    /// Branches whose command ended while their lookup ran: that answer may be stale.
+    again: HashSet<Branch>,
     /// Set by a lookup that found `gh` gone or logged out.
     lost: Option<String>,
 }
 
 struct Known {
+    /// When the lookup started, so the minute tick finds the answer due.
     at: Instant,
     pr: Option<PullRequest>,
+}
+
+/// Takes a branch out of the running lookups when dropped armed, as on a panic.
+struct Running(Arc<Mutex<Prs>>, Option<Branch>);
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        if let Some(key) = self.1.take() {
+            lock(&self.0).running.remove(&key);
+        }
+    }
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -312,6 +328,9 @@ impl GitPlugin {
         cx.schedule(PR_EVERY, &format!("{PR_TICK}{pane}"));
         let mut prs = lock(&self.prs);
         if prs.running.contains(&key) {
+            if due {
+                prs.again.insert(key);
+            }
             drop(prs);
             cx.schedule(PR_POLL, &format!("{PR_READY}{pane}"));
             return;
@@ -319,19 +338,26 @@ impl GitPlugin {
         let fresh = prs
             .known
             .get(&key)
-            .is_some_and(|k| k.at.elapsed() < PR_EVERY);
+            .is_some_and(|k| k.at.elapsed() < PR_FRESH);
         if fresh && !due {
             return;
         }
         prs.running.insert(key.clone());
         drop(prs);
         let shared = self.prs.clone();
+        let at = Instant::now();
         let started = std::thread::Builder::new()
             .name("git-pr".into())
             .spawn(move || {
+                // Leaves `running` even when `gh` handling panics, or the branch is never
+                // looked up again.
+                let mut guard = Running(shared.clone(), Some(key.clone()));
                 let found = forge.pr_for(&key.0, &key.1);
                 let mut prs = lock(&shared);
+                // The answer and the end of the run land under one lock, so a poll never
+                // sees the run over with the old answer.
                 prs.running.remove(&key);
+                guard.1 = None;
                 let pr = match found {
                     Ok(pr) => pr,
                     Err(e @ (ForgeError::NoGh | ForgeError::LoggedOut)) => {
@@ -344,13 +370,7 @@ impl GitPlugin {
                         prs.known.get(&key).and_then(|k| k.pr.clone())
                     }
                 };
-                prs.known.insert(
-                    key,
-                    Known {
-                        at: Instant::now(),
-                        pr,
-                    },
-                );
+                prs.known.insert(key, Known { at, pr });
             });
         match started {
             Ok(_) => cx.schedule(PR_POLL, &format!("{PR_READY}{pane}")),
@@ -386,6 +406,10 @@ impl GitPlugin {
             cx.schedule(PR_POLL, &format!("{PR_READY}{pane}"));
             return;
         }
+        let again = facts
+            .as_ref()
+            .and_then(branch_of)
+            .filter(|k| lock(&self.prs).again.remove(k));
         let pr = self.known_pr(facts.as_ref());
         cx.set_variable(
             &Target::Pane(pane.into()),
@@ -393,6 +417,25 @@ impl GitPlugin {
             pr.map(|p| p.number.to_string()),
         );
         self.show(cx, &tab, facts.as_ref());
+        if let Some(key) = again {
+            self.look_up(pane, key, true, cx);
+        }
+    }
+
+    /// The minute tick: the next one is set before the read, so a slow git read that
+    /// returns early does not end the chain.
+    fn tick(&self, pane: &str, cx: &dyn PluginCx) {
+        {
+            let st = lock(&self.state);
+            let Some(p) = st.panes.get(pane) else {
+                return;
+            };
+            if !st.github || st.lead.get(&p.tab).map(String::as_str) != Some(pane) {
+                return;
+            }
+        }
+        cx.schedule(PR_EVERY, &format!("{PR_TICK}{pane}"));
+        self.refresh(pane, cx);
     }
 
     fn pane_closed(&self, pane: &str, cx: &dyn PluginCx) {
@@ -806,9 +849,11 @@ impl Plugin for GitPlugin {
     fn manifest(&self) -> Manifest {
         Manifest {
             // Launch reads the git version and `gh auth status` (3 s at most); other events
-            // take a git read of a second at most. A worktree checkout can take minutes.
+            // take a git read of a second at most. The longest call, prCheckout, runs
+            // `worktree add`, `gh pr checkout` and on failure `worktree remove`, each
+            // killed at CHANGE_LIMIT, so the budget never ends a call that still works.
             event_budget: Duration::from_secs(5),
-            call_budget: Duration::from_secs(120),
+            call_budget: crate::cli::CHANGE_LIMIT * 3 + Duration::from_secs(10),
             ..Manifest::new(
                 "git",
                 "Git",
@@ -842,7 +887,7 @@ impl Plugin for GitPlugin {
                 } else if let Some(pane) = token.strip_prefix(PR_READY) {
                     self.pr_ready(pane, cx);
                 } else if let Some(pane) = token.strip_prefix(PR_TICK) {
-                    self.refresh(pane, cx);
+                    self.tick(pane, cx);
                 }
             }
             CoreEvent::CommandStarted { .. } | CoreEvent::Hook { .. } => {}

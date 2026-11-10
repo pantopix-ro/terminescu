@@ -6,6 +6,7 @@ mod common;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use terminescu_plugin_api::{
@@ -599,6 +600,9 @@ struct FakeForge {
     prs: Mutex<HashMap<String, PullRequest>>,
     lookups: Mutex<usize>,
     out: bool,
+    /// Keeps a lookup running until cleared.
+    hold: AtomicBool,
+    panics: AtomicBool,
 }
 
 impl Forge for FakeForge {
@@ -611,6 +615,12 @@ impl Forge for FakeForge {
     }
     fn pr_for(&self, _: &Path, branch: &str) -> Result<Option<PullRequest>, ForgeError> {
         *self.lookups.lock().unwrap() += 1;
+        while self.hold.load(Ordering::SeqCst) {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        if self.panics.load(Ordering::SeqCst) {
+            panic!("gh answered something unexpected");
+        }
         Ok(self.prs.lock().unwrap().get(branch).cloned())
     }
     fn open_prs(&self, _: &Path) -> Result<Vec<PullRequest>, ForgeError> {
@@ -686,6 +696,90 @@ fn a_failing_check_shows_the_pr_in_red_and_sets_the_fact() {
     assert_eq!(cx.chip("t1").unwrap().key, "branch");
     let status = plugin.call("status", Value::Null, &cx).unwrap();
     assert_eq!(status["github"], json!(true));
+}
+
+/// Fires timers until no pull request lookup is waited on, as the host would.
+fn settle(plugin: &GitPlugin, cx: &Cx) {
+    for _ in 0..200 {
+        let timers = cx.timers();
+        if timers.iter().all(|t| !t.1.starts_with("prready:")) {
+            return;
+        }
+        for (_, token) in timers {
+            if !token.starts_with("prtick:") {
+                plugin.on_event(&CoreEvent::Timer { token }, cx);
+            }
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    panic!("a lookup never settled");
+}
+
+fn command_ended(plugin: &GitPlugin, cx: &Cx) {
+    plugin.on_event(
+        &CoreEvent::CommandEnded {
+            pane: "p1".into(),
+            command: "git push".into(),
+            exit: Some(0),
+        },
+        cx,
+    );
+}
+
+#[test]
+fn a_command_ending_during_a_lookup_looks_again_after_it() {
+    let forge = Arc::new(FakeForge::default());
+    forge.hold.store(true, Ordering::SeqCst);
+    let (plugin, _, cx) = with_forge(forge.clone());
+    fire(&plugin, &cx);
+    // The lookup thread is held inside `gh`.
+    while *forge.lookups.lock().unwrap() == 0 {
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    command_ended(&plugin, &cx);
+    fire(&plugin, &cx);
+    assert_eq!(*forge.lookups.lock().unwrap(), 1, "one runs at a time");
+    forge.prs.lock().unwrap().insert(
+        "feature/PROJ-482-retry".into(),
+        pr(918, "feature/PROJ-482-retry", Checks::Passing),
+    );
+    forge.hold.store(false, Ordering::SeqCst);
+    settle(&plugin, &cx);
+    assert_eq!(*forge.lookups.lock().unwrap(), 2);
+    assert_eq!(cx.var("p1", "pr").as_deref(), Some("918"));
+}
+
+#[test]
+fn a_panicking_lookup_does_not_block_the_next() {
+    let forge = Arc::new(FakeForge::default());
+    forge.panics.store(true, Ordering::SeqCst);
+    let (plugin, _, cx) = with_forge(forge.clone());
+    fire(&plugin, &cx);
+    settle(&plugin, &cx);
+    forge.panics.store(false, Ordering::SeqCst);
+    command_ended(&plugin, &cx);
+    fire(&plugin, &cx);
+    settle(&plugin, &cx);
+    assert_eq!(*forge.lookups.lock().unwrap(), 2);
+}
+
+#[test]
+fn the_minute_tick_goes_on_when_its_git_read_times_out() {
+    let forge = Arc::new(FakeForge::default());
+    let (plugin, fake, cx) = with_forge(forge);
+    fire(&plugin, &cx);
+    settle(&plugin, &cx);
+    fake.set("/code/shop-api", Err(VcsError::Timeout));
+    plugin.on_event(
+        &CoreEvent::Timer {
+            token: "prtick:p1".into(),
+        },
+        &cx,
+    );
+    assert!(
+        cx.timers()
+            .contains(&(Duration::from_secs(60), "prtick:p1".into()))
+    );
 }
 
 #[test]

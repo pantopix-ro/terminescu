@@ -65,7 +65,7 @@ pub struct RepoFacts {
     pub upstream: Option<String>,
     pub ahead: u32,
     pub behind: u32,
-    /// Changed, staged and untracked files.
+    /// Changed, staged and untracked files; an untracked folder counts once.
     pub changed: u32,
     /// Files with an unresolved conflict.
     pub conflicted: u32,
