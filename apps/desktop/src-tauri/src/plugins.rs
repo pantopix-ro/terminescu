@@ -50,12 +50,16 @@ pub fn menu_items(app: &AppHandle) -> Vec<MenuAction> {
 
 /// The plugins compiled in, in the order their decorators compose.
 fn registered() -> Vec<Arc<dyn Plugin>> {
-    let all: [Option<Arc<dyn Plugin>>; 1] = [
+    let all: [Option<Arc<dyn Plugin>>; 2] = [
         #[cfg(feature = "plugin-claude")]
         Some(Arc::new(terminescu_plugin_claude::ClaudePlugin::new(
             crate::paths::bin_dir().join("terminescu"),
         ))),
         #[cfg(not(feature = "plugin-claude"))]
+        None,
+        #[cfg(feature = "plugin-git")]
+        Some(Arc::new(terminescu_plugin_git::GitPlugin::new())),
+        #[cfg(not(feature = "plugin-git"))]
         None,
     ];
     all.into_iter().flatten().collect()

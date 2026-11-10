@@ -18,7 +18,7 @@
       Verify: plugin tests with a fake `PluginCx`; `pnpm check:rust`.
 - [x] 2.2 `GhCli` forge, the GitHub switch, `gh auth status` detection. Verify: tests over a
       fake `gh` script on PATH (open PR, failing checks, no gh, logged out).
-- [ ] 2.3 Register behind cargo feature `plugin-git`. Verify:
+- [x] 2.3 Register behind cargo feature `plugin-git`. Verify:
       `cargo check -p terminescu-desktop --no-default-features --features plugin-claude`.
 
 ## 3. UI

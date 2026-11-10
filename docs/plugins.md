@@ -133,9 +133,12 @@ The script fails when `terminescu-core`, `terminescu-protocol`, `terminescu-ptyd
 `packages/plugin-api` imports a plugin package, or when a plugin is named outside the two
 registry files. It also runs in the `packages/plugin-api` tests.
 
-CI builds the app with no plugins too. Run the same builds before a pull request:
+CI builds the app with no plugins, and with each plugin alone, too. Run the same builds before
+a pull request:
 
 ```sh
 cargo clippy -p terminescu-desktop --no-default-features -- -D warnings
+cargo check -p terminescu-desktop --no-default-features --features plugin-claude
+cargo check -p terminescu-desktop --no-default-features --features plugin-git
 VITE_PLUGINS=none pnpm --filter @terminescu/desktop build
 ```

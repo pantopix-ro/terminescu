@@ -30,6 +30,8 @@ jobs:
       - name: bare builds
         run: |
           cargo clippy -p terminescu-desktop --no-default-features -- -D warnings
+          cargo check -p terminescu-desktop --no-default-features --features plugin-claude
+          cargo check -p terminescu-desktop --no-default-features --features plugin-git
           VITE_PLUGINS=none pnpm --filter @terminescu/desktop build
       - name: e2e
         working-directory: apps/desktop

@@ -10,8 +10,9 @@ publish.workspace = true
 # The plugins compiled in (add-plugin-architecture D11). `--no-default-features` builds the
 # bare terminal.
 [features]
-default = ["plugin-claude"]
+default = ["plugin-claude", "plugin-git"]
 plugin-claude = ["dep:terminescu-plugin-claude"]
+plugin-git = ["dep:terminescu-plugin-git"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -21,6 +22,7 @@ terminescu-core.workspace = true
 terminescu-protocol.workspace = true
 terminescu-plugin-api.workspace = true
 terminescu-plugin-claude = { workspace = true, optional = true }
+terminescu-plugin-git = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 libc.workspace = true

@@ -4423,6 +4423,7 @@ dependencies = [
  "terminescu-core",
  "terminescu-plugin-api",
  "terminescu-plugin-claude",
+ "terminescu-plugin-git",
  "terminescu-protocol",
  "tokio",
 ]
