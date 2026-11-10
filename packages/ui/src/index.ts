@@ -38,7 +38,19 @@ export { Tip, useTip, type TipAt } from "./Tip";
 export { dragSizes, PaneSlot, SplitView, type SplitViewProps } from "./SplitView";
 export { TabBar, type TabBarProps } from "./TabBar";
 export { PluginItems } from "./PluginItems";
-export { SYNC_MS, TextPane, textPane, type TextHandle, type TextHost, type TextPaneProps } from "./TextPane";
+export {
+  editorTheme,
+  plainEditor,
+  SYNC_MS,
+  TextPane,
+  textPane,
+  type EditorConfig,
+  type MountedEditor,
+  type MountEditor,
+  type TextHandle,
+  type TextHost,
+  type TextPaneProps,
+} from "./TextPane";
 export { eolOf, exactState, separatorOf, textOf, type Eol } from "./text";
 export { varOptions, varRefs, type VarInfo } from "./varchips";
 export { clearTerminal, finderOf, selectAllIn, promptAction, REVEAL_ROWS_EVENT, TerminalPane, terminalSelection, type FindOptions, type FindResults, type TerminalPaneProps } from "./TerminalPane";

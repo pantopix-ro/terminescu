@@ -90,9 +90,13 @@ export function usePlugins(host: Host, appActions: readonly ActionDef[], halves:
 const asked = (name: string) => typeof location !== "undefined" && (new URLSearchParams(location.search).get("plugins") ?? "").split(",").includes(name);
 const fakeOn = () => asked("fake");
 
-/** What the fake git half answers, as a test sets it on `window.__fakeGit`. */
+/**
+ * What the fake git half answers, as a test sets it on `window.__fakeGit`: by pane for
+ * `changes`, by working tree root for `baseText` (a path missing there is a new file).
+ */
 interface FakeGit {
   changes?: Record<string, unknown>;
+  base?: Record<string, string>;
 }
 
 const fakeGit = (): FakePlugin => ({
@@ -100,10 +104,16 @@ const fakeGit = (): FakePlugin => ({
   name: "Git",
   description: "Plays the git plugin's Rust half, for the tests.",
   call(method, args) {
-    const answers = ((globalThis as { __fakeGit?: Record<string, FakeGit> }).__fakeGit ?? {})[(args as { pane?: string } | null)?.pane ?? ""];
+    const a = (args ?? {}) as { pane?: string; root?: string; path?: string };
+    const answers = ((globalThis as { __fakeGit?: Record<string, FakeGit> }).__fakeGit ?? {})[a.pane ?? a.root ?? ""];
     if (method === "changes") {
       if (!answers?.changes) throw new Error("the pane is not in a git repository");
       return answers.changes;
+    }
+    if (method === "baseText") {
+      if (!answers?.base) throw new Error("the folder is not in a git repository");
+      const text = answers.base[a.path ?? ""];
+      return text === undefined ? { root: a.root, exists: false } : { root: a.root, exists: true, binary: false, size: text.length, text };
     }
     throw new Error(`${method} is not a method of this plugin`);
   },

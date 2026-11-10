@@ -20,6 +20,8 @@ use terminescu_plugin_api::{
 
 /// How long a pane waits after its last event before git runs.
 pub const DEBOUNCE: Duration = Duration::from_millis(300);
+/// A base text larger than this stays in git: the diff tab says so instead.
+pub const MAX_BASE: usize = 4 << 20;
 /// The Changes section lists at most this many files, and the total.
 pub const MAX_CHANGES: usize = 500;
 /// Settings key: the folder worktrees go under; absent puts them next to the repository.
@@ -554,8 +556,26 @@ impl GitPlugin {
         Ok(json!({ "root": facts.root, "total": total, "changes": changes }))
     }
 
+    /// The facts of `root`, a working tree's folder, as a diff tab names it; else of `pane`.
+    fn root_facts(&self, args: &Value, cx: &dyn PluginCx) -> Result<RepoFacts, PluginError> {
+        let Some(root) = args.get("root").and_then(Value::as_str) else {
+            return self.pane_facts(args, cx).map(|(_, f)| f);
+        };
+        if let Some(why) = &lock(&self.state).stopped {
+            return Err(PluginError::Failed(why.clone()));
+        }
+        let root = Path::new(root);
+        if !root.is_absolute() {
+            return Err(PluginError::BadArgs("root is an absolute folder".into()));
+        }
+        self.vcs
+            .facts(root)
+            .map_err(failed)?
+            .ok_or_else(|| PluginError::Failed("the folder is not in a git repository".into()))
+    }
+
     fn base_text(&self, args: &Value, cx: &dyn PluginCx) -> Result<Value, PluginError> {
-        let (_, facts) = self.pane_facts(args, cx)?;
+        let facts = self.root_facts(args, cx)?;
         let path = arg(args, "path")?;
         let base: DiffBase = match args.get("base") {
             None | Some(Value::Null) => DiffBase::Head,
@@ -568,6 +588,9 @@ impl GitPlugin {
             .map_err(failed)?;
         Ok(match text {
             None => json!({ "root": facts.root, "exists": false }),
+            Some(bytes) if bytes.len() > MAX_BASE => {
+                json!({ "root": facts.root, "exists": true, "binary": false, "size": bytes.len(), "large": true })
+            }
             Some(bytes) => {
                 let size = bytes.len();
                 match String::from_utf8(bytes) {

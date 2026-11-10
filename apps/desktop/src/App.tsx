@@ -122,6 +122,7 @@ import {
   selectAllIn,
   promptAction,
   textPane,
+  type MountEditor,
   type ContextMode,
   type PaletteItem,
   SORTS,
@@ -150,10 +151,10 @@ import {
   type Decorate,
 } from "@terminescu/ui";
 import type { Terminal } from "@xterm/xterm";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { useStore } from "zustand";
-import type { PaneApp, PaneReveal } from "@terminescu/plugin-api";
+import type { PaneApp, PaneReveal, TextView } from "@terminescu/plugin-api";
 import { usePlugins, type Plugins } from "./plugins";
 
 export interface AppProps {
@@ -552,6 +553,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   // The first-run hook tick, kept here so a look at Privacy does not reset it.
   const [firstRunHook, setFirstRunHook] = useState(true);
   const [toSave, setToSave] = useState("");
+  // Documents a plugin's pane view draws, as a diff tab: the text pane under a plugin's
+  // decoration. For this window's life; a view whose plugin is off shows plain text.
+  const [docViews, setDocViews] = useState<Record<string, TextView>>({});
   const [libraryKey, setLibraryKey] = useState<string>();
   // Text panes' documents as their panes last reported them: titles and unsaved edits (D27).
   const [docs, setDocs] = useState<Record<string, DocView>>({});
@@ -730,6 +734,14 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const openDoc = (path: string, beside: boolean) => {
     if (!activeSide) return;
     void host.openFile(activeSide.id, path, beside ? (focused ?? null) : null).then((d) => revealDoc(d.id), (e: unknown) => setError(String(e)));
+  };
+  // A panel section opens a file beside the focused pane, as a plugin's view when it names one.
+  const openText = (path: string, view?: TextView): Promise<void> => {
+    if (!activeSide) return Promise.reject(new Error("Select a row first."));
+    return host.openFile(activeSide.id, path, focused ?? null).then((d) => {
+      if (view) setDocViews((v) => ({ ...v, [d.id]: view }));
+      revealDoc(d.id);
+    });
   };
   const browse = (dir?: string) => void host.chooseFile(dir).then((p) => p && openDoc(p, false), (e: unknown) => setError(String(e)));
   // `⌘O` lists files under the focused terminal's cwd; `⌘O` again goes to the Open dialog.
@@ -2609,7 +2621,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                 ? plugins.composed.panelSections.map((sec) => ({
                     key: `${sec.plugin}.${sec.id}`,
                     title: sec.title,
-                    body: <sec.render sideTabId={activeSide.id} tabId={activeTab?.id} paneId={shellPane} bridge={plugins.bridge(sec.plugin)} />,
+                    body: <sec.render sideTabId={activeSide.id} tabId={activeTab?.id} paneId={shellPane} app={{ openText }} bridge={plugins.bridge(sec.plugin)} />,
                   }))
                 : undefined
             }
@@ -2711,21 +2723,46 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         side.tabs.flatMap((tab) =>
           panesOf(tab.layout).flatMap((paneId) => {
             const docId = docOf(tab.layout, paneId);
-            return docId
-              ? [
-                  <TextPane
-                    key={paneId}
-                    paneId={paneId}
-                    docId={docId}
-                    visible={areas.some((x) => x.tab.id === tab.id)}
-                    focused={paneId === focused}
-                    onFocus={() => focusArea(tab.id, paneId)}
-                    host={host}
-                    onDoc={noteDoc}
-                    variables={side.id === sideId ? chipVars : undefined}
-                  />,
-                ]
-              : [];
+            if (!docId) return [];
+            const text = (o?: { mount?: unknown; bar?: ReactNode }) => (
+              <TextPane
+                key={paneId}
+                paneId={paneId}
+                docId={docId}
+                visible={areas.some((x) => x.tab.id === tab.id)}
+                focused={paneId === focused}
+                onFocus={() => focusArea(tab.id, paneId)}
+                host={host}
+                onDoc={noteDoc}
+                variables={side.id === sideId ? chipVars : undefined}
+                // The plugin builds it with `@terminescu/ui`, the type `renderText` names.
+                mount={o?.mount as MountEditor | undefined}
+                bar={o?.bar}
+              />
+            );
+            const tagged = docViews[docId];
+            const view = tagged && plugins.composed.paneView(tagged.kind);
+            if (!tagged || !view) return [text()];
+            return [
+              <view.render
+                key={paneId}
+                paneId={paneId}
+                sideTabId={side.id}
+                source={tagged.source}
+                focused={paneId === focused}
+                bridge={plugins.bridge(view.plugin)}
+                app={{
+                  pin: () => Promise.resolve(),
+                  extract: (value) => startExtract(tab.id, value, "text"),
+                  savePrompt: (t) => {
+                    setToSave(t);
+                    setSheet("save-prompt");
+                  },
+                  focus: () => focusArea(tab.id, paneId),
+                  renderText: text,
+                }}
+              />,
+            ];
           }),
         ),
       )}

@@ -24,15 +24,37 @@ import {
   rectangularSelection,
 } from "@codemirror/view";
 import type { DocView, Host } from "@terminescu/host";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { INSERT_EVENT, type InsertDetail } from "./events";
 import { claimPane, paneElement, releasePane } from "./pane-registry";
-import { eolOf, exactState, fitBreaks, textOf, type Eol } from "./text";
+import { eolOf, exactConfig, fitBreaks, textOf, type Eol } from "./text";
 import { refreshChips, varChips, type VarInfo } from "./varchips";
 
 /** How long typing pauses before the text goes to the core (D28). */
 export const SYNC_MS = 300;
+
+/** What an editor starts from: the document's text and the pane's extensions. */
+export interface EditorConfig {
+  doc: string;
+  extensions: Extension;
+}
+
+/** An editor in the pane: the view the pane syncs, and how it goes away. */
+export interface MountedEditor {
+  view: EditorView;
+  destroy(): void;
+  /** Takes new text from the core; without it the pane mounts a fresh editor. */
+  reset?(config: EditorConfig): void;
+}
+
+/** Builds the pane's editor (Strategy): a plain one, or a diff tab's merge view (add-git-plugin D6). */
+export type MountEditor = (parent: HTMLElement, config: EditorConfig) => MountedEditor;
+
+export const plainEditor: MountEditor = (parent, config) => {
+  const view = new EditorView({ parent, state: EditorState.create(config) });
+  return { view, destroy: () => view.destroy(), reset: (c) => view.setState(EditorState.create(c)) };
+};
 
 export type TextHost = Pick<Host, "document" | "editDocument" | "onDocument" | "reloadDocument" | "keepMine" | "pasteImage">;
 
@@ -48,6 +70,10 @@ export interface TextPaneProps {
   /** The side tab's variables, names and modes only, for `{{variable}}` chips (D29); absent
    * keeps the last list, as for a side tab not on screen. */
   variables?: readonly VarInfo[];
+  /** Builds the editor; read when the pane mounts. */
+  mount?: MountEditor;
+  /** A bar above the editor, as a diff tab's. */
+  bar?: ReactNode;
 }
 
 /** What the app asks of a text pane: send pending text before a save, read the selection. */
@@ -68,7 +94,8 @@ export function textPane(paneId: string): TextHandle | undefined {
 /** Marks text the core sent, so it does not go back as an edit. */
 const fromCore = Annotation.define<boolean>();
 
-const theme = EditorView.theme(
+/** The text pane's look, for an editor beside it such as a diff's base side. */
+export const editorTheme = EditorView.theme(
   {
     "&": { height: "100%", color: "var(--fg)", backgroundColor: "var(--panel)", fontSize: "13px" },
     ".cm-scroller": { fontFamily: '"Geist Mono", ui-monospace, monospace', lineHeight: "1.5" },
@@ -133,7 +160,7 @@ function baseExtensions(language: Compartment, readOnly: Compartment, onUpdate: 
       ...historyKeymap,
       indentWithTab,
     ]),
-    theme,
+    editorTheme,
     language.of([]),
     readOnly.of(EditorState.readOnly.of(false)),
     onUpdate,
@@ -151,7 +178,7 @@ interface Cursor {
  * element from the registry, so a split or a tab move keeps its state. Typing reaches the core
  * after a pause; the core sends reloads and the changed-on-disk state back.
  */
-export function TextPane({ paneId, docId, visible, focused, onFocus, host, onDoc, variables }: TextPaneProps) {
+export function TextPane({ paneId, docId, visible, focused, onFocus, host, onDoc, variables, mount = plainEditor, bar }: TextPaneProps) {
   const holder = useRef<HTMLDivElement>(null);
   const editor = useRef<EditorView | null>(null);
   const [doc, setDoc] = useState<DocView | null>(null);
@@ -249,14 +276,23 @@ export function TextPane({ paneId, docId, visible, focused, onFocus, host, onDoc
       s.timer = window.setTimeout(() => void send(), SYNC_MS);
     });
 
+    // Set once the editor below is mounted; `load` runs only after that.
+    let mounted: MountedEditor | undefined;
     const load = (d: DocView) => {
-      const view = editor.current;
-      if (!view || d.text === undefined) return;
+      if (!mounted || !editor.current || d.text === undefined) return;
       s.rev = d.rev;
       s.pending = false;
       clearTimeout(s.timer);
-      const keep = Math.min(view.state.selection.main.head, d.text.length);
-      view.setState(exactState(d.text, baseExtensions(language, readOnly, onUpdate, extra)));
+      const keep = Math.min(editor.current.state.selection.main.head, d.text.length);
+      const config = exactConfig(d.text, baseExtensions(language, readOnly, onUpdate, extra));
+      if (mounted.reset) mounted.reset(config);
+      else {
+        // A merge view keeps extensions of its own: it is built again around the new text.
+        mounted.destroy();
+        mounted = mount(holder.current!, config);
+        editor.current = mounted.view;
+      }
+      const view = mounted.view;
       view.dispatch({
         selection: { anchor: Math.min(keep, view.state.doc.length) },
         effects: readOnly.reconfigure(EditorState.readOnly.of(d.readOnly)),
@@ -279,10 +315,8 @@ export function TextPane({ paneId, docId, visible, focused, onFocus, host, onDoc
     };
 
     loader.current = load;
-    editor.current = new EditorView({
-      parent: holder.current!,
-      state: exactState("", baseExtensions(language, readOnly, onUpdate, extra)),
-    });
+    mounted = mount(holder.current!, exactConfig("", baseExtensions(language, readOnly, onUpdate, extra)));
+    editor.current = mounted.view;
     const handle: TextHandle = {
       docId,
       flush: send,
@@ -337,7 +371,7 @@ export function TextPane({ paneId, docId, visible, focused, onFocus, host, onDoc
       if (handles.get(paneId) === handle) handles.delete(paneId);
       el.removeEventListener("focusin", focusIn);
       el.removeEventListener(INSERT_EVENT, onInsert);
-      editor.current?.destroy();
+      mounted?.destroy();
       editor.current = null;
       loader.current = null;
       el.classList.remove("text-host");
@@ -382,6 +416,7 @@ export function TextPane({ paneId, docId, visible, focused, onFocus, host, onDoc
           </button>
         </div>
       )}
+      {bar}
       {doc?.note && <div className="text-bar text-bar-warn">{doc.note}</div>}
       {doc?.missing && !doc.conflict && <div className="text-bar">Not on disk yet. ⌘S creates it.</div>}
       {error && (

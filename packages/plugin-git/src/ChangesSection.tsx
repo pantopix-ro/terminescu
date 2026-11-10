@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react";
 import type { PanelSectionProps } from "@terminescu/plugin-api";
+import { diffView } from "./DiffView";
 
 /** One changed file, as the Rust half's `changes` call answers it. */
 export interface Change {
@@ -40,8 +41,9 @@ const split = (path: string) => {
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-export function ChangesSection({ paneId, bridge }: PanelSectionProps) {
+export function ChangesSection({ paneId, bridge, app }: PanelSectionProps) {
   const [state, setState] = useState<{ answer?: ChangesAnswer; error?: string }>({});
+  const [openError, setOpenError] = useState<string>();
   useEffect(() => {
     setState({});
     if (!paneId) return;
@@ -68,8 +70,19 @@ export function ChangesSection({ paneId, bridge }: PanelSectionProps) {
   const answer = state.answer;
   if (!answer) return null;
   if (!answer.changes.length) return <p className="small ao-dim ctx-empty">No changes.</p>;
+  const open = (c: Change) => {
+    if (!app) return;
+    setOpenError(undefined);
+    const root = answer.root.replace(/\/+$/, "");
+    app.openText(`${root}/${c.path}`, diffView({ root, path: c.path })).catch((e: unknown) => setOpenError(message(e)));
+  };
   return (
     <>
+      {openError && (
+        <p className="small app-error git-open-error" role="alert">
+          {openError}
+        </p>
+      )}
       {answer.total > answer.changes.length && (
         <p className="small ao-dim git-total">
           The first {answer.changes.length} of {answer.total} changed files.
@@ -84,10 +97,16 @@ export function ChangesSection({ paneId, bridge }: PanelSectionProps) {
               <span className={`git-mark ${mark.kind}`} title={mark.title}>
                 {mark.text}
               </span>
-              <span className="ctx-value git-path" title={c.from ? `${c.path}, renamed from ${c.from}` : c.path}>
+              <button
+                type="button"
+                className="ctx-value link git-path"
+                title={c.from ? `${c.path}, renamed from ${c.from}` : c.path}
+                disabled={!app}
+                onClick={() => open(c)}
+              >
                 <span className="git-name">{name}</span>
                 {dir && <span className="ao-dim git-dir"> {dir}</span>}
-              </span>
+              </button>
               {c.binary ? (
                 <span className="small ao-dim">binary</span>
               ) : (

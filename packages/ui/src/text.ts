@@ -23,10 +23,12 @@ export function separatorOf(text: string): "\r\n" | "\n" {
 
 /** An editor state over `text` that gives back the same bytes from [`textOf`]. */
 export function exactState(text: string, extensions: Extension = []): EditorState {
-  return EditorState.create({
-    doc: text,
-    extensions: [EditorState.lineSeparator.of(separatorOf(text)), extensions],
-  });
+  return EditorState.create(exactConfig(text, extensions));
+}
+
+/** The config {@link exactState} builds its state from, for an editor that builds its own. */
+export function exactConfig(text: string, extensions: Extension = []): { doc: string; extensions: Extension } {
+  return { doc: text, extensions: [EditorState.lineSeparator.of(separatorOf(text)), extensions] };
 }
 
 /**

@@ -12,7 +12,9 @@ use std::time::Duration;
 use terminescu_plugin_api::{
     CoreEvent, Decoration, Id, PaneInfo, Plugin, PluginCx, PluginError, Target, Tone,
 };
-use terminescu_plugin_git::plugin::{DEBOUNCE, MAX_CHANGES, WORKTREE_FOLDER, WORKTREE_ROW};
+use terminescu_plugin_git::plugin::{
+    DEBOUNCE, MAX_BASE, MAX_CHANGES, WORKTREE_FOLDER, WORKTREE_ROW,
+};
 use terminescu_plugin_git::{
     Change, Checks, DiffBase, Forge, ForgeError, GitPlugin, Head, Op, PullRequest, RepoFacts, Vcs,
     VcsError, Worktree,
@@ -506,6 +508,22 @@ fn base_text_is_text_or_a_binary_size() {
         plugin.call("baseText", bad, &cx),
         Err(PluginError::BadArgs(_))
     ));
+    // A diff tab names its working tree instead of a pane.
+    *fake.base.lock().unwrap() = Some(b"one\n".to_vec());
+    let by_root = json!({ "root": "/code/shop-api", "path": "a.txt" });
+    assert_eq!(
+        plugin.call("baseText", by_root, &cx).unwrap()["text"],
+        json!("one\n")
+    );
+    assert!(matches!(
+        plugin.call("baseText", json!({ "root": "code", "path": "a.txt" }), &cx),
+        Err(PluginError::BadArgs(_))
+    ));
+    *fake.base.lock().unwrap() = Some(vec![b'a'; MAX_BASE + 1]);
+    let got = plugin
+        .call("baseText", json!({ "pane": "p1", "path": "big.sql" }), &cx)
+        .unwrap();
+    assert_eq!((got["large"].clone(), got.get("text")), (json!(true), None));
 }
 
 #[test]

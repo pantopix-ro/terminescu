@@ -2,7 +2,7 @@
 // registry composes every enabled plugin's contributions in plugin order, and the app's
 // components take the composed lists as props, knowing no plugin.
 
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 import { normalAccel, RESERVED, type ActionDef, type Decoration, type DecorationSlot, type DecorationTone, type Id } from "@terminescu/host";
 
 /** What a plugin's UI parts call through: its own Rust half and its own events. */
@@ -42,8 +42,22 @@ export interface TabView {
  */
 export type Decorator<V> = (items: readonly RenderItem[], view: V, mine: readonly Decoration[]) => RenderItem[];
 
+/** A pane view over a document, such as a diff tab: what it shows on the text it edits. */
+export interface TextView {
+  kind: string;
+  /** What the view reads, such as `{ root, path }` as JSON. */
+  source: string;
+}
+
+/** What the app does for a panel section (Facade). */
+export interface SectionApp {
+  /** Opens the file beside the focused pane, drawn by the pane view `view` when given. */
+  openText(path: string, view?: TextView): Promise<void>;
+}
+
 export interface PanelSectionProps {
   sideTabId: Id;
+  app?: SectionApp;
   /** The row's shown tab. */
   tabId?: Id;
   /** That tab's shell pane: the focused one, else the one focused last, else the first. */
@@ -88,6 +102,12 @@ export interface PaneApp {
   reveal?: PaneReveal;
   /** The pane took the focus. */
   focus(): void;
+  /**
+   * The app's own text pane over the leaf's document, for a view that decorates it (D6 of
+   * add-git-plugin). `mount` is `@terminescu/ui`'s `MountEditor`; `bar` goes above the editor.
+   * Present only for a view the app opened over a document.
+   */
+  renderText?(options?: { mount?: unknown; bar?: ReactNode }): ReactNode;
 }
 
 export interface PaneViewProps {
