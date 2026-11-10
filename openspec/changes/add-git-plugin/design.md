@@ -76,7 +76,9 @@ shows for rows the plugin made or opened as worktree rows. The question comes fr
 `beforeRowClose` hook, a chain the app runs in plugin order through the `ask` facade, after
 its own questions (unsaved text, running commands) and just before the close command. A Cancel
 of the app's then never leaves a row whose worktree went. A row that closes on its own, when
-its last shell exits, asks nothing and keeps the worktree. "Open worktrees as rows" counts a
+its last shell exits, asks nothing and keeps the worktree. Closing the row's only tab, or the
+last pane of it that holds a shell or a text, closes the row, so it asks the same; a second
+close while the question is open is ignored. "Open worktrees as rows" counts a
 worktree as shown when a shell of any row is inside it or a row carries its mark.
 
 ### D6. The diff tab is a decorated text tab

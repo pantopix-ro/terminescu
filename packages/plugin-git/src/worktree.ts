@@ -97,5 +97,6 @@ export async function beforeRowClose(cx: RowCloseContext): Promise<boolean> {
   if (second.choice === "keep") return true;
   if (second.choice !== "remove") return false;
   const forced = await cx.bridge.call<Removed>("worktreeRemove", { row: cx.sideTabId, force: true });
-  return forced.removed;
+  if (!forced.removed) throw new Error(`git could not remove the worktree at ${mark.worktree}`);
+  return true;
 }

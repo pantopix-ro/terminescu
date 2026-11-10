@@ -68,10 +68,13 @@ export function DiffView({ source, bridge, app }: PaneViewProps) {
     if (!src) return void setBase({ error: "the tab names no file" });
     let gone = false;
     let last: string | undefined;
-    const read = () =>
+    // Only the newest read lands: an older HEAD answering late must not replace a newer one.
+    let asked = 0;
+    const read = () => {
+      const n = ++asked;
       void bridge.call<BaseText>("baseText", { root: src.root, path: src.path }).then(
         (answer) => {
-          if (gone) return;
+          if (gone || n !== asked) return;
           const text = answer.exists ? (answer.text ?? null) : "";
           const key = JSON.stringify([answer.exists, answer.binary, answer.large, text]);
           if (key === last) return;
@@ -79,8 +82,14 @@ export function DiffView({ source, bridge, app }: PaneViewProps) {
           setBase({ answer });
           setRev((r) => r + 1);
         },
-        (e: unknown) => !gone && setBase({ error: message(e) }),
+        (e: unknown) => {
+          if (gone || n !== asked) return;
+          // The next good answer shows again, even when it matches the one before the error.
+          last = undefined;
+          setBase({ error: message(e) });
+        },
       );
+    };
     read();
     const off = bridge.on("facts", read);
     return () => {

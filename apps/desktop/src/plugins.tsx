@@ -77,22 +77,29 @@ export function usePlugins(host: Host, appActions: readonly ActionDef[], halves:
     .map((p) => p.id)
     .join(",");
   useEffect(() => {
+    const ids = new Set(following.split(",").filter(Boolean));
+    // Flags of a plugin still followed stay up while its follower starts again, so its gated
+    // items do not blink; a plugin turned off drops them.
+    setFlags((m) => ([...m.keys()].every((id) => ids.has(id)) ? m : new Map([...m].filter(([id]) => ids.has(id)))));
     const stops = plugins
-      .filter((p) => p.flags && enabled.has(p.id))
-      .map((p) =>
-        p.flags!(bridge(p.id), (raised) =>
-          setFlags((m) => {
-            const next = new Set(raised);
-            const was = m.get(p.id);
-            if (was && was.size === next.size && [...next].every((f) => was.has(f))) return m;
-            return new Map(m).set(p.id, next);
-          }),
-        ),
-      );
-    return () => {
-      stops.forEach((s) => s());
-      setFlags(new Map());
-    };
+      .filter((p) => p.flags && ids.has(p.id))
+      .map((p) => {
+        try {
+          return p.flags!(bridge(p.id), (raised) =>
+            setFlags((m) => {
+              const next = new Set(raised);
+              const was = m.get(p.id);
+              if (was && was.size === next.size && [...next].every((f) => was.has(f))) return m;
+              return new Map(m).set(p.id, next);
+            }),
+          );
+        } catch (e) {
+          // A plugin whose follower throws raises no flags; the app goes on.
+          console.error(`plugin ${p.id}: flags`, e);
+          return () => undefined;
+        }
+      });
+    return () => stops.forEach((s) => s());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [host, following]);
   const composed = useMemo(() => compose({ plugins, enabled, decorations, appActions, flags }), [plugins, enabled, decorations, appActions, flags]);
@@ -128,6 +135,8 @@ interface FakeGit {
   base?: Record<string, string>;
   worktrees?: string[];
   changed?: number;
+  /** The forced remove fails too. */
+  stuck?: boolean;
 }
 
 /**
@@ -237,6 +246,8 @@ const fakeGit = (): FakePlugin => ({
       if (!done.marks[a.row ?? ""]) throw new Error("the row is not a worktree row");
       const changed = answers?.changed ?? 0;
       if (changed > 0 && !a.force) return { removed: false, changed };
+      // `stuck` plays a worktree git cannot remove even with --force (a locked one).
+      if (answers?.stuck) return { removed: false, changed };
       done.removed.push({ row: a.row ?? "", force: a.force === true });
       delete done.marks[a.row ?? ""];
       return { removed: true };

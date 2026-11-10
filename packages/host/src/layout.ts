@@ -11,6 +11,12 @@ export function panesOf(l: Layout): Id[] {
   return l.type === "pane" ? [l.id] : l.children.flatMap(panesOf);
 }
 
+/** Whether a pane other than `except` holds a shell or a text (`holds_work` in layout.rs). */
+export function worksBesides(l: Layout, except: Id): boolean {
+  if (l.type === "split") return l.children.some((c) => worksBesides(c, except));
+  return l.id !== except && (!l.transcript || !!l.doc);
+}
+
 export function hasSplit(l: Layout, id: Id): boolean {
   return l.type === "split" && (l.id === id || l.children.some((c) => hasSplit(c, id)));
 }

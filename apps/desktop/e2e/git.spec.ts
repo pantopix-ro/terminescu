@@ -297,3 +297,36 @@ test("with gh the pull request items open the branch's pull request and check on
   await expect.poll(() => actionIds(page)).not.toContain("git.openPullRequest");
   expect(await actionIds(page)).not.toContain("git.checkOutPullRequest");
 });
+
+test("closing a worktree row's last tab asks too; Escape keeps it, a locked worktree keeps it", async ({ page }) => {
+  const { pane } = await start(page);
+  await page.evaluate((pane) => ((window as any).__fakeGit = { [pane]: { changes: { root: "/code/shop-api", total: 0, changes: [] } } }), pane);
+  await page.locator(".term-pane").first().click();
+  await page.keyboard.press("Meta+Alt+KeyN");
+  await page.getByRole("textbox", { name: "Branch" }).fill("PROJ-490-refunds");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => titles(page)).toEqual([null, "PROJ-490-refunds"]);
+  const row = Object.keys((await done(page)).marks)[0]!;
+  const first = page.getByRole("alertdialog", { name: "Close worktree row" });
+
+  // ⌘W on the row's only tab ends the row, so the row's question comes first.
+  await page.locator(`.ao-st[data-side="${row}"]`).click();
+  await page.locator(".term-pane").first().click();
+  await page.keyboard.press("Meta+KeyW");
+  await expect(first).toBeVisible();
+  // A second ⌘W while it asks does not ask again.
+  await page.keyboard.press("Meta+KeyW");
+  await expect(first).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await expect(first).toBeHidden();
+  expect(await titles(page)).toEqual([null, "PROJ-490-refunds"]);
+
+  // Remove anyway on a worktree git cannot remove: the row stays and says why.
+  await page.evaluate((row) => ((window as any).__fakeGit[row] = { changed: 1, stuck: true }), row);
+  await page.locator(".term-pane").first().click();
+  await page.keyboard.press("Meta+KeyW");
+  await first.getByRole("button", { name: "Remove worktree" }).click();
+  await page.getByRole("alertdialog", { name: "Remove worktree with changes" }).getByRole("button", { name: "Remove anyway" }).click();
+  await expect(page.getByRole("alert")).toContainText("git could not remove the worktree");
+  expect(await titles(page)).toEqual([null, "PROJ-490-refunds"]);
+});
