@@ -851,38 +851,6 @@ fn host_agents(state: State<'_, AppState>) -> Vec<AgentUpdate> {
     state.runtime.agents()
 }
 
-#[derive(serde::Serialize)]
-struct TranscriptChunk {
-    entries: Vec<terminescu_plugin_claude::transcript::Entry>,
-    /// Where the next read starts.
-    offset: u64,
-    /// The file shrank or was replaced: `entries` start over from the top.
-    reset: bool,
-}
-
-/// The entries added to a session's transcript since `offset` (task 4.4).
-// File and database reads run on a worker thread, so a big transcript or a save in progress
-// never stalls the window.
-#[tauri::command(async)]
-fn transcript_read(
-    state: State<'_, AppState>,
-    session: String,
-    offset: u64,
-) -> Result<TranscriptChunk, String> {
-    let path = state
-        .runtime
-        .transcript_path(&session)
-        .ok_or_else(|| format!("no transcript for session {session}"))?;
-    let mut tail = terminescu_plugin_claude::transcript::Tail::at(path, offset);
-    let entries = tail.read().map_err(|e| e.to_string())?;
-    let reset = tail.offset() < offset || entries.first().is_some_and(|e| e.offset < offset);
-    Ok(TranscriptChunk {
-        entries,
-        offset: tail.offset(),
-        reset,
-    })
-}
-
 #[tauri::command(async)]
 fn pins_list(state: State<'_, AppState>, side_tab: String) -> Result<Vec<context::Pin>, String> {
     context::pins(&lock(&state.db), &side_tab).map_err(|e| e.to_string())
@@ -2160,7 +2128,6 @@ fn main() {
             updates::update_restart,
             host_snapshot,
             host_agents,
-            transcript_read,
             pins_list,
             pin_add,
             pin_remove,

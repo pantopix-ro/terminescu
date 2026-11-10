@@ -1,8 +1,8 @@
 import type { Entry, TranscriptChunk } from "@terminescu/host";
+import type { PaneReveal } from "@terminescu/plugin-api";
+import { anchor, EXTRACT_EVENT, PIN_EVENT } from "@terminescu/ui";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { anchor } from "./anchor";
 import { editDiff, hunkDiff, type DiffLine } from "./diff";
-import { EXTRACT_EVENT, PIN_EVENT } from "./events";
 
 /** How often an open transcript reads what Claude added. */
 const POLL_MS = 1000;
@@ -10,14 +10,7 @@ const POLL_MS = 1000;
 export type TextEntry = Extract<Entry, { kind: "user" | "assistant" }>;
 
 /** A pin to scroll to and highlight; a new `nonce` reveals it again. */
-export interface Reveal {
-  entryId: string;
-  exact: string;
-  prefix: string | null;
-  suffix: string | null;
-  start: number | null;
-  nonce: number;
-}
+export type Reveal = PaneReveal;
 
 export interface TranscriptPaneProps {
   paneId: string;
@@ -32,8 +25,6 @@ export interface TranscriptPaneProps {
   reveal?: Reveal;
   onFocus(): void;
 }
-
-export { EXTRACT_EVENT, PIN_EVENT };
 
 type ToolCall = Extract<Entry, { kind: "toolCall" }>;
 type ToolResult = Extract<Entry, { kind: "toolResult" }>;

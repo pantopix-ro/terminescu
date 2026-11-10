@@ -173,6 +173,11 @@ pub trait PluginCx: Send + Sync {
 
     /// An event for this plugin's UI half.
     fn emit(&self, event: &str, payload: Value);
+
+    /// The log file of an agent session: the one its hooks named, else what its adapter finds.
+    fn agent_log(&self, _session: &str) -> Option<std::path::PathBuf> {
+        None
+    }
 }
 
 /// An entry the app shows on the first-run screen and runs from Uninstall Helpers: the hook a

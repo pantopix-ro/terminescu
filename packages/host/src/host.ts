@@ -41,7 +41,6 @@ import type {
   Shown,
   Snapshot,
   StatusConfig,
-  TranscriptChunk,
   Variable,
   VariableChange,
   AppInfo,
@@ -124,8 +123,6 @@ export interface Host {
   restartLauncher(sideTabId: Id, id?: Id): Promise<void>;
   /** Commands changed in any window. Resolves with a function that removes the listener. */
   onCommands(listener: () => void): Promise<() => void>;
-  /** Entries a session's transcript gained since `offset`; start at 0 (task 4.4). */
-  readTranscript(session: string, offset: number): Promise<TranscriptChunk>;
   pins(sideTabId: Id): Promise<Pin[]>;
   addPin(pin: NewPin): Promise<Pin>;
   removePin(id: Id): Promise<void>;

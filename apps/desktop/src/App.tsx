@@ -91,8 +91,6 @@ import {
   SavePromptForm,
   paneEvent,
   REVEAL_ROWS_EVENT,
-  quoteOf,
-  TranscriptPane,
   type Agents,
   type Labels,
   type Box,
@@ -102,7 +100,6 @@ import {
   tabActivities,
   tabSubtitles,
   withLiveNames,
-  type Reveal,
   DROP_END,
   tabOfDrag,
   focusPane,
@@ -156,6 +153,7 @@ import type { Terminal } from "@xterm/xterm";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useStore } from "zustand";
+import type { PaneApp, PaneReveal } from "@terminescu/plugin-api";
 import { usePlugins, type Plugins } from "./plugins";
 
 export interface AppProps {
@@ -181,12 +179,31 @@ type Removal = { kind: "variable"; side: string; name: string } | { kind: "pin" 
  * A pane a plugin draws (D7, D9). With the plugin off the pane keeps its place and names the
  * plugin it needs.
  */
-function PluginPaneView({ kind, paneId, sideTabId, focused, plugins, openSettings }: { kind: string; paneId: string; sideTabId: string; focused: boolean; plugins: Plugins; openSettings(): void }) {
+function PluginPaneView({
+  kind,
+  paneId,
+  sideTabId,
+  source,
+  app,
+  focused,
+  plugins,
+  openSettings,
+}: {
+  kind: string;
+  paneId: string;
+  sideTabId: string;
+  source: string;
+  app: PaneApp;
+  focused: boolean;
+  plugins: Plugins;
+  openSettings(): void;
+}) {
   const view = plugins.composed.paneView(kind);
-  if (view) return <view.render paneId={paneId} sideTabId={sideTabId} focused={focused} bridge={plugins.bridge(view.plugin)} />;
+  if (view) return <view.render paneId={paneId} sideTabId={sideTabId} source={source} app={app} focused={focused} bridge={plugins.bridge(view.plugin)} />;
+  const owner = plugins.offOwner(kind);
   return (
     <div className="plugin-missing" role="status">
-      <span>Needs the {plugins.offOwner(kind) ?? "missing"} plugin</span>
+      <span>{owner ? `Needs the ${owner} plugin` : `Needs a plugin that shows ${kind} panes`}</span>
       <button type="button" className="ao-btn primary" onClick={openSettings}>
         Open Settings
       </button>
@@ -1201,7 +1218,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
 
   // A pin to show: the transcript pane of its session scrolls to it; a terminal pin scrolls its
   // pane, when that pane is still open in this side tab.
-  const [reveal, setReveal] = useState<Reveal & { session: string }>();
+  const [reveal, setReveal] = useState<PaneReveal & { session: string }>();
   const openPin = (pin: Pin) => {
     if (pin.paneId) {
       const tab = activeSide?.tabs.find((t) => terminalsOf(t.layout).includes(pin.paneId!));
@@ -2520,49 +2537,32 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                             }}
                           />
                         )}
-                        {transcript && (plugins.composed.paneView("transcript") || plugins.offOwner("transcript")) ? (
+                        {transcript ? (
                           <PluginPaneView
                             kind="transcript"
                             paneId={paneId}
                             sideTabId={sideOfTab(own.id) ?? ""}
+                            source={transcript}
                             focused={focused === paneId}
                             plugins={plugins}
                             openSettings={() => {
                               setSettingsSection("plugins");
                               setSheet("settings");
                             }}
-                          />
-                        ) : transcript ? (
-                          <TranscriptPane
-                            paneId={paneId}
-                            session={transcript}
-                            read={(offset) => host.readTranscript(transcript, offset)}
-                            pin={(entry, range) => {
-                              const side = sideOfTab(own.id);
-                              if (!side) return Promise.resolve();
-                              const q = range ? quoteOf(entry.text, ...range) : undefined;
-                              return host.addPin({
-                                sideTabId: side,
-                                originTabId: own.id,
-                                session: transcript,
-                                entryId: entry.id,
-                                paneId: null,
-                                rowStart: null,
-                                rowEnd: null,
-                                exact: q ? q.exact : entry.text,
-                                prefix: q?.prefix ?? null,
-                                suffix: q?.suffix ?? null,
-                                start: range?.[0] ?? null,
-                                end: range?.[1] ?? null,
-                              });
+                            app={{
+                              pin: (p) => {
+                                const side = sideOfTab(own.id);
+                                if (!side) return Promise.resolve();
+                                return host.addPin({ ...p, sideTabId: side, originTabId: own.id, session: transcript, paneId: null, rowStart: null, rowEnd: null });
+                              },
+                              extract: (value) => startExtract(own.id, value, "transcript"),
+                              savePrompt: (text) => {
+                                setToSave(text);
+                                setSheet("save-prompt");
+                              },
+                              ...(reveal?.session === transcript ? { reveal } : {}),
+                              focus: () => focusArea(own.id, paneId),
                             }}
-                            extract={(value) => startExtract(own.id, value, "transcript")}
-                            savePrompt={(text) => {
-                              setToSave(text);
-                              setSheet("save-prompt");
-                            }}
-                            reveal={reveal?.session === transcript ? reveal : undefined}
-                            onFocus={() => focusArea(own.id, paneId)}
                           />
                         ) : (
                           slot

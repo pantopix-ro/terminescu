@@ -188,6 +188,8 @@ export interface FakePlugin {
 
 export interface MockOptions {
   plugins?: readonly FakePlugin[];
+  /** False plays a build without the Claude plugin. */
+  claude?: boolean;
 }
 
 /** `*` matches any run of characters, `?` one; the whole text must match (as `glob` in the core). */
@@ -268,7 +270,21 @@ const MOCK_PROFILE: TerminalProfile = {
 };
 
 export function createMockHost(initial?: Workspace, options: MockOptions = {}): MockHost {
-  const fakePlugins = options.plugins ?? [];
+  // The browser build plays the app with the Claude plugin in it: its Rust half reads
+  // transcripts (add-plugin-architecture 3.4).
+  const claude: FakePlugin = {
+    id: "claude",
+    name: "Claude",
+    description: "Claude Code sessions: the amber row, transcripts, resume after reboot and the hook.",
+    call(method, args) {
+      if (method !== "read") throw new Error(`${method} is not a method of this plugin`);
+      const { session, offset } = args as { session: string; offset: number };
+      const list = transcripts.get(session);
+      if (!list) throw new Error(`no transcript for session ${session}`);
+      return { entries: list.slice(offset), offset: list.length, reset: false };
+    },
+  };
+  const fakePlugins = [...(options.claude === false ? [] : [claude]), ...(options.plugins ?? [])];
   const pluginOn = new Map(fakePlugins.map((p) => [p.id, true]));
   const pluginPaused = new Set<string>();
   let decorationList: Decoration[] = [];
@@ -1611,11 +1627,6 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
       // Offsets stand in for byte positions: one per entry.
       for (const e of entries) list.push({ ...e, offset: list.length });
       transcripts.set(session, list);
-    },
-    async readTranscript(session, offset) {
-      const list = transcripts.get(session);
-      if (!list) throw new Error(`no transcript for session ${session}`);
-      return { entries: structuredClone(list.slice(offset)), offset: list.length, reset: false };
     },
     async pins(side) {
       return structuredClone(pinList.filter((p) => p.sideTabId === side));

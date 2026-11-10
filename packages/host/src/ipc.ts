@@ -36,7 +36,6 @@ import type {
   Shown,
   Snapshot,
   StatusConfig,
-  TranscriptChunk,
   Variable,
 } from "./protocol";
 
@@ -134,7 +133,6 @@ export function createIpcHost(): Host {
       }),
     restartLauncher: (sideTab, id) => invoke("launcher_restart", { sideTab, id: id ?? null }),
     onCommands: (listener) => listen(COMMANDS_EVENT, () => listener()),
-    readTranscript: (session, offset) => invoke<TranscriptChunk>("transcript_read", { session, offset }),
     pins: (sideTab) => invoke<Pin[]>("pins_list", { sideTab }),
     addPin: (pin) => invoke<Pin>("pin_add", { pin: { ...pin, id: "", createdAt: 0 } }),
     removePin: (id) => invoke("pin_remove", { id }),

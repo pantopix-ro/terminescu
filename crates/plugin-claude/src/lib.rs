@@ -101,7 +101,45 @@ impl Helper for ClaudeHook {
     }
 }
 
-/// The plugin: the adapter and the hook; its UI calls follow (task 3.4).
+#[derive(Debug, serde::Deserialize)]
+struct ReadArgs {
+    session: String,
+    offset: u64,
+}
+
+/// What one transcript read returns to the pane.
+#[derive(Debug, serde::Serialize)]
+pub struct Chunk {
+    pub entries: Vec<transcript::Entry>,
+    /// Where the next read starts.
+    pub offset: u64,
+    /// The file shrank or was replaced: `entries` start over from the top.
+    pub reset: bool,
+}
+
+/// The entries a session's transcript gained since `offset`.
+pub fn read(cx: &dyn PluginCx, session: &str, offset: u64) -> Result<Chunk, PluginError> {
+    if !is_session_id(session) {
+        return Err(PluginError::BadArgs(format!(
+            "{session} is not a session id"
+        )));
+    }
+    let path = cx
+        .agent_log(session)
+        .ok_or_else(|| PluginError::Failed(format!("no transcript for session {session}")))?;
+    let mut tail = transcript::Tail::at(path, offset);
+    let entries = tail
+        .read()
+        .map_err(|e| PluginError::Failed(e.to_string()))?;
+    let reset = tail.offset() < offset || entries.first().is_some_and(|e| e.offset < offset);
+    Ok(Chunk {
+        entries,
+        offset: tail.offset(),
+        reset,
+    })
+}
+
+/// The plugin: the adapter, the hook and the transcript reads of its pane view.
 #[derive(Debug, Clone)]
 pub struct ClaudePlugin {
     hook: ClaudeHook,
@@ -130,8 +168,17 @@ impl Plugin for ClaudePlugin {
 
     fn on_event(&self, _event: &CoreEvent, _cx: &dyn PluginCx) {}
 
-    fn call(&self, method: &str, _args: Value, _cx: &dyn PluginCx) -> Result<Value, PluginError> {
-        Err(PluginError::UnknownMethod(method.into()))
+    /// `read {session, offset}`: the transcript entries since `offset` (task 4.4).
+    fn call(&self, method: &str, args: Value, cx: &dyn PluginCx) -> Result<Value, PluginError> {
+        match method {
+            "read" => {
+                let args: ReadArgs = serde_json::from_value(args)
+                    .map_err(|e| PluginError::BadArgs(e.to_string()))?;
+                let chunk = read(cx, &args.session, args.offset)?;
+                serde_json::to_value(chunk).map_err(|e| PluginError::Failed(e.to_string()))
+            }
+            _ => Err(PluginError::UnknownMethod(method.into())),
+        }
     }
 
     fn helpers(&self) -> Vec<Arc<dyn Helper>> {

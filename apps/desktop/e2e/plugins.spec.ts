@@ -76,6 +76,8 @@ test("plugin actions reach the palette and the menu; a clashing chord loses", as
 
 test("a pane view without its plugin keeps its place and names the plugin", async ({ page }) => {
   await start(page);
+  // The Claude plugin draws transcripts first; off, the fake viewer takes them.
+  await host(page, "setPluginEnabled", "claude", false);
   await page.locator(".term-pane").first().click();
   const pane = (await page.locator(".app-pane .ao-tp").first().getAttribute("data-pane"))!;
   await page.evaluate((p) => (window as any).__terminescu.host.setAgent(p, { session: "sess-plug", state: "done", lastMessage: null }), pane);
@@ -86,10 +88,25 @@ test("a pane view without its plugin keeps its place and names the plugin", asyn
   const before = await widths();
   await host(page, "setPluginEnabled", "viewer", false);
   const notice = page.locator(".plugin-missing");
-  await expect(notice).toContainText("Needs the Viewer plugin");
+  // The first plugin that draws the kind is named.
+  await expect(notice).toContainText("Needs the Claude plugin");
   expect(await widths()).toEqual(before);
   await notice.getByRole("button", { name: "Open Settings" }).click();
   await expect(page.getByRole("dialog").locator("#ss-t")).toHaveText("Settings › Plugins");
+});
+
+test("a transcript pane reads through the Claude plugin", async ({ page }) => {
+  await start(page);
+  await page.locator(".term-pane").first().click();
+  const pane = (await page.locator(".app-pane .ao-tp").first().getAttribute("data-pane"))!;
+  await page.evaluate((p) => {
+    const h = (window as any).__terminescu.host;
+    h.appendTranscript("sess-read", [{ id: "u1", offset: 0, timestamp: null, kind: "user", text: "hello there" }]);
+    h.setAgent(p, { session: "sess-read", state: "done", lastMessage: null });
+  }, pane);
+  await page.keyboard.press("Meta+Shift+L");
+  await expect(page.locator(".tr-pane .tr-text").first()).toHaveText("hello there");
+  expect(await field(page, "pluginCalls")).toContain("claude.read");
 });
 
 test("switching a plugin off clears what it shows", async ({ page }) => {

@@ -53,10 +53,46 @@ export interface PanelSection {
   render: ComponentType<PanelSectionProps>;
 }
 
+/** Text of a pane view kept in the row's context: an entry, or `[start, end)` of its text. */
+export interface PanePin {
+  entryId: string;
+  exact: string;
+  prefix: string | null;
+  suffix: string | null;
+  start: number | null;
+  end: number | null;
+}
+
+/** A pin of this pane to scroll to and highlight; a new `nonce` reveals it again. */
+export interface PaneReveal {
+  entryId: string;
+  exact: string;
+  prefix: string | null;
+  suffix: string | null;
+  start: number | null;
+  nonce: number;
+}
+
+/** What the app does for a pane view (Facade): the row's context and the app's dialogs. */
+export interface PaneApp {
+  pin(pin: PanePin): Promise<unknown>;
+  /** Opens the extract dialog for the text. */
+  extract(value: string): void;
+  /** Opens Save as prompt with the text. */
+  savePrompt(text: string): void;
+  /** The pin the person opened, when it is in this pane. */
+  reveal?: PaneReveal;
+  /** The pane took the focus. */
+  focus(): void;
+}
+
 export interface PaneViewProps {
   paneId: Id;
   sideTabId: Id;
+  /** What the leaf names, such as a transcript's session. */
+  source: string;
   bridge: PluginBridge;
+  app: PaneApp;
   /** True while the pane has the focus. */
   focused: boolean;
 }

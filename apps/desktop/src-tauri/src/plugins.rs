@@ -206,13 +206,23 @@ impl PluginCx for Cx {
             return Vec::new();
         };
         let ws = state.runtime.workspace();
+        // One daemon list for every pane's cwd.
+        let all: Vec<Id> = ws
+            .windows
+            .iter()
+            .flat_map(|w| &w.side_tabs)
+            .flat_map(|s| &s.tabs)
+            .flat_map(|t| t.layout.terminals())
+            .cloned()
+            .collect();
+        let mut cwds = state.runtime.live_cwds(&all);
         let mut out = Vec::new();
         for w in &ws.windows {
             for s in &w.side_tabs {
                 for t in &s.tabs {
                     for p in t.layout.terminals() {
                         out.push(PaneInfo {
-                            cwd: state.runtime.live_cwd(p),
+                            cwd: cwds.remove(p),
                             pane: p.clone(),
                             tab: t.id.clone(),
                             side_tab: s.id.clone(),
@@ -418,6 +428,10 @@ impl PluginCx for Cx {
         if let Err(e) = self.app.emit(PLUGIN_EVENT, body) {
             eprintln!("terminescu: plugin event not sent: {e}");
         }
+    }
+
+    fn agent_log(&self, session: &str) -> Option<std::path::PathBuf> {
+        self.state().ok()?.runtime.transcript_path(session)
     }
 }
 

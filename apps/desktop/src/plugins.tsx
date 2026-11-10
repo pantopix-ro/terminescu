@@ -5,9 +5,10 @@ import { useEffect, useMemo, useState } from "react";
 import type { ActionDef, Decoration, Host, PluginInfo } from "@terminescu/host";
 import type { FakePlugin } from "@terminescu/host/mock";
 import { compose, definePlugin, type Composed, type PluginBridge, type UiPlugin } from "@terminescu/plugin-api";
+import { claude } from "@terminescu/plugin-claude";
 
-/** The UI halves built into the app, by plugin id. */
-const BUILT_IN: readonly UiPlugin[] = [];
+/** The UI halves built into the app, in plugin order. */
+const BUILT_IN: readonly UiPlugin[] = [claude];
 
 /** A bridge to one plugin's Rust half. */
 export function bridgeOf(host: Host, plugin: string): PluginBridge {

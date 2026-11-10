@@ -45,7 +45,7 @@
       `a_reply_runs_the_extraction_rules`, `resume_uses_the_adapter_command`; e2e Files tests.
 - [x] 3.3 Hook install, uninstall and the first-run entry become the plugin's helpers. Verify:
       moved `hook_install` tests; `e2e/app-sheets.spec.ts` first-run and uninstall.
-- [ ] 3.4 `packages/plugin-claude`: `TranscriptPane` and transcript reading through
+- [x] 3.4 `packages/plugin-claude`: `TranscriptPane` and transcript reading through
       `pluginCall`; the agent dot stays generic. Verify: transcript e2e tests unchanged.
 - [ ] 3.5 Registration only in `main.rs` and `plugins.ts`, behind cargo feature
       `plugin-claude`. Verify: `cargo check -p terminescu-desktop --no-default-features`;

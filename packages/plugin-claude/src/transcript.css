@@ -1,0 +1,32 @@
+/* The Claude plugin's transcript pane (task 4.4; add-plugin-architecture 3.4). The app's
+   tokens (--bg, --dim, --space-*) come from @terminescu/ui. */
+.tr-pane { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--bg); outline: none; }
+.tr-list { flex: 1; min-height: 0; overflow-y: auto; padding: var(--space-2) var(--space-3); display: flex; flex-direction: column; gap: var(--space-3); }
+.tr-msg { display: flex; flex-direction: column; gap: 2px; }
+.tr-head { display: flex; align-items: center; gap: var(--space-1); height: 22px; }
+.tr-role { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); }
+.tr-user .tr-role { color: var(--blue); }
+.tr-act { visibility: hidden; padding: 0 6px; font-size: 11px; }
+.tr-msg:hover .tr-act, .tr-act:focus-visible { visibility: visible; }
+.tr-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 19px; color: var(--fg); user-select: text; }
+.tr-user .tr-text { color: var(--dim); }
+.tr-mark { background: var(--tint-magenta); color: var(--fg); box-shadow: 0 0 0 1px var(--magenta); }
+.tr-block { border-left: 2px solid var(--line-strong); padding-left: var(--space-2); font-size: 12px; }
+.tr-block > summary { display: flex; align-items: center; gap: var(--space-2); min-width: 0; height: 22px; cursor: default; color: var(--dim); list-style: none; }
+.tr-block > summary::-webkit-details-marker { display: none; }
+.tr-block > summary::before { content: "▸"; font-size: 10px; }
+.tr-block[open] > summary::before { content: "▾"; }
+.tr-block > summary:focus-visible { outline: 1px solid var(--focus); }
+.tr-tool-name { color: var(--fg); font-weight: 600; }
+.tr-tool-detail { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.tr-tool-status { text-transform: uppercase; letter-spacing: .06em; }
+.tr-st-error { border-left-color: var(--red); }
+.tr-st-error .tr-tool-status { color: var(--red); }
+.tr-st-running .tr-tool-status { color: var(--amber); }
+.tr-body { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-1) 0; user-select: text; }
+.tr-thinking-text { white-space: pre-wrap; overflow-wrap: anywhere; font-style: italic; color: var(--dim); line-height: 18px; }
+.tr-diff, .tr-output { margin: 0; max-height: 320px; overflow: auto; font: inherit; font-size: 12px; line-height: 17px; background: var(--panel); padding: var(--space-1) var(--space-2); white-space: pre; }
+.tr-output { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--dim); }
+.tr-del { background: var(--tint-red); color: var(--fg); }
+.tr-add { background: var(--tint-green); color: var(--fg); }
+.tr-compact { text-align: center; border-top: 1px dashed var(--line-strong); padding-top: var(--space-1); }

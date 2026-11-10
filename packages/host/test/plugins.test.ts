@@ -23,7 +23,7 @@ const chip = (plugin: string, key: string, text: string): Decoration => ({
 
 describe("mock plugins", () => {
   it("answers calls and rejects unknown methods and plugins", async () => {
-    const host = createMockHost(undefined, { plugins: [echo, other] });
+    const host = createMockHost(undefined, { claude: false, plugins: [echo, other] });
     expect(await host.pluginCall("echo", "echo", { a: 1 })).toEqual({ got: { a: 1 } });
     await expect(host.pluginCall("echo", "nope")).rejects.toThrow("nope is not a method");
     await expect(host.pluginCall("missing", "echo")).rejects.toThrow("no plugin missing");
@@ -31,7 +31,7 @@ describe("mock plugins", () => {
   });
 
   it("merges decorations by key and sends the whole list", async () => {
-    const host = createMockHost(undefined, { plugins: [echo, other] });
+    const host = createMockHost(undefined, { claude: false, plugins: [echo, other] });
     const seen: Decoration[][] = [];
     await host.onDecorations((d) => seen.push(d));
     host.decorate(chip("echo", "branch", "main"));
@@ -42,7 +42,7 @@ describe("mock plugins", () => {
   });
 
   it("switching a plugin off drops its decorations, events and calls", async () => {
-    const host = createMockHost(undefined, { plugins: [echo, other] });
+    const host = createMockHost(undefined, { claude: false, plugins: [echo, other] });
     const lists: PluginInfo[][] = [];
     await host.onPlugins((p) => lists.push(p));
     const events: string[] = [];
@@ -67,7 +67,7 @@ describe("mock plugins", () => {
   });
 
   it("a paused plugin shows as paused until switched off and on", async () => {
-    const host = createMockHost(undefined, { plugins: [echo] });
+    const host = createMockHost(undefined, { claude: false, plugins: [echo] });
     host.decorate(chip("echo", "k", "x"));
     host.pausePlugin("echo");
     expect(await host.plugins()).toEqual([{ id: "echo", name: "Echo", description: "", enabled: true, paused: true }]);
@@ -78,8 +78,25 @@ describe("mock plugins", () => {
   });
 
   it("a host with no plugins lists none", async () => {
-    const host = createMockHost();
+    const host = createMockHost(undefined, { claude: false });
     expect(await host.plugins()).toEqual([]);
     expect(await host.decorations()).toEqual([]);
+  });
+});
+
+describe("the built-in Claude plugin", () => {
+  it("reads a transcript from its offset", async () => {
+    const host = createMockHost();
+    host.appendTranscript("s1", [{ id: "u1", offset: 0, timestamp: null, kind: "user", text: "hi" }]);
+    const first = await host.pluginCall<{ entries: unknown[]; offset: number }>("claude", "read", {
+      session: "s1",
+      offset: 0,
+    });
+    expect(first.entries).toHaveLength(1);
+    const next = await host.pluginCall<{ entries: unknown[] }>("claude", "read", {
+      session: "s1",
+      offset: first.offset,
+    });
+    expect(next.entries).toEqual([]);
   });
 });
