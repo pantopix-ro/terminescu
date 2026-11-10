@@ -774,7 +774,26 @@ buffers once per sheet.
       with none. Verify: `windows.spec.ts`; manual: drag a second window's only row back.
 - [ ] 8.72 Sidebar drags, part 3. A row dragged between rows reorders (hand-sorted only), and
       a folder row carries all its tabs to another window or out to a new one (8.83 did one-tab
-      rows).
+      rows; 8.86 does folders).
+- [ ] 8.84 Merge all windows. Window › Merge All Windows and the palette move every other
+      window's rows to the end of this one, in window order, as rows; the emptied windows
+      close. Disabled with one window. Verify: core test `merge_windows_moves_every_row`;
+      `windows.spec.ts` "merge all windows".
+- [ ] 8.85 Window placement on relaunch. Each window saves its frame in points with its screen
+      (windows.frame_json), 500 ms after a move or resize, and reopens there; a frame off every
+      screen moves into the main screen's work area. A drag's drop point, then the saved frame,
+      then the cascade. Verify: desktop unit test `a_saved_frame_fits_the_screens`; core test
+      `window_frames_persist`; manual: move two windows, ⌘Q, reopen.
+- [ ] 8.86 Folder drag across windows. The core drag carries a row or a tab; a folder row
+      dropped on another window's row merges (clash dialog), on a gap, the end or the panes
+      moves as a row, and outside every window opens a new window at the cursor. Verify: desktop
+      unit test for the drag item; `windows.spec.ts` "a folder drags to another window".
+- [ ] 8.87 Undo close. ⇧⌘T reopens the last closed tab or row, from a session-only list of 10:
+      names, icons, accents, layout, status, variables, pins and context come back, each pane
+      with a fresh login shell in its last cwd; secrets stay in the daemon until the entry
+      leaves the list. A tab goes back to its row at its index, else as a new row; a row to its
+      window at its index, else the focused window. Verify: core test
+      `reopen_restores_a_row_with_its_context`; `windows.spec.ts` "⇧⌘T reopens a tab and a row".
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves
