@@ -768,8 +768,13 @@ buffers once per sheet.
       below the focused window, as Terminal.app cascades, and starts again at the screen's
       top left when it would leave the work area. Verify: desktop `cascade` unit test; manual:
       ⌘N three times in the app.
+- [x] 8.83 One-tab rows across windows. A one-tab sidebar row drags like its tab: released
+      over another window it joins that window, and its own window closes when emptied; out of
+      every window it opens a new one. ⌘T and the sidebar's + still add a row to a window left
+      with none. Verify: `windows.spec.ts`; manual: drag a second window's only row back.
 - [ ] 8.72 Sidebar drags, part 3. A row dragged between rows reorders (hand-sorted only), and
-      out of every window opens a new one; the cross-window drag carries a row, not only a tab.
+      a folder row carries all its tabs to another window or out to a new one (8.83 did one-tab
+      rows).
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

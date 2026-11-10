@@ -164,6 +164,21 @@ test("⌘T and the sidebar's + add a terminal at the selected row's level", asyn
   await expect(page.locator(".ao-st").last()).toHaveClass(/active/);
 });
 
+// The last window stays open when its last row closes; the sidebar's + and ⌘T still add a row.
+test("the sidebar's + and ⌘T add a row to a window with no rows", async ({ page }) => {
+  await start(page);
+  const [only] = await sideIds(page);
+  await page.evaluate((id) => (window as any).__terminescu.host.send({ type: "CloseSideTab", sideTabId: id }), only);
+  await expect.poll(() => sideIds(page)).toHaveLength(0);
+  await page.getByRole("button", { name: "New terminal" }).click();
+  await expect.poll(() => sideIds(page)).toHaveLength(1);
+  const [row] = await sideIds(page);
+  await page.evaluate((id) => (window as any).__terminescu.host.send({ type: "CloseSideTab", sideTabId: id }), row);
+  await expect.poll(() => sideIds(page)).toHaveLength(0);
+  await page.keyboard.press("Meta+t");
+  await expect.poll(() => sideIds(page)).toHaveLength(1);
+});
+
 // Task 8.81: ⌘N opens a window with one new tab; this window keeps its rows.
 test("⌘N opens a new window with one new tab", async ({ page }) => {
   await start(page);
@@ -415,6 +430,38 @@ test("a tab dropped outside every window moves to a new window; the palette does
   await expect.poll(() => tabIds(page)).toHaveLength(1);
   ws = (await mock(page)).ws;
   expect(ws.windows).toHaveLength(3);
+});
+
+// Task 8.83: a one-tab row drags like its tab. Out of the window it takes a window of its own;
+// dropped back on the first window it joins it there, and its emptied window closes.
+test("a one-tab row drags to another window and back; the emptied window closes", async ({ page }) => {
+  await start(page);
+  await page.keyboard.press("Meta+Shift+KeyN");
+  await expect.poll(() => sideIds(page)).toHaveLength(2);
+  const [first, second] = await sideIds(page);
+  const tab = (await mock(page)).ws.windows[0].sideTabs[1].tabs[0].id;
+
+  await page.evaluate(() => (window as any).__terminescu.host.setDragOutcome("newWindow"));
+  await drag(page, `[data-side="${second}"]`, await center(page, ".app-pane"));
+  await expect.poll(() => sideIds(page)).toEqual([first]);
+  let ws = (await mock(page)).ws;
+  expect(ws.windows).toHaveLength(2);
+  expect(ws.windows[1].sideTabs.map((s: any) => s.id), "the row moves whole").toEqual([second]);
+  const begun = await page.evaluate(() => (window as any).__terminescu.host.dragsBegun as string[]);
+  expect(begun.at(-1)).toMatch(new RegExp(`^${tab} `));
+
+  // Released over this window, the second window's only row joins it at the sidebar's end.
+  const end = await center(page, ".app-pane");
+  await page.evaluate(({ tab, end }) => (window as any).__terminescu.host.dragDrop({ tabId: tab, ...end }), { tab, end });
+  await expect.poll(() => sideIds(page)).toEqual([first, second]);
+  ws = (await mock(page)).ws;
+  expect(ws.windows, "the emptied second window closes").toHaveLength(1);
+
+  // Released over another window, the row leaves this one to that window's own drop.
+  await page.evaluate(() => (window as any).__terminescu.host.setDragOutcome("remote"));
+  await drag(page, `[data-side="${second}"]`, await center(page, ".app-pane"));
+  await expect.poll(async () => (await page.evaluate(() => (window as any).__terminescu.host.dragsBegun.length))).toBe(begun.length + 1);
+  await expect.poll(() => sideIds(page)).toEqual([first, second]);
 });
 
 test("a tab from another window lights the row under it and drops into it; its window closes", async ({ page }) => {
