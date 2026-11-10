@@ -6,12 +6,13 @@ import type { ActionDef, Decoration, Host, PluginInfo } from "@terminescu/host";
 import type { FakePlugin } from "@terminescu/host/mock";
 import { compose, definePlugin, type Composed, type PluginBridge, type UiPlugin } from "@terminescu/plugin-api";
 import { claude } from "@terminescu/plugin-claude";
+import { git } from "@terminescu/plugin-git";
 
 /** `VITE_PLUGINS=none` builds the bare terminal; the bundler drops the unused halves. */
 export const NO_PLUGINS = import.meta.env.VITE_PLUGINS === "none";
 
 /** The UI halves built into the app, in plugin order. */
-const BUILT_IN: readonly UiPlugin[] = NO_PLUGINS ? [] : [claude];
+const BUILT_IN: readonly UiPlugin[] = NO_PLUGINS ? [] : [claude, git];
 
 /** A bridge to one plugin's Rust half. */
 export function bridgeOf(host: Host, plugin: string): PluginBridge {
@@ -83,14 +84,37 @@ export function usePlugins(host: Host, appActions: readonly ActionDef[], halves:
   };
 }
 
-// ---- The fake plugin: the browser build only, with `?plugins=fake`, for e2e/plugins.spec.ts.
+// ---- Fake Rust halves: the browser build only. `?plugins=fake` plays every slot for
+// e2e/plugins.spec.ts; `?plugins=git` plays the git plugin's Rust half for e2e/git.spec.ts.
 
-const fakeOn = () => typeof location !== "undefined" && new URLSearchParams(location.search).get("plugins") === "fake";
+const asked = (name: string) => typeof location !== "undefined" && (new URLSearchParams(location.search).get("plugins") ?? "").split(",").includes(name);
+const fakeOn = () => asked("fake");
 
-/** The fake plugin's Rust half, played by the mock host. */
+/** What the fake git half answers, as a test sets it on `window.__fakeGit`. */
+interface FakeGit {
+  changes?: Record<string, unknown>;
+}
+
+const fakeGit = (): FakePlugin => ({
+  id: "git",
+  name: "Git",
+  description: "Plays the git plugin's Rust half, for the tests.",
+  call(method, args) {
+    const answers = ((globalThis as { __fakeGit?: Record<string, FakeGit> }).__fakeGit ?? {})[(args as { pane?: string } | null)?.pane ?? ""];
+    if (method === "changes") {
+      if (!answers?.changes) throw new Error("the pane is not in a git repository");
+      return answers.changes;
+    }
+    throw new Error(`${method} is not a method of this plugin`);
+  },
+});
+
+/** The fake plugins' Rust halves, played by the mock host. */
 export function fakeRustHalves(): FakePlugin[] {
-  if (!fakeOn()) return [];
+  const halves = asked("git") ? [fakeGit()] : [];
+  if (!fakeOn()) return halves;
   return [
+    ...halves,
     {
       id: "fake",
       name: "Fake",

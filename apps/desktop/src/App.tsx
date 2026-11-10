@@ -594,6 +594,11 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     if (activeTab && focused && terminalsOf(activeTab.layout).includes(focused)) lastTerminal.current[activeTab.id] = focused;
   }, [activeTab, focused]);
 
+  // The shown tab's shell, for the panel's plugin sections.
+  const shellTerms = activeTab ? terminalsOf(activeTab.layout) : [];
+  const lastShell = activeTab && lastTerminal.current[activeTab.id];
+  const shellPane = focused && shellTerms.includes(focused) ? focused : lastShell && shellTerms.includes(lastShell) ? lastShell : shellTerms[0];
+
   // What a command created gets selected once its patch arrives: a check that runs on every
   // workspace change until it finds its target.
   const follow = useRef<((w: Workspace) => boolean) | undefined>(undefined);
@@ -2604,7 +2609,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                 ? plugins.composed.panelSections.map((sec) => ({
                     key: `${sec.plugin}.${sec.id}`,
                     title: sec.title,
-                    body: <sec.render sideTabId={activeSide.id} bridge={plugins.bridge(sec.plugin)} />,
+                    body: <sec.render sideTabId={activeSide.id} tabId={activeTab?.id} paneId={shellPane} bridge={plugins.bridge(sec.plugin)} />,
                   }))
                 : undefined
             }

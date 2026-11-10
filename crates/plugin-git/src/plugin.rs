@@ -282,6 +282,9 @@ impl GitPlugin {
         let tab = p.tab.clone();
         let leads = st.lead.get(&tab).map(String::as_str) == Some(pane);
         drop(st);
+        // The Changes section reads its list again; a dirty file edited again keeps the
+        // same facts, so this goes out on every read.
+        cx.emit("facts", json!({ "pane": pane }));
         let target = Target::Pane(pane.into());
         let f = facts.as_ref();
         cx.set_variable(

@@ -33,6 +33,9 @@ importers:
       '@terminescu/plugin-claude':
         specifier: workspace:*
         version: link:../../packages/plugin-claude
+      '@terminescu/plugin-git':
+        specifier: workspace:*
+        version: link:../../packages/plugin-git
       '@terminescu/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -126,6 +129,31 @@ importers:
       '@terminescu/ui':
         specifier: workspace:*
         version: link:../ui
+    devDependencies:
+      '@types/node':
+        specifier: ^24
+        version: 24.19.2
+      '@types/react':
+        specifier: ^19
+        version: 19.3.0
+      react:
+        specifier: ^19.3.1
+        version: 19.3.1
+      typescript:
+        specifier: ~5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^5.1.0
+        version: 5.1.0(@types/node@24.19.2)(vite@8.3.5(@types/node@24.19.2)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/plugin-git:
+    dependencies:
+      '@terminescu/host':
+        specifier: workspace:*
+        version: link:../host
+      '@terminescu/plugin-api':
+        specifier: workspace:*
+        version: link:../plugin-api
     devDependencies:
       '@types/node':
         specifier: ^24

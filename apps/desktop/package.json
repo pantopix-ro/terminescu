@@ -19,6 +19,7 @@
     "@terminescu/host": "workspace:*",
     "@terminescu/plugin-api": "workspace:*",
     "@terminescu/plugin-claude": "workspace:*",
+    "@terminescu/plugin-git": "workspace:*",
     "@terminescu/ui": "workspace:*",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

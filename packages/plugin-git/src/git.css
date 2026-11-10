@@ -1,0 +1,11 @@
+/* The Changes section (add-git-plugin 3.1). */
+.git-total { padding: 4px var(--space-3); }
+.git-change { gap: var(--space-2); }
+.git-mark { font-size: 11px; min-width: 1.6em; text-align: center; color: var(--amber); }
+.git-mark.staged { color: var(--green); }
+.git-mark.untracked { color: var(--faint); }
+.git-mark.conflicted { color: var(--red); }
+.git-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.git-lines { white-space: nowrap; }
+.git-added { color: var(--green); }
+.git-removed { color: var(--red); }

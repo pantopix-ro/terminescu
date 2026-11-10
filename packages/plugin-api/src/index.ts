@@ -44,6 +44,10 @@ export type Decorator<V> = (items: readonly RenderItem[], view: V, mine: readonl
 
 export interface PanelSectionProps {
   sideTabId: Id;
+  /** The row's shown tab. */
+  tabId?: Id;
+  /** That tab's shell pane: the focused one, else the one focused last, else the first. */
+  paneId?: Id;
   bridge: PluginBridge;
 }
 

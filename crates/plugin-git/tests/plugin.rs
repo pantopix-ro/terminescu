@@ -31,6 +31,7 @@ struct Cx {
     settings: Mutex<HashMap<String, Value>>,
     rows: Mutex<Vec<NewRow>>,
     row_data: Mutex<HashMap<(String, String), Value>>,
+    emits: Mutex<Vec<(String, Value)>>,
 }
 
 impl Cx {
@@ -148,7 +149,9 @@ impl PluginCx for Cx {
             None => vars.remove(&key),
         };
     }
-    fn emit(&self, _: &str, _: Value) {}
+    fn emit(&self, event: &str, payload: Value) {
+        self.emits.lock().unwrap().push((event.into(), payload));
+    }
     fn schedule(&self, after: Duration, token: &str) {
         self.timers.lock().unwrap().push((after, token.into()));
     }
@@ -274,6 +277,13 @@ fn launch_reads_each_pane_and_the_tab_shows_branch_and_ahead() {
         Some("feature/PROJ-482-retry")
     );
     assert_eq!(cx.var("p1", "repo").as_deref(), Some("shop-api"));
+    // The Changes section hears that the pane's facts were read.
+    assert!(
+        cx.emits
+            .lock()
+            .unwrap()
+            .contains(&("facts".into(), json!({ "pane": "p1" })))
+    );
 }
 
 #[test]

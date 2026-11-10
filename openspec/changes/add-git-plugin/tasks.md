@@ -23,7 +23,7 @@
 
 ## 3. UI
 
-- [ ] 3.1 `packages/plugin-git`: branch and PR chips through tab and row decorators, the
+- [x] 3.1 `packages/plugin-git`: branch and PR chips through tab and row decorators, the
       Changes panel section. Verify: `e2e/git.spec.ts` on the mock host with a fake git plugin
       (chip, ahead mark, conflict tone, changes list).
 - [ ] 3.2 Diff tab pane view with `@codemirror/merge` 6.12.3, both modes, save on the working
