@@ -175,7 +175,7 @@ export function createIpcHost(): Host {
     mergePreview: (from, into, label) => invoke<MergeClash[]>("side_tab_merge_preview", { from, into, label }),
     mergeSideTabs: (from, into, label, resolution) => invoke<MergeDone>("side_tab_merge", { from, into, label, resolution }),
     undoMerge: (undoId) => invoke("side_tab_merge_undo", { undoId }),
-    dragBegin: (tabId, title) => invoke<number>("drag_begin", { tabId, title }),
+    dragBegin: (item, title) => invoke<number>("drag_begin", { item, title }),
     dragEnd: (token, drop) => invoke<DragEnd>("drag_end", { token, drop }),
     onDragHover: (listener) => getCurrentWebviewWindow().listen<DragPoint | null>(DRAG_HOVER_EVENT, (e) => listener(e.payload)),
     onDragDrop: (listener) => getCurrentWebviewWindow().listen<DragPoint>(DRAG_DROP_EVENT, (e) => listener(e.payload)),

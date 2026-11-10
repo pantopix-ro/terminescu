@@ -8,6 +8,7 @@ import { dockPlace, hasSplit, holdsWork, isSessionId, leaf, panesOf, removePane,
 import {
   ACCENTS,
   type DragEnd,
+  type DragItem,
   type DragPoint,
   MAX_LABEL,
   DEFAULT_SETTINGS,
@@ -589,7 +590,7 @@ export function createMockHost(initial?: Workspace): MockHost {
 
   // One batch through the reducer to every window, as the core's `handle` and emit.
   // Task 8.1: the drag the core would track, and what tests make it say.
-  let dragging: { tabId: Id; token: number } | undefined;
+  let dragging: { item: DragItem; token: number } | undefined;
   let dragToken = 0;
   let dragOutcome: DragEnd["kind"] = "local";
   const dragsBegun: string[] = [];
@@ -950,18 +951,23 @@ export function createMockHost(initial?: Workspace): MockHost {
       commandsChanged();
       return { undoId, renames: [...rename] };
     },
-    async dragBegin(tabId, title) {
-      dragging = { tabId, token: ++dragToken };
-      dragsBegun.push(`${tabId} ${title}`);
+    async dragBegin(item, title) {
+      dragging = { item, token: ++dragToken };
+      dragsBegun.push(`${item.tabId ?? `side:${item.sideTabId}`} ${title}`);
       return dragToken;
     },
     async dragEnd(token, drop) {
-      const tabId = dragging?.token === token ? dragging.tabId : undefined;
-      if (tabId) dragging = undefined;
+      const item = dragging?.token === token ? dragging.item : undefined;
+      if (item) dragging = undefined;
       const kind = dragOutcome;
       dragOutcome = "local";
-      if (!tabId || !drop) return { kind: "cancelled" };
-      if (kind === "newWindow") await host.send({ type: "MoveTabToNewWindow", tabId });
+      if (!item || !drop) return { kind: "cancelled" };
+      if (kind === "newWindow")
+        await host.send(
+          item.sideTabId !== undefined
+            ? { type: "MoveSideTabToNewWindow", sideTabId: item.sideTabId }
+            : { type: "MoveTabToNewWindow", tabId: item.tabId },
+        );
       return { kind };
     },
     async onDragHover(listener) {

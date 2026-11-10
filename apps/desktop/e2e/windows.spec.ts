@@ -481,6 +481,44 @@ test("a one-tab row drags to another window and back; the emptied window closes"
   await expect.poll(() => sideIds(page)).toEqual([first, second]);
 });
 
+// Task 8.86: a folder row goes out to a new window, back as a row, and merges into a row.
+test("a folder drags to another window, back, and into a row", async ({ page }) => {
+  await start(page);
+  await addTab(page);
+  await expect.poll(() => tabIds(page)).toHaveLength(2);
+  const folderTabs = await tabIds(page);
+  await page.keyboard.press("Meta+Shift+KeyN");
+  await expect.poll(() => sideIds(page)).toHaveLength(2);
+  const [folder, other] = await sideIds(page);
+
+  await page.evaluate(() => (window as any).__terminescu.host.setDragOutcome("newWindow"));
+  await drag(page, `[data-side="${folder}"]`, await center(page, ".app-pane"));
+  await expect.poll(() => sideIds(page)).toEqual([other]);
+  let ws = (await mock(page)).ws;
+  expect(ws.windows).toHaveLength(2);
+  expect(ws.windows[1].sideTabs.map((s: any) => s.id), "the folder moves whole").toEqual([folder]);
+  expect(ws.windows[1].sideTabs[0].tabs.map((t: any) => t.id)).toEqual(folderTabs);
+  const begun = await page.evaluate(() => (window as any).__terminescu.host.dragsBegun as string[]);
+  expect(begun.at(-1)).toMatch(new RegExp(`^side:${folder} `));
+
+  // Released over this window's panes, it joins as a row at the end; its window closes.
+  const end = await center(page, ".app-pane");
+  await page.evaluate(({ folder, end }) => (window as any).__terminescu.host.dragDrop({ sideTabId: folder, ...end }), { folder, end });
+  await expect.poll(() => sideIds(page)).toEqual([other, folder]);
+  ws = (await mock(page)).ws;
+  expect(ws.windows, "the emptied window closes").toHaveLength(1);
+
+  // Out again, then dropped on a row: it merges into that row.
+  await page.evaluate((id) => (window as any).__terminescu.host.send({ type: "MoveSideTabToNewWindow", sideTabId: id }), folder);
+  await expect.poll(() => sideIds(page)).toEqual([other]);
+  const row = await center(page, `[data-side="${other}"]`);
+  await page.evaluate(({ folder, row }) => (window as any).__terminescu.host.dragDrop({ sideTabId: folder, ...row }), { folder, row });
+  await expect.poll(async () => (await mock(page)).ws.windows).toHaveLength(1);
+  ws = (await mock(page)).ws;
+  expect(ws.windows[0].sideTabs.map((s: any) => s.id)).toEqual([other]);
+  expect(ws.windows[0].sideTabs[0].tabs.map((t: any) => t.id).slice(1)).toEqual(folderTabs);
+});
+
 test("a tab from another window lights the row under it and drops into it; its window closes", async ({ page }) => {
   await start(page);
   await addTab(page);
