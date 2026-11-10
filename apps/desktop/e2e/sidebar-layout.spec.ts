@@ -99,7 +99,7 @@ test("a row puts its status under the name and lists its shells on hover, one cl
   expect(icon.width).toBe(24);
   expect(chip.top).toBeGreaterThanOrEqual(name.bottom - 1);
 
-  await page.keyboard.press("Meta+n");
+  await page.keyboard.press("Meta+Shift+KeyN");
   await expect(page.locator(".ao-st")).toHaveCount(2);
   await expect(page.locator(".ao-st").nth(1)).toHaveClass(/active/);
 
@@ -136,7 +136,7 @@ test("tabs live in the sidebar by default and folders stay as left", async ({ pa
 
   // Another row keeps this folder open; the chevron closes it. A click on the folder selects it
   // and opens it, and a click on the selected folder closes and opens it (task 8.61).
-  await page.keyboard.press("Meta+n");
+  await page.keyboard.press("Meta+Shift+KeyN");
   await expect(page.locator(".ao-st")).toHaveCount(2);
   await expect(page.locator(".ao-st-kid")).toHaveCount(2);
   await page.getByLabel("Collapse side tab").click();
@@ -205,7 +205,7 @@ test("the sidebar makes text side tabs and folder tabs, and the toggle sits on i
 test("a one-tab row is one line, as tall as a folder's tab, with a subtitle beside its name", async ({ page }) => {
   // Task 8.77.
   await start(page);
-  await page.keyboard.press("Meta+n");
+  await page.keyboard.press("Meta+Shift+KeyN");
   await page.getByRole("button", { name: "New tab", exact: true }).click();
   await expect(page.locator(".ao-st-kid")).toHaveCount(2);
   const single = page.locator(".ao-st.single");

@@ -81,7 +81,7 @@ test("a global command shows in every side tab, a local one only in its own", as
   await start(page);
   await addCommand(page, "local", "ls", "focused", true);
   await addCommand(page, "status", "git status", "newSideTab");
-  await page.keyboard.press("Meta+N");
+  await page.keyboard.press("Meta+Shift+KeyN");
   await expect(page.locator(".ao-st[data-side]")).toHaveCount(2);
   await expect(page.locator(".cmd-row")).toHaveCount(1);
   await expect(page.locator('.cmd-row[data-command="status"] .cmd-meta')).toHaveText("new side tab · global");
@@ -96,7 +96,7 @@ test("a command saved in one side tab runs in another with that side tab's varia
   await start(page);
   await addCommand(page, "checks", "gh pr checks {{pr_api}}", "focused");
   await expect(page.locator('.cmd-row[data-command="checks"] .cmd-meta')).toContainText("global");
-  await page.keyboard.press("Meta+N");
+  await page.keyboard.press("Meta+Shift+KeyN");
   await expect(page.locator(".ao-st[data-side]")).toHaveCount(2);
   const second = await page.evaluate(() => (window as any).__terminescu.host.workspace().windows[0].sideTabs[1].id as string);
   await addVariable(page, second, "pr_api", "https://github.com/acme/api/pull/77", "saved");

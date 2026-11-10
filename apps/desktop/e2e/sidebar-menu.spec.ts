@@ -56,7 +56,7 @@ test("the keyboard opens the edit dialog; its actions run; Esc closes it", async
 
   await sideRow(page).focus();
   await page.keyboard.press("Shift+F10");
-  await edit(page).getByRole("button", { name: "New tab", exact: true }).click();
+  await edit(page).getByRole("button", { name: "Add tab to this row", exact: true }).click();
   await expect(edit(page)).toBeHidden();
   await expect.poll(async () => (await workspace(page)).windows[0].sideTabs[0].tabs.length).toBe(2);
 });

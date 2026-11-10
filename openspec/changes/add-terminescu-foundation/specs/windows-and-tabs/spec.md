@@ -11,7 +11,11 @@ resizable dividers. A side tab SHALL hold any mix of pane kinds.
 
 #### Scenario: A new terminal sits at the selected row's level
 - **WHEN** the person presses `⌘T` with a one-tab row selected, and again with a tab of a folder selected
-- **THEN** the first opens a one-tab row right below the selected row, and the second adds a tab to that folder; `⌘N` always adds a row at the end
+- **THEN** the first opens a one-tab row right below the selected row, and the second adds a tab to that folder; `⌘⇧N` always adds a row at the end
+
+#### Scenario: New window
+- **WHEN** the person presses `⌘N`
+- **THEN** a new window opens with one row holding one new terminal tab, and the other windows keep their rows
 
 #### Scenario: A row dropped on a row makes a folder
 - **WHEN** the person drags a one-tab row onto another one-tab row

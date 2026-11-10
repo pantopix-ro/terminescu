@@ -638,6 +638,13 @@ export function createMockHost(initial?: Workspace): MockHost {
 
   function plan(c: Command): Patch[] {
     switch (c.type) {
+      case "CreateWindow": {
+        const windowId = id();
+        return [
+          { type: "WindowCreated", windowId },
+          { type: "SideTabCreated", windowId, index: 0, sideTab: newSideTab() },
+        ];
+      }
       case "CreateSideTab": {
         const w = window(c.windowId);
         const index = inRange(c.index ?? w.sideTabs.length, w.sideTabs.length);

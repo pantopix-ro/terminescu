@@ -101,7 +101,7 @@ test("a listed tab reorders inside its folder, a line showing where it lands", a
 test("a listed tab moves into another row, to a new side tab and to a new window", async ({ page }) => {
   const [, b, c, d] = await folder(page, 4);
   const [first] = await sideIds(page);
-  await page.keyboard.press("Meta+n");
+  await page.keyboard.press("Meta+Shift+KeyN");
   await expect.poll(() => sideIds(page)).toHaveLength(2);
   const [, second] = await sideIds(page);
   await page.locator(`[data-side="${first}"]`).click();
@@ -130,7 +130,7 @@ test("a listed tab moves into another row, to a new side tab and to a new window
 
 test("a side tab's only tab merges its variables into the row it joins, and Undo splits them again", async ({ page }) => {
   await start(page, "/?top-tabs");
-  await page.keyboard.press("Meta+n");
+  await page.keyboard.press("Meta+Shift+KeyN");
   await expect.poll(() => sideIds(page)).toHaveLength(2);
   const [first, second] = await sideIds(page);
   await setVar(page, second!, "repo", "acme/api");
@@ -149,7 +149,7 @@ test("a side tab's only tab merges its variables into the row it joins, and Undo
 
 test("a side tab's only tab dropped on a gap moves its side tab, variables and all", async ({ page }) => {
   await start(page, "/?top-tabs");
-  await page.keyboard.press("Meta+n");
+  await page.keyboard.press("Meta+Shift+KeyN");
   await expect.poll(() => sideIds(page)).toHaveLength(2);
   const [first, second] = await sideIds(page);
   await setVar(page, second!, "repo", "acme/api");
