@@ -3,6 +3,7 @@
 //! holds up a patch or a keystroke. Handlers run under `catch_unwind` and their budgets; 5
 //! failures in a minute pause the plugin until it is switched off and on.
 
+use serde_json::Value;
 use std::collections::{HashMap, VecDeque};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -31,7 +32,125 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 #[derive(Default)]
 struct Queue {
     events: Mutex<VecDeque<CoreEvent>>,
+    /// Timers by token and when they come due. Locked after `events`, never before.
+    timers: Mutex<HashMap<String, Instant>>,
     ready: Condvar,
+}
+
+impl Queue {
+    fn clear(&self) {
+        lock(&self.events).clear();
+        lock(&self.timers).clear();
+    }
+
+    /// The timer that is due first, taken out when it is due now; else how long until it is.
+    fn due(&self) -> Result<String, Option<Duration>> {
+        let mut timers = lock(&self.timers);
+        let Some((token, at)) = timers.iter().min_by_key(|(_, at)| **at) else {
+            return Err(None);
+        };
+        let now = Instant::now();
+        if *at > now {
+            return Err(Some(*at - now));
+        }
+        let token = token.clone();
+        timers.remove(&token);
+        Ok(token)
+    }
+}
+
+/// The facade a plugin gets: the app's own, with the host's timers added (Decorator).
+struct HostCx {
+    inner: Arc<dyn PluginCx>,
+    queue: Arc<Queue>,
+    id: &'static str,
+}
+
+impl PluginCx for HostCx {
+    fn panes(&self) -> Vec<PaneInfo> {
+        self.inner.panes()
+    }
+    fn workspace(&self) -> Value {
+        self.inner.workspace()
+    }
+    fn side_tabs(&self, window: &str) -> Vec<Id> {
+        self.inner.side_tabs(window)
+    }
+    fn add_context_item(&self, side_tab: &str, text: &str) -> Result<(), PluginError> {
+        self.inner.add_context_item(side_tab, text)
+    }
+    fn add_touched_file(
+        &self,
+        side_tab: &str,
+        origin_tab: Option<&str>,
+        path: &str,
+        created: bool,
+    ) -> Result<(), PluginError> {
+        self.inner
+            .add_touched_file(side_tab, origin_tab, path, created)
+    }
+    fn set_decoration(&self, decoration: Decoration) {
+        self.inner.set_decoration(decoration)
+    }
+    fn clear_decorations(&self, target: Option<&Target>) {
+        self.inner.clear_decorations(target)
+    }
+    fn open_text(&self, side_tab: &str, path: &str) -> Result<(), PluginError> {
+        self.inner.open_text(side_tab, path)
+    }
+    fn type_in_new_tab(&self, side_tab: &str, cwd: &str, line: &str) -> Result<(), PluginError> {
+        self.inner.type_in_new_tab(side_tab, cwd, line)
+    }
+    fn new_row(
+        &self,
+        window: &str,
+        after: Option<&str>,
+        title: &str,
+        cwd: &str,
+    ) -> Result<Id, PluginError> {
+        self.inner.new_row(window, after, title, cwd)
+    }
+    fn setting(&self, key: &str) -> Option<Value> {
+        self.inner.setting(key)
+    }
+    fn set_setting(&self, key: &str, value: Option<Value>) -> Result<(), PluginError> {
+        self.inner.set_setting(key, value)
+    }
+    fn row_data(&self, side_tab: &str, key: &str) -> Option<Value> {
+        self.inner.row_data(side_tab, key)
+    }
+    fn set_row_data(
+        &self,
+        side_tab: &str,
+        key: &str,
+        value: Option<Value>,
+    ) -> Result<(), PluginError> {
+        self.inner.set_row_data(side_tab, key, value)
+    }
+    fn set_fact(&self, target: &Target, name: &str, value: Option<Value>) {
+        self.inner.set_fact(target, name, value)
+    }
+    fn set_variable(&self, target: &Target, name: &str, value: Option<String>) {
+        self.inner.set_variable(target, name, value)
+    }
+    fn emit(&self, event: &str, payload: Value) {
+        self.inner.emit(event, payload)
+    }
+    fn agent_log(&self, session: &str) -> Option<std::path::PathBuf> {
+        self.inner.agent_log(session)
+    }
+    fn schedule(&self, after: Duration, token: &str) {
+        let mut timers = lock(&self.queue.timers);
+        if timers.len() >= QUEUE && !timers.contains_key(token) {
+            eprintln!("terminescu: plugin {} has too many timers", self.id);
+            return;
+        }
+        timers.insert(token.to_string(), Instant::now() + after);
+        drop(timers);
+        // Under the events lock, so a worker about to wait cannot miss it.
+        let _q = lock(&self.queue.events);
+        self.queue.ready.notify_one();
+    }
 }
 
 struct Slot {
@@ -72,7 +191,7 @@ impl Slot {
                 "terminescu: plugin {} paused after {MAX_FAILURES} failures in a minute",
                 self.manifest.id
             );
-            lock(&self.queue.events).clear();
+            self.queue.clear();
             return true;
         }
         false
@@ -188,17 +307,23 @@ impl PluginHost {
                     enabled.get(manifest.id).copied().unwrap_or(true),
                 ));
                 let paused = Arc::new(AtomicBool::new(false));
+                let queue = Arc::new(Queue::default());
                 Arc::new(Slot {
-                    cx: Arc::new(Guarded {
-                        inner: cx(manifest.id),
-                        enabled: on.clone(),
-                        paused: paused.clone(),
+                    // Timers on the outside, the off-and-paused guard on decorations inside.
+                    cx: Arc::new(HostCx {
+                        inner: Arc::new(Guarded {
+                            inner: cx(manifest.id),
+                            enabled: on.clone(),
+                            paused: paused.clone(),
+                        }),
+                        queue: queue.clone(),
+                        id: manifest.id,
                     }),
                     enabled: on,
                     paused,
                     running: Mutex::new(None),
                     failures: Mutex::new(VecDeque::new()),
-                    queue: Arc::new(Queue::default()),
+                    queue,
                     plugin,
                     manifest,
                 })
@@ -343,7 +468,7 @@ impl PluginHost {
             drop(q);
             slot.queue.ready.notify_one();
         } else {
-            lock(&slot.queue.events).clear();
+            slot.queue.clear();
         }
         self.tell(id, on);
         true
@@ -376,7 +501,7 @@ impl Drop for PluginHost {
     }
 }
 
-/// A plugin's worker: one event at a time, under the event budget.
+/// A plugin's worker: one event or due timer at a time, under the event budget.
 fn work(slot: &Slot, stopped: &AtomicBool, sink: &SharedSink) {
     loop {
         let event = {
@@ -388,10 +513,16 @@ fn work(slot: &Slot, stopped: &AtomicBool, sink: &SharedSink) {
                 if let Some(e) = q.pop_front() {
                     break e;
                 }
+                let wait = match slot.queue.due() {
+                    Ok(token) => break CoreEvent::Timer { token },
+                    Err(next) => next
+                        .unwrap_or(Duration::MAX)
+                        .min(Duration::from_millis(500)),
+                };
                 q = slot
                     .queue
                     .ready
-                    .wait_timeout(q, Duration::from_millis(500))
+                    .wait_timeout(q, wait)
                     .map(|(g, _)| g)
                     .unwrap_or_else(|e| e.into_inner().0);
             }
@@ -445,9 +576,7 @@ fn watchdog_with(slots: &[Arc<Slot>], stopped: &AtomicBool, sink: &SharedSink, p
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use serde_json::Value;
     use std::sync::atomic::AtomicUsize;
-    use terminescu_plugin_api::{Decoration, Id, PaneInfo, Target};
 
     /// A facade that does nothing.
     pub(crate) struct NoCx;
@@ -704,6 +833,65 @@ pub(crate) mod tests {
         host.set_enabled("test", false);
         host.set_enabled("test", true);
         assert!(!host.list()[0].paused);
+    }
+
+    /// Sets timer `t` on each cwd move and counts the timers that come due.
+    struct Timers {
+        fired: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl Plugin for Timers {
+        fn manifest(&self) -> Manifest {
+            Manifest::new("timers", "Timers", "A plugin for tests")
+        }
+        fn on_event(&self, event: &CoreEvent, cx: &dyn PluginCx) {
+            match event {
+                CoreEvent::CwdMoved { cwd, .. } => {
+                    cx.schedule(Duration::from_millis(80), cwd);
+                }
+                CoreEvent::Timer { token } => lock(&self.fired).push(token.clone()),
+                _ => {}
+            }
+        }
+        fn call(&self, _: &str, _: Value, _: &dyn PluginCx) -> Result<Value, PluginError> {
+            Ok(Value::Null)
+        }
+    }
+
+    fn timers() -> (PluginHost, Arc<Mutex<Vec<String>>>) {
+        let fired = Arc::new(Mutex::new(Vec::new()));
+        let plugin = Timers {
+            fired: fired.clone(),
+        };
+        let host = PluginHost::new(vec![Arc::new(plugin)], no_cx(), &HashMap::new());
+        (host, fired)
+    }
+
+    #[test]
+    fn a_timer_set_again_fires_once_after_the_last_set() {
+        let (host, fired) = timers();
+        let started = Instant::now();
+        for _ in 0..5 {
+            host.dispatch(&event(1));
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        host.dispatch(&event(2));
+        assert!(until(|| lock(&fired).len() == 2));
+        assert!(started.elapsed() >= Duration::from_millis(160));
+        std::thread::sleep(Duration::from_millis(150));
+        let mut got = lock(&fired).clone();
+        got.sort();
+        assert_eq!(got, ["/tmp/1", "/tmp/2"]);
+    }
+
+    #[test]
+    fn switching_off_drops_the_timers() {
+        let (host, fired) = timers();
+        host.dispatch(&event(1));
+        assert!(until(|| !lock(&host.slots[0].queue.timers).is_empty()));
+        host.set_enabled("timers", false);
+        std::thread::sleep(Duration::from_millis(200));
+        assert!(lock(&fired).is_empty());
     }
 
     #[test]

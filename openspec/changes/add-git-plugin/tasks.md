@@ -13,7 +13,7 @@
 
 ## 2. Plugin wiring
 
-- [ ] 2.1 The plugin: triggers with a 300 ms debounce per pane, decorations, status facts,
+- [x] 2.1 The plugin: triggers with a 300 ms debounce per pane, decorations, status facts,
       variables, calls `changes`, `baseText`, `worktreeAdd`, `worktrees`, `worktreeRemove`.
       Verify: plugin tests with a fake `PluginCx`; `pnpm check:rust`.
 - [ ] 2.2 `GhCli` forge, the GitHub switch, `gh auth status` detection. Verify: tests over a

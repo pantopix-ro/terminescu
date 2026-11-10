@@ -4,9 +4,11 @@
 
 pub mod cli;
 pub mod layers;
+pub mod plugin;
 pub mod vcs;
 pub mod worktree;
 
 pub use cli::GitCli;
 pub use layers::{CachedVcs, CoalescingVcs, TimedVcs};
+pub use plugin::GitPlugin;
 pub use vcs::{Change, DiffBase, Head, Op, RepoFacts, Vcs, VcsError, Worktree};

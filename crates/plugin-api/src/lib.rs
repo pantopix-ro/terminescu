@@ -90,6 +90,10 @@ pub enum CoreEvent {
         window: Id,
         side_tab: Id,
     },
+    /// A timer this plugin set with [`PluginCx::schedule`] came due. No other plugin hears it.
+    Timer {
+        token: String,
+    },
 }
 
 /// A terminal pane and where it is.
@@ -173,6 +177,11 @@ pub trait PluginCx: Send + Sync {
 
     /// An event for this plugin's UI half.
     fn emit(&self, event: &str, payload: Value);
+
+    /// Sends this plugin [`CoreEvent::Timer`] with `token` after `after`, on its own worker and
+    /// under its event budget. Setting a token again moves its time (a debounce). The host
+    /// keeps at most 256 timers per plugin and drops them when the plugin goes off or pauses.
+    fn schedule(&self, _after: Duration, _token: &str) {}
 
     /// The log file of an agent session: the one its hooks named, else what its adapter finds.
     fn agent_log(&self, _session: &str) -> Option<std::path::PathBuf> {

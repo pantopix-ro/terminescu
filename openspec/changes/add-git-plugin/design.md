@@ -44,7 +44,9 @@ tests over a fake inner provider.
 
 ### D3. Triggers, not polling
 Facts refresh on cwd moved, command ended, tab selected and app launched, debounced 300 ms per
-pane. Pull request facts refresh on command ended in that tab and at most once a minute per
+pane. The debounce is a host timer: `PluginCx::schedule(after, token)` sends the plugin
+`CoreEvent::Timer` on its own worker, under its event budget, and setting a token again moves
+it. A plugin keeps no thread of its own, so pause and budgets still hold. Pull request facts refresh on command ended in that tab and at most once a minute per
 branch. Rejected: a file watcher on each working tree. FSEvents on large trees is costly and
 the shell events already mark every moment that matters.
 

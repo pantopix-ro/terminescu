@@ -65,6 +65,11 @@ An event handler gets 500 ms and a call gets 2 s, unless the manifest sets other
 panic or an overrun is logged. Five in one minute pause the plugin until the person switches it
 off and on in Settings › Plugins.
 
+A handler that should run later, or once after a burst of events, sets a timer:
+`cx.schedule(Duration::from_millis(300), "pane:p1")` sends the plugin `CoreEvent::Timer`
+with that token on its own worker. Setting the same token again moves its time, which gives a
+debounce. The git plugin reads a pane's repository this way.
+
 Decorations live in memory only. Rebuild them on `CoreEvent::AppLaunched`, which also arrives
 when the plugin is switched on.
 
