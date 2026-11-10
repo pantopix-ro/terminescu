@@ -333,6 +333,7 @@ fn launcher_bytes(
         .ok_or("a launcher command belongs to one side tab")?;
     let daemon = rt.daemon();
     let vars = vars::list(db, daemon.as_deref(), side).map_err(|e| e.to_string())?;
+    let vars = rt.with_provided(side, vars);
     let resolved = commands::resolve(&command.body, &vars, &BTreeMap::new());
     if !resolved.missing.is_empty() {
         return Err(format!(
@@ -676,6 +677,7 @@ fn command_run(
     let command = commands::get(&lock(&state.db), &id).map_err(|e| e.to_string())?;
     let daemon = state.runtime.daemon();
     let vars = vars::list(&*state.db, daemon.as_deref(), &side_tab).map_err(|e| e.to_string())?;
+    let vars = state.runtime.with_provided(&side_tab, vars);
     if command.side_tab_id.as_ref().is_some_and(|s| *s != side_tab) {
         return Err("this command belongs to another side tab".into());
     }
@@ -911,14 +913,15 @@ fn pin_remove(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<
 }
 
 /// Saved variables from SQLite, session and secret ones from the daemon; a secret comes without
-/// its value (D21).
+/// its value (D21). Plugin variables come last, read-only, under names not taken.
 #[tauri::command(async)]
 fn vars_list(
     state: State<'_, AppState>,
     side_tab: String,
 ) -> Result<Vec<context::Variable>, String> {
     let daemon = state.runtime.daemon();
-    vars::list(&*state.db, daemon.as_deref(), &side_tab).map_err(|e| e.to_string())
+    let saved = vars::list(&*state.db, daemon.as_deref(), &side_tab).map_err(|e| e.to_string())?;
+    Ok(state.runtime.with_provided(&side_tab, saved))
 }
 
 /// Adds a variable from the panel or an extract. A name in use is refused unless `replace`.

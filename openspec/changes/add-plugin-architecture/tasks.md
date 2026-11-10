@@ -15,7 +15,7 @@
 - [x] 1.4 Decorations store, `host://decorations` event, Tauri commands `plugin_call`,
       `plugin_list`, `plugin_set_enabled`, `decorations`. Verify: core test
       `decorations_merge_by_key_and_clear_per_plugin`; `pnpm check:rust`.
-- [ ] 1.5 Status facts and variable providers: plugins set named facts per row or tab that
+- [x] 1.5 Status facts and variable providers: plugins set named facts per row or tab that
       dynamic status rules test, and provide read-only prompt variables that lose to saved
       ones. Verify: core tests `a_plugin_fact_drives_a_dynamic_status`,
       `a_saved_variable_wins_over_a_plugin_variable`.
@@ -29,7 +29,8 @@
       the mock, which takes fake plugins. Verify: host vitest.
 - [ ] 2.3 Slots: row and tab decorations in `SideTabList` and `TabBar`, plugin sections in
       `ContextPanel`, the pane-view registry with the missing-plugin notice, plugin actions in
-      menus and the palette; the UI reports row selection as `SideTabSelected`. Verify: `e2e/plugins.spec.ts` with a fake plugin (chip, section,
+      menus and the palette; the UI reports row selection as `SideTabSelected`; plugin
+      variables (`plugin:` ids) show read-only; Settings › Statuses offers fact rules. Verify: `e2e/plugins.spec.ts` with a fake plugin (chip, section,
       action, chord clash, missing view).
 - [ ] 2.4 Settings › Plugins: a switch per plugin and the stopped-after-errors state. Verify:
       `e2e/plugins.spec.ts` "switching a plugin off clears what it shows".

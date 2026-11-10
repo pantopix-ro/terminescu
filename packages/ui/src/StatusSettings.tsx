@@ -48,14 +48,26 @@ function LabelField({ value, label, onSave }: { value: string; label: string; on
 }
 
 function ruleText(r: Rule) {
-  return r.kind === "exitCode" ? (
-    <>
-      When a command matching <code>{r.pattern}</code> exits non-zero
-    </>
-  ) : (
-    <>When a Claude session is idle for {r.minutes} min</>
-  );
+  if (r.kind === "exitCode")
+    return (
+      <>
+        When a command matching <code>{r.pattern}</code> exits non-zero
+      </>
+    );
+  if (r.kind === "fact")
+    return (
+      <>
+        While <code>{r.name}</code> holds
+      </>
+    );
+  return <>When a Claude session is idle for {r.minutes} min</>;
 }
+
+const UNTIL: Record<Rule["kind"], string> = {
+  exitCode: "until the next run",
+  claudeIdle: "until activity",
+  fact: "while it holds",
+};
 
 /** Settings › Statuses: built-ins, the global list and the rules (design board "Settings"). */
 export function StatusesSection({ config, host, onError }: StatusesSectionProps) {
@@ -149,7 +161,7 @@ export function StatusesSection({ config, host, onError }: StatusesSectionProps)
               <div key={r.id} className="srow" data-rule={r.id}>
                 <span className="grow">{ruleText(r)}</span>
                 <StatusChip chip={{ ...r.look, set: true, need: false }} />
-                <span className="small ao-dim">{r.kind === "exitCode" ? "until the next run" : "until activity"}</span>
+                <span className="small ao-dim">{UNTIL[r.kind]}</span>
                 <label className="small">
                   <input type="checkbox" checked={r.enabled} onChange={(e) => run(host.toggleRule(r.id, e.target.checked))} /> on
                 </label>

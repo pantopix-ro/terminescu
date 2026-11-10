@@ -20,14 +20,9 @@ pub const DECORATIONS_EVENT: &str = "host://decorations";
 /// An event from a plugin to its UI half: `{ plugin, event, payload }`.
 pub const PLUGIN_EVENT: &str = "host://plugin";
 
-/// Facts and variables plugins set, by target and name, with the plugin that set them.
-pub type Provided<T> = HashMap<(Target, String), (String, T)>;
-
 #[derive(Default)]
 pub struct Shared {
     pub decorations: Mutex<Decorations>,
-    pub facts: Mutex<Provided<Value>>,
-    pub variables: Mutex<Provided<String>>,
 }
 
 pub struct Plugins {
@@ -82,8 +77,6 @@ impl Plugins {
                 changed |= d.forget(t);
             }
         }
-        lock(&self.shared.facts).retain(|(t, _), _| !gone.contains(t));
-        lock(&self.shared.variables).retain(|(t, _), _| !gone.contains(t));
         if changed {
             emit_decorations(app, &self.shared);
         }
@@ -109,8 +102,9 @@ pub fn observe(app: &AppHandle, runtime: &Runtime, plugins: Arc<Plugins>) {
 
 fn forget_plugin(app: &AppHandle, shared: &Shared, id: &str) {
     let changed = lock(&shared.decorations).clear(id, None);
-    lock(&shared.facts).retain(|_, (p, _)| p != id);
-    lock(&shared.variables).retain(|_, (p, _)| p != id);
+    if let Some(state) = app.try_state::<AppState>() {
+        state.runtime.forget_plugin(id);
+    }
     if changed {
         emit_decorations(app, shared);
     }
@@ -330,22 +324,30 @@ impl PluginCx for Cx {
             .map_err(failed)
     }
 
+    /// Rules see it as `<plugin>.<name>`.
     fn set_fact(&self, target: &Target, name: &str, value: Option<Value>) {
-        let key = (target.clone(), name.to_string());
-        let mut facts = lock(&self.shared.facts);
-        match value {
-            Some(v) => facts.insert(key, (self.id.into(), v)),
-            None => facts.remove(&key),
-        };
+        if !terminescu_core::provided::is_fact_name(&format!("{}.{name}", self.id)) {
+            eprintln!("terminescu: plugin {} fact {name} has a bad name", self.id);
+            return;
+        }
+        if let Ok(state) = self.state() {
+            state.runtime.set_fact(self.id, target, name, value);
+        }
     }
 
     fn set_variable(&self, target: &Target, name: &str, value: Option<String>) {
-        let key = (target.clone(), name.to_string());
-        let mut vars = lock(&self.shared.variables);
-        match value {
-            Some(v) => vars.insert(key, (self.id.into(), v)),
-            None => vars.remove(&key),
-        };
+        if !context::is_variable_name(name) {
+            eprintln!(
+                "terminescu: plugin {} variable {name} has a bad name",
+                self.id
+            );
+            return;
+        }
+        if let Ok(state) = self.state() {
+            state
+                .runtime
+                .set_provided_variable(self.id, target, name, value);
+        }
     }
 
     fn emit(&self, event: &str, payload: Value) {

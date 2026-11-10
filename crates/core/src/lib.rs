@@ -25,6 +25,7 @@ pub mod persist;
 pub mod plugin_host;
 pub mod plugin_store;
 pub mod prompts;
+pub mod provided;
 pub mod runtime;
 pub mod settings;
 pub mod state;

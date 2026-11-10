@@ -19,6 +19,7 @@
 //! session offers to resume it (D23).
 
 use crate::agent::{self, Agent, AgentState, AgentUpdate};
+use crate::context::Variable;
 use crate::daemon::{DaemonClient, DaemonError, DaemonEvent};
 use crate::layout::Layout;
 use crate::persist::{PaneRecord, Saved};
@@ -26,12 +27,13 @@ use crate::state::{Command, CommandError, Core, Id, Patch, PatchBatch, Snapshot,
 use crate::status::{self, Engine, Look, PaneFacts, Rule, Shown, Until};
 use crate::transcript::Tail;
 use crate::views::{Action, Queued, Sink, ViewId, Views};
+use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
-use terminescu_plugin_api::CoreEvent;
+use terminescu_plugin_api::{CoreEvent, Target};
 use terminescu_protocol::core::Expiry;
 use terminescu_protocol::{PaneId, PaneInfo, ShellState, SpawnSpec};
 
@@ -212,6 +214,8 @@ struct Inner {
     scanners: Mutex<HashMap<PaneId, crate::extract::Scanner>>,
     doc_sink: Mutex<Option<DocSink>>,
     event_sink: Mutex<Option<EventSink>>,
+    /// Plugin facts and variables (add-plugin-architecture D4).
+    provided: Mutex<crate::provided::Provided>,
     /// Settings › Shell: new shells point `VISUAL` and `EDITOR` at `terminescu edit --wait`.
     editor: AtomicBool,
     /// Lines of history new shells keep in the daemon; 0 leaves the daemon's default (task 8.42).
@@ -363,6 +367,7 @@ impl Runtime {
                 scanners: Mutex::default(),
                 doc_sink: Mutex::default(),
                 event_sink: Mutex::default(),
+                provided: Mutex::default(),
                 editor: AtomicBool::new(editor),
                 scrollback: AtomicU32::new(0),
                 queued: Condvar::new(),
@@ -1199,7 +1204,47 @@ impl Runtime {
         *lock(&self.inner.event_sink) = Some(sink);
     }
 
+    /// A plugin's fact on a target; statuses follow.
+    pub fn set_fact(&self, plugin: &str, target: &Target, name: &str, value: Option<Value>) {
+        if lock(&self.inner.provided).set_fact(plugin, target, name, value) {
+            self.mark_status();
+        }
+    }
+
+    /// A plugin's read-only variable on a target.
+    pub fn set_provided_variable(
+        &self,
+        plugin: &str,
+        target: &Target,
+        name: &str,
+        value: Option<String>,
+    ) {
+        lock(&self.inner.provided).set_variable(plugin, target, name, value);
+    }
+
+    /// Drops what a stopped plugin provided.
+    pub fn forget_plugin(&self, plugin: &str) {
+        if lock(&self.inner.provided).forget_plugin(plugin) {
+            self.mark_status();
+        }
+    }
+
+    /// A row's variables with the ones plugins provide after them; a name in `saved` wins.
+    pub fn with_provided(&self, side_tab: &str, saved: Vec<Variable>) -> Vec<Variable> {
+        let ws = self.workspace();
+        lock(&self.inner.provided).with_variables(&ws, side_tab, saved)
+    }
+
     fn observe(&self, event: CoreEvent) {
+        let gone = match &event {
+            CoreEvent::PaneClosed { pane } => Some(Target::Pane(pane.clone())),
+            CoreEvent::TabClosed { tab } => Some(Target::Tab(tab.clone())),
+            CoreEvent::SideTabClosed { side_tab } => Some(Target::SideTab(side_tab.clone())),
+            _ => None,
+        };
+        if let Some(t) = gone {
+            lock(&self.inner.provided).forget(&t);
+        }
         if let Some(sink) = lock(&self.inner.event_sink).as_ref() {
             sink(event);
         }
@@ -1256,7 +1301,9 @@ impl Runtime {
             .iter()
             .filter_map(|(p, r)| Some((p.clone(), r.cwd.clone()?)))
             .collect();
+        let holding = lock(&self.inner.provided).holding(&ws);
         let mut st = lock(&self.inner.status);
+        st.engine.facts(&holding);
         let mut idle: HashMap<Id, Option<i64>> = HashMap::new();
         for pane in &terminals {
             let since = agents.get(pane).map(|state| {

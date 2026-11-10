@@ -102,6 +102,9 @@ pub enum RuleKind {
     ExitCode { pattern: String },
     /// Every Claude session in the pane sat Done or Idle this long; holds until activity.
     ClaudeIdle { minutes: u32 },
+    /// A plugin fact such as `git.conflict` holds on the pane, its tab or its row; holds while
+    /// it does (add-plugin-architecture D4).
+    Fact { name: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -166,6 +169,8 @@ pub enum Until {
     NextRun,
     /// When the pane's Claude session works again.
     Activity,
+    /// When the rule's plugin fact stops holding.
+    Fact,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -408,6 +413,36 @@ impl Engine {
                             changed = true;
                         }
                     }
+                }
+            }
+        }
+        changed
+    }
+
+    /// Fact rules against the facts that hold now, by pane. Returns whether a status changed.
+    pub fn facts(&mut self, holding: &HashMap<Id, HashSet<String>>) -> bool {
+        let rules: Vec<(Rule, String)> = self
+            .rules
+            .iter()
+            .filter(|r| r.enabled)
+            .filter_map(|r| match &r.kind {
+                RuleKind::Fact { name } => Some((r.clone(), name.clone())),
+                _ => None,
+            })
+            .collect();
+        let mut changed = false;
+        let panes: HashSet<Id> = holding.keys().chain(self.dynamic.keys()).cloned().collect();
+        for pane in &panes {
+            let held = holding.get(pane);
+            for (r, name) in &rules {
+                let origin = Origin::Rule(r.id.clone());
+                let has = self.dynamic(pane).iter().any(|d| d.origin == origin);
+                let holds = held.is_some_and(|h| h.contains(name));
+                if holds && !has {
+                    self.put(pane, r.look.clone(), origin, Until::Fact);
+                    changed = true;
+                } else if !holds && has {
+                    changed |= self.drop_where(pane, |d| d.origin == origin);
                 }
             }
         }

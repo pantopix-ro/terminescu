@@ -119,7 +119,11 @@ export const DEFAULT_STATUSES: readonly { label: string; accent: Accent }[] = [
   { label: "Done", accent: "green" },
 ];
 
-export type RuleKind = { kind: "exitCode"; pattern: string } | { kind: "claudeIdle"; minutes: number };
+export type RuleKind =
+  | { kind: "exitCode"; pattern: string }
+  | { kind: "claudeIdle"; minutes: number }
+  /** A plugin fact, `plugin.name`, holds on the pane, its tab or its row. */
+  | { kind: "fact"; name: string };
 
 export type Rule = { id: Id; statusId: Id; look: Look; enabled: boolean } & RuleKind;
 

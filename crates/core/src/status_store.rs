@@ -43,6 +43,8 @@ pub enum StoreError {
     EmptyPattern,
     #[error("an idle rule waits 1 to {MAX_IDLE_MINUTES} minutes")]
     BadMinutes,
+    #[error("`{0}` is not a plugin fact; facts read plugin.name")]
+    BadFact(String),
     #[error(transparent)]
     Db(#[from] DbError),
 }
@@ -276,6 +278,12 @@ fn check_kind(kind: &RuleKind) -> Result<RuleKind> {
         RuleKind::ClaudeIdle { minutes } if !(1..=MAX_IDLE_MINUTES).contains(minutes) => {
             Err(StoreError::BadMinutes)
         }
+        RuleKind::Fact { name } if !crate::provided::is_fact_name(name.trim()) => {
+            Err(StoreError::BadFact(name.trim().into()))
+        }
+        RuleKind::Fact { name } => Ok(RuleKind::Fact {
+            name: name.trim().into(),
+        }),
         k => Ok(k.clone()),
     }
 }
