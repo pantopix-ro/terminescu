@@ -35,6 +35,11 @@ Window            an OS window
   CodeMirror 6, saves files byte for byte, keeps unsaved work across restarts (hot exit) and
   can act as `$EDITOR`. That means Claude Code's `⌃G` and `git commit` open in a pane
   beside the terminal.
+- **Git.** Each tab shows its branch, and its pull request when `gh` is logged in. The
+  Changes section lists the row's changed files; one click opens a diff tab you can edit in
+  place, side by side or unified (`⌥⌘U`). `⌥⌘N` makes a branch and a worktree and opens a row
+  in it, and closing that row asks whether to keep the worktree. `⌥⇧⌘G` checks out a pull
+  request as a row. `{{branch}}`, `{{repo}}` and `{{pr}}` fill prompts.
 - **Drag like a browser.** Drag a tab to reorder it. Drop it on the sidebar to make a new side
   tab, on a side tab to move it there, or outside the window to open a new window. Drop one
   side tab onto another to merge them.
@@ -64,9 +69,10 @@ Window            an OS window
   shells and offers a "resume" button for each Claude session.
 - **Claude is the unmodified `claude` CLI.** Terminescu learns about it through Claude Code
   hooks. It never reads or stores a Claude token and never uses the Agent SDK.
-- **Claude support is a plugin.** The core knows a generic agent; the Claude plugin turns
-  hook events into agent changes and draws the transcript pane. The app builds and runs
-  without it, and a check keeps the core from reaching a plugin. See
+- **Claude support and git are plugins.** The core knows a generic agent; the Claude plugin
+  turns hook events into agent changes and draws the transcript pane. The git plugin runs the
+  person's `git` and `gh` and never reads a GitHub token. The app builds and runs without
+  either, and a check keeps the core from reaching a plugin. See
   [docs/plugins.md](docs/plugins.md).
 - **Every table carries `owner_id`.** v1 has one local owner. A later change, `add-remote-view`,
   serves the same protocol over WebSocket so a browser can view the Mac, with no cloud
@@ -117,6 +123,7 @@ rich editor layer.
 | `crates/protocol` | The versioned core and daemon protocol |
 | `crates/plugin-api`, `packages/plugin-api` | The plugin API, Rust and UI halves |
 | `crates/plugin-claude`, `packages/plugin-claude` | The Claude plugin: hook adapter, transcript pane, hook helper |
+| `crates/plugin-git`, `packages/plugin-git` | The git plugin: branch and pull request chips, Changes, diff tab, worktree rows |
 | `packages/ui` | React components and design tokens |
 | `packages/host` | The `Host` interface: Tauri IPC now, WebSocket later; a mock for tests |
 | `scripts/sidecars.mjs` | Builds the daemon and the CLI for the app bundle |
@@ -154,6 +161,7 @@ statuses.
 ## Requirements
 
 macOS 14 or later, Rust stable, Node 24, pnpm, and Claude Code with a logged-in `claude`.
+The git plugin needs git 2.30 or later; its GitHub items need a logged-in `gh`.
 
 ## Install
 

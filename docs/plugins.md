@@ -1,7 +1,7 @@
 # Plugins
 
-Terminescu is a terminal manager first. Claude Code support, and later git, comes from plugins
-built into the app. The core never names a plugin, and the app builds and runs with none. The
+Terminescu is a terminal manager first. Claude Code support and git come from plugins built
+into the app. The core never names a plugin, and the app builds and runs with none. The
 decisions behind this are D1 to D11 in
 [design.md](../openspec/changes/add-plugin-architecture/design.md).
 
@@ -13,7 +13,8 @@ A plugin has two halves:
 | UI | `packages/plugin-<id>` | `@terminescu/plugin-api`, `@terminescu/ui` |
 
 Either half can be absent. A Rust half without a UI half still shows its decorations. The
-Claude plugin (`crates/plugin-claude`, `packages/plugin-claude`) is the worked example.
+Claude plugin (`crates/plugin-claude`, `packages/plugin-claude`) is the small worked example;
+the git plugin, described at the end, uses every slot.
 
 ## The Rust half
 
@@ -83,7 +84,7 @@ export const git = definePlugin({
   name: "Git",
   rowDecorators: [(items, row, mine) => [...items, ...mine.map(toItem)]],
   panelSections: [{ id: "changes", title: "Changes", render: Changes }],
-  actions: [{ id: "status", label: "Git Status", accel: "Cmd+Alt+G", run: (cx) => cx.bridge.call("status") }],
+  actions: [{ id: "status", label: "Git Status", accel: "Cmd+Alt+S", run: (cx) => cx.bridge.call("status") }],
 });
 ```
 
@@ -98,6 +99,14 @@ pane views, actions and the settings page are slots the app fills.
   names the plugin that draws it.
 - Every action needs a `⌘` chord. A chord that `actions.json` or the person already uses wins,
   and the plugin action keeps no chord.
+- An action asks through `cx.ask({ title, text, fields, pick, choices })`, which the app draws
+  as its own dialog. The first choice answers Enter; Escape answers `null`. `cx.openUrl` opens
+  an http or https link in the browser.
+- An action with `newMenu: true` also shows in the sidebar's + menu. One with `when: "github"`
+  shows only while the plugin's `flags` (a function that gets the bridge and raises flags)
+  has that flag up.
+- `beforeRowClose(cx)` runs when the person closes a row, after the app's own questions and in
+  plugin order (Chain of Responsibility). Return `false` to keep the row open.
 - Mark the package `"sideEffects": false`, so a build without the plugin drops its code and its
   CSS.
 
@@ -142,3 +151,29 @@ cargo check -p terminescu-desktop --no-default-features --features plugin-claude
 cargo check -p terminescu-desktop --no-default-features --features plugin-git
 VITE_PLUGINS=none pnpm --filter @terminescu/desktop build
 ```
+
+## The git plugin
+
+`crates/plugin-git` and `packages/plugin-git` follow
+[add-git-plugin](../openspec/changes/add-git-plugin/design.md), decisions D1 to D7.
+
+- **Providers (Strategy).** `Vcs` reads and changes a repository; `GitCli` runs the person's
+  `git`, 2.30 or later, with optional locks off. `Forge` answers pull request questions;
+  `GhCli` runs `gh`, which keeps its own login.
+- **Layers (Decorator).** The plugin builds `CoalescingVcs(CachedVcs(TimedVcs(GitCli)))`.
+  `TimedVcs` kills a read after 1 s, `CachedVcs` reuses facts for 2 s or until `HEAD` or the index
+  changes, and `CoalescingVcs` folds a burst of requests for one repository into one follow-up.
+  A slow repository delays its chips, never typing.
+- **Triggers.** Facts refresh when a pane's cwd moves, a command ends, a tab is selected and at
+  launch, debounced 300 ms per pane through `cx.schedule`. Nothing polls the disk. Pull request
+  lookups run once a minute per branch at most, on a thread of their own.
+- **What it shows.** Tab chips `branch` and `pr`, the Changes section, the `git-diff` pane view
+  and the facts `git.pushed`, `git.conflict` and `git.checksFailed` for status rules.
+- **Worktree rows.** A new worktree goes to `<repo>-<branch>` beside the repository, or to
+  `<folder>/<repo>/<branch>` when Settings › Plugins › Git names a folder. The row keeps a mark
+  in its plugin data, and only a marked row asks about its worktree when it closes. Keep is the
+  default, and a worktree with changes asks a second time. No branch is ever deleted.
+
+Test the UI half on the mock host with `?plugins=git`. `window.__fakeGit` answers by pane, root
+or row, `window.__fakeGitHub` stands in for `gh` (absent means no `gh`), and
+`window.__fakeGitDone` records what the fake added, checked out and removed.
