@@ -47,7 +47,7 @@
       moved `hook_install` tests; `e2e/app-sheets.spec.ts` first-run and uninstall.
 - [x] 3.4 `packages/plugin-claude`: `TranscriptPane` and transcript reading through
       `pluginCall`; the agent dot stays generic. Verify: transcript e2e tests unchanged.
-- [x] 3.5 Registration only in `main.rs` and `plugins.ts`, behind cargo feature
+- [x] 3.5 Registration only in `plugins.rs` and `plugins.tsx`, behind cargo feature
       `plugin-claude`. Verify: `cargo check -p terminescu-desktop --no-default-features`;
       `VITE_PLUGINS=none pnpm --filter @terminescu/desktop build`.
 
@@ -58,5 +58,5 @@
 - [ ] 4.2 Full gate: `pnpm check:rust`, `pnpm -r test`, all e2e tests, no Claude behaviour
       change. Verify: the commands; manual: a real `claude` session turns its row amber and
       `⌘⇧A` focuses it; with Claude off it does not.
-- [ ] 4.3 `docs/plugins.md`: how a plugin is built and registered; README architecture lines.
+- [x] 4.3 `docs/plugins.md`: how a plugin is built and registered; README architecture lines.
       Verify: `openspec validate add-plugin-architecture --strict`.

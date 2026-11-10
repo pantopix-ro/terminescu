@@ -21,9 +21,9 @@ moving context, prompts, statuses or text tabs into plugins.
 ## Decisions
 
 ### D1. Compile-time plugins, registered in the composition root
-Each plugin is a Rust crate and a TypeScript package. `apps/desktop/src-tauri/src/main.rs` and
-`apps/desktop/src/plugins.ts` are the only files that name one; cargo features
-`plugin-claude` and `plugin-git` (default on) and the `plugins.ts` list decide what ships.
+Each plugin is a Rust crate and a TypeScript package. `apps/desktop/src-tauri/src/plugins.rs`
+and `apps/desktop/src/plugins.tsx` are the only files that name one; cargo features
+`plugin-claude` and `plugin-git` (default on) and the `plugins.tsx` list decide what ships.
 Rejected: dylibs or WebAssembly loaded at run time. Signing, ABI drift and a sandbox are a
 project of their own, and the owner ships the only plugins.
 

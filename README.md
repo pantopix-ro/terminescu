@@ -64,6 +64,10 @@ Window            an OS window
   shells and offers a "resume" button for each Claude session.
 - **Claude is the unmodified `claude` CLI.** Terminescu learns about it through Claude Code
   hooks. It never reads or stores a Claude token and never uses the Agent SDK.
+- **Claude support is a plugin.** The core knows a generic agent; the Claude plugin turns
+  hook events into agent changes and draws the transcript pane. The app builds and runs
+  without it, and a check keeps the core from reaching a plugin. See
+  [docs/plugins.md](docs/plugins.md).
 - **Every table carries `owner_id`.** v1 has one local owner. A later change, `add-remote-view`,
   serves the same protocol over WebSocket so a browser can view the Mac, with no cloud
   involved.
@@ -111,9 +115,12 @@ rich editor layer.
 | `crates/ptyd` | `terminescu-ptyd`: shells, scrollback, session and secret variables |
 | `crates/cli` | `terminescu`: `hook`, `status`, `var`, `edit` |
 | `crates/protocol` | The versioned core and daemon protocol |
+| `crates/plugin-api`, `packages/plugin-api` | The plugin API, Rust and UI halves |
+| `crates/plugin-claude`, `packages/plugin-claude` | The Claude plugin: hook adapter, transcript pane, hook helper |
 | `packages/ui` | React components and design tokens |
 | `packages/host` | The `Host` interface: Tauri IPC now, WebSocket later; a mock for tests |
 | `scripts/sidecars.mjs` | Builds the daemon and the CLI for the app bundle |
+| `scripts/check-plugins.mjs` | Fails when the core reaches a plugin (`pnpm check:plugins`) |
 | `seeds/prompts` | Seed prompts for the library |
 | `design/` | Design system and canvas sources |
 | `openspec/` | Change proposals, designs, specs and tasks |
