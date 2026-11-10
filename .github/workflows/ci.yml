@@ -1,5 +1,6 @@
 # The gates CLAUDE.md asks for before a commit, on every pull request and before a release:
-# types, unit tests, the e2e suite on WebKit, and rustfmt, clippy and the Rust tests.
+# types, unit tests, the e2e suite on WebKit, and rustfmt, clippy and the Rust tests. The bare
+# builds prove the app stands without its plugins (add-plugin-architecture D11).
 name: CI
 
 on:
@@ -26,6 +27,10 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm check:rust
+      - name: bare builds
+        run: |
+          cargo clippy -p terminescu-desktop --no-default-features -- -D warnings
+          VITE_PLUGINS=none pnpm --filter @terminescu/desktop build
       - name: e2e
         working-directory: apps/desktop
         run: |

@@ -53,7 +53,7 @@
 
 ## 4. Seam and gate
 
-- [ ] 4.1 `scripts/check-plugins.mjs` and `pnpm check:plugins`, run by `pnpm -r test`. Verify:
+- [x] 4.1 `scripts/check-plugins.mjs` and `pnpm check:plugins`, run by `pnpm -r test`. Verify:
       the script fails on a deliberate import from `packages/ui` and passes on the tree.
 - [ ] 4.2 Full gate: `pnpm check:rust`, `pnpm -r test`, all e2e tests, no Claude behaviour
       change. Verify: the commands; manual: a real `claude` session turns its row amber and
