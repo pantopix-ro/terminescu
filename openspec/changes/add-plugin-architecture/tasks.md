@@ -25,7 +25,7 @@
 - [x] 2.1 `packages/plugin-api`: `definePlugin`, contribution types, a registry that composes
       decorators in plugin order and merges actions with chord clashes resolved for the app.
       Verify: vitest `registry.test.ts`.
-- [ ] 2.2 Host: `pluginCall`, `onPluginEvent`, `decorations`, `onDecorations` in `ipc.ts` and
+- [x] 2.2 Host: `pluginCall`, `onPluginEvent`, `decorations`, `onDecorations` in `ipc.ts` and
       the mock, which takes fake plugins. Verify: host vitest.
 - [ ] 2.3 Slots: row and tab decorations in `SideTabList` and `TabBar`, plugin sections in
       `ContextPanel`, the pane-view registry with the missing-plugin notice, plugin actions in

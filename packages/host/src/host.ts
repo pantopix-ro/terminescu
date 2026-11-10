@@ -1,5 +1,7 @@
 import type { KeyBindings } from "./keys";
 import type {
+  Decoration,
+  PluginInfo,
   TerminalProfile,
   AgentUpdate,
   PaneLabel,
@@ -295,6 +297,20 @@ export interface Host {
   chooseFile(defaultDir?: string): Promise<string | null>;
   /** The macOS Save dialog; null when cancelled. */
   chooseSavePath(defaultPath?: string): Promise<string | null>;
+  /** A method of a plugin's Rust half (add-plugin-architecture D8); rejects with its error. */
+  pluginCall<T = unknown>(plugin: string, method: string, args?: unknown): Promise<T>;
+  /** Events a plugin's Rust half sends its UI half. */
+  onPluginEvent(plugin: string, listener: (event: string, payload: unknown) => void): Promise<() => void>;
+  /** The plugins the app is built with, in plugin order. */
+  plugins(): Promise<PluginInfo[]>;
+  /** Switches a plugin; resolves with the new list. */
+  setPluginEnabled(plugin: string, enabled: boolean): Promise<PluginInfo[]>;
+  /** A plugin switched, or paused after errors. */
+  onPlugins(listener: (plugins: PluginInfo[]) => void): Promise<() => void>;
+  /** Every plugin decoration now (D6). */
+  decorations(): Promise<Decoration[]>;
+  /** The whole list again, whenever a decoration changes. */
+  onDecorations(listener: (decorations: Decoration[]) => void): Promise<() => void>;
 }
 
 /** The Edit menu actions the pixel context menu sends (task 8.55). */

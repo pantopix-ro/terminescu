@@ -7,6 +7,8 @@ import { PromptStore } from "./prompt-store";
 import { dockPlace, hasSplit, holdsWork, isSessionId, leaf, panesOf, removePane, resizeSplit, splitAt, splitPane, terminalsOf } from "./layout";
 import {
   ACCENTS,
+  type Decoration,
+  type PluginInfo,
   type DragEnd,
   type DragItem,
   type DragPoint,
@@ -157,6 +159,29 @@ export interface MockHost extends Host {
   dropFiles(paths: string[], at?: { x: number; y: number }): void;
   /** Plays a `PostToolUse` hook for Write or Edit in a pane: the file joins its side tab's Files. */
   touchFile(pane: Id, path: string, change: "added" | "modified"): void;
+  /** Plays a plugin's Rust half setting a decoration; same plugin, target, slot and key replace. */
+  decorate(decoration: Decoration): void;
+  /** Plays a plugin's Rust half clearing its decorations. */
+  clearDecorations(plugin: string): void;
+  /** Plays a plugin's Rust half sending its UI half an event. */
+  pluginEmit(plugin: string, event: string, payload: unknown): void;
+  /** Plays a plugin failing 5 times in a minute: paused until switched off and on. */
+  pausePlugin(plugin: string): void;
+  /** Every plugin call, as `plugin.method`. */
+  readonly pluginCalls: string[];
+}
+
+/** A plugin's Rust half, played in the browser (add-plugin-architecture D8). */
+export interface FakePlugin {
+  id: string;
+  name: string;
+  description?: string;
+  /** Answers `pluginCall`; throws for an unknown method. */
+  call?(method: string, args: unknown, host: MockHost): unknown;
+}
+
+export interface MockOptions {
+  plugins?: readonly FakePlugin[];
 }
 
 /** `*` matches any run of characters, `?` one; the whole text must match (as `glob` in the core). */
@@ -236,7 +261,30 @@ const MOCK_PROFILE: TerminalProfile = {
   optionAsMeta: true,
 };
 
-export function createMockHost(initial?: Workspace): MockHost {
+export function createMockHost(initial?: Workspace, options: MockOptions = {}): MockHost {
+  const fakePlugins = options.plugins ?? [];
+  const pluginOn = new Map(fakePlugins.map((p) => [p.id, true]));
+  const pluginPaused = new Set<string>();
+  let decorationList: Decoration[] = [];
+  const decorationListeners = new Set<(d: Decoration[]) => void>();
+  const pluginListeners = new Set<(p: PluginInfo[]) => void>();
+  const pluginEventListeners = new Set<{ plugin: string; listener: (event: string, payload: unknown) => void }>();
+  const pluginCalls: string[] = [];
+  const pluginInfos = (): PluginInfo[] =>
+    fakePlugins.map((p) => ({ id: p.id, name: p.name, description: p.description ?? "", enabled: pluginOn.get(p.id) ?? true, paused: pluginPaused.has(p.id) }));
+  const pluginLive = (plugin: string) => (pluginOn.get(plugin) ?? false) && !pluginPaused.has(plugin);
+  const sendDecorations = () => {
+    for (const l of decorationListeners) l(structuredClone(decorationList));
+  };
+  const sendPlugins = () => {
+    for (const l of pluginListeners) l(pluginInfos());
+  };
+  // A plugin that stops takes its decorations with it, as in the core.
+  const dropDecorations = (plugin: string) => {
+    const before = decorationList.length;
+    decorationList = decorationList.filter((d) => d.plugin !== plugin);
+    if (decorationList.length !== before) sendDecorations();
+  };
   let n = 0;
   const id = () => `m${++n}`;
   let rev = 1;
@@ -889,6 +937,59 @@ export function createMockHost(initial?: Workspace): MockHost {
 
   const host: MockHost = {
     batches,
+    pluginCalls,
+    decorate(decoration) {
+      if (!pluginLive(decoration.plugin)) return;
+      const same = (d: Decoration) =>
+        d.plugin === decoration.plugin && d.target.kind === decoration.target.kind && d.target.id === decoration.target.id && d.slot === decoration.slot && d.key === decoration.key;
+      decorationList = [...decorationList.filter((d) => !same(d)), structuredClone(decoration)];
+      sendDecorations();
+    },
+    clearDecorations: dropDecorations,
+    pluginEmit(plugin, event, payload) {
+      if (!pluginLive(plugin)) return;
+      for (const e of pluginEventListeners) if (e.plugin === plugin) e.listener(event, structuredClone(payload));
+    },
+    pausePlugin(plugin) {
+      pluginPaused.add(plugin);
+      dropDecorations(plugin);
+      sendPlugins();
+    },
+    async pluginCall<T>(plugin: string, method: string, args?: unknown): Promise<T> {
+      const fake = fakePlugins.find((p) => p.id === plugin);
+      if (!fake) throw new Error(`no plugin ${plugin}`);
+      if (!pluginLive(plugin)) throw new Error("the plugin is off or paused");
+      pluginCalls.push(`${plugin}.${method}`);
+      if (!fake.call) throw new Error(`${method} is not a method of this plugin`);
+      return structuredClone(await fake.call(method, args ?? null, host)) as T;
+    },
+    async onPluginEvent(plugin, listener) {
+      const entry = { plugin, listener };
+      pluginEventListeners.add(entry);
+      return () => void pluginEventListeners.delete(entry);
+    },
+    async plugins() {
+      return pluginInfos();
+    },
+    async setPluginEnabled(plugin, enabled) {
+      if (!pluginOn.has(plugin)) throw new Error(`no plugin ${plugin}`);
+      pluginOn.set(plugin, enabled);
+      if (enabled) pluginPaused.delete(plugin);
+      else dropDecorations(plugin);
+      sendPlugins();
+      return pluginInfos();
+    },
+    async onPlugins(listener) {
+      pluginListeners.add(listener);
+      return () => void pluginListeners.delete(listener);
+    },
+    async decorations() {
+      return structuredClone(decorationList);
+    },
+    async onDecorations(listener) {
+      decorationListeners.add(listener);
+      return () => void decorationListeners.delete(listener);
+    },
     openedUrls,
     editCommands,
     claudeHook: () => claudeHook,

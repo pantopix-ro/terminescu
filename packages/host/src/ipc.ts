@@ -5,6 +5,8 @@ import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialo
 import type { Host, PaneView } from "./host";
 import { ACTIONS, plusActionFor, withBindings, type KeyBindings } from "./keys";
 import type {
+  Decoration,
+  PluginInfo,
   TerminalProfile,
   AgentUpdate,
   DragEnd,
@@ -58,6 +60,9 @@ export const CHIME_EVENT = "host://chime";
 export const DOCUMENT_EVENT = "host://document";
 /** The app menu sends each action to the focused window only. */
 export const ACTION_EVENT = "menu://action";
+export const DECORATIONS_EVENT = "host://decorations";
+export const PLUGIN_EVENT = "host://plugin";
+export const PLUGINS_EVENT = "host://plugins";
 
 const ignore = () => {};
 
@@ -82,6 +87,16 @@ export function createIpcHost(): Host {
       return pane;
     },
     agents: () => invoke<AgentUpdate[]>("host_agents"),
+    pluginCall: <T>(plugin: string, method: string, args?: unknown) => invoke<T>("plugin_call", { plugin, method, args: args ?? null }),
+    onPluginEvent: (plugin, listener) =>
+      listen<{ plugin: string; event: string; payload: unknown }>(PLUGIN_EVENT, (e) => {
+        if (e.payload.plugin === plugin) listener(e.payload.event, e.payload.payload);
+      }),
+    plugins: () => invoke<PluginInfo[]>("plugin_list"),
+    setPluginEnabled: (plugin, enabled) => invoke<PluginInfo[]>("plugin_set_enabled", { plugin, enabled }),
+    onPlugins: (listener) => listen<PluginInfo[]>(PLUGINS_EVENT, (e) => listener(e.payload)),
+    decorations: () => invoke<Decoration[]>("decorations"),
+    onDecorations: (listener) => listen<Decoration[]>(DECORATIONS_EVENT, (e) => listener(e.payload)),
     onAgent: (listener) => listen<AgentUpdate>(AGENT_EVENT, (e) => listener(e.payload)),
     jumpWaiting: () => invoke<Id | null>("attention_jump"),
     onRevealPane: (listener) => getCurrentWebviewWindow().listen<Id>(REVEAL_EVENT, (e) => listener(e.payload)),
