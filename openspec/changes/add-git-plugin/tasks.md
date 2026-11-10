@@ -7,7 +7,7 @@
       repositories (clean, dirty, ahead/behind, detached, rebase stopped, untracked, rename).
 - [x] 1.2 `TimedVcs`, `CachedVcs` and `CoalescingVcs`. Verify: unit tests over a fake provider
       (timeout drops, mtime invalidates, concurrent requests fold into one follow-up).
-- [ ] 1.3 Worktrees: add, list, remove, path rules and slugs. Verify: tests
+- [x] 1.3 Worktrees: add, list, remove, path rules and slugs. Verify: tests
       `worktree_goes_next_to_the_repo`, `worktree_goes_under_the_folder`,
       `an_existing_path_gets_a_suffix`, `remove_with_changes_needs_force`.
 

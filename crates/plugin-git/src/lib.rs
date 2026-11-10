@@ -5,6 +5,7 @@
 pub mod cli;
 pub mod layers;
 pub mod vcs;
+pub mod worktree;
 
 pub use cli::GitCli;
 pub use layers::{CachedVcs, CoalescingVcs, TimedVcs};

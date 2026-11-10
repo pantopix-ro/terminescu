@@ -265,16 +265,19 @@ impl Vcs for GitCli {
         if at.exists() {
             return Err(VcsError::Exists(at.display().to_string()));
         }
+        name(branch)?;
+        name(base)?;
         let at = at.to_string_lossy();
-        self.change(root, &["worktree", "add", "-b", branch, &at, base])
+        self.change(root, &["worktree", "add", "-b", branch, "--", &at, base])
     }
 
     fn worktree_checkout(&self, root: &Path, branch: &str, at: &Path) -> Result<(), VcsError> {
         if at.exists() {
             return Err(VcsError::Exists(at.display().to_string()));
         }
+        name(branch)?;
         let at = at.to_string_lossy();
-        self.change(root, &["worktree", "add", &at, branch])
+        self.change(root, &["worktree", "add", "--", &at, branch])
     }
 
     fn worktrees(&self, root: &Path) -> Result<Vec<Worktree>, VcsError> {
@@ -291,7 +294,7 @@ impl Vcs for GitCli {
         if force {
             args.push("--force");
         }
-        args.push(&at);
+        args.extend(["--", &at]);
         let out = self.run(root, &args, self.limit * 10)?;
         if out.ok {
             return Ok(());
@@ -302,6 +305,14 @@ impl Vcs for GitCli {
         }
         Err(VcsError::Failed(out.stderr))
     }
+}
+
+/// A branch or base git cannot read as an option.
+fn name(n: &str) -> Result<(), VcsError> {
+    if n.is_empty() || n.starts_with('-') {
+        return Err(VcsError::Failed(format!("{n:?} is not a branch name")));
+    }
+    Ok(())
 }
 
 /// A path relative to the root that stays inside it.
