@@ -30,11 +30,12 @@ test("About shows the version, the maker and the not-affiliated line", async ({ 
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
-test("Help › Privacy names the update check as the only network call", async ({ page }) => {
+test("Help › Privacy names the update check and the baselines", async ({ page }) => {
   await start(page);
   await mock(page, "menu", "privacy");
   const privacy = page.getByRole("dialog", { name: "Privacy" });
   await expect(privacy).toContainText("no telemetry");
   await expect(privacy).toContainText("update check");
   await expect(privacy).toContainText("never written to disk");
+  await expect(privacy).toContainText("never touch the repository");
 });

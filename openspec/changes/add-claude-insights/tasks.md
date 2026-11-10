@@ -49,5 +49,6 @@
 - [ ] 4.1 Full gate. Verify: `pnpm check:rust`, `pnpm -r test`, all e2e, `pnpm check:plugins`;
       manual: a real session in a repository shows its meter, todos and changes, and
       `git status` shows nothing Terminescu wrote.
-- [ ] 4.2 README feature lines, `PRIVACY.md` baseline paragraph. Verify:
+      Automated part passes (222 e2e); the manual check waits for the owner.
+- [x] 4.2 README feature lines, `PRIVACY.md` baseline paragraph. Verify:
       `openspec validate add-claude-insights --strict`.

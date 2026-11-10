@@ -40,6 +40,12 @@ Window            an OS window
   place, side by side or unified (`⌥⌘U`). `⌥⌘N` makes a branch and a worktree and opens a row
   in it, and closing that row asks whether to keep the worktree. `⌥⇧⌘G` checks out a pull
   request as a row. `{{branch}}`, `{{repo}}` and `{{pr}}` fill prompts.
+- **Claude insights.** A Claude tab shows how full its context is (amber at 80%), its model and
+  mode, compaction and running subagents. A waiting tab names what it waits on, as
+  "Bash: npm publish". The context panel mirrors Claude's todo list and lists what the session
+  changed, each file opening as a diff against its text before the session. `⌥⌘R` resumes one
+  of the row's past sessions, `⌥⌘C` opens the project's `CLAUDE.md` and `⌥⇧⌘R` shows the
+  transcript in Finder. Settings › Claude sets the threshold and each model's context window.
 - **Drag like a browser.** Drag a tab to reorder it. Drop it on the sidebar to make a new side
   tab, on a side tab to move it there, or outside the window to open a new window. Drop one
   side tab onto another to merge them.
@@ -122,7 +128,7 @@ rich editor layer.
 | `crates/cli` | `terminescu`: `hook`, `status`, `var`, `edit` |
 | `crates/protocol` | The versioned core and daemon protocol |
 | `crates/plugin-api`, `packages/plugin-api` | The plugin API, Rust and UI halves |
-| `crates/plugin-claude`, `packages/plugin-claude` | The Claude plugin: hook adapter, transcript pane, hook helper |
+| `crates/plugin-claude`, `packages/plugin-claude` | The Claude plugin: hook adapter, transcript pane, hook helper, context meter, todos, session changes and history |
 | `crates/plugin-git`, `packages/plugin-git` | The git plugin: branch and pull request chips, Changes, diff tab, worktree rows |
 | `packages/ui` | React components and design tokens |
 | `packages/host` | The `Host` interface: Tauri IPC now, WebSocket later; a mock for tests |
