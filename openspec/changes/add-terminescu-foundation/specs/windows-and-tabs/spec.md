@@ -88,6 +88,10 @@ each drag SHALL have a palette equivalent.
 - **WHEN** the person drags a tab over a second window's side tab row and releases
 - **THEN** the row lights while the cursor is over it, the tab moves into that side tab, and a source window left empty closes
 
+#### Scenario: Drag a window's only row back
+- **WHEN** a second window holds one side tab with one tab and the person drags that row from its sidebar into the first window and releases
+- **THEN** the row joins the first window with its context and the second window closes
+
 #### Scenario: Drag a tab into the sidebar
 - **WHEN** the person drops a tab on the gap between two side tabs
 - **THEN** a new side tab with that tab appears at that position and the old side tab keeps its other tabs

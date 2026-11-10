@@ -599,7 +599,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   // ⌥⌘T and the sidebar's + ▾ › Text follow ⌘T (task 8.80): into the selected folder, or a
   // row of its own right below a one-tab row.
   const newTextBeside = () => {
-    if (!activeSide) return;
+    // An emptied last window has no selected row: the text opens in a row of its own.
+    if (!activeSide) return newTextSide();
     if (activeSide.tabs.length > 1) return void host.newText(activeSide.id).then((d) => revealDoc(d.id), setError);
     newTextSide(sideTabs.findIndex((s) => s.id === activeSide.id) + 1);
   };
@@ -623,7 +624,10 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   // A new terminal sits at the selected row's level (task 8.79): inside its folder, or as a
   // row of its own right below a one-tab row. Only a drag makes a folder.
   const newBeside = () => {
-    if (!activeSide) return;
+    if (!activeSide) {
+      followNewSide();
+      return void send({ type: "CreateSideTab", windowId });
+    }
     if (activeSide.tabs.length > 1) {
       followNewTab(activeSide.id);
       return void send({ type: "CreateTab", sideTabId: activeSide.id });
@@ -1953,6 +1957,17 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       return;
     }
     const beside = docked && docked.side !== "center" && !docked.small ? docked : undefined;
+    if (tabId.startsWith("side:")) {
+      // A one-tab row's drag is also the core's (task 8.83): released over another window it
+      // drops there, and this window, emptied, closes. A drop in this window cancels it.
+      const begun = dragBegun.current;
+      dragBegun.current = undefined;
+      const local = !!beside || !!at?.startsWith("into:");
+      void begun
+        ?.then((token) => (token === undefined ? undefined : host.dragEnd(token, !local)))
+        .then((end) => end && end.kind !== "local" && end.kind !== "cancelled" && refocus())
+        .catch(report);
+    }
     // A merge may open its dialog, which takes the focus; it gives it back when it closes.
     if (tabId.startsWith("side:") && beside) return placeBeside(tabId, beside.area, beside.side as DockSide);
     if (tabId.startsWith("side:") && at?.startsWith("into:")) {
@@ -2094,8 +2109,10 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         onDragStart={({ active }) => {
           const id = String(active.id);
           setDragging(id);
-          // A tab of the tab bar, or one listed under a folder in the sidebar (task 8.70).
-          const tab = allTabs.find((t) => t.id === tabOfDrag(id));
+          // A tab of the tab bar, or one listed under a folder in the sidebar (task 8.70). A
+          // one-tab row carries its tab too, so it can go to another window (task 8.83).
+          const row = id.startsWith("side:") ? sideTabs.find((s) => s.id === id.slice(5)) : undefined;
+          const tab = row ? (row.tabs.length === 1 ? row.tabs[0] : undefined) : allTabs.find((t) => t.id === tabOfDrag(id));
           dragBegun.current = tab
             ? host.dragBegin(tab.id, tabName(tab, docs)).catch((e: unknown) => {
                 report(e);
