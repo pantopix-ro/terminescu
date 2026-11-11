@@ -68,6 +68,11 @@ fn open(args: &[&str]) -> Result<(), String> {
 #[tauri::command]
 pub fn uninstall_helpers(app: AppHandle, delete_data: bool) -> Result<(), String> {
     hook_install::uninstall(&hook_install::user_settings()).map_err(|e| e.to_string())?;
+    // Stop reconnecting first: after the kill below, a reconnect would copy the daemon back
+    // into bin/ and start it again, and it would outlive the uninstall.
+    if let Some(state) = app.try_state::<crate::AppState>() {
+        state.runtime.stop();
+    }
     let bin = paths::bin_dir();
     // The daemon runs from its copy in bin/ (D32): ending it closes the open shells.
     let _ = std::process::Command::new("/usr/bin/pkill")
