@@ -58,3 +58,8 @@ enabled plugin. Props: pane id, program, resume offer, the app's hook setting, a
   the same order; a test closes a row by exit.
 - [A busy refusal reaches the UI] → the plugin's half reads it as an error, as today's timeout.
 - [Migration] → one nullable column; old rows read as untagged.
+
+## Review fixes
+- A worker runs at most one due timer between two events while events wait, so a timer that sets itself again cannot starve the queue.
+- ⇧⌘T counts only windows that still have a view; a window closed with the red button gets no reopen, the key's window does.
+- A successful reopen clears the failure count, so an entry drops only after two failures in a row.

@@ -551,8 +551,11 @@ impl Drop for PluginHost {
 }
 
 /// A plugin's worker: one event or due timer at a time, under the event budget. A due timer
-/// goes before the queued events (harden-plugin-host D5).
+/// goes before the queued events, but never two in a row while events wait (harden-plugin-host D5).
 fn work(slot: &Slot, stopped: &AtomicBool, sink: &SharedSink) {
+    // The last item was a timer: with events queued, the next one is an event, so a timer that
+    // reschedules itself cannot starve the queue.
+    let mut after_timer = false;
     loop {
         let event = {
             let mut q = lock(&slot.queue.events);
@@ -560,12 +563,20 @@ fn work(slot: &Slot, stopped: &AtomicBool, sink: &SharedSink) {
                 if stopped.load(Ordering::SeqCst) {
                     return;
                 }
+                if after_timer && let Some(e) = q.pop_front() {
+                    after_timer = false;
+                    break e;
+                }
                 let wait = match slot.queue.due() {
-                    Ok(token) => break CoreEvent::Timer { token },
+                    Ok(token) => {
+                        after_timer = true;
+                        break CoreEvent::Timer { token };
+                    }
                     Err(next) => next
                         .unwrap_or(Duration::MAX)
                         .min(Duration::from_millis(500)),
                 };
+                after_timer = false;
                 if let Some(e) = q.pop_front() {
                     break e;
                 }
@@ -946,6 +957,55 @@ pub(crate) mod tests {
         let mut got = lock(&fired).clone();
         got.sort();
         assert_eq!(got, ["/tmp/1", "/tmp/2"]);
+    }
+
+    /// Reschedules its timer with no delay from the timer's own handler, which takes a while.
+    struct Spinner {
+        spins: Arc<AtomicUsize>,
+        heard: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl Plugin for Spinner {
+        fn manifest(&self) -> Manifest {
+            Manifest::new("spinner", "Spinner", "A plugin for tests")
+        }
+        fn on_event(&self, event: &CoreEvent, cx: &dyn PluginCx) {
+            match event {
+                CoreEvent::CwdMoved { cwd, .. } => {
+                    lock(&self.heard).push(cwd.clone());
+                    if cwd == "/tmp/0" {
+                        cx.schedule(Duration::ZERO, "spin");
+                    }
+                }
+                CoreEvent::Timer { .. } => {
+                    self.spins.fetch_add(1, Ordering::SeqCst);
+                    std::thread::sleep(Duration::from_millis(3));
+                    cx.schedule(Duration::ZERO, "spin");
+                }
+                _ => {}
+            }
+        }
+        fn call(&self, _: &str, _: Value, _: &dyn PluginCx) -> Result<Value, PluginError> {
+            Ok(Value::Null)
+        }
+    }
+
+    #[test]
+    fn a_timer_that_sets_itself_again_does_not_starve_the_events() {
+        let spins = Arc::new(AtomicUsize::new(0));
+        let heard = Arc::new(Mutex::new(Vec::new()));
+        let plugin = Spinner {
+            spins: spins.clone(),
+            heard: heard.clone(),
+        };
+        let host = PluginHost::new(vec![Arc::new(plugin)], no_cx(), &HashMap::new());
+        host.dispatch(&event(0));
+        assert!(until(|| spins.load(Ordering::SeqCst) >= 3));
+        for n in 1..=3 {
+            host.dispatch(&event(n));
+        }
+        assert!(until(|| lock(&heard).len() == 4));
+        assert_eq!(*lock(&heard), ["/tmp/0", "/tmp/1", "/tmp/2", "/tmp/3"]);
     }
 
     #[test]

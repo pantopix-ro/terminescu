@@ -82,7 +82,10 @@ pub fn reopen_closed(
     let Some(entry) = lock(&state.closed).pop() else {
         return Ok(None);
     };
-    let cmd = entry.reopen(&state.runtime.workspace(), &window_id);
+    // A window closed with the red button stays in the workspace but has no view: only live
+    // ones count, so the reopen lands where the key was pressed.
+    let live = |id: &Id| app.get_webview_window(id).is_some();
+    let cmd = entry.reopen(&state.runtime.workspace(), live, &window_id);
     let target = match &cmd {
         Command::ReopenSideTab { window_id, .. } | Command::ReopenTab { window_id, .. } => {
             window_id.clone()
@@ -98,6 +101,7 @@ pub fn reopen_closed(
         }
         return Err(format!("Reopen: {e}"));
     }
+    lock(&state.closed).reopened();
     let (side_tab_id, tab_id) = match &entry.closed {
         Closed::Row {
             side_tab, context, ..

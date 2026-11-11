@@ -127,10 +127,11 @@ impl Entry {
         }
     }
 
-    /// The command that reopens the entry. Its window when it still has it, else `fallback`.
-    pub fn reopen(&self, ws: &Workspace, fallback: &str) -> Command {
+    /// The command that reopens the entry. Its window when the workspace lists it and it is
+    /// `live` (a window closed with the red button has no view), else `fallback`.
+    pub fn reopen(&self, ws: &Workspace, live: impl Fn(&Id) -> bool, fallback: &str) -> Command {
         let window = |id: &Id| {
-            if ws.windows.iter().any(|w| &w.id == id) {
+            if live(id) && ws.windows.iter().any(|w| &w.id == id) {
                 id.clone()
             } else {
                 fallback.to_string()
@@ -220,6 +221,11 @@ impl ClosedList {
         self.failed = Some(entry.key().clone());
         self.done.push_back(entry);
         None
+    }
+
+    /// A reopen worked: an earlier failure no longer counts toward "in a row".
+    pub fn reopened(&mut self) {
+        self.failed = None;
     }
 
     pub fn is_parked(&self, side_tab_id: &str) -> bool {
@@ -403,7 +409,8 @@ mod tests {
             closed,
             cwds: HashMap::new(),
         };
-        c.handle(entry.reopen(c.workspace(), &window)).unwrap();
+        c.handle(entry.reopen(c.workspace(), |_| true, &window))
+            .unwrap();
         save(&db, c.workspace());
         let Closed::Row { context, .. } = &entry.closed else {
             panic!("a row closed");
@@ -440,7 +447,8 @@ mod tests {
         };
         assert!(matches!(entry.closed, Closed::Tab { index: 0, .. }));
         c.handle(close).unwrap();
-        c.handle(entry.reopen(c.workspace(), &window)).unwrap();
+        c.handle(entry.reopen(c.workspace(), |_| true, &window))
+            .unwrap();
         assert_eq!(c.workspace().side_tab(&side).unwrap().tabs[0], first);
 
         // Its row is gone: the tab comes back as a new row at the window's end.
@@ -452,9 +460,42 @@ mod tests {
             side_tab_id: side.clone(),
         })
         .unwrap();
-        c.handle(entry.reopen(c.workspace(), &window)).unwrap();
+        c.handle(entry.reopen(c.workspace(), |_| true, &window))
+            .unwrap();
         let w: &Window = &c.workspace().windows[0];
         assert_eq!(w.side_tabs.last().unwrap().tabs, vec![first]);
+    }
+
+    #[test]
+    fn a_closed_window_without_a_view_falls_back() {
+        let db = Db::open_in_memory().unwrap();
+        let mut c = core();
+        c.handle(Command::CreateWindow).unwrap();
+        c.handle(Command::CreateWindow).unwrap();
+        let (home, other) = (
+            c.workspace().windows[0].id.clone(),
+            c.workspace().windows[1].id.clone(),
+        );
+        let side = c.workspace().windows[0].side_tabs[0].id.clone();
+        c.handle(Command::CreateTab {
+            side_tab_id: side.clone(),
+        })
+        .unwrap();
+        let tab = c.workspace().side_tab(&side).unwrap().tabs[0].id.clone();
+        let close = Command::CloseTab { tab_id: tab };
+        let entry = Entry {
+            closed: closing(&db, c.workspace(), &close).unwrap().unwrap(),
+            cwds: HashMap::new(),
+        };
+        let window_of = |cmd: Command| match cmd {
+            Command::ReopenTab { window_id, .. } => window_id,
+            other => panic!("a tab reopens, got {other:?}"),
+        };
+        // Listed but no view: the key's window gets it.
+        let got = window_of(entry.reopen(c.workspace(), |id| id != &home, &other));
+        assert_eq!(got, other);
+        let got = window_of(entry.reopen(c.workspace(), |_| true, &other));
+        assert_eq!(got, home);
     }
 
     #[test]
@@ -500,6 +541,14 @@ mod tests {
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].parked_side_tab().unwrap(), "s0");
         assert!(!list.is_parked("s0") && list.is_parked("s1"));
+        // A success in between clears the count: only two failures in a row drop an entry.
+        let s7 = list.pop().unwrap();
+        assert!(list.put_back(s7).is_none());
+        let s7 = list.pop().unwrap();
+        list.reopened();
+        assert!(list.put_back(s7).is_none());
+        let s7 = list.pop().unwrap();
+        list.done.push_back(s7);
         // A failed close drops its own entry, even beside another close of the same row.
         let failed = list.push(entry(11));
         let again = list.push(entry(11));
