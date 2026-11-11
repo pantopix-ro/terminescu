@@ -1,5 +1,8 @@
 //! Runs the real `terminescu` binary against a test core and an in-process daemon.
 
+mod common;
+
+use common::{BUDGET, spawn_cost};
 use std::io::{Read, Write};
 use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
@@ -184,13 +187,10 @@ fn hook_posts_the_event_silently_and_fast() {
     let dir = temp_dir();
     let core = test_core(&dir, CoreReply::Ok);
     let event = r#"{"hook_event_name":"Notification","session_id":"s-1"}"#;
+    let budget = BUDGET + spawn_cost();
     let start = Instant::now();
     let out = run_with_stdin(cli(&dir, &["hook"]).env("TERMINESCU_PANE_ID", "5"), event);
-    assert!(
-        start.elapsed() < Duration::from_millis(100),
-        "{:?}",
-        start.elapsed()
-    );
+    assert!(start.elapsed() < budget, "{:?}", start.elapsed());
     assert!(out.status.success());
     assert!(out.stdout.is_empty());
     let message = core.recv_timeout(Duration::from_secs(5)).unwrap();
