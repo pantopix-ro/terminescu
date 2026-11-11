@@ -206,10 +206,11 @@ fn a_background_process_holding_the_pipes_does_not_hold_the_call() {
         .arg(&script)
         .status()
         .unwrap();
-    let cli = terminescu_plugin_git::GitCli::new(&script);
-    let start = std::time::Instant::now();
+    // macOS scans a freshly written script on its first run, which on a loaded CI machine can
+    // take over the default 1 s; the limit stays below the 5 s the background sleep holds.
+    let cli =
+        terminescu_plugin_git::GitCli::new(&script).with_limit(std::time::Duration::from_secs(4));
     assert_eq!(cli.version().as_deref(), Ok("2.44.0"));
-    assert!(start.elapsed() < std::time::Duration::from_secs(2));
 }
 
 #[test]
