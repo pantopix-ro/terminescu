@@ -39,10 +39,11 @@
 
 ## 4. Gate
 
-- [ ] 4.1 Full gate and the seam check. Verify: `pnpm check:rust`, `pnpm -r test`, all e2e,
+- [x] 4.1 Full gate and the seam check. Verify: `pnpm check:rust`, `pnpm -r test`, all e2e,
       `pnpm check:plugins`; manual: a real repository shows its branch within a second of
       `cd`, and a 4-second `git status` repository never delays typing.
       Automatic part passed 2026-11-10 (213 e2e, per-plugin builds, a build with no plugins);
       the manual checks wait for the owner.
+      2026-11-11: CI passes the automated part on develop 66b0786; owner confirmed the manual checks.
 - [x] 4.2 README feature lines and `docs/plugins.md` git section. Verify:
       `openspec validate add-git-plugin --strict`.
