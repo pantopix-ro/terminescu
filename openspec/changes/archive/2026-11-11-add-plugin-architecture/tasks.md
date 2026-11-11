@@ -55,8 +55,9 @@
 
 - [x] 4.1 `scripts/check-plugins.mjs` and `pnpm check:plugins`, run by `pnpm -r test`. Verify:
       the script fails on a deliberate import from `packages/ui` and passes on the tree.
-- [ ] 4.2 Full gate: `pnpm check:rust`, `pnpm -r test`, all e2e tests, no Claude behaviour
+- [x] 4.2 Full gate: `pnpm check:rust`, `pnpm -r test`, all e2e tests, no Claude behaviour
       change. Verify: the commands; manual: a real `claude` session turns its row amber and
       `⌘⇧A` focuses it; with Claude off it does not.
+      2026-11-11: CI passes the automated part on develop 66b0786; owner confirmed the manual checks.
 - [x] 4.3 `docs/plugins.md`: how a plugin is built and registered; README architecture lines.
       Verify: `openspec validate add-plugin-architecture --strict`.

@@ -46,9 +46,10 @@
 
 ## 4. Gate
 
-- [ ] 4.1 Full gate. Verify: `pnpm check:rust`, `pnpm -r test`, all e2e, `pnpm check:plugins`;
+- [x] 4.1 Full gate. Verify: `pnpm check:rust`, `pnpm -r test`, all e2e, `pnpm check:plugins`;
       manual: a real session in a repository shows its meter, todos and changes, and
       `git status` shows nothing Terminescu wrote.
       Automated part passes (222 e2e); the manual check waits for the owner.
+      2026-11-11: CI passes the automated part on develop 66b0786; owner confirmed the manual checks.
 - [x] 4.2 README feature lines, `PRIVACY.md` baseline paragraph. Verify:
       `openspec validate add-claude-insights --strict`.
