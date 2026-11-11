@@ -1802,22 +1802,33 @@ fn saved_frame(app: &AppHandle, window_id: &str) -> Option<Rect> {
     Some(fit_frame((f.x, f.y, f.width, f.height), &screens, main))
 }
 
-/// Each window's latest move or resize; a save waits until it is 500 ms old (task 8.85).
-static FRAME_MOVES: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
+/// Each window's latest move or resize; a save waits until it is 500 ms old (task 8.85). A
+/// window with a save waiting has an entry; its one thread sleeps until the last move is old.
+static FRAME_MOVES: OnceLock<Mutex<HashMap<String, std::time::Instant>>> = OnceLock::new();
+
+const FRAME_SETTLE: Duration = Duration::from_millis(500);
 
 fn frame_moved(app: &AppHandle, label: &str) {
     let moves = FRAME_MOVES.get_or_init(Default::default);
-    let generation = {
-        let mut m = lock(moves);
-        let g = m.entry(label.to_string()).or_default();
-        *g += 1;
-        *g
-    };
+    if lock(moves)
+        .insert(label.to_string(), std::time::Instant::now())
+        .is_some()
+    {
+        return;
+    }
     let (app, label) = (app.clone(), label.to_string());
     std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(500));
-        if lock(moves).get(&label) != Some(&generation) {
-            return;
+        let mut wait = FRAME_SETTLE;
+        loop {
+            std::thread::sleep(wait);
+            let mut m = lock(moves);
+            match m.get(&label).map(|last| last.elapsed()) {
+                Some(age) if age < FRAME_SETTLE => wait = FRAME_SETTLE - age,
+                _ => {
+                    m.remove(&label);
+                    break;
+                }
+            }
         }
         let Some(w) = app.get_webview_window(&label) else {
             return;
