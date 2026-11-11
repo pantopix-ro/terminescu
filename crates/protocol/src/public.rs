@@ -2,7 +2,7 @@
 //! the update feed and the feedback address comes from here, so a move changes one file.
 
 /// The public GitHub repository, as `owner/name`.
-pub const PUBLIC_REPO: &str = "pantopix/terminescu";
+pub const PUBLIC_REPO: &str = "lzrmihnea/terminescu";
 /// The maker named in About.
 pub const MAKER: &str = "PANTOPIX RO";
 pub const MAKER_URL: &str = "https://pantopix.ro";

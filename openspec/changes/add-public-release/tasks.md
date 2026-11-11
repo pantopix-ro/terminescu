@@ -5,16 +5,18 @@
 - [x] 1.1 Add `LICENSE.md` (FSL-1.1-ALv2 from fsl.software, licensor PANTOPIX RO), a license
       section in the README, `CONTRIBUTING.md` and `CLA.md` (D1); Cargo `license` is the SPDX
       id. Verify: `head -1 LICENSE.md` names FSL 1.1 ALv2, `grep PANTOPIX LICENSE.md`.
-- [x] 1.2 Add `PUBLIC_REPO` in `crates/protocol` (assumed `pantopix/terminescu`) and use it for
+- [x] 1.2 Add `PUBLIC_REPO` in `crates/protocol` (`lzrmihnea/terminescu` for now, 2026-11-11) and use it for
       every GitHub link (D4, D7). Verify: `grep -rn 'github.com/' crates apps packages` shows
       only `PUBLIC_REPO`.
 - [ ] 1.3 Scan the whole git history for real names, paths, tokens and emails before the repo
       goes public. Rewrite or squash anything found. Verify: the scan pattern from CLAUDE.md
       over `git log -p --all` prints nothing.
-- [ ] 1.4 Owner: move the repo from the owner's personal account to `pantopix/terminescu` (the name
-      `PUBLIC_REPO` and the update feed use), install the CLA Assistant app, make the repo
-      public, and update the remote and `docs/getting-started.md`. The release job refuses to
-      run anywhere else. Verify: manual, `git remote -v` shows `pantopix/terminescu`.
+- [ ] 1.4 Owner: the repo stays at `lzrmihnea/terminescu` for now (owner decision, 2026-11-11),
+      which `PUBLIC_REPO` and the update feed name. Install the CLA Assistant app and make the
+      repo public. A later move to `pantopix/terminescu` changes `PUBLIC_REPO` in both
+      `public.rs` and `protocol.ts`, the remote and the README, and ships before the first
+      release that moved. The release job refuses to run anywhere else. Verify: manual,
+      `git remote -v` names the repository in `PUBLIC_REPO`.
 
 ## 2. Credits and license checks
 

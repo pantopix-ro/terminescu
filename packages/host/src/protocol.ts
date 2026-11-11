@@ -573,7 +573,7 @@ export interface AppSettings {
 export type HookConsent = "unasked" | "on" | "off";
 
 /** Where the public project lives. Same as `public.rs` in the protocol crate. */
-export const PUBLIC_REPO = "pantopix/terminescu";
+export const PUBLIC_REPO = "lzrmihnea/terminescu";
 export const MAKER = "PANTOPIX RO";
 export const MAKER_URL = "https://pantopix.ro";
 export const FEEDBACK_EMAIL = "salut@pantopix.com";

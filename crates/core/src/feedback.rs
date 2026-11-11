@@ -79,7 +79,7 @@ mod tests {
         assert!(!mail.contains("app.log"));
 
         let issue = link(Route::Issue, &info(), true);
-        assert!(issue.starts_with("https://github.com/pantopix/terminescu/issues/new?body="));
+        assert!(issue.starts_with("https://github.com/lzrmihnea/terminescu/issues/new?body="));
         assert!(issue.contains("macOS%2015.4"));
         assert!(issue.contains("app.log%3A%20attached%20by%20hand"));
     }

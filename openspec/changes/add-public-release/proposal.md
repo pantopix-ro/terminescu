@@ -88,6 +88,6 @@ condition on top of it. Archive the foundation first, then fold `setup`'s consen
 1. When to buy the Apple Developer account (99 USD/year). Until then, macOS warns that it
    "could not verify" the app. Recommendation: buy it under PANTOPIX RO as an organization
    (needs a D-U-N-S number) before announcing the app widely.
-2. GitHub organization slug. This change assumes `pantopix/terminescu` and keeps it in one
-   constant.
+2. GitHub organization slug. Answered 2026-11-11: `lzrmihnea/terminescu` for now, kept in one
+   constant; a later move to `pantopix/terminescu` changes that constant.
 3. CLA tool. Recommendation: the CLA Assistant GitHub app with a short individual CLA.
