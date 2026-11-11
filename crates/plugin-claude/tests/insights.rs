@@ -519,6 +519,35 @@ fn the_tail_rests_after_a_turn_and_old_timers_do_nothing() {
 }
 
 #[test]
+fn a_quiet_transcript_or_an_idle_prompt_ends_the_busy_rate() {
+    let base = folder("quiet");
+    let transcript = base.join("sess-8.jsonl");
+    std::fs::write(&transcript, "").unwrap();
+    let plugin = ClaudePlugin::new(PathBuf::from("/opt/terminescu"), &base.join("support"));
+    let cx = Cx::one_pane("/Users/owner/src/shop-api");
+    let ev = |name: &str| json!({ "hook_event_name": name, "session_id": "sess-8", "transcript_path": transcript });
+    let last = || cx.timers.lock().unwrap().last().unwrap().0;
+    // An interrupt sends no Stop: 30 unchanged reads end the 1 s rate.
+    hook(&plugin, &cx, ev("UserPromptSubmit"));
+    assert_eq!(last(), Duration::from_secs(1));
+    for _ in 0..40 {
+        tick(&plugin, &cx);
+        if last() == Duration::from_secs(10) {
+            break;
+        }
+    }
+    assert_eq!(last(), Duration::from_secs(10), "a quiet session rests");
+    // A late tool result after Stop is followed by the idle prompt.
+    hook(&plugin, &cx, ev("PostToolUse"));
+    assert_eq!(last(), Duration::from_secs(1));
+    let mut idle = ev("Notification");
+    idle["notification_type"] = json!("idle_prompt");
+    hook(&plugin, &cx, idle);
+    tick(&plugin, &cx);
+    assert_eq!(last(), Duration::from_secs(10), "idle_prompt clears busy");
+}
+
+#[test]
 fn the_pane_that_spoke_last_leads_its_tab() {
     let base = folder("lead");
     let plugin = ClaudePlugin::new(PathBuf::from("/opt/terminescu"), &base.join("support"));

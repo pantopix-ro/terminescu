@@ -94,14 +94,16 @@ pub fn on_hook(agent: Option<Agent>, event: &Value) -> Option<Agent> {
 /// Longest waiting reason, in characters (add-claude-insights 2.3).
 const REASON_CHARS: usize = 60;
 
-/// What a permission request waits on, as "Bash: npm publish" or "Edit: src/retry.ts" (D7):
-/// the tool and its main argument, a path inside the session's folder relative to it.
+/// What a permission request waits on, as "Bash: npm publish" or "Edit: retry.ts" (D7): the
+/// tool and, for a command, its program and subcommand, for a URL its host and path, for a
+/// file its name. Any other argument, as a pattern or an MCP value, stays out: Notification
+/// Center keeps what it shows (polish-claude-insights D6).
 pub fn reason_of(event: &Value) -> String {
     let Some(tool) = str_of(event, "tool_name").filter(|t| !t.is_empty()) else {
         return "Waiting for you".into();
     };
     let input = event.get("tool_input");
-    let arg = ["command", "file_path", "notebook_path", "url", "pattern"]
+    let arg = ["command", "file_path", "notebook_path", "url"]
         .iter()
         .find_map(|k| input.and_then(|i| str_of(i, k)))
         .or_else(|| {
@@ -109,26 +111,28 @@ pub fn reason_of(event: &Value) -> String {
                 .and_then(Value::as_object)
                 .and_then(|m| m.values().find_map(Value::as_str))
         });
-    // A command line or a query may hold a secret, and Notification Center keeps what it
-    // shows (polish-claude-insights D6).
     let arg = match (tool, arg) {
         ("Bash", Some(c)) => command_label(c),
-        (_, Some(u)) if u.contains("://") => Some(url_label(u).to_string()),
-        (_, a) => a.map(String::from),
+        (_, Some(u)) if u.contains("://") => Some(url_label(u)),
+        (_, Some(p)) if is_path(p) => Path::new(p)
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned()),
+        _ => None,
     };
-    let arg = arg.map(|a| {
-        let a = a.as_str();
-        let cwd = str_of(event, "cwd").filter(|c| Path::new(c).is_absolute());
-        match cwd.and_then(|c| Path::new(a).strip_prefix(c).ok()) {
-            Some(rel) if !rel.as_os_str().is_empty() => rel.display().to_string(),
-            _ => a.split_whitespace().collect::<Vec<_>>().join(" "),
-        }
-    });
     let text = match arg.filter(|a| !a.is_empty()) {
-        Some(a) => format!("{tool}: {a}"),
+        Some(a) => format!(
+            "{tool}: {}",
+            a.split_whitespace().collect::<Vec<_>>().join(" ")
+        ),
         None => tool.to_string(),
     };
     cut(text)
+}
+
+/// A value that names a file: absolute, home-relative or dot-relative, with no spaces.
+fn is_path(s: &str) -> bool {
+    (s.starts_with('/') || s.starts_with("~/") || s.starts_with("./") || s.starts_with("../"))
+        && !s.contains(char::is_whitespace)
 }
 
 /// What a question asks, from its notification's text (D6).
@@ -315,6 +319,26 @@ mod tests {
             json!({ "tool_name": "WebFetch", "tool_input": { "url": "https://x.test/a?key=s3cr3t" } }),
         );
         assert_eq!(reason_of(&query), "WebFetch: https://x.test/a");
+        let userinfo = ev(
+            "PermissionRequest",
+            json!({ "tool_name": "WebFetch", "tool_input": { "url": "https://me:tok@x.test/a" } }),
+        );
+        assert_eq!(reason_of(&userinfo), "WebFetch: https://x.test/a");
+        let read = ev(
+            "PermissionRequest",
+            json!({ "tool_name": "Read", "tool_input": { "file_path": "/Users/owner/app/config.ts" } }),
+        );
+        assert_eq!(reason_of(&read), "Read: config.ts");
+        let grep = ev(
+            "PermissionRequest",
+            json!({ "tool_name": "Grep", "tool_input": { "pattern": "hunter2" } }),
+        );
+        assert_eq!(reason_of(&grep), "Grep");
+        let mcp = ev(
+            "PermissionRequest",
+            json!({ "tool_name": "mcp__db__query", "tool_input": { "sql": "select secret" } }),
+        );
+        assert_eq!(reason_of(&mcp), "mcp__db__query");
         let long = ev(
             "PermissionRequest",
             json!({ "tool_name": "WebFetch", "tool_input": { "url": format!("https://example.com/{}", "a".repeat(80)) } }),

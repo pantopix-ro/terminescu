@@ -76,3 +76,10 @@ generating TypeScript types from Rust; it adds a tool for four shapes.
 - [D7 later session] → mid-session, resume after a reboot misses a session until the next
   prompt. A session that never got a prompt has nothing to resume.
 - [D5 10 s idle] → a transcript change with no hook (a manual edit) shows within 10 s, not 1 s.
+
+## Review fixes
+
+- `url_label` drops userinfo (`user:pass@`) before the path; an `@` in the path stays.
+- Waiting reasons for tools other than Bash show a URL (through `url_label`), a file name, or the tool name alone; patterns and MCP values stay out.
+- `command_label` keeps a second word only for known subcommand programs (npm, git, cargo, and so on) and for `*.sh` scripts, which keeps the `deploy.sh prod` scenario.
+- `Live.busy` clears on `Notification` `idle_prompt` and after 30 unchanged transcript reads with no new busy event.

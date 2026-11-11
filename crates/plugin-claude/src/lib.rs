@@ -273,6 +273,9 @@ struct Live {
     seq: u64,
     /// The session works now: from a prompt or a tool event until it stops.
     busy: bool,
+    /// Reads in a row that found the transcript unchanged; a session that stays quiet for
+    /// [`QUIET_READS`] is not working (an Esc interrupt sends no `Stop`).
+    quiet: u32,
     /// The transcript's length and time at the last read.
     seen: Option<(u64, SystemTime)>,
 }
@@ -285,6 +288,7 @@ impl Live {
             tail: None,
             seq: 0,
             busy: false,
+            quiet: 0,
             seen: None,
         }
     }
@@ -302,8 +306,13 @@ impl Live {
             .ok()
             .and_then(|m| Some((m.len(), m.modified().ok()?)));
         if now.is_some() && now == self.seen {
+            self.quiet += 1;
+            if self.quiet >= QUIET_READS {
+                self.busy = false;
+            }
             return false;
         }
+        self.quiet = 0;
         self.seen = now;
         let before = self.insight.todos.clone();
         for (_, line) in tail.read().unwrap_or_default() {
@@ -321,6 +330,8 @@ fn transcript_of(event: &Value) -> Option<PathBuf> {
 
 /// How often a working session's transcript is read: the meter and todos follow within 2 s.
 const TAIL_BUSY: Duration = Duration::from_secs(1);
+/// Unchanged reads in a row after which a session counts as resting: 30 s at the busy rate.
+const QUIET_READS: u32 = 30;
 /// How often it is read while every session rests (polish-claude-insights D5).
 const TAIL_IDLE: Duration = Duration::from_secs(10);
 /// The tail timer's token, followed by its number.
@@ -437,8 +448,17 @@ impl ClaudePlugin {
             Some(
                 "UserPromptSubmit" | "PostToolUse" | "PostToolUseFailure" | "PreCompact"
                 | "SubagentStart",
-            ) => live.busy = true,
+            ) => {
+                live.busy = true;
+                live.quiet = 0;
+            }
             Some("Stop") => live.busy = false,
+            Some("Notification")
+                if event.get("notification_type").and_then(Value::as_str)
+                    == Some("idle_prompt") =>
+            {
+                live.busy = false
+            }
             _ => {}
         }
         // A tool result or a finished turn may have changed files (3.2).

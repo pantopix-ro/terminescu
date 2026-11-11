@@ -218,7 +218,7 @@ the orphan notice).
   transcript whose length and time stayed is not opened.
 - **Baselines.** The snapshot runs with every clean and process filter off, so git-lfs and
   git-crypt neither run nor write into the repository. Settings › Claude sets the largest file
-  kept; the plugin writes it to `<support>/baselines/cap`, which `terminescu hook` reads.
+  kept (5 MB by default); the plugin writes it to `<support>/baselines/cap`, which `terminescu hook` reads.
 - **Waiting reasons.** A Bash request shows its program and subcommand only, a URL loses its
   query, and a question shows its own text.
 - **Contract fixtures.** `crates/plugin-claude/tests/contract.rs` records the plugin's answers
