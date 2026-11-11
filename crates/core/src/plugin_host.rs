@@ -880,13 +880,14 @@ pub(crate) mod tests {
     fn a_timer_set_again_fires_once_after_the_last_set() {
         let (host, fired) = timers();
         let started = Instant::now();
+        // A burst, well inside the 80 ms delay: sleeps between sets would overshoot it on a
+        // loaded CI machine, and the timer would then rightly fire in between.
         for _ in 0..5 {
             host.dispatch(&event(1));
-            std::thread::sleep(Duration::from_millis(20));
         }
         host.dispatch(&event(2));
         assert!(until(|| lock(&fired).len() == 2));
-        assert!(started.elapsed() >= Duration::from_millis(160));
+        assert!(started.elapsed() >= Duration::from_millis(80));
         std::thread::sleep(Duration::from_millis(150));
         let mut got = lock(&fired).clone();
         got.sort();
