@@ -249,6 +249,13 @@ export function createMockHost(initial?: Workspace): MockHost {
   const uninstalls: boolean[] = [];
   let quits = 0;
   const actionListeners = new Set<(action: string) => void>();
+  // Actions from a menu or a chord before the app listens wait here: on a slow machine the
+  // page can show its first pane before the app's `onAction` effect has run.
+  const earlyActions: string[] = [];
+  const fireAction = (action: string) => {
+    if (!actionListeners.size) earlyActions.push(action);
+    for (const l of actionListeners) l(action);
+  };
   const updateListeners = new Set<(version: string) => void>();
   let pendingUpdate: string | null = null;
   let updateRestarts = 0;
@@ -863,6 +870,23 @@ export function createMockHost(initial?: Workspace): MockHost {
     }
   }
 
+  // Outside Tauri there is no app menu: chords come from key events, caught before xterm.js.
+  // One handler from the start, so a chord pressed before the app listens is not lost.
+  const keys = globalThis as Partial<typeof globalThis>;
+  keys.addEventListener?.(
+    "keydown",
+    (e: KeyboardEvent) => {
+      // A chord the app hands back to a field (see `passToField` in App.tsx) is untrusted.
+      if (recording || !e.isTrusted) return;
+      const action = actionFor(e, withBindings(ACTIONS, keyBindings));
+      if (!action) return;
+      e.preventDefault();
+      e.stopPropagation();
+      fireAction(action);
+    },
+    true,
+  );
+
   const host: MockHost = {
     batches,
     openedUrls,
@@ -871,7 +895,7 @@ export function createMockHost(initial?: Workspace): MockHost {
     uninstalls,
     quits: () => quits,
     menu(action) {
-      for (const l of actionListeners) l(action);
+      fireAction(action);
     },
     nextUpdate(version) {
       pendingUpdate = version;
@@ -1777,25 +1801,10 @@ export function createMockHost(initial?: Workspace): MockHost {
       dialogs.push("save");
       return dialogAnswers.shift() ?? null;
     },
-    // Outside Tauri there is no app menu: chords come from key events, caught before xterm.js.
     async onAction(listener) {
       actionListeners.add(listener);
-      const target = globalThis as Partial<typeof globalThis>;
-      if (!target.addEventListener || !target.removeEventListener) return () => void actionListeners.delete(listener);
-      const onKey = (e: KeyboardEvent) => {
-        // A chord the app hands back to a field (see `passToField` in App.tsx) is untrusted.
-        if (recording || !e.isTrusted) return;
-        const action = actionFor(e, withBindings(ACTIONS, keyBindings));
-        if (!action) return;
-        e.preventDefault();
-        e.stopPropagation();
-        listener(action);
-      };
-      target.addEventListener("keydown", onKey, true);
-      return () => {
-        actionListeners.delete(listener);
-        target.removeEventListener?.("keydown", onKey, true);
-      };
+      for (const a of earlyActions.splice(0)) listener(a);
+      return () => void actionListeners.delete(listener);
     },
   };
   return host;
