@@ -1,10 +1,16 @@
-# add-public-release task 7.1 (D2, D4): builds the DMG and the signed update, and drafts a
-# GitHub Release. Ad-hoc signed until the Apple secrets exist; with APPLE_CERTIFICATE set,
-# Tauri signs with the Developer ID and notarizes instead. docs/releasing.md has the steps.
+# add-public-release task 7.1 (D2, D4): builds the DMG and, with the update key, the signed
+# update, and drafts a GitHub Release. Ad-hoc signed until the Apple secrets exist; with
+# APPLE_CERTIFICATE set, Tauri signs with the Developer ID and notarizes instead.
+# A manual run without "release" only uploads the DMG to the run. docs/releasing.md has the steps.
 name: Release
 
 on:
   workflow_dispatch:
+    inputs:
+      release:
+        description: Draft a GitHub Release (off = the DMG only, as a run artifact)
+        type: boolean
+        default: false
   push:
     tags: ["v*"]
 
@@ -30,17 +36,26 @@ jobs:
       - name: Check the key, the repo and the version
         env:
           HAS_SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+          RELEASE: ${{ github.ref_type == 'tag' || inputs.release }}
         run: |
-          if [ -z "$TERMINESCU_UPDATER_PUBKEY" ] || [ "$HAS_SIGNING_KEY" != "true" ]; then
-            echo "::error::Set the TERMINESCU_UPDATER_PUBKEY variable and the TAURI_SIGNING_PRIVATE_KEY secret (docs/releasing.md)."
+          # The DMG builds either way; only a build with both halves of the key updates itself.
+          if [ -n "$TERMINESCU_UPDATER_PUBKEY" ] && [ "$HAS_SIGNING_KEY" = "true" ]; then
+            updates=true
+            # Installed apps read the feed of PUBLIC_REPO; a release anywhere else never reaches them.
+            repo=$(sed -nE 's/^pub const PUBLIC_REPO: &str = "(.*)";/\1/p' crates/protocol/src/public.rs)
+            if [ "$RELEASE" = "true" ] && [ "$GITHUB_REPOSITORY" != "$repo" ]; then
+              echo "::error::This repo is $GITHUB_REPOSITORY, the update feed reads $repo (crates/protocol/src/public.rs)."
+              exit 1
+            fi
+          elif [ -n "$TERMINESCU_UPDATER_PUBKEY" ] || [ "$HAS_SIGNING_KEY" = "true" ]; then
+            echo "::error::Set both the TERMINESCU_UPDATER_PUBKEY variable and the TAURI_SIGNING_PRIVATE_KEY secret, or neither (docs/releasing.md)."
             exit 1
+          else
+            updates=false
+            echo "::warning::No update key: this build does not update itself (docs/releasing.md)."
           fi
-          # Installed apps read the feed of PUBLIC_REPO; a release anywhere else never reaches them.
-          repo=$(sed -nE 's/^pub const PUBLIC_REPO: &str = "(.*)";/\1/p' crates/protocol/src/public.rs)
-          if [ "$GITHUB_REPOSITORY" != "$repo" ]; then
-            echo "::error::This repo is $GITHUB_REPOSITORY, the update feed reads $repo (crates/protocol/src/public.rs)."
-            exit 1
-          fi
+          echo "UPDATES=$updates" >> "$GITHUB_ENV"
+          echo "RELEASE=$RELEASE" >> "$GITHUB_ENV"
           version=$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")
           if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
             echo "::error::Tag $GITHUB_REF_NAME does not match version $version in tauri.conf.json."
@@ -69,7 +84,12 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           export TERMINESCU_BUILD="$(git rev-parse --short HEAD)"
-          pnpm tauri build --config src-tauri/tauri.release.conf.json
+          if [ "$UPDATES" = "true" ]; then
+            pnpm tauri build --config src-tauri/tauri.release.conf.json
+          else
+            pnpm tauri build --config src-tauri/tauri.release.conf.json \
+              --config '{"bundle":{"createUpdaterArtifacts":false}}'
+          fi
       - name: Check the signature
         env:
           NOTARIZED: ${{ secrets.APPLE_CERTIFICATE != '' }}
@@ -87,6 +107,13 @@ jobs:
           out=target/release/bundle
           mkdir -p dist-release
           cp "$out"/dmg/*.dmg dist-release/
+          cp .github/release-notes.md notes.md
+          if [ "$UPDATES" != "true" ]; then
+            (cd dist-release && shasum -a 256 *.dmg > SHA256SUMS)
+            sed -i '' 's/^macOS remembers the choice. Later versions install through Terminescu › Check for Updates.$/macOS remembers the choice. This build does not update itself: install later versions from Releases./' notes.md
+            echo "VERSION=$version" >> "$GITHUB_ENV"
+            exit 0
+          fi
           cp "$out"/macos/Terminescu.app.tar.gz "$out"/macos/Terminescu.app.tar.gz.sig dist-release/
           node -e '
             const fs = require("fs");
@@ -99,9 +126,17 @@ jobs:
           (cd dist-release && shasum -a 256 *.dmg Terminescu.app.tar.gz latest.json > SHA256SUMS)
           codesign -dv "$out"/macos/Terminescu.app 2>&1 | grep -E 'Signature|Authority' || true
           echo "VERSION=$version" >> "$GITHUB_ENV"
+      - name: Upload the DMG to the run
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Terminescu-${{ env.VERSION }}
+          path: dist-release/
+          if-no-files-found: error
+          retention-days: 14
       - name: Draft the release
+        if: env.RELEASE == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "v$VERSION" --draft --target "$GITHUB_SHA" --title "Terminescu $VERSION" \
-            --notes-file .github/release-notes.md dist-release/*
+            --notes-file notes.md dist-release/*

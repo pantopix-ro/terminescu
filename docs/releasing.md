@@ -4,6 +4,17 @@ This page is for the person who cuts a release. A release is a draft GitHub Rele
 DMG, the signed update archive, `latest.json` and `SHA256SUMS`. The workflow is
 `.github/workflows/release.yml`.
 
+## A DMG without a release
+
+Actions › Release › Run workflow, with "Draft a GitHub Release" off, runs the checks, builds
+the DMG and attaches it to the run as the `Terminescu-<version>` artifact for 14 days. Nothing
+is published. Use it to try a build on another Mac.
+
+Without the update key below, the workflow still builds the DMG, but that build never updates
+itself, and a drafted release says so in its notes. With the key, a drafted release must come
+from the repository named in `PUBLIC_REPO` (`crates/protocol/src/public.rs`), because installed
+apps read their update feed there.
+
 ## Once: the update key
 
 The app installs an update only when its minisign signature matches the public key built into
