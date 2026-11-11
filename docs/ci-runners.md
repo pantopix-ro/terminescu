@@ -1,15 +1,15 @@
 # CI runners
 
-Every job reads its runner from the repository variable `CI_RUNS_ON`. The value is JSON.
+Every job reads its runner from the repository variable `CI_RUNS_ON`.
 
 | `CI_RUNS_ON` | Jobs run on |
 |---|---|
-| unset | GitHub: `macos-15` for CI and releases, `ubuntu-latest` for the license check |
-| `["self-hosted","terminescu-runner"]` | the local Mac runner |
+| `local` | the local Mac runner (labels `self-hosted`, `terminescu-runner`) |
+| unset, or any other value | GitHub: `macos-15` for CI and releases, `ubuntu-latest` for the license check |
 
-Switch with `gh variable set CI_RUNS_ON --body '["self-hosted","terminescu-runner"]'`, and back
-with `gh variable delete CI_RUNS_ON`. A run reads the workflow file of its own commit, so an open
-pull request follows the switch only once its branch carries this file's workflows.
+Switch with `gh variable set CI_RUNS_ON --body local`, and back with
+`gh variable delete CI_RUNS_ON`. A run reads the workflow file of its own commit, so an open
+pull request follows the switch only once its branch carries these workflows.
 
 ## The local runner
 
