@@ -125,6 +125,10 @@ impl Plugins {
                 forget_plugin(&handle, &held, id);
             }
             refresh_adapters(&handle);
+            // The Settings list shows a pause as soon as it happens.
+            if let Some(plugins) = handle.try_state::<Arc<Plugins>>() {
+                let _ = handle.emit("host://plugins", &plugins.host.list());
+            }
         }));
         Self {
             host,
@@ -155,6 +159,11 @@ impl Plugins {
 /// Core events reach the plugins; a closed pane, tab or row takes its decorations with it.
 pub fn observe(app: &AppHandle, runtime: &Runtime, plugins: Arc<Plugins>) {
     runtime.set_adapters(plugins.host.adapters());
+    // An adapter that panics counts against the plugin that provides it.
+    let counted = plugins.clone();
+    runtime.on_adapter_failure(Arc::new(move |adapter, what| {
+        counted.host.adapter_failed(adapter, what);
+    }));
     let app = app.clone();
     runtime.on_event(Box::new(move |event| {
         let gone = match &event {

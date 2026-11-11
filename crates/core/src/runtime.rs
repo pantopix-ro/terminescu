@@ -52,6 +52,27 @@ const EARLY_EXITS: usize = 64;
 const TAIL_POLL: Duration = Duration::from_millis(250);
 
 pub type Emit = Box<dyn Fn(&PatchBatch) + Send + Sync>;
+/// Hears that an agent adapter panicked: the adapter's id and what it was doing.
+pub type AdapterFailSink = Arc<dyn Fn(&str, &str) + Send + Sync>;
+
+/// An adapter failure caught in the runtime, reported once no lock is held.
+type Failure = (&'static str, &'static str);
+
+/// Runs one adapter call; a panic is caught, noted in `failed` and answered with `None`.
+fn guarded<R>(
+    adapter: &dyn AgentAdapter,
+    what: &'static str,
+    failed: &mut Vec<Failure>,
+    f: impl FnOnce() -> R,
+) -> Option<R> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+        Ok(r) => Some(r),
+        Err(_) => {
+            failed.push((adapter.id(), what));
+            None
+        }
+    }
+}
 
 /// A pane's agent, the adapter that drives it, and its log tail while it works or waits.
 struct Live {
@@ -197,6 +218,8 @@ struct Inner {
     agents: Mutex<HashMap<Id, Live>>,
     /// The agent adapters of the enabled plugins, asked in order.
     adapters: Mutex<Vec<Arc<dyn AgentAdapter>>>,
+    /// Told when an adapter panics, so its plugin's failure count can grow.
+    adapter_fail: Mutex<Option<AdapterFailSink>>,
     agent_sink: Mutex<Option<AgentSink>>,
     /// Transcript files found by session id, so a polled transcript pane walks the projects
     /// folder once.
@@ -360,6 +383,7 @@ impl Runtime {
                 views: Mutex::new(Views::default()),
                 agents: Mutex::default(),
                 adapters: Mutex::default(),
+                adapter_fail: Mutex::default(),
                 agent_sink: Mutex::default(),
                 paths: Mutex::default(),
                 shells: Mutex::default(),
@@ -591,13 +615,25 @@ impl Runtime {
             Command::ResumePane { pane_id } => {
                 // The first adapter that can resume the session types its line (D2).
                 let adapters = lock(&self.inner.adapters).clone();
+                let mut failed = Vec::new();
                 let session = core
                     .workspace()
                     .locate_pane(pane_id)
                     .and_then(|(_, t)| t.layout.resume_of(pane_id))
                     .filter(|s| is_session_id(s))
-                    .and_then(|s| adapters.iter().find_map(|a| a.resume_command(s)))
+                    .and_then(|s| {
+                        adapters.iter().find_map(|a| {
+                            guarded(
+                                a.as_ref(),
+                                "panicked in resume_command",
+                                &mut failed,
+                                || a.resume_command(s),
+                            )
+                            .flatten()
+                        })
+                    })
                     .map(|line| (pane_id.clone(), format!("{line}\r")));
+                self.report_failures(failed);
                 // An offer with a bad id is never typed; the core refuses it as nothing to resume.
                 if session.is_none() {
                     return Err(CommandError::NothingToResume(pane_id.clone()));
@@ -934,7 +970,18 @@ impl Runtime {
             return Some(p.clone());
         }
         let adapters = lock(&self.inner.adapters).clone();
-        let found = adapters.iter().find_map(|a| a.find_transcript(session))?;
+        let mut failed = Vec::new();
+        let found = adapters.iter().find_map(|a| {
+            guarded(
+                a.as_ref(),
+                "panicked in find_transcript",
+                &mut failed,
+                || a.find_transcript(session),
+            )
+            .flatten()
+        });
+        self.report_failures(failed);
+        let found = found?;
         lock(&self.inner.paths).insert(session.into(), found.clone());
         Some(found)
     }
@@ -981,6 +1028,35 @@ impl Runtime {
         self.mark_status();
     }
 
+    /// Where adapter panics go; the app counts them against the adapter's plugin.
+    pub fn on_adapter_failure(&self, sink: AdapterFailSink) {
+        *lock(&self.inner.adapter_fail) = Some(sink);
+    }
+
+    /// Reports caught adapter panics. A pause reached through the sink takes the runtime's own
+    /// locks (it swaps the adapters), so it runs on its own thread and no caller waits on it.
+    fn report_failures(&self, failed: Vec<Failure>) {
+        if failed.is_empty() {
+            return;
+        }
+        for (adapter, what) in &failed {
+            eprintln!("terminescu: agent adapter {adapter} {what}");
+        }
+        let Some(sink) = lock(&self.inner.adapter_fail).clone() else {
+            return;
+        };
+        let started = std::thread::Builder::new()
+            .name("adapter-failure".into())
+            .spawn(move || {
+                for (adapter, what) in failed {
+                    sink(adapter, what);
+                }
+            });
+        if let Err(e) = started {
+            eprintln!("terminescu: adapter failure not reported: {e}");
+        }
+    }
+
     /// The adapters of the enabled plugins, in plugin order. An agent whose adapter left goes,
     /// so a plugin switched off leaves no amber row behind.
     pub fn set_adapters(&self, adapters: Vec<Arc<dyn AgentAdapter>>) {
@@ -1015,7 +1091,8 @@ impl Runtime {
         let mut agents = lock(&self.inner.agents);
         let adapters = lock(&self.inner.adapters).clone();
         let mut live = agents.remove(pane);
-        let step = agent_step(&mut live, &adapters, event);
+        let mut failed = Vec::new();
+        let step = agent_step(&mut live, &adapters, event, &mut failed);
         let changed = step.as_ref().map(|(c, _)| *c);
         let after = live.as_ref().map(|l| l.agent.view());
         if let Some(l) = live {
@@ -1031,7 +1108,15 @@ impl Runtime {
         if changed {
             self.mark_status();
         }
-        step.map(|(_, a)| a.events(event)).unwrap_or_default()
+        let events = step
+            .and_then(|(_, a)| {
+                guarded(a.as_ref(), "panicked in events", &mut failed, || {
+                    a.events(event)
+                })
+            })
+            .unwrap_or_default();
+        self.report_failures(failed);
+        events
     }
 
     /// Reads the logs of working and waiting sessions: a denied prompt, an interrupt or a
@@ -1057,6 +1142,7 @@ impl Runtime {
                 .collect();
             let mut agents = lock(&self.inner.agents);
             let mut updates = Vec::new();
+            let mut failed = Vec::new();
             for (pane, session, from, t, lines) in read {
                 let Some(l) = agents.get_mut(&pane) else {
                     continue;
@@ -1069,10 +1155,14 @@ impl Runtime {
                     continue;
                 }
                 let adapter = l.adapter.clone();
-                if lines
-                    .iter()
-                    .any(|(_, line)| adapter.on_line(&mut l.agent, line))
-                {
+                // A panicking adapter is counted and its line skipped; the tail goes on.
+                let ended = lines.iter().any(|(_, line)| {
+                    guarded(adapter.as_ref(), "panicked in on_line", &mut failed, || {
+                        adapter.on_line(&mut l.agent, line)
+                    })
+                    .unwrap_or(false)
+                });
+                if ended {
                     l.tail = None;
                     updates.push(AgentUpdate {
                         pane,
@@ -1088,6 +1178,7 @@ impl Runtime {
             if changed {
                 self.mark_status();
             }
+            self.report_failures(failed);
         }
     }
 
@@ -1667,21 +1758,42 @@ impl Runtime {
 /// it, else the first adapter that accepts it, and another tool's agent in the pane ends where
 /// this one starts. Returns whether the agent shows differently and the adapter that took the
 /// event, or `None` when no adapter took it and `live` stays as it was.
+///
+/// An adapter that panics (in `accepts` or `on_hook`) is noted in `failed` and the pane's agent
+/// stays as it was.
 fn agent_step(
     live: &mut Option<Live>,
     adapters: &[Arc<dyn AgentAdapter>],
     event: &Value,
+    failed: &mut Vec<Failure>,
 ) -> Option<(bool, Arc<dyn AgentAdapter>)> {
-    let adapter = match live.as_ref().filter(|l| l.adapter.accepts(event)) {
+    let own = live.as_ref().filter(|l| {
+        guarded(l.adapter.as_ref(), "panicked in accepts", failed, || {
+            l.adapter.accepts(event)
+        })
+        .unwrap_or(false)
+    });
+    let adapter = match own {
         Some(l) => l.adapter.clone(),
-        None => adapters.iter().find(|a| a.accepts(event))?.clone(),
+        None => adapters
+            .iter()
+            .find(|a| {
+                guarded(a.as_ref(), "panicked in accepts", failed, || {
+                    a.accepts(event)
+                })
+                .unwrap_or(false)
+            })?
+            .clone(),
     };
     let shown = live.as_ref().map(|l| l.agent.view());
-    let (old, old_tail) = match live.take() {
-        Some(l) if l.adapter.id() == adapter.id() => (Some(l.agent), l.tail),
+    let (old, old_tail) = match live.as_ref() {
+        Some(l) if l.adapter.id() == adapter.id() => (Some(l.agent.clone()), l.tail.clone()),
         _ => (None, None),
     };
-    *live = adapter.on_hook(old, event).map(|agent| {
+    let next = guarded(adapter.as_ref(), "panicked in on_hook", failed, || {
+        adapter.on_hook(old, event)
+    })?;
+    *live = next.map(|agent| {
         // A working or waiting session needs its log read: a denial and an interrupt fire no
         // hook.
         let tail = match (agent.state, &agent.transcript) {
@@ -1877,7 +1989,7 @@ mod command_tests {
 
 #[cfg(test)]
 mod adapter_tests {
-    use super::{Live, agent_step};
+    use super::{Live, agent_step, guarded};
     use serde_json::{Value, json};
     use std::path::PathBuf;
     use std::sync::Arc;
@@ -1894,6 +2006,9 @@ mod adapter_tests {
             event["tool"] == self.0
         }
         fn on_hook(&self, agent: Option<Agent>, event: &Value) -> Option<Agent> {
+            if event["boom"] == true {
+                panic!("a fake adapter fails");
+            }
             let state = match event["state"].as_str()? {
                 "running" => AgentState::Running,
                 "waiting" => AgentState::Waiting,
@@ -1910,6 +2025,9 @@ mod adapter_tests {
             Some(a)
         }
         fn on_line(&self, agent: &mut Agent, line: &[u8]) -> bool {
+            if line == b"boom" {
+                panic!("a fake adapter fails");
+            }
             let ends = line == b"done" && agent.state != AgentState::Done;
             if ends {
                 agent.state = AgentState::Done;
@@ -1932,7 +2050,8 @@ mod adapter_tests {
     }
 
     fn step(mut live: Option<Live>, event: Value) -> (Option<Live>, bool) {
-        let (changed, _) = agent_step(&mut live, &adapters(), &event).expect("no adapter took it");
+        let (changed, _) = agent_step(&mut live, &adapters(), &event, &mut Vec::new())
+            .expect("no adapter took it");
         (live, changed)
     }
 
@@ -1957,12 +2076,12 @@ mod adapter_tests {
     fn an_event_no_adapter_takes_leaves_the_pane_alone() {
         let (mut live, _) = step(None, json!({ "tool": "one", "state": "waiting" }));
         let other = json!({ "hook_event_name": "Stop" });
-        assert!(agent_step(&mut live, &adapters(), &other).is_none());
+        assert!(agent_step(&mut live, &adapters(), &other, &mut Vec::new()).is_none());
         assert_eq!(live.unwrap().agent.state, AgentState::Waiting);
         // With no adapter at all (the plugin is off), nothing starts.
         let mut none = None;
         let waiting = json!({ "tool": "one", "state": "waiting" });
-        assert!(agent_step(&mut none, &[], &waiting).is_none());
+        assert!(agent_step(&mut none, &[], &waiting, &mut Vec::new()).is_none());
         assert!(none.is_none());
     }
 
@@ -1976,5 +2095,40 @@ mod adapter_tests {
             (live.adapter.id(), live.agent.state),
             ("two", AgentState::Running)
         );
+    }
+
+    #[test]
+    fn a_panicking_adapter_is_caught_and_the_agent_stays() {
+        let (live, _) = step(None, json!({ "tool": "one", "state": "waiting" }));
+        let mut live = live;
+        let mut failed = Vec::new();
+        let boom = json!({ "tool": "one", "state": "running", "boom": true });
+        assert!(agent_step(&mut live, &adapters(), &boom, &mut failed).is_none());
+        assert_eq!(failed, [("one", "panicked in on_hook")]);
+        let kept = live.as_ref().expect("the agent was kept");
+        assert_eq!(kept.agent.state, AgentState::Waiting);
+        assert!(kept.tail.is_some(), "its tail was kept too");
+        // The next event is handled as usual.
+        let next = json!({ "tool": "one", "state": "running" });
+        let (changed, _) = agent_step(&mut live, &adapters(), &next, &mut failed).unwrap();
+        assert!(changed);
+        assert_eq!(live.unwrap().agent.state, AgentState::Running);
+    }
+
+    #[test]
+    fn a_panicking_line_reader_does_not_stop_the_next_line() {
+        let (live, _) = step(None, json!({ "tool": "one", "state": "running" }));
+        let mut live = live.unwrap();
+        let adapter = live.adapter.clone();
+        let mut failed = Vec::new();
+        let first = guarded(adapter.as_ref(), "panicked in on_line", &mut failed, || {
+            adapter.on_line(&mut live.agent, b"boom")
+        });
+        assert!(first.is_none());
+        assert_eq!(failed, [("one", "panicked in on_line")]);
+        let second = guarded(adapter.as_ref(), "panicked in on_line", &mut failed, || {
+            adapter.on_line(&mut live.agent, b"done")
+        });
+        assert_eq!(second, Some(true));
     }
 }

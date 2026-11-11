@@ -123,3 +123,10 @@ terminescu-desktop --no-default-features` and a Vite build with `VITE_PLUGINS=no
 Each task keeps the app shippable. The plugin API lands first, then the host, then the Claude
 code moves one piece per commit behind the adapter. Rollback is a revert per commit; migration
 0013 only adds tables.
+
+## Review fixes
+
+- Agent adapter calls in the runtime run under `catch_unwind`: a panic is logged, the pane's agent is kept, the hook and tail threads live on, and the failure counts toward the adapter's plugin pause.
+- A pause from event failures now fires `on_switch` (decorations cleared, adapters refreshed), and the sink emits `host://plugins`.
+- A watchdog pauses a plugin whose handler has run 10 times its event budget (at least 5 s) without returning.
+- The facade a plugin gets ignores `set_decoration` while the plugin is off or paused.

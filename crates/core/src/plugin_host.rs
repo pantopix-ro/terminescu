@@ -9,7 +9,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, mpsc};
 use std::time::{Duration, Instant};
 use terminescu_plugin_api::{
-    AgentAdapter, CoreEvent, Manifest, Plugin, PluginCx, PluginError, PluginInfo,
+    AgentAdapter, CoreEvent, Decoration, Id, Manifest, PaneInfo, Plugin, PluginCx, PluginError,
+    PluginInfo, Target,
 };
 
 /// Events waiting per plugin; a full queue drops its oldest.
@@ -38,10 +39,19 @@ struct Slot {
     manifest: Manifest,
     cx: Arc<dyn PluginCx>,
     queue: Arc<Queue>,
-    enabled: AtomicBool,
-    paused: AtomicBool,
+    enabled: Arc<AtomicBool>,
+    paused: Arc<AtomicBool>,
     failures: Mutex<VecDeque<Instant>>,
+    /// When the handler now running started; a watchdog pauses a plugin stuck in one.
+    running: Mutex<Option<Instant>>,
 }
+
+/// A handler this many times over its event budget (and at least [`HANG_MIN`]) counts as hung.
+const HANG_FACTOR: u32 = 10;
+#[cfg(not(test))]
+const HANG_MIN: Duration = Duration::from_secs(5);
+#[cfg(test)]
+const HANG_MIN: Duration = Duration::from_millis(100);
 
 impl Slot {
     fn live(&self) -> bool {
@@ -69,10 +79,97 @@ impl Slot {
     }
 }
 
+type SharedSink = Arc<Mutex<Option<SwitchSink>>>;
+
+fn tell(sink: &SharedSink, id: &str, live: bool) {
+    let sink = lock(sink).clone();
+    if let Some(sink) = sink {
+        sink(id, live);
+    }
+}
+
+/// The facade a plugin gets: the host's own, except that a plugin that is off or paused cannot
+/// add decorations, so a handler still running at the switch cannot undo the clean-up.
+struct Guarded {
+    inner: Arc<dyn PluginCx>,
+    enabled: Arc<AtomicBool>,
+    paused: Arc<AtomicBool>,
+}
+
+impl PluginCx for Guarded {
+    fn panes(&self) -> Vec<PaneInfo> {
+        self.inner.panes()
+    }
+    fn workspace(&self) -> serde_json::Value {
+        self.inner.workspace()
+    }
+    fn side_tabs(&self, window: &str) -> Vec<Id> {
+        self.inner.side_tabs(window)
+    }
+    fn add_context_item(&self, side_tab: &str, text: &str) -> Result<(), PluginError> {
+        self.inner.add_context_item(side_tab, text)
+    }
+    fn add_touched_file(
+        &self,
+        side_tab: &str,
+        tab: Option<&str>,
+        path: &str,
+        new: bool,
+    ) -> Result<(), PluginError> {
+        self.inner.add_touched_file(side_tab, tab, path, new)
+    }
+    fn set_decoration(&self, decoration: Decoration) {
+        if self.enabled.load(Ordering::SeqCst) && !self.paused.load(Ordering::SeqCst) {
+            self.inner.set_decoration(decoration);
+        }
+    }
+    fn clear_decorations(&self, target: Option<&Target>) {
+        self.inner.clear_decorations(target)
+    }
+    fn open_text(&self, side_tab: &str, path: &str) -> Result<(), PluginError> {
+        self.inner.open_text(side_tab, path)
+    }
+    fn type_in_new_tab(&self, side_tab: &str, cwd: &str, line: &str) -> Result<(), PluginError> {
+        self.inner.type_in_new_tab(side_tab, cwd, line)
+    }
+    fn new_row(&self, a: &str, b: Option<&str>, c: &str, d: &str) -> Result<Id, PluginError> {
+        self.inner.new_row(a, b, c, d)
+    }
+    fn setting(&self, key: &str) -> Option<serde_json::Value> {
+        self.inner.setting(key)
+    }
+    fn set_setting(&self, key: &str, value: Option<serde_json::Value>) -> Result<(), PluginError> {
+        self.inner.set_setting(key, value)
+    }
+    fn row_data(&self, side_tab: &str, key: &str) -> Option<serde_json::Value> {
+        self.inner.row_data(side_tab, key)
+    }
+    fn set_row_data(
+        &self,
+        side_tab: &str,
+        key: &str,
+        value: Option<serde_json::Value>,
+    ) -> Result<(), PluginError> {
+        self.inner.set_row_data(side_tab, key, value)
+    }
+    fn set_fact(&self, target: &Target, name: &str, value: Option<serde_json::Value>) {
+        self.inner.set_fact(target, name, value)
+    }
+    fn set_variable(&self, target: &Target, name: &str, value: Option<String>) {
+        self.inner.set_variable(target, name, value)
+    }
+    fn emit(&self, event: &str, payload: serde_json::Value) {
+        self.inner.emit(event, payload)
+    }
+    fn agent_log(&self, session: &str) -> Option<std::path::PathBuf> {
+        self.inner.agent_log(session)
+    }
+}
+
 pub struct PluginHost {
     slots: Vec<Arc<Slot>>,
     stopped: Arc<AtomicBool>,
-    on_switch: Mutex<Option<SwitchSink>>,
+    on_switch: SharedSink,
 }
 
 impl PluginHost {
@@ -87,10 +184,19 @@ impl PluginHost {
             .into_iter()
             .map(|plugin| {
                 let manifest = plugin.manifest();
+                let on = Arc::new(AtomicBool::new(
+                    enabled.get(manifest.id).copied().unwrap_or(true),
+                ));
+                let paused = Arc::new(AtomicBool::new(false));
                 Arc::new(Slot {
-                    cx: cx(manifest.id),
-                    enabled: AtomicBool::new(enabled.get(manifest.id).copied().unwrap_or(true)),
-                    paused: AtomicBool::new(false),
+                    cx: Arc::new(Guarded {
+                        inner: cx(manifest.id),
+                        enabled: on.clone(),
+                        paused: paused.clone(),
+                    }),
+                    enabled: on,
+                    paused,
+                    running: Mutex::new(None),
                     failures: Mutex::new(VecDeque::new()),
                     queue: Arc::new(Queue::default()),
                     plugin,
@@ -101,17 +207,29 @@ impl PluginHost {
         let host = Self {
             slots,
             stopped,
-            on_switch: Mutex::new(None),
+            on_switch: Arc::default(),
         };
         for slot in &host.slots {
-            let (slot, stopped) = (slot.clone(), host.stopped.clone());
+            let (slot, stopped, sink) =
+                (slot.clone(), host.stopped.clone(), host.on_switch.clone());
             let name = format!("plugin-{}", slot.manifest.id);
             let started = std::thread::Builder::new()
                 .name(name)
-                .spawn(move || work(&slot, &stopped));
+                .spawn(move || work(&slot, &stopped, &sink));
             if let Err(e) = started {
                 eprintln!("terminescu: plugin worker not started: {e}");
             }
+        }
+        let (slots, stopped, sink) = (
+            host.slots.clone(),
+            host.stopped.clone(),
+            host.on_switch.clone(),
+        );
+        let started = std::thread::Builder::new()
+            .name("plugin-watchdog".into())
+            .spawn(move || watchdog(&slots, &stopped, &sink));
+        if let Err(e) = started {
+            eprintln!("terminescu: plugin watchdog not started: {e}");
         }
         host
     }
@@ -181,9 +299,19 @@ impl PluginHost {
     }
 
     fn tell(&self, id: &str, live: bool) {
-        let sink = lock(&self.on_switch).clone();
-        if let Some(sink) = sink {
-            sink(id, live);
+        tell(&self.on_switch, id, live);
+    }
+
+    /// Counts a failure of the agent adapter whose id is `adapter`, as a failure of the plugin
+    /// that provides it. The core catches the panic and calls this; the pause follows the same
+    /// rule as a failed handler.
+    pub fn adapter_failed(&self, adapter: &str, what: &str) {
+        let slot = self
+            .slots
+            .iter()
+            .find(|s| s.plugin.agent_adapter().is_some_and(|a| a.id() == adapter));
+        if let Some(slot) = slot {
+            self.failed(slot, what);
         }
     }
 
@@ -249,7 +377,7 @@ impl Drop for PluginHost {
 }
 
 /// A plugin's worker: one event at a time, under the event budget.
-fn work(slot: &Slot, stopped: &AtomicBool) {
+fn work(slot: &Slot, stopped: &AtomicBool, sink: &SharedSink) {
     loop {
         let event = {
             let mut q = lock(&slot.queue.events);
@@ -272,13 +400,44 @@ fn work(slot: &Slot, stopped: &AtomicBool) {
             continue;
         }
         let started = Instant::now();
+        *lock(&slot.running) = Some(started);
         let run = catch_unwind(AssertUnwindSafe(|| {
             slot.plugin.on_event(&event, slot.cx.as_ref());
         }));
-        if run.is_err() {
-            slot.fail("panicked on an event");
+        *lock(&slot.running) = None;
+        let paused = if run.is_err() {
+            slot.fail("panicked on an event")
         } else if started.elapsed() > slot.manifest.event_budget {
-            slot.fail("ran over its event budget");
+            slot.fail("ran over its event budget")
+        } else {
+            false
+        };
+        if paused {
+            tell(sink, slot.manifest.id, false);
+        }
+    }
+}
+
+/// Pauses a plugin whose handler has not returned long after its budget: a handler that never
+/// returns would otherwise never be counted.
+fn watchdog(slots: &[Arc<Slot>], stopped: &AtomicBool, sink: &SharedSink) {
+    watchdog_with(slots, stopped, sink, Duration::from_millis(500));
+}
+
+fn watchdog_with(slots: &[Arc<Slot>], stopped: &AtomicBool, sink: &SharedSink, poll: Duration) {
+    while !stopped.load(Ordering::SeqCst) {
+        std::thread::sleep(poll);
+        for slot in slots {
+            let limit = (slot.manifest.event_budget * HANG_FACTOR).max(HANG_MIN);
+            let hung = lock(&slot.running).is_some_and(|t| t.elapsed() > limit);
+            if hung && slot.live() && !slot.paused.swap(true, Ordering::SeqCst) {
+                eprintln!(
+                    "terminescu: plugin {} is stuck in a handler and is paused",
+                    slot.manifest.id
+                );
+                lock(&slot.queue.events).clear();
+                tell(sink, slot.manifest.id, false);
+            }
         }
     }
 }
@@ -347,6 +506,72 @@ pub(crate) mod tests {
         Arc::new(|_| Arc::new(NoCx) as Arc<dyn PluginCx>)
     }
 
+    /// A facade that counts the decorations it is given.
+    struct Counting(Arc<AtomicUsize>);
+
+    impl PluginCx for Counting {
+        fn panes(&self) -> Vec<PaneInfo> {
+            Vec::new()
+        }
+        fn workspace(&self) -> Value {
+            Value::Null
+        }
+        fn side_tabs(&self, _: &str) -> Vec<Id> {
+            Vec::new()
+        }
+        fn add_context_item(&self, _: &str, _: &str) -> Result<(), PluginError> {
+            Ok(())
+        }
+        fn add_touched_file(
+            &self,
+            _: &str,
+            _: Option<&str>,
+            _: &str,
+            _: bool,
+        ) -> Result<(), PluginError> {
+            Ok(())
+        }
+        fn set_decoration(&self, _: Decoration) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+        fn clear_decorations(&self, _: Option<&Target>) {}
+        fn open_text(&self, _: &str, _: &str) -> Result<(), PluginError> {
+            Ok(())
+        }
+        fn type_in_new_tab(&self, _: &str, _: &str, _: &str) -> Result<(), PluginError> {
+            Ok(())
+        }
+        fn new_row(&self, _: &str, _: Option<&str>, _: &str, _: &str) -> Result<Id, PluginError> {
+            Ok(String::new())
+        }
+        fn setting(&self, _: &str) -> Option<Value> {
+            None
+        }
+        fn set_setting(&self, _: &str, _: Option<Value>) -> Result<(), PluginError> {
+            Ok(())
+        }
+        fn row_data(&self, _: &str, _: &str) -> Option<Value> {
+            None
+        }
+        fn set_row_data(&self, _: &str, _: &str, _: Option<Value>) -> Result<(), PluginError> {
+            Ok(())
+        }
+        fn set_fact(&self, _: &Target, _: &str, _: Option<Value>) {}
+        fn set_variable(&self, _: &Target, _: &str, _: Option<String>) {}
+        fn emit(&self, _: &str, _: Value) {}
+    }
+
+    fn a_decoration() -> Decoration {
+        Decoration {
+            target: Target::Pane("p1".into()),
+            slot: terminescu_plugin_api::Slot::Chip,
+            key: "k".into(),
+            text: "t".into(),
+            tone: terminescu_plugin_api::Tone::Neutral,
+            tip: None,
+        }
+    }
+
     #[derive(Clone, Copy)]
     enum Mood {
         Hangs,
@@ -362,7 +587,11 @@ pub(crate) mod tests {
 
     impl Plugin for Test {
         fn manifest(&self) -> Manifest {
-            Manifest::new("test", "Test", "A plugin for tests")
+            let mut m = Manifest::new("test", "Test", "A plugin for tests");
+            if matches!(self.mood, Mood::Hangs) {
+                m.event_budget = Duration::from_millis(10);
+            }
+            m
         }
         fn on_event(&self, _: &CoreEvent, _: &dyn PluginCx) {
             self.seen.fetch_add(1, Ordering::SeqCst);
@@ -492,5 +721,118 @@ pub(crate) mod tests {
         host.dispatch(&event(2));
         assert!(until(|| seen.load(Ordering::SeqCst) == 2));
         assert!(!host.set_enabled("nope", true));
+    }
+
+    type Told = Arc<Mutex<Vec<(String, bool)>>>;
+
+    fn watched(mood: Mood) -> (PluginHost, Told) {
+        let (host, _, _) = host(mood, true);
+        let told = Arc::new(Mutex::new(Vec::new()));
+        let sink = told.clone();
+        host.on_switch(Arc::new(move |id, live| {
+            lock(&sink).push((id.to_string(), live));
+        }));
+        (host, told)
+    }
+
+    #[test]
+    fn a_pause_from_events_is_announced() {
+        let (host, told) = watched(Mood::Panics);
+        for i in 0..MAX_FAILURES {
+            host.dispatch(&event(i));
+        }
+        assert!(until(|| !lock(&told).is_empty()), "on_switch fired");
+        assert_eq!(lock(&told).as_slice(), [("test".to_string(), false)]);
+        assert!(host.list()[0].paused);
+    }
+
+    #[test]
+    fn a_handler_that_never_returns_is_paused() {
+        let (host, told) = watched(Mood::Hangs);
+        host.dispatch(&event(0));
+        assert!(until(|| !host.is_live("test")), "the watchdog paused it");
+        assert!(until(|| !lock(&told).is_empty()));
+        assert_eq!(lock(&told)[0], ("test".to_string(), false));
+    }
+
+    #[test]
+    fn an_adapter_failure_counts_toward_the_pause() {
+        struct WithAdapter;
+        struct Quiet;
+        impl AgentAdapter for Quiet {
+            fn id(&self) -> &'static str {
+                "quiet"
+            }
+            fn accepts(&self, _: &Value) -> bool {
+                false
+            }
+            fn on_hook(
+                &self,
+                a: Option<terminescu_plugin_api::Agent>,
+                _: &Value,
+            ) -> Option<terminescu_plugin_api::Agent> {
+                a
+            }
+            fn on_line(&self, _: &mut terminescu_plugin_api::Agent, _: &[u8]) -> bool {
+                false
+            }
+            fn events(&self, _: &Value) -> Vec<terminescu_plugin_api::AgentEvent> {
+                Vec::new()
+            }
+            fn resume_command(&self, _: &str) -> Option<String> {
+                None
+            }
+            fn find_transcript(&self, _: &str) -> Option<std::path::PathBuf> {
+                None
+            }
+        }
+        impl Plugin for WithAdapter {
+            fn manifest(&self) -> Manifest {
+                Manifest::new("quiet", "Quiet", "An adapter")
+            }
+            fn on_event(&self, _: &CoreEvent, _: &dyn PluginCx) {}
+            fn call(&self, _: &str, _: Value, _: &dyn PluginCx) -> Result<Value, PluginError> {
+                Ok(Value::Null)
+            }
+            fn agent_adapter(&self) -> Option<Arc<dyn AgentAdapter>> {
+                Some(Arc::new(Quiet))
+            }
+        }
+        let host = PluginHost::new(vec![Arc::new(WithAdapter)], no_cx(), &HashMap::new());
+        let told = Arc::new(Mutex::new(Vec::new()));
+        let sink = told.clone();
+        host.on_switch(Arc::new(move |id, live| {
+            lock(&sink).push((id.to_string(), live))
+        }));
+        for _ in 0..MAX_FAILURES {
+            host.adapter_failed("quiet", "panicked in on_hook");
+        }
+        assert!(!host.is_live("quiet"));
+        assert_eq!(lock(&told).as_slice(), [("quiet".to_string(), false)]);
+        host.adapter_failed("other", "ignored");
+    }
+
+    #[test]
+    fn a_plugin_that_is_off_cannot_add_decorations() {
+        let count = Arc::new(AtomicUsize::new(0));
+        let c = count.clone();
+        let cx: CxFactory = Arc::new(move |_| Arc::new(Counting(c.clone())) as Arc<dyn PluginCx>);
+        let seen = Arc::new(AtomicUsize::new(0));
+        let plugin = Test {
+            mood: Mood::Counts,
+            seen,
+            gate: Arc::new((Mutex::new(false), Condvar::new())),
+        };
+        let host = PluginHost::new(vec![Arc::new(plugin)], cx, &HashMap::new());
+        let facade = host.slots[0].cx.clone();
+        facade.set_decoration(a_decoration());
+        assert_eq!(count.load(Ordering::SeqCst), 1, "a live plugin decorates");
+        host.set_enabled("test", false);
+        // A handler that was already running calls in after the switch.
+        facade.set_decoration(a_decoration());
+        assert_eq!(count.load(Ordering::SeqCst), 1, "an off plugin does not");
+        host.set_enabled("test", true);
+        facade.set_decoration(a_decoration());
+        assert_eq!(count.load(Ordering::SeqCst), 2);
     }
 }
