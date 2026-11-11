@@ -253,6 +253,7 @@ fn repo(branch: &str) -> RepoFacts {
         root: "/code/shop-api".into(),
         git_dir: "/code/shop-api/.git".into(),
         common_dir: "/code/shop-api/.git".into(),
+        common_bare: false,
         head: Head::Branch(branch.into()),
         upstream: Some(format!("origin/{branch}")),
         ahead: 0,

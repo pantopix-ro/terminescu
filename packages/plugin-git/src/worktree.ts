@@ -75,6 +75,8 @@ const files = (n: number) => (n === 1 ? "1 changed file" : `${n} changed files`)
 
 /** Rows this window asked about as they closed; their close event raises no notice. */
 const asked = new Set<string>();
+/** A later veto can cancel a close this plugin agreed to, and the host says so to no one. The mark lapses. */
+const ASKED_FOR_MS = 30_000;
 
 /**
  * A marked row asks Keep worktree (the default) or Remove worktree. A worktree with changes or ignored files asks
@@ -86,7 +88,10 @@ export async function beforeRowClose(cx: RowCloseContext): Promise<boolean> {
   const mark = await cx.bridge.call<Mark | null>("rowWorktree", { row: cx.sideTabId }).catch(() => null);
   if (!mark) return true;
   const closes = await askAboutWorktree(cx, mark);
-  if (closes) asked.add(cx.sideTabId);
+  if (closes) {
+    asked.add(cx.sideTabId);
+    setTimeout(() => asked.delete(cx.sideTabId), ASKED_FOR_MS);
+  }
   return closes;
 }
 

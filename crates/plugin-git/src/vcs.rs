@@ -61,6 +61,9 @@ pub struct RepoFacts {
     pub git_dir: PathBuf,
     /// The repository's shared git folder; the main working tree's `.git`.
     pub common_dir: PathBuf,
+    /// The shared git folder has no working tree of its own (`core.bare`). A folder named
+    /// `*.git` alone does not say so: `--separate-git-dir ../shop.git` is a normal repository.
+    pub common_bare: bool,
     pub head: Head,
     pub upstream: Option<String>,
     pub ahead: u32,
@@ -87,7 +90,9 @@ impl RepoFacts {
                 .parent()
                 .map(name)
                 .unwrap_or_else(|| name(&self.root)),
-            Some(n) if n.len() > 4 && n.ends_with(".git") => n[..n.len() - 4].to_string(),
+            Some(n) if self.common_bare && n.len() > 4 && n.ends_with(".git") => {
+                n[..n.len() - 4].to_string()
+            }
             _ => name(&self.root),
         }
     }
@@ -102,7 +107,7 @@ impl RepoFacts {
                 .parent()
                 .map(Path::to_path_buf)
                 .unwrap_or_else(|| self.root.clone()),
-            Some(n) if n == ".bare" || (n.len() > 4 && n.ends_with(".git")) => {
+            Some(n) if n == ".bare" || (self.common_bare && n.len() > 4 && n.ends_with(".git")) => {
                 self.common_dir.clone()
             }
             _ => self.root.clone(),
@@ -212,6 +217,7 @@ mod bare_tests {
             root: root.into(),
             git_dir: common.into(),
             common_dir: common.into(),
+            common_bare: common.ends_with(".git") && !common.ends_with("/.git"),
             head: Head::Branch("main".into()),
             upstream: None,
             ahead: 0,
@@ -233,6 +239,13 @@ mod bare_tests {
         let dot_bare = facts("/code/shop/fix", "/code/shop/.bare");
         assert_eq!(dot_bare.repo_name(), "shop");
         assert_eq!(dot_bare.main_root(), PathBuf::from("/code/shop/.bare"));
+        // A separate git folder named `*.git` of a normal repository keeps the working tree.
+        let separate = RepoFacts {
+            common_bare: false,
+            ..facts("/code/foo", "/code/foo.git")
+        };
+        assert_eq!(separate.repo_name(), "foo");
+        assert_eq!(separate.main_root(), PathBuf::from("/code/foo"));
         // A separate git folder with another name keeps the working tree.
         let other = facts("/code/shop", "/gitdirs/shop-data");
         assert_eq!(other.repo_name(), "shop");

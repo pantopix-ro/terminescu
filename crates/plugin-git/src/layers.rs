@@ -370,6 +370,7 @@ mod tests {
                 root: PathBuf::from("/code/shop-api"),
                 git_dir: self.git_dir.clone(),
                 common_dir: self.git_dir.clone(),
+                common_bare: false,
                 head: Head::Branch("main".into()),
                 upstream: None,
                 ahead: 0,

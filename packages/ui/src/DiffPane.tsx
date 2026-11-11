@@ -97,8 +97,12 @@ export function DiffPane({ readKey, read, subscribe, notes, renderText, deleted 
           const setInPlace = live.current.setBase;
           if (typeof text === "string" && shownText !== undefined && setInPlace) {
             shownText = text;
-            setInPlace(text);
-            return;
+            try {
+              setInPlace(text);
+              return;
+            } catch {
+              // The editor refused the change: build it again around the new base.
+            }
           }
           shownText = typeof text === "string" ? text : undefined;
           live.current = { restore: live.current.scroller?.()?.scrollTop };

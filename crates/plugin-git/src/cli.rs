@@ -134,6 +134,31 @@ impl GitCli {
     }
 }
 
+/// Whether the repository's shared config says `core.bare = true`. Read from the file, so a
+/// poll runs no further git command.
+fn config_bare(common_dir: &Path) -> bool {
+    let Ok(text) = std::fs::read_to_string(common_dir.join("config")) else {
+        return false;
+    };
+    let mut in_core = false;
+    let mut bare = false;
+    for line in text.lines().map(str::trim) {
+        if let Some(section) = line.strip_prefix('[') {
+            let name = section.split([']', ' ', '"']).next().unwrap_or("");
+            in_core = name.eq_ignore_ascii_case("core");
+        } else if in_core
+            && let Some((key, value)) = line.split_once('=')
+            && key.trim().eq_ignore_ascii_case("bare")
+        {
+            bare = matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "true" | "yes" | "on" | "1"
+            );
+        }
+    }
+    bare
+}
+
 impl Vcs for GitCli {
     fn facts(&self, dir: &Path) -> Result<Option<RepoFacts>, VcsError> {
         let where_ = self.read(
@@ -180,6 +205,7 @@ impl Vcs for GitCli {
             op: op_in(&git_dir),
             root,
             git_dir,
+            common_bare: config_bare(&common_dir),
             common_dir,
             head: parsed.head,
             upstream: parsed.upstream,
@@ -636,5 +662,53 @@ worktree /code/shop-api-detached\nHEAD 123\ndetached\n";
         assert!(inside(Path::new("../a.ts")).is_err());
         assert!(inside(Path::new("/etc/passwd")).is_err());
         assert!(inside(Path::new("")).is_err());
+    }
+
+    #[test]
+    fn core_bare_is_read_from_the_config_file() {
+        let dir = std::env::temp_dir().join(format!("tm-bare-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("config"),
+            "[core]\n\trepositoryformatversion = 0\n\tbare = true\n",
+        )
+        .unwrap();
+        assert!(config_bare(&dir));
+        std::fs::write(
+            dir.join("config"),
+            "[core]\n\tbare = false\n[remote \"o\"]\n\tbare = true\n",
+        )
+        .unwrap();
+        assert!(!config_bare(&dir));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_separate_git_dir_named_dot_git_is_not_bare() {
+        let git = GitCli::new("git");
+        if git.version().is_err() {
+            return;
+        }
+        let base = std::env::temp_dir().join(format!("tm-sep-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let base = std::fs::canonicalize(&base).unwrap();
+        let run = |args: &[&str]| {
+            let ok = std::process::Command::new("git")
+                .args(args)
+                .current_dir(&base)
+                .status()
+                .unwrap()
+                .success();
+            assert!(ok, "git {args:?}");
+        };
+        run(&["init", "-q", "--separate-git-dir", "foo.git", "foo"]);
+        let facts = git.facts(&base.join("foo")).unwrap().unwrap();
+        assert!(!facts.common_bare);
+        assert_eq!(facts.repo_name(), "foo");
+        assert_eq!(facts.main_root(), base.join("foo"));
+        run(&["init", "-q", "--bare", "shop.git"]);
+        assert!(config_bare(&base.join("shop.git")));
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

@@ -66,3 +66,9 @@ move into `diffTheme`, given to both merge editors.
   `AppLaunched` rebuilds both.
 - [Low] D6 notice may show for a row closed from another window's ask. Acceptable: Keep closes
   it.
+
+## Review fixes
+
+- A CRLF base in a unified diff is cut like the merge view's original, so the update fits; DiffPane rebuilds the editor when an in-place update throws.
+- A `*.git` shared folder counts as bare only when `core.bare` says so (read from its config file, no extra git call).
+- The "asked" mark for a closing worktree row lapses after 30 s, so a cancelled close no longer hides a later orphan notice.

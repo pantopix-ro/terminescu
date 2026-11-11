@@ -49,11 +49,20 @@ function replaceQuietly(view: EditorView, text: string, fromCoreText: boolean) {
   });
 }
 
-/** The effect that moves a unified view's base from `base` to `text`; none when they match. */
+/** A text as the merge view holds its original: lines split on CRLF or LF, joined by LF. */
+export const asOriginal = (text: string) => text.replace(/\r\n/g, "\n");
+
+/**
+ * The effect that moves a unified view's base from `base` to `text`; none when they match.
+ * The merge view drops the carriage returns of its original, so both texts are cut the same way
+ * and the change fits the document the view holds.
+ */
 export function baseUpdate(base: string, text: string) {
-  const change = middleChange(base, text);
+  const from = asOriginal(base);
+  const to = asOriginal(text);
+  const change = middleChange(from, to);
   if (!change) return undefined;
-  return updateOriginalDoc.of({ doc: Text.of(text.split("\n")), changes: ChangeSet.of(change, base.length) });
+  return updateOriginalDoc.of({ doc: Text.of(to.split("\n")), changes: ChangeSet.of(change, from.length) });
 }
 
 /** The editor splits lines as `text` needs; a text with other line breaks needs a new editor. */
@@ -87,7 +96,7 @@ export function sideBySide(original: string, live?: DiffLive): MountEditor {
     if (live) {
       live.setBase = (text) => {
         base = text;
-        replaceQuietly(merge.a, text, false);
+        replaceQuietly(merge.a, asOriginal(text), false);
       };
       live.scroller = () => merge.dom;
       restoreScroll(live);
