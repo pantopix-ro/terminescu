@@ -1138,13 +1138,15 @@ fn a_slow_git_version_at_launch_asks_again_instead_of_stopping() {
     std::fs::write(
         &script,
         format!(
-            "#!/bin/sh\nif [ ! -e '{m}' ]; then touch '{m}'; sleep 2; fi\necho 'git version 2.44.0'\n",
+            "#!/bin/sh\nif [ ! -e '{m}' ]; then touch '{m}'; sleep 3; fi\necho 'git version 2.44.0'\n",
             m = marker.display()
         ),
     )
     .unwrap();
     std::fs::set_permissions(&script, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
-    let git = terminescu_plugin_git::GitCli::new(&script).with_limit(Duration::from_millis(200));
+    // The second ask must fit in the limit too, and starting a script on a loaded CI machine can
+    // take hundreds of ms: keep the limit well above that and the first, slow answer above it.
+    let git = terminescu_plugin_git::GitCli::new(&script).with_limit(Duration::from_secs(1));
     let plugin = GitPlugin::with_vcs(Arc::new(Fake::default())).with_git(git);
     let cx = Cx::default();
     plugin.on_event(&CoreEvent::AppLaunched, &cx);
