@@ -329,7 +329,7 @@ impl Vcs for GitCli {
 
 impl GitCli {
     /// Whether the worktree holds any ignored file. `--directory` keeps a folder such as
-    /// node_modules as one entry. A failed read counts as none: `worktree remove` decides then.
+    /// node_modules as one entry. A failed read counts as some, so the person is asked again.
     fn has_ignored(&self, at: &Path) -> bool {
         self.read(
             at,
@@ -342,8 +342,8 @@ impl GitCli {
                 "-z",
             ],
         )
-        .map(|o| o.ok && !o.stdout.is_empty())
-        .unwrap_or(false)
+        .map(|o| !o.ok || !o.stdout.is_empty())
+        .unwrap_or(true)
     }
 }
 
