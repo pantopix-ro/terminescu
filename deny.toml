@@ -29,6 +29,8 @@ exceptions = [
   { allow = ["FSL-1.1-ALv2"], crate = "terminescu-cli" },
   { allow = ["FSL-1.1-ALv2"], crate = "terminescu-core" },
   { allow = ["FSL-1.1-ALv2"], crate = "terminescu-desktop" },
+  { allow = ["FSL-1.1-ALv2"], crate = "terminescu-plugin-api" },
+  { allow = ["FSL-1.1-ALv2"], crate = "terminescu-plugin-claude" },
   { allow = ["FSL-1.1-ALv2"], crate = "terminescu-protocol" },
   { allow = ["FSL-1.1-ALv2"], crate = "terminescu-ptyd" },
 ]
