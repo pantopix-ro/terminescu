@@ -17,7 +17,7 @@ jobs:
 
   macos:
     needs: checks
-    runs-on: macos-14
+    runs-on: macos-15
     # Drafting the release is the only write.
     permissions:
       contents: write
