@@ -11,8 +11,8 @@ permissions:
 
 jobs:
   cargo-deny:
-    # Repo variable CI_RUNS_ON: ["self-hosted","terminescu-runner"] for the local Mac; unset uses GitHub.
-    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
+    # Repo variable CI_RUNS_ON: "local" for the local Mac runner; anything else uses GitHub.
+    runs-on: ${{ vars.CI_RUNS_ON == 'local' && fromJSON('["self-hosted","terminescu-runner"]') || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install cargo-deny
