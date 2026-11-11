@@ -29,6 +29,8 @@ test("Uninstall keeps the data unless asked, then says how to finish and quits",
   await expect(done).toContainText("Drag Terminescu from Applications to the Trash");
   expect(await page.evaluate(() => (window as any).__terminescu.host.uninstalls)).toEqual([false]);
   expect(await mock(page, "claudeHook")).toBe(false);
+  // Kept data keeps the settings, so the consent goes off: the next launch adds no hook.
+  await expect.poll(() => mock(page, "settings")).toMatchObject({ hook: "off" });
   await done.getByRole("button", { name: "Quit" }).click();
   await expect.poll(() => mock(page, "quits")).toBe(1);
 });

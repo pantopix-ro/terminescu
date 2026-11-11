@@ -103,5 +103,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v$VERSION" --draft --title "Terminescu $VERSION" \
+          gh release create "v$VERSION" --draft --target "$GITHUB_SHA" --title "Terminescu $VERSION" \
             --notes-file .github/release-notes.md dist-release/*

@@ -31,6 +31,22 @@ test("the first run asks once; Not now adds no hook", async ({ page }) => {
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
+test("the hook tick survives a look at Privacy, and a click outside keeps the sheet", async ({ page }) => {
+  await start(page, "/?first-run");
+  const sheet = page.getByRole("dialog", { name: "Welcome to Terminescu" });
+  const tick = sheet.getByRole("checkbox", { name: /Claude Code hook/ });
+  await tick.uncheck();
+  await sheet.getByRole("button", { name: "Privacy" }).click();
+  await page.getByRole("dialog", { name: "Privacy" }).press("Escape");
+  await expect(tick).not.toBeChecked();
+  await page.mouse.click(5, 790);
+  await expect(sheet).toBeVisible();
+  await sheet.getByRole("button", { name: "Continue" }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect.poll(() => mock(page, "settings")).toMatchObject({ hook: "off", firstRunDone: true });
+  expect(await mock(page, "claudeHook")).toBe(false);
+});
+
 test("Continue adds the hook, and Settings › Shell removes and adds it", async ({ page }) => {
   await start(page, "/?first-run");
   await page.getByRole("dialog", { name: "Welcome to Terminescu" }).getByRole("button", { name: "Continue" }).click();
