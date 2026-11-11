@@ -23,7 +23,8 @@ jobs:
 
   macos:
     needs: checks
-    runs-on: macos-15
+    # Repo variable CI_RUNS_ON: ["self-hosted","terminescu-runner"] for the local Mac; unset uses GitHub.
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"macos-15"') }}
     # Drafting the release is the only write.
     permissions:
       contents: write
