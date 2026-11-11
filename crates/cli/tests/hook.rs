@@ -1,9 +1,25 @@
 use std::process::{Command, Stdio};
+use std::sync::Once;
 use std::time::{Duration, Instant};
+
+/// Starts the binary once, untimed. The first start of a freshly built binary also pays for
+/// macOS checking it, which a cold CI machine can stretch past the budget; an installed hook
+/// pays that once, not on each run.
+fn warm() {
+    static WARM: Once = Once::new();
+    WARM.call_once(|| {
+        let _ = Command::new(env!("CARGO_BIN_EXE_terminescu"))
+            .arg("hook")
+            .env_remove("TERMINESCU_PANE_ID")
+            .stdin(Stdio::null())
+            .output();
+    });
+}
 
 /// The hook must never get in Claude's way: exit 0, empty stdout, well under 100 ms (D34).
 #[test]
 fn hook_exits_zero_silently_and_fast() {
+    warm();
     let start = Instant::now();
     let out = Command::new(env!("CARGO_BIN_EXE_terminescu"))
         .arg("hook")
@@ -33,6 +49,7 @@ fn hook_exits_zero_silently_and_fast_without_the_socket() {
     use std::io::Write;
     let socket =
         std::env::temp_dir().join(format!("terminescu-no-core-{}.sock", std::process::id()));
+    warm();
     let start = Instant::now();
     let mut child = hook_in_pane(&socket).spawn().unwrap();
     child
@@ -56,6 +73,7 @@ fn hook_exits_zero_silently_and_fast_without_the_socket() {
 fn hook_gives_up_on_a_stdin_that_never_closes() {
     let socket =
         std::env::temp_dir().join(format!("terminescu-no-core-{}-b.sock", std::process::id()));
+    warm();
     let start = Instant::now();
     let mut child = hook_in_pane(&socket).spawn().unwrap();
     let stdin = child.stdin.take().unwrap();
