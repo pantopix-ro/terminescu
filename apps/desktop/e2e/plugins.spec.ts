@@ -50,13 +50,16 @@ test("a plugin's panel section calls its Rust half", async ({ page }) => {
 
 test("plugin actions reach the palette and the menu; a clashing chord loses", async ({ page }) => {
   const { side } = await start(page);
-  const actions = (await page.evaluate(() => (window as any).__terminescu.host.pluginActions())) as { id: string; accel: string; menu: string }[];
-  expect(actions).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({ id: "fake.hello", accel: "Cmd+Alt+J", menu: "Plugins" }),
-      expect.objectContaining({ id: "fake.steal", accel: "" }),
-    ]),
-  );
+  // Plugins register their actions after the first pane shows; a slow machine takes a moment.
+  const actions = () => page.evaluate(() => (window as any).__terminescu.host.pluginActions()) as Promise<{ id: string; accel: string; menu: string }[]>;
+  await expect
+    .poll(actions)
+    .toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "fake.hello", accel: "Cmd+Alt+J", menu: "Plugins" }),
+        expect.objectContaining({ id: "fake.steal", accel: "" }),
+      ]),
+    );
   await page.locator(".term-pane").first().click();
   // ⌘⌥J runs the plugin's action: it calls its Rust half, which decorates the row.
   await page.keyboard.press("Meta+Alt+J");
