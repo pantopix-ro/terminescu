@@ -1,0 +1,465 @@
+<meta charset="utf-8">
+<title>Terminescu Reel</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Silkscreen&display=swap" rel="stylesheet">
+<style>
+/* Layout: a fixed 1200x740 app "world" scaled into the stage, caption and scene chips below. Workbench tokens, dark only. */
+:root{color-scheme:dark;--page:#0b0c10;--bg:#111318;--panel:#171a21;--panel2:#1d2029;--line:#2a2e38;--ls:#414756;--fg:#d7dae0;--dim:#8b91a0;--faint:#5c6270;--sh:#05060a;--amber:#e5a33a;--onam:#1a1205;--amedge:#f3c470;--green:#57ab5a;--red:#e5534b;--blue:#539bf5;--mag:#b083f0;--cyan:#39c5cf;--tb:#212f43;--tc:#1c353d;--tg:#21312a;--tm:#2f2b42;--tr:#382328;--ta:#383025;--sel:#294161;--add:#1d3324;--del:#3a2226;--mono:"Geist Mono",ui-monospace,Menlo,monospace;--px:"Silkscreen",var(--mono)}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--page);color:var(--fg);font-family:var(--mono)}
+body{padding-block:28px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1200px;margin:0 auto}
+header.top{display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+header.top h1{font-family:var(--px);font-weight:400;font-size:22px;letter-spacing:1px;margin:0}
+header.top h1 b{color:var(--amber);font-weight:400}
+header.top p{margin:0;color:var(--dim);font-size:13px}
+.stage{position:relative;width:100%;max-width:100%;aspect-ratio:1200/740;overflow:hidden;background:var(--page);border:2px solid var(--ls);box-shadow:6px 6px 0 var(--sh)}
+.world{position:absolute;left:0;top:0;width:1200px;height:740px;transform-origin:0 0;overflow:hidden;font-size:13px;line-height:20px;background:var(--page) radial-gradient(circle at 1px 1px,#1a1d25 1px,transparent 1.5px) 0 0/16px 16px}
+.cap{display:grid;grid-template-columns:auto 1fr;gap:6px 18px;margin-top:20px;align-items:start;min-height:118px}
+.cap>div{min-width:0}
+.cap .no{font-family:var(--px);font-size:12px;color:var(--amber);padding-top:4px;white-space:nowrap}
+.cap h2{margin:0;font-size:20px;font-weight:600;line-height:28px;text-wrap:balance}
+.cap p{margin:6px 0 0;color:var(--dim);font-size:14px;line-height:22px;max-width:780px}
+.cap .keys{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+.kc{display:inline-block;min-width:26px;padding:1px 7px;border:1px solid var(--ls);background:var(--panel2);box-shadow:2px 2px 0 var(--sh);font-size:12px;color:var(--fg);text-align:center}
+.ctl{display:flex;gap:8px;margin-top:18px;align-items:center;flex-wrap:wrap}
+.btn{font:inherit;font-size:12px;color:var(--fg);background:var(--panel2);border:1px solid var(--ls);box-shadow:3px 3px 0 var(--sh);padding:6px 12px;cursor:pointer;display:inline-flex;gap:8px;align-items:center}
+.btn:hover{border-color:var(--amber)}
+.btn:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--sh)}
+.btn:focus-visible,.chip:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.btn.play{background:var(--amber);color:var(--onam);border-color:var(--amedge)}
+.chips{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:14px}
+.chip{font:inherit;text-align:left;background:var(--panel);border:1px solid var(--line);color:var(--dim);padding:6px 6px 8px;cursor:pointer;position:relative;min-width:0}
+.chip span{display:block;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip i{position:absolute;left:0;bottom:0;height:3px;width:0;background:var(--amber)}
+.chip.on{border-color:var(--amber);color:var(--fg)}
+@media (max-width:760px){.chips{grid-template-columns:repeat(4,1fr)}.cap{grid-template-columns:1fr}.cap h2{font-size:17px}}
+
+/* ---------- window ---------- */
+.win{position:absolute;inset:0;background:var(--bg);display:grid;grid-template-rows:34px 1fr;border:2px solid var(--ls)}
+.tbar{display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--panel);border-bottom:2px solid var(--line);position:relative}
+.tl{width:11px;height:11px;display:inline-block;box-shadow:inset -2px -2px 0 rgba(0,0,0,.25)}
+.wm{font-family:var(--px);font-size:11px;margin-left:10px;color:var(--dim);letter-spacing:.5px}
+.wm b{color:var(--amber);font-weight:400}
+.ttl{position:absolute;left:0;right:0;text-align:center;color:var(--dim);font-size:12px;pointer-events:none}
+.tbar .right{margin-left:auto;display:flex;gap:8px;align-items:center;position:relative;z-index:1}
+.body{display:grid;grid-template-columns:230px 1fr 280px;min-height:0}
+.side{background:var(--panel);border-right:2px solid var(--line);display:flex;flex-direction:column;min-height:0;padding-top:6px;overflow:hidden}
+.lbl{font-family:var(--px);font-size:8px;letter-spacing:.5px;color:var(--faint);text-transform:uppercase;height:28px;display:flex;align-items:center;gap:6px;padding:0 12px}
+.lbl .ct{color:var(--dim)}
+.st,.fh{position:relative;height:28px;display:flex;align-items:center;gap:7px;padding:0 10px 0 12px;color:var(--dim);overflow:hidden;white-space:nowrap}
+.fh{height:30px;color:var(--fg)}
+.st.in{padding-left:30px}
+.st>*,.fh>*{position:relative;z-index:1}
+.st .nm,.fh .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:none;max-width:120px}
+.st .sub{flex:1;min-width:0;color:var(--faint);font-size:11px;overflow:hidden;text-overflow:ellipsis}
+.chev{color:var(--faint);font-size:10px;width:8px}
+.sq{display:flex;gap:4px;padding:0 0 4px 30px;height:10px}
+.sq i{width:6px;height:6px;display:block}
+.hl{position:absolute!important;inset:0;z-index:0!important;background:var(--panel2);box-shadow:inset 3px 0 0 var(--fg)}
+.hl~*{color:var(--fg)}
+.hl~.sub{color:var(--dim)}
+.amb{position:absolute!important;inset:0;z-index:2!important;background:var(--amber);color:var(--onam);display:flex;align-items:center;gap:7px;padding:0 10px 0 12px;white-space:nowrap}
+.amb.in{padding-left:30px}
+.amb b{margin-left:auto;font-family:var(--px);font-size:8px;font-weight:400}
+.pill{font-family:var(--px);font-size:8px;line-height:14px;padding:0 5px;color:var(--c);background:var(--t);border:1px solid var(--c);white-space:nowrap}
+.cmds{margin-top:auto;border-top:2px solid var(--line);padding-bottom:8px;position:relative}
+.cmd{position:relative;display:flex;gap:8px;align-items:center;height:26px;padding:0 12px;color:var(--dim);white-space:nowrap}
+.cmd>*{position:relative;z-index:1}
+.cmd .ic{color:var(--green)}
+.cmd .r{margin-left:auto;display:flex;gap:6px;align-items:center}
+.var{color:var(--blue)}
+.ic{width:10px;height:10px;flex:none;display:inline-block;vertical-align:-1px}
+.center{position:relative;min-width:0;min-height:0;overflow:hidden;background:var(--bg)}
+.layer{position:absolute;inset:0;padding:14px 16px;overflow:hidden}
+.ln{white-space:pre;min-height:20px}
+.rel{position:relative}
+.pr{color:var(--cyan)}.am{color:var(--amber)}.dm{color:var(--dim)}.fa{color:var(--faint)}.gr{color:var(--green)}.rd{color:var(--red)}.bl{color:var(--blue)}.mg{color:var(--mag)}.fg{color:var(--fg)}
+.box{border:1px solid var(--ls);padding:8px 12px;margin:6px 0 10px;width:420px;white-space:normal}
+/* split panes and side-by-side areas */
+.pb{position:absolute;display:grid;grid-template-rows:22px 1fr;border-right:2px solid var(--line);border-bottom:2px solid var(--line);background:var(--bg);overflow:hidden}
+.pb.foc{box-shadow:inset 0 0 0 2px var(--amber)}
+.ph{display:flex;align-items:center;gap:8px;padding:0 10px;background:var(--panel);border-bottom:1px solid var(--line);color:var(--dim);font-size:11px;white-space:nowrap}
+.ph .mx{margin-left:auto;width:9px;height:9px;border:1px solid var(--dim)}
+.ph .tg{font-family:var(--px);font-size:7px;color:var(--onam);background:var(--amber);padding:0 5px;line-height:13px}
+.pc{position:relative;padding:10px 12px;overflow:hidden}
+.ah{display:flex;align-items:center;gap:7px;padding:0 10px;height:26px;background:var(--panel);border-bottom:2px solid var(--line);white-space:nowrap;font-size:12px}
+.ah.on{box-shadow:inset 0 -2px 0 var(--amber)}
+.dz{position:absolute;border:2px dashed var(--amber);background:rgba(229,163,58,.08);z-index:4}
+/* context panel */
+.ctx{background:var(--panel);border-left:2px solid var(--line);overflow:hidden;min-height:0}
+.sec{border-bottom:2px solid var(--line);padding-bottom:8px}
+.vr{position:relative;display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;padding:3px 12px;overflow:hidden}
+.vk{color:var(--blue)}
+.vv{color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sb{font-family:var(--px);font-size:7px;line-height:12px;padding:0 4px;border:1px solid var(--ls);color:var(--dim)}
+.sb.session{color:var(--cyan);border-color:var(--cyan)}
+.sb.secret{color:var(--mag);border-color:var(--mag)}
+.pin{position:relative;margin:4px 12px;padding:6px 8px;background:var(--panel2);border:1px solid var(--line);box-shadow:3px 3px 0 var(--sh);white-space:normal;font-size:12px;line-height:17px;overflow:hidden}
+.pin .h{font-family:var(--px);font-size:7px;color:var(--amber);display:flex;gap:6px;align-items:center}
+.pin .h .ic{width:8px;height:8px}
+.cl{display:flex;gap:6px;padding:2px 12px;align-items:center}
+.cl .r{margin-left:auto}
+.meter{height:8px;border:1px solid var(--ls);margin:4px 12px 2px;position:relative}
+.meter i{position:absolute;left:0;top:0;bottom:0;width:62%;background:var(--blue)}
+.meter i.go{animation:mf .9s steps(5) var(--d) forwards}
+@keyframes mf{to{width:81%;background:var(--amber)}}
+.td,.fr{position:relative;display:flex;gap:8px;padding:2px 12px;color:var(--dim);white-space:nowrap;overflow:hidden}
+.fr .s{font-family:var(--px);font-size:8px;width:12px}
+.fr .s.m{color:var(--amber)}.fr .s.a{color:var(--green)}
+.fr .n{margin-left:auto;font-size:11px}
+/* overlays */
+.toolbar{position:absolute;display:flex;background:var(--panel2);border:2px solid var(--ls);box-shadow:4px 4px 0 var(--sh);z-index:5;white-space:nowrap}
+.toolbar span{padding:2px 10px;display:flex;gap:6px;align-items:center;border-right:1px solid var(--line);color:var(--fg)}
+.toolbar span:last-child{border-right:0}
+.toolbar .on{background:var(--amber);color:var(--onam)}
+.toolbar em{font-style:normal;color:var(--dim);font-size:11px}
+.toolbar .on em{color:var(--onam)}
+.pop{position:absolute;background:var(--panel2);border:2px solid var(--ls);box-shadow:6px 6px 0 var(--sh);z-index:6;white-space:normal}
+.pop .hd{font-family:var(--px);font-size:8px;color:var(--faint);padding:8px 12px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:12px}
+.inp{margin:8px 12px;border:1px solid var(--amber);background:var(--bg);padding:3px 8px;white-space:nowrap;min-height:28px}
+.it{display:flex;gap:10px;align-items:center;padding:4px 12px;color:var(--dim)}
+.it.on{background:var(--sel);color:var(--fg)}
+.it .t{margin-left:auto;font-family:var(--px);font-size:7px;color:var(--faint)}
+.it .ic{color:var(--mag)}.it .ic.v{color:var(--blue)}
+.prev{border-top:1px solid var(--line);padding:10px 12px;color:var(--fg);background:var(--bg)}
+.ft{border-top:1px solid var(--line);padding:6px 12px;color:var(--faint);font-size:11px;display:flex;gap:14px;flex-wrap:wrap}
+.vchip{display:inline-block;padding:0 5px;background:var(--tb);color:var(--blue);border:1px solid var(--blue);line-height:16px}
+.vchip.sec{background:var(--tm);color:var(--mag);border-color:var(--mag)}
+.caret{display:inline-block;width:8px;height:16px;background:var(--fg);vertical-align:-3px;animation:blink 1s steps(1) infinite}
+.tag{font-family:var(--px);font-size:8px;padding:2px 6px;background:var(--amber);color:var(--onam)}
+.ed{display:grid;grid-template-columns:38px 1fr;position:absolute;inset:0}
+.ed .gut{background:var(--panel);color:var(--faint);text-align:right;padding:14px 8px 0 0;border-right:1px solid var(--line)}
+.ed .txt{padding:14px 14px 0}
+.waitbar{background:var(--amber);color:var(--onam);font-family:var(--px);font-size:8px;height:24px;display:flex;align-items:center;gap:10px;padding:0 10px;white-space:nowrap}
+.split{display:flex;position:absolute;inset:0}
+.split>.l{flex:1;position:relative;min-width:0}
+.split>.r{position:relative;flex:0 0 0;overflow:hidden;border-left:2px solid var(--amber);background:var(--bg);min-width:0}
+.dl{white-space:pre;padding:0 8px;min-height:20px}
+.dl.d{background:var(--del)}.dl.a{background:var(--add)}
+.callout{position:absolute;border:2px dashed var(--amber);z-index:8}
+.callout b{position:absolute;font-family:var(--px);font-weight:400;font-size:10px;background:var(--amber);color:var(--onam);padding:3px 8px;white-space:nowrap}
+.notif{position:absolute;right:16px;top:44px;width:300px;background:var(--panel2);border:2px solid var(--amber);box-shadow:6px 6px 0 var(--sh);padding:10px 12px;z-index:9;white-space:normal}
+.notif .h{font-family:var(--px);font-size:8px;color:var(--amber)}
+.perm{border:2px solid var(--amber);padding:8px 12px;width:470px;margin-top:8px;white-space:normal}
+.perm .o{padding-left:10px}
+.perm .o.on{background:var(--ta);color:var(--amber)}
+.ghost{position:absolute;left:12px;top:12px;width:150px;height:28px;background:var(--panel2);border:2px solid var(--amber);box-shadow:5px 5px 0 var(--sh);display:flex;align-items:center;gap:7px;padding:0 10px;color:var(--fg);white-space:nowrap}
+.cursor{position:absolute;left:0;top:0;width:22px;height:22px;z-index:20;pointer-events:none}
+.cursor svg{width:22px;height:22px;filter:drop-shadow(2px 2px 0 var(--sh))}
+.hud{position:absolute;left:0;right:0;bottom:30px;display:flex;justify-content:center;pointer-events:none;z-index:30}
+.hud .k{position:absolute;bottom:0;font-size:28px;line-height:44px;padding:0 16px;min-width:56px;text-align:center;background:var(--panel2);color:var(--fg);border:2px solid var(--amber);box-shadow:5px 5px 0 var(--sh);opacity:0;animation:kh 1.3s steps(1) var(--d) both}
+.card{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:520px;background:var(--panel);border:2px solid var(--ls);box-shadow:8px 8px 0 var(--sh);padding:18px 22px}
+.card .h{font-family:var(--px);font-size:10px;color:var(--amber);margin-bottom:10px}
+.outro{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;text-align:center}
+.big{font-family:var(--px);font-size:92px;line-height:1;letter-spacing:4px;color:var(--fg);text-shadow:6px 6px 0 var(--sh)}
+.big .amb2{color:var(--amber)}
+.tagl{font-size:20px;color:var(--dim)}
+.kg{display:grid;grid-template-columns:repeat(3,230px);gap:10px 20px;text-align:left}
+.kg div{display:flex;gap:12px;align-items:center;color:var(--dim);font-size:14px}
+.kg .kc{min-width:64px;font-size:14px}
+.fls{position:absolute!important;inset:0;z-index:3!important;background:var(--amber);opacity:0;pointer-events:none;animation:fl .7s steps(4) var(--d) both}
+
+/* ---------- motion ---------- */
+.a{animation:ap .24s steps(3) var(--d,0s) both}
+.g{animation:gn .01s linear var(--o,0s) forwards}
+.a.g{animation:ap .24s steps(3) var(--d,0s) both,gn .01s linear var(--o,0s) forwards}
+.ag{overflow:hidden;animation:ag .3s steps(4) var(--d,0s) both}
+.gh{overflow:hidden;max-height:30px;animation:gh .3s steps(4) var(--o,0s) forwards}
+.ty{display:inline-block;vertical-align:bottom;overflow:hidden;white-space:pre;width:0;animation:ty calc(var(--n)*var(--s,55ms)) steps(var(--n)) var(--d,0s) forwards}
+.sx{position:relative}
+.sxo{position:absolute;inset:-1px -2px}
+.sxw{display:block;height:100%;width:0;background:var(--sel);animation:sw .45s steps(6) var(--d) forwards}
+.sxt{position:relative}
+.split>.r.open{animation:spl .3s steps(4) var(--d) both,splo .3s steps(4) var(--o) forwards,hide .01s linear calc(var(--o) + .3s) forwards}
+@keyframes hide{to{visibility:hidden;border-left-color:transparent}}
+@keyframes ap{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+@keyframes gn{to{opacity:0;visibility:hidden}}
+@keyframes ag{from{max-height:0;opacity:0}to{max-height:120px;opacity:1}}
+@keyframes gh{to{max-height:0;opacity:0}}
+@keyframes ty{to{width:calc(var(--n)*1ch)}}
+@keyframes sw{to{width:100%}}
+@keyframes kh{0%{opacity:0;transform:translateY(6px)}10%{opacity:1;transform:none}85%{opacity:1}100%{opacity:0}}
+@keyframes fl{0%{opacity:0}25%{opacity:.35}100%{opacity:0}}
+@keyframes blink{50%{opacity:0}}
+@keyframes spl{from{flex-basis:0}to{flex-basis:50%}}
+@keyframes splo{to{flex-basis:0;border-left-width:0}}
+.paused *,.paused{animation-play-state:paused!important}
+/* still: the final frame, nothing transient */
+.still *{animation:none!important}
+.still .g,.still .gh,.still .tr,.still .cursor,.still .hud,.still .fls,.still .dz{display:none!important}
+.still .ty{width:calc(var(--n)*1ch)}
+.still .sxw{width:100%}
+.still .meter i.go{width:81%;background:var(--amber)}
+.still .split>.r.open{display:none}
+@media (prefers-reduced-motion:reduce){.caret{animation:none}}
+</style>
+
+<div class="wrap">
+ <header class="top"><h1>TERMINE<b>SCU</b> REEL</h1><p>14 scenes · about 2 minutes · invented data</p></header>
+ <div class="stage" id="stage"><div class="world" id="world"></div></div>
+ <div class="cap" id="cap"></div>
+ <div class="ctl">
+  <button class="btn" id="prev" aria-label="Previous scene">◀ PREV</button>
+  <button class="btn play" id="pp" aria-label="Play or pause">❚❚ PAUSE</button>
+  <button class="btn" id="next" aria-label="Next scene">NEXT ▶</button>
+  <button class="btn" id="rep" aria-label="Replay scene">↺ REPLAY</button>
+ </div>
+ <div class="chips" id="chips"></div>
+</div>
+
+<script>
+const ICONS={"pin":"..XXXX....XXXX.....XX....XXXXXX....XX......XX......XX......X....","doc":"XXXXX...X...XX..X...XXX.X.....X.X.XXX.X.X.....X.X.XXX.X.XXXXXXX.","play":".X.......XX......XXX.....XXXX....XXXX....XXX.....XX......X......","term":"XXXXXXXXX......XX.X....XX..X...XX.X..XXXX......XX......XXXXXXXXX","agent":"...XX...X..XX..X.X.XX.X...XXXX....XXXX...X.XX.X.X..XX..X...XX...","split":"XXXXXXXXX..X...XX..X...XX..XXXXXX..X...XX..X...XX..X...XXXXXXXXX","var":".XX..XX..X....X..X....X.X......X.X....X..X....X..XX..XX.........","merge":"X......XXX....XX.XX..XX...XXXX.....XX......XX......XX......XX...","pr":".X....X.XXX..XXX.X....X..X...X...X..X....X.X....XXX......X......","prompt":"........XX.......XX.......XX.....XX.....XX..........XXXX........","folder":"........XXX.....X..XXXXXX......XX......XX......XXXXXXXXX........","diff":"..X.......X.....XXXXX.....X.......X...........XXXXX.............","redo":"..XXXX...X....X.X.......XX.....XXX......X.X....X...XXXX.........."};
+function ic(n,c=''){const r=ICONS[n]||'';let s='';for(let i=0;i<64;i++)if(r[i]==='X')s+=`<rect x="${i%8}" y="${i>>3}" width="1" height="1"/>`;return `<svg class="ic ${c}" viewBox="0 0 8 8" fill="currentColor" shape-rendering="crispEdges" aria-hidden="true">${s}</svg>`}
+const ARROW='X.......XX......XXX.....XXXX....XXXXX...XXXXXX..XXX.....X..X....';
+const arrow=()=>{let s='';for(let i=0;i<64;i++)if(ARROW[i]==='X')s+=`<rect x="${i%8}" y="${i>>3}" width="1" height="1"/>`;return `<svg viewBox="0 0 8 8" fill="#d7dae0" shape-rendering="crispEdges">${s}</svg>`};
+const ap=(d,html,tag='span',cls='',st='')=>`<${tag} class="a ${cls}" style="--d:${d}s;${st}">${html}</${tag}>`;
+const gn=(o,html,tag='span',cls='',st='')=>`<${tag} class="g ${cls}" style="--o:${o}s;${st}">${html}</${tag}>`;
+const apgn=(d,o,html,tag='span',cls='',st='')=>`<${tag} class="a g ${cls}" style="--d:${d}s;--o:${o}s;${st}">${html}</${tag}>`;
+const ty=(d,t,sp=55)=>`<span class="ty" style="--n:${[...t].length};--d:${d}s;--s:${sp}ms">${t}</span>`;
+const stack=(...xs)=>`<span style="display:inline-grid;min-width:0">${xs.map(x=>`<span style="grid-area:1/1;display:flex;gap:7px;align-items:center;min-width:0">${x}</span>`).join('')}</span>`;
+const layers=(...xs)=>`<div style="display:grid">${xs.map(x=>`<div style="grid-area:1/1;min-width:0">${x}</div>`).join('')}</div>`;
+const ln=(t,cls='')=>`<div class="ln ${cls}">${t}</div>`;
+const lnA=(d,t)=>`<div class="ln a" style="--d:${d}s">${t}</div>`;
+const sel=(t,d,o)=>`<span class="sx"><span class="sxo${o?' g':''}" style="--o:${o||0}s"><span class="sxw" style="--d:${d}s"></span></span><span class="sxt">${t}</span></span>`;
+const pill=(t,c,tn)=>`<span class="pill" style="--c:var(--${c});--t:var(--${tn})">${t}</span>`;
+const kc=k=>`<span class="kc">${k}</span>`;
+const hud=ks=>`<div class="hud">${ks.map(([d,k])=>`<div class="k" style="--d:${d}s">${k}</div>`).join('')}</div>`;
+const flash=d=>`<i class="fls" style="--d:${d}s"></i>`;
+const HL='<i class="hl"></i>';
+const hlAt=d=>`<i class="hl a" style="--d:${d}s"></i>`;
+const hlTill=o=>`<i class="hl g" style="--o:${o}s"></i>`;
+const hlBetween=(d,o)=>`<i class="hl a g" style="--d:${d}s;--o:${o}s"></i>`;
+function cursor(name,frames,dur,extra=''){const kf=frames.map(([p,x,y])=>`${p}%{transform:translate(${x}px,${y}px)}`).join('');
+ return `<style>@keyframes ${name}{${kf}}</style><div class="cursor" style="animation:${name} ${dur}s steps(7) both">${arrow()}${extra}</div>`}
+
+/* ---------- sidebar ---------- */
+const neon=(icon,c)=>`<span style="color:var(--${c});display:inline-flex">${ic(icon)}</span>`;
+// One tab line: a one-tab row, or (in) a folder's tab.
+function st(name,icon,c,o={}){return `<div class="st ${o.in?'in':''} ${o.cls||''}" ${o.st?`style="${o.st}"`:''}>${o.hl||''}${neon(icon,c)}<span class="nm">${o.name||name}</span><span class="sub">${o.sub||''}</span>${o.chip||''}${o.over||''}</div>`}
+function fh(name,o={}){return `<div class="fh">${o.hl||''}<span class="chev">▾</span>${neon('folder','fg')}<span class="nm">${name}</span><span class="sub"></span>${o.chip||''}${o.over||''}</div><div class="sq">${(o.sq||[]).map(c=>`<i style="background:var(--${c})"></i>`).join('')}${o.sqx||''}</div>`}
+const CLAUDE=(o={})=>st('claude','agent','mag',{in:1,hl:HL,sub:'fix/webhook-retry',...o});
+const ZSH=(o={})=>st('zsh','term','blue',{in:1,sub:'~/acme/api',...o});
+const LOGS=(o={})=>st('logs','term','green',{in:1,sub:'tail -f app.log',...o});
+const INFRA=(o={})=>st('infra','term','cyan',{sub:'main',...o});
+const NOTES=(o={})=>st('notes.md','doc','dim',{sub:'~/notes',...o});
+const FOLDER=(o={})=>fh('PROJ-482',{sq:['mag','blue','green'],...o.head})+(o.claude??CLAUDE())+(o.zsh??ZSH())+(o.logs??LOGS())+(o.extra||'');
+const sideDefault=()=>FOLDER()+INFRA()+NOTES();
+const up=(c,t)=>pill(t,c,c==='green'?'tg':'tr');
+const CMD=(name,o={})=>`<div class="cmd">${o.hl||''}${ic('play')}<span>${name}</span><span class="r">${o.r||''}</span>${o.over||''}</div>`;
+const cmdsDefault=()=>CMD('dev server',{r:up('green','UP')})+CMD('test <span class="var">{{ticket}}</span>')+CMD('deploy <span class="var">{{env}}</span>');
+
+/* ---------- context panel ---------- */
+const vr=(k,v,store='saved',cls='',extra='')=>`<div class="vr ${cls}">${extra}<span class="vk">${k}</span><span class="vv">${v}</span><span class="sb ${store}">${store.toUpperCase()}</span></div>`;
+const VARS_BASE=vr('ticket','PROJ-482')+vr('base','develop');
+const pinCard=(h,t,extra='')=>`<div class="pin">${extra}<div class="h">${ic('pin')}${h}</div>${t}</div>`;
+const PIN_BASE=pinCard('PROMPT · 09:14','Fix the webhook retry for PROJ-482. Keep the 502 path.');
+const CLAUDE_BASE=`<div class="cl"><span class="mg">opus</span><span class="dm">· default mode</span><span class="r dm">62%</span></div><div class="meter"><i></i></div>`;
+const td=(done,t)=>`<div class="td"><span class="${done?'gr':'fa'}">${done?'[x]':'[ ]'}</span>${t}</div>`;
+const TODOS_BASE=td(1,'Read webhook.ts')+td(1,'Retry with backoff')+td(0,'Test the 502 path');
+const fr=(s,f,n,extra='')=>`<div class="fr">${extra}<span class="s ${s==='M'?'m':'a'}">${s}</span>${f}<span class="n"><span class="gr">${n[0]}</span> <span class="rd">${n[1]}</span></span></div>`;
+const FILES=fr('M','src/webhook.ts',['+14','−3'])+fr('A','test/webhook.retry.test.ts',['+41','']);
+function ctx(o={}){return `<aside class="ctx">
+ <div class="sec"><div class="lbl">Claude</div>${o.claude??CLAUDE_BASE}</div>
+ <div class="sec"><div class="lbl">Variables <span class="ct">${o.vc||2}</span></div>${o.vars??VARS_BASE}</div>
+ <div class="sec"><div class="lbl">Pins <span class="ct">${o.pc||1}</span></div>${o.pins??PIN_BASE}</div>
+ <div class="sec"><div class="lbl">Claude's todos</div>${o.todos??TODOS_BASE}</div>
+ <div class="sec" style="border:0"><div class="lbl">Changed this session</div>${o.files??FILES}</div></aside>`}
+
+function win(o={}){return `<div class="win">
+ <div class="tbar"><span class="tl" style="background:var(--red)"></span><span class="tl" style="background:var(--amber)"></span><span class="tl" style="background:var(--green)"></span><span class="wm">TERMINE<b>SCU</b></span>
+  <div class="ttl">${o.title||'PROJ-482 › claude'}</div><div class="right">${o.tright||''}</div></div>
+ <div class="body">
+  <nav class="side">${o.side??sideDefault()}<div class="cmds"><div class="lbl">Commands</div>${o.cmds??cmdsDefault()}</div></nav>
+  <section class="center">${o.pane||''}</section>
+  ${o.ctx??ctx()}
+ </div></div>`}
+const P='<span class="pr">~/acme/api</span> <span class="am">❯</span> ';
+const SESSION=[ln(P+'claude'),ln('<span class="am">✻</span> <span class="fg">Claude Code</span>  <span class="fa">~/acme/api</span>'),ln(''),
+ ln('<span class="fa">&gt;</span> Fix the webhook retry for PROJ-482. Keep the 502 path.'),ln(''),
+ ln('<span class="gr">●</span> Read <span class="fg">src/webhook.ts</span>'),ln('<span class="gr">●</span> Edit <span class="fg">src/webhook.ts</span>  <span class="gr">+14</span> <span class="rd">−3</span>'),
+ ln('<span class="gr">●</span> Bash <span class="fg">npm test -- webhook</span>'),ln('    <span class="gr">✓ 18 passed</span>  <span class="fa">1.9s</span>'),ln('')].join('');
+const layer=(html,cls='',st='')=>`<div class="layer ${cls}" style="${st}">${html}</div>`;
+const pb=(x,y,w,h,name,body,foc,tag='')=>`<div class="pb ${foc?'foc':''}" style="left:${x}%;top:${y}%;width:${w}%;height:${h}%"><div class="ph">${name}${tag}<span class="mx"></span></div><div class="pc">${body}</div></div>`;
+const WATCH=ln(P+'npm test -- --watch')+ln('<span class="gr"> PASS</span> test/webhook.retry.test.ts')+ln('<span class="gr"> PASS</span> test/queue.test.ts')+ln('<span class="fa">Tests: 42 passed · watching</span>');
+const TAIL=ln(P+'tail -f logs/app.log')+ln('<span class="fa">09:31:02</span> POST /hooks <span class="gr">200</span>')+ln('<span class="fa">09:31:05</span> POST /hooks <span class="rd">502</span> retry 1/2')+ln('<span class="fa">09:31:07</span> POST /hooks <span class="gr">200</span>');
+const TF=ln('<span class="pr">~/infra</span> <span class="am">❯</span> terraform plan')+ln('<span class="fa">Refreshing state... [id=acme-staging]</span>')+ln('<span class="gr">No changes.</span> Your infrastructure matches the configuration.')+ln('<span class="pr">~/infra</span> <span class="am">❯</span> <span class="caret"></span>');
+
+/* ---------------- scenes ---------------- */
+const SC=[];
+SC.push({chip:'Overview',dur:7,title:'Folders, tabs, panes and a context',
+ text:'The sidebar holds your work: one-tab rows, and folders of tabs for a ticket. A tab splits into panes. Each folder keeps its own context: variables, pins, Claude\'s todos and the files Claude changed. Saved commands sit under the rows.',keys:[],
+ html:()=>win({pane:layer(SESSION+ln('<span class="bl">●</span> Working <span class="fa">(esc to interrupt)</span>'))})+
+  `<div class="callout a" style="--d:.4s;left:4px;top:38px;width:224px;height:186px"><b style="left:120px;bottom:6px">FOLDERS · TABS</b></div>
+   <div class="callout a" style="--d:1.2s;left:4px;top:622px;width:224px;height:114px"><b style="left:120px;top:4px">COMMANDS</b></div>
+   <div class="callout a" style="--d:2s;left:234px;top:38px;width:684px;height:698px"><b style="left:16px;bottom:16px">PANES · terminal, text or transcript</b></div>
+   <div class="callout a" style="--d:2.8s;left:922px;top:38px;width:274px;height:698px"><b style="left:12px;bottom:16px">CONTEXT · per folder</b></div>`});
+
+SC.push({chip:'Folders',dur:8,title:'Drop a tab on a row to make a folder',
+ text:'Drag one row onto another and the two become a folder, with a square per tab in its neon. ⌘T then adds a tab to the selected folder, in its working directory. Every tab in a folder shares one context.',keys:['drag','⌘T'],
+ html:()=>win({title:stack(gn(4.4,'acme/api'),ap(4.4,'PROJ-482 › Terminal')),
+  side:layers(
+   gn(2.4,st('claude','agent','mag',{hl:HL,sub:'fix/webhook-retry'})+st('logs','term','green',{sub:'tail -f app.log',cls:'g',st:'--o:.7s'})+INFRA()+NOTES(),'div'),
+   ap(2.4,fh('PROJ-482',{sq:['mag','green'],sqx:`<i class="a" style="--d:4.4s;background:var(--blue)"></i>`,over:flash(2.4)})+CLAUDE({hl:hlTill(4.4)})+LOGS()+`<div class="ag" style="--d:4.4s">${st('Terminal','term','blue',{in:1,hl:HL,sub:'~/acme/api'})}</div>`+INFRA()+NOTES(),'div')),
+  pane:layer(SESSION,'g','--o:4.4s')+`<div class="layer a" style="--d:4.4s">${ln('<span class="fa">Last login: Wed Nov 11 09:12 on ttys004</span>')}${ln(P+'<span class="caret"></span>')}</div>`})+
+  cursor('c2',[[0,560,300],[8,90,82],[14,90,82],[28,90,50],[34,90,50],[48,560,420],[100,560,420]],8,`<div class="ghost a g" style="--d:.7s;--o:2.4s">${neon('term','green')}logs</div>`)+hud([[4,'⌘T']])});
+
+SC.push({chip:'Split panes',dur:8.2,title:'Split a tab into panes',
+ text:'⌘D splits right and ⌘⇧D splits down, each pane a fresh login shell in the same folder. ⌘⌥ and an arrow moves focus. ⌘⇧M shows the focused pane alone and brings the split back.',keys:['⌘D','⌘⇧D','⌘⌥←','⌘⇧M'],
+ html:()=>{const L=pb(0,0,50,100,'claude',SESSION,0),Lf=pb(0,0,50,100,'claude',SESSION,1);
+  return win({pane:
+   gn(1,pb(0,0,100,100,'claude',SESSION,1),'div','layer','padding:0')+
+   apgn(1,3,pb(0,0,50,100,'claude',SESSION,0)+pb(50,0,50,100,'zsh',ln(P+ty(1.5,'npm test -- --watch',60)),1),'div','layer','padding:0')+
+   apgn(3,5,L+pb(50,0,50,50,'zsh',WATCH,0)+pb(50,50,50,50,'zsh',ln(P+ty(3.4,'tail -f logs/app.log',55)),1),'div','layer','padding:0')+
+   apgn(5,6.6,Lf+pb(50,0,50,50,'zsh',WATCH,0)+pb(50,50,50,50,'zsh',TAIL,0),'div','layer','padding:0')+
+   ap(6.6,pb(0,0,100,100,'claude',SESSION+ln('<span class="fa">&gt;</span> <span class="caret"></span>'),1,'<span class="tg">MAXIMIZED · 3 PANES</span>'),'div','layer','padding:0')})+
+   hud([[.5,'⌘D'],[2.5,'⌘⇧D'],[4.5,'⌘⌥←'],[6.1,'⌘⇧M']])}});
+
+SC.push({chip:'Side by side',dur:8,title:'Two rows on screen at once',
+ text:'Drop a row, or a folder\'s tab, on a pane\'s edge and it shows beside the current one, each area headed by its name. A click on an area selects its row. The window keeps the view across restarts.',keys:['drag'],
+ html:()=>win({title:stack(gn(2.6,'PROJ-482 › claude'),ap(2.6,'infra')),
+  side:FOLDER()+INFRA({hl:hlAt(2.6),over:flash(2.6)})+NOTES(),
+  pane:gn(2.6,layer(SESSION),'div')+apgn(1.2,2.6,'','div','dz','left:50%;top:0;right:0;bottom:0')+
+   ap(2.6,`<div style="position:absolute;inset:0;display:grid;grid-template-columns:1fr 1fr">
+    <div style="border-right:2px solid var(--line);min-width:0;overflow:hidden"><div class="ah">${neon('folder','fg')}<span class="mg">PROJ-482 › claude</span></div><div style="padding:12px 14px">${SESSION}</div></div>
+    <div style="min-width:0;overflow:hidden"><div class="ah on">${neon('term','cyan')}<span style="color:var(--cyan)">infra</span></div><div style="padding:12px 14px">${TF}</div></div></div>`,'div','layer','padding:0')})+
+  cursor('c4',[[0,90,178],[6,90,178],[30,700,380],[34,700,380],[60,820,520],[100,820,520]],8,`<div class="ghost a g" style="--d:.4s;--o:2.6s">${neon('term','cyan')}infra</div>`)});
+
+SC.push({chip:'Needs you',dur:8,title:'Amber means it needs you',
+ text:'When Claude waits on you, its tab gets Claude Code\'s ✳, its row turns amber and names what it waits on. The title bar counts the waits and a notification goes out. ⌘⇧A jumps to the oldest; answer it and the amber clears.',keys:['⌘⇧A','1'],
+ html:()=>win({title:stack(gn(3.4,'infra'),ap(3.4,'PROJ-482 › claude')),
+  tright:`<span class="pill a g" style="--c:var(--onam);--t:var(--amber);--d:1.2s;--o:5.3s">NEEDS YOU · 1</span>`,
+  side:fh('PROJ-482',{sq:['mag','blue','green']})+CLAUDE({hl:hlAt(3.4),over:`<div class="amb in a g" style="--d:1s;--o:5.3s">${ic('agent')}<span>✳ claude</span><span style="font-size:11px">Bash: npm run migrate:dev</span></div>`})+ZSH()+LOGS()+INFRA({hl:hlTill(3.4)})+NOTES(),
+  pane:layer(TF,'g','--o:3.4s')+`<div class="layer a" style="--d:3.4s">${SESSION}
+    <div class="perm g" style="--o:5s"><span class="am">Allow Bash?</span>  <span class="fg">npm run migrate:dev</span><br>
+     <div class="o on">1. Yes</div><div class="o">2. Yes, and don't ask again for npm run</div><div class="o">3. No, tell Claude what to do</div></div>
+    ${lnA(5.1,'<span class="gr">●</span> Bash <span class="fg">npm run migrate:dev</span>  <span class="fa">running…</span>')}</div>`})+
+  `<div class="notif a g" style="--d:1.5s;--o:3.2s"><div class="h">NEEDS YOU · PROJ-482 › claude</div>Bash: npm run migrate:dev</div>`+hud([[2.6,'⌘⇧A'],[4.4,'1']])});
+
+SC.push({chip:'Context',dur:8,title:'Keep what matters in the folder\'s context',
+ text:'Select any text. ⌘E saves it as a variable and ⌘⇧P pins it. Both land in this folder\'s context, next to Claude\'s todos and the files it changed, so the next prompt or command can use them.',keys:['⌘E','⌘⇧P'],
+ html:()=>win({pane:layer(
+   ln('<span class="fa">&gt;</span> Open the PR for the webhook fix')+ln('')+ln('<span class="gr">●</span> Bash <span class="fg">gh pr create --fill</span>')+
+   `<div class="ln rel">    ${sel('https://github.com/acme/api/pull/482',.8,3.8)}
+     <div class="toolbar a g" style="--d:1.3s;--o:2.5s;left:34px;top:-36px"><span class="on">${ic('var')}Extract <em>⌘E</em></span><span>${ic('pin')}Pin <em>⌘⇧P</em></span><span>Copy <em>⌘C</em></span></div>
+     <div class="pop a g" style="--d:2.5s;--o:3.8s;left:34px;top:26px;width:300px"><div class="hd"><span>SAVE AS VARIABLE</span><span>↵</span></div><div class="inp">${ty(2.7,'pr_api',80)}</div></div></div>`+ln('')+
+   `<div class="ln rel"><span class="gr">●</span> Done. PR #482 is open. It now ${sel('retries the webhook twice, then fails',4.6,6.3)}.
+     <div class="toolbar a g" style="--d:5s;--o:6.1s;left:170px;top:-36px"><span>${ic('var')}Extract <em>⌘E</em></span><span class="on">${ic('pin')}Pin <em>⌘⇧P</em></span><span>Copy <em>⌘C</em></span></div></div>`),
+  ctx:ctx({vc:3,pc:2,vars:`<div class="ag rel" style="--d:3.8s">${vr('pr_api','github.com/acme/api/pull/482','saved','rel',flash(3.8))}</div>`+VARS_BASE,
+   pins:`<div class="ag" style="--d:6.2s">${pinCard('SELECTION · 09:31','retries the webhook twice, then fails',flash(6.2))}</div>`+PIN_BASE})})+hud([[2.1,'⌘E'],[3.4,'↵'],[5.7,'⌘⇧P']])});
+
+SC.push({chip:'Commands',dur:9,title:'Commands you save once',
+ text:'A command is a saved shell line with {{variables}}. Run types it with Enter into the focused pane, a new tab or a new row; Insert types it without Enter. A value the context lacks is asked for and never saved. A launcher shows UP or DOWN and restarts in one click.',keys:['{{env}}','↵','↻'],
+ html:()=>win({title:stack(gn(3.2,'PROJ-482 › claude'),ap(3.2,'PROJ-482 › deploy')),
+  side:fh('PROJ-482',{sq:['mag','blue','green'],sqx:`<i class="a" style="--d:3.2s;background:var(--red)"></i>`})+CLAUDE({hl:hlTill(3.2)})+ZSH()+LOGS()+`<div class="ag" style="--d:3.2s">${st('deploy','term','red',{in:1,hl:HL,sub:'staging',over:flash(3.2)})}</div>`+INFRA()+NOTES(),
+  cmds:CMD('dev server',{r:stack(gn(5.2,up('green','UP')),apgn(5.2,6.6,up('red','DOWN')+'<span class="fg">↻</span>'),ap(6.6,up('green','UP'))),over:flash(6.6)})+
+   CMD('test <span class="var">{{ticket}}</span>')+CMD('deploy <span class="var">{{env}}</span>',{hl:hlBetween(1.1,3.2)}),
+  pane:layer(SESSION,'g','--o:3.2s')+`<div class="layer a" style="--d:3.2s">${ln(P+'./scripts/deploy.sh staging')}${lnA(3.8,'<span class="fa">building image acme/api:9f3c…</span>')}${lnA(4.4,'<span class="fa">pushing to staging…</span>')}${lnA(5,'<span class="gr">deployed</span> api.staging.acme.test <span class="fa">in 48s</span>')}${lnA(5.2,P+'<span class="caret"></span>')}</div>`})+
+  `<div class="pop a g" style="--d:1.4s;--o:3.2s;left:240px;top:500px;width:360px"><div class="hd"><span>DEPLOY · ONE VALUE MISSING</span><span>↵ RUN</span></div>
+    <div class="it">env</div><div class="inp">${ty(1.8,'staging',90)}</div><div class="ft"><span>./scripts/deploy.sh {{env}}</span><span>new tab</span><span>asked once, not saved</span></div></div>`+
+  cursor('c7',[[0,560,380],[12,110,712],[30,110,712],[36,560,420],[62,190,660],[74,190,660],[100,190,660]],9)+hud([[2.8,'↵']])});
+
+SC.push({chip:'Prompts',dur:7,title:'Insert a prompt, then decide',
+ text:'⌘I searches the prompt library and the folder\'s variables. Terminescu fills the placeholders and pastes the text into the pane. Enter stays yours.',keys:['⌘I','↵'],
+ html:()=>win({ctx:ctx({vc:3,vars:vr('pr_api','github.com/acme/api/pull/482')+VARS_BASE}),pane:layer(SESSION+ln('<span class="gr">●</span> Done. PR #482 is open.')+ln('')+
+   `<div class="ln"><span class="fa">&gt;</span> ${ap(3,'Review github.com/acme/api/pull/482 for missing tests and risky migrations.')}${ap(3,'<span class="caret"></span>')}</div>`+
+   `<div class="ln a" style="--d:3.6s;padding-left:14px"><span class="tag">PASTED · NOT SENT</span></div>`)+
+  `<div class="pop a g" style="--d:.9s;--o:2.9s;left:40px;top:60px;width:600px">
+    <div class="inp">${ic('prompt')} ${ty(1.2,'rev',110)}</div>
+    <div class="it on">${ic('prompt')}Review PR<span class="t">PROMPT · V3</span></div>
+    <div class="it">${ic('prompt')}Review migration<span class="t">PROMPT</span></div>
+    <div class="it">${ic('var','v')}pr_api<span class="t">VARIABLE</span></div>
+    <div class="prev">Review <span class="vchip">github.com/acme/api/pull/482</span> for missing tests and risky migrations.</div>
+    <div class="ft"><span>↵ paste</span><span>⌘↵ paste and send</span><span>esc close</span></div></div>`})+hud([[.5,'⌘I'],[2.5,'↵']])});
+
+SC.push({chip:'Claude insights',dur:8.4,title:'See what Claude is doing',
+ text:'The context meter turns amber at 80%. The panel shows the model and mode, mirrors Claude\'s todo list and lists what the session changed. A file opens as a diff against its text before the session. ⌥⌘R resumes one of the row\'s past sessions.',keys:['⌥⌘R','⌥⌘C'],
+ html:()=>win({title:stack(gn(5,'PROJ-482 › claude'),ap(5,'PROJ-482 › webhook.ts')),
+  side:fh('PROJ-482',{sq:['mag','blue','green'],sqx:`<i class="a" style="--d:5s;background:var(--amber)"></i>`})+CLAUDE({hl:hlTill(5),sub:stack(gn(1.6,'fix/webhook-retry'),ap(1.6,'<span class="am">81% context</span>'))})+ZSH()+LOGS()+`<div class="ag" style="--d:5s">${st('webhook.ts','diff','amber',{in:1,hl:HL,sub:'since session start'})}</div>`+INFRA()+NOTES(),
+  ctx:ctx({claude:`<div class="cl"><span class="mg">opus</span><span class="dm">· plan mode</span><span class="r">${stack(gn(1.9,'<span class="dm">62%</span>'),ap(1.9,'<span class="am">81%</span>'))}</span></div><div class="meter"><i class="go" style="--d:1s"></i></div>`,
+   todos:td(1,'Read webhook.ts')+td(1,'Retry with backoff')+`<div class="td">${stack(gn(3,'<span class="fa">[ ]</span>'),ap(3,'<span class="gr">[x]</span>'))}Test the 502 path</div>`+`<div class="ag" style="--d:3.2s">${td(0,'Move policy to retry.ts')}</div>`,
+   files:fr('M','src/webhook.ts',['+14','−3'],hlBetween(4.2,5)+flash(4.4))+fr('A','test/webhook.retry.test.ts',['+41',''])}),
+  pane:layer(SESSION+ln('<span class="bl">●</span> Working <span class="fa">(esc to interrupt)</span>'),'g','--o:5s')+
+   `<div class="layer a" style="--d:5s;padding:0"><div class="ph" style="height:24px">${ic('diff')} src/webhook.ts · against the text before the session<span class="mx"></span></div><div style="padding:10px 0">
+    <div class="dl"><span class="fa"> 41 </span> export async function deliver(hook: Hook) {</div>
+    <div class="dl d"><span class="fa"> 42 </span><span class="rd">-</span>  const res = await post(hook.url, hook.body);</div>
+    <div class="dl d"><span class="fa"> 43 </span><span class="rd">-</span>  if (!res.ok) throw new WebhookError(res.status);</div>
+    <div class="dl a"><span class="fa"> 42 </span><span class="gr">+</span>  for (let attempt = 1; attempt &lt;= 2; attempt++) {</div>
+    <div class="dl a"><span class="fa"> 43 </span><span class="gr">+</span>    const res = await post(hook.url, hook.body);</div>
+    <div class="dl a"><span class="fa"> 44 </span><span class="gr">+</span>    if (res.ok) return res;</div>
+    <div class="dl a"><span class="fa"> 45 </span><span class="gr">+</span>    if (res.status !== 502) break;</div>
+    <div class="dl a"><span class="fa"> 46 </span><span class="gr">+</span>    await sleep(backoff(attempt));</div>
+    <div class="dl a"><span class="fa"> 47 </span><span class="gr">+</span>  }</div>
+    <div class="dl a"><span class="fa"> 48 </span><span class="gr">+</span>  throw new WebhookError(502);</div>
+    <div class="dl"><span class="fa"> 49 </span> }</div></div></div>`})});
+
+SC.push({chip:'Git',dur:8,title:'Branches, pull requests and worktrees',
+ text:'Each tab shows its branch, and its pull request when gh is logged in. ⌥⌘N makes a branch and a worktree and opens a row in it; closing the row asks whether to keep the worktree. ⌥⇧⌘G checks out a pull request as a row.',keys:['⌥⌘N','⌥⇧⌘G','⌥⌘U'],
+ html:()=>win({title:stack(gn(3,'PROJ-482 › claude'),ap(3,'retry-metrics')),
+  side:fh('PROJ-482',{sq:['mag','blue','green']})+CLAUDE({hl:hlTill(3),sub:'fix/webhook-retry <span class="gr">#482 ✓</span>'})+ZSH({sub:'fix/webhook-retry'})+LOGS()+INFRA()+NOTES()+`<div class="ag" style="--d:3s">${st('retry-metrics','merge','blue',{hl:HL,sub:'feat/retry-metrics',over:flash(3)})}</div>`,
+  pane:layer(SESSION,'g','--o:3s')+`<div class="layer a" style="--d:3s">${ln('<span class="pr">~/acme/api-retry-metrics</span> <span class="am">❯</span> '+ty(3.5,'git status',70))}${lnA(4.4,'On branch feat/retry-metrics')}${lnA(4.5,'nothing to commit, working tree clean')}${lnA(4.8,'<span class="pr">~/acme/api-retry-metrics</span> <span class="am">❯</span> <span class="caret"></span>')}</div>`})+
+  `<div class="pop a g" style="--d:.8s;--o:3s;left:340px;top:150px;width:460px"><div class="hd"><span>NEW BRANCH AND WORKTREE</span><span>↵</span></div>
+    <div class="inp">feat/${ty(1.1,'retry-metrics',70)}</div><div class="ft"><span>from develop</span><span>in ~/acme/api-retry-metrics</span><span>opens a row</span></div></div>`+hud([[.4,'⌥⌘N'],[2.6,'↵']])});
+
+SC.push({chip:'⌃G editor',dur:8.2,title:'Claude\'s editor opens here',
+ text:'⌥⌘T opens a plain-text tab. Set EDITOR to terminescu edit --wait and ⌃G in Claude Code opens the prompt in a text pane beside the terminal. ⌘↵ sends the text back.',keys:['⌥⌘T','⌃G','⌘↵'],
+ html:()=>win({pane:`<div class="split"><div class="l">${layer(SESSION+ln('<span class="gr">●</span> Done. PR #482 is open.')+ln('')+
+     `<div class="ln"><span class="fa">&gt;</span> ${gn(.9,'<span class="caret"></span>')}${apgn(1.1,6,'<span class="fa">Waiting for the editor…</span>')}</div>`+
+     `<div class="a" style="--d:6.2s;white-space:pre">  Move the retry policy to src/retry.ts.\n  Keep the 502 path. Add a test.<span class="caret"></span></div>`)}</div>
+   <div class="r open" style="--d:1.1s;--o:5.9s"><div class="waitbar">CLAUDE CODE IS WAITING · ⌘↵ SEND BACK</div>
+    <div class="ed" style="top:24px"><div class="gut">1<br>2</div><div class="txt">${ln(ty(1.8,'Move the retry policy to src/retry.ts.',45))}${ln(ty(3.7,'Keep the 502 path. Add a test.',45))}</div></div></div></div>`})+
+  hud([[.6,'⌃G'],[5.4,'⌘↵']])});
+
+SC.push({chip:'Secrets',dur:9,title:'Variables you don\'t save',
+ text:'Session values live in memory and end with the session. Secrets never touch disk, show masked, and insert as $API_TOKEN so the value stays out of your scrollback.',keys:['--session','--secret','⌘I'],
+ html:()=>win({side:fh('PROJ-482',{sq:['mag','blue','green']})+CLAUDE({hl:''})+ZSH({hl:HL})+LOGS()+INFRA()+NOTES(),title:'PROJ-482 › zsh',
+  ctx:ctx({vc:4,vars:VARS_BASE+`<div class="ag rel" style="--d:2.6s">${vr('build_id','9f3c','session','rel',flash(2.6))}</div><div class="ag rel" style="--d:5.9s">${vr('API_TOKEN','••••••••','secret','rel',flash(5.9))}</div>`}),
+  pane:layer(ln(P+ty(.5,'terminescu var set build_id 9f3c --session',38))+
+   lnA(2.6,'<span class="fa">build_id set for this session · memory only</span>')+
+   ln(`<span class="a" style="--d:2.9s">${P}</span>`+ty(3.1,'terminescu var set API_TOKEN --secret',38))+
+   ln(`<span class="a" style="--d:4.8s"><span class="fa">value (hidden): </span></span>`+ty(5,'••••••••••',40))+
+   lnA(5.9,'<span class="fa">API_TOKEN stored in memory · never written to disk</span>')+
+   ln(`<span class="a" style="--d:6.4s">${P}</span>`+ap(7.1,'curl -H "Authorization: Bearer <span class="vchip sec">$API_TOKEN</span>" api.acme.test/v1/hooks')))})+
+  hud([[2.3,'↵'],[4.6,'↵'],[5.6,'↵'],[6.7,'⌘I']])});
+
+SC.push({chip:'Nothing lost',dur:8.4,title:'Quit, and the shells keep running',
+ text:'A small daemon owns every shell, so sessions survive closing a window, quitting and updating the app. ⇧⌘T reopens the last closed tab with its name, status, variables and pins.',keys:['⌘Q','⌘W','⇧⌘T'],
+ html:()=>{const pane3=pb(0,0,50,100,'claude',SESSION,0)+pb(50,0,50,50,'zsh',WATCH,1)+pb(50,50,50,50,'zsh',TAIL,0);
+  return gn(1.2,win({pane:`<div class="layer" style="padding:0">${pane3}</div>`}),'div','','position:absolute;inset:0')+
+  apgn(1.3,3.2,`<div class="card"><div class="h">TERMINESCU QUIT</div>${ln('<span class="fa">terminescu-ptyd keeps 5 shells running</span>')}${ln('<span class="gr">●</span> claude     <span class="fa">~/acme/api</span>')}${ln('<span class="gr">●</span> npm test   <span class="fa">watching</span>')}${ln('<span class="gr">●</span> tail -f    <span class="fa">logs/app.log</span>')}${ln('<span class="gr">●</span> terraform  <span class="fa">~/infra</span>')}</div>`,'div','','position:absolute;inset:0')+
+  ap(3.3,win({side:fh('PROJ-482',{sq:['mag','blue','green']})+CLAUDE()+ZSH()+`<div class="gh" style="--o:4.8s">${LOGS()}</div><div class="ag" style="--d:6.4s">${LOGS({over:flash(6.4)})}</div>`+INFRA()+NOTES(),
+   pane:`<div class="layer" style="padding:0">${pb(0,0,50,100,'claude',SESSION,0)+pb(50,0,50,50,'zsh',WATCH+lnA(3.8,'<span class="gr"> PASS</span> test/retry.test.ts <span class="fa">· re-ran while closed</span>'),1)+pb(50,50,50,50,'zsh',TAIL,0)}</div>`}),'div','','position:absolute;inset:0')+
+  hud([[.4,'⌘Q'],[2.6,'open'],[4.4,'⌘W'],[5.9,'⇧⌘T']])}});
+
+SC.push({chip:'Outro',dur:7,title:'Terminescu',
+ text:'A macOS terminal manager for working in Claude Code all day: folders, tabs and split panes, saved commands, and a memory for every Claude session. You start Claude yourself; Terminescu never starts a turn on its own.',keys:[],
+ html:()=>`<div class="outro"><div class="big">${[...'TERMINESCU'].map((c,i)=>`<span class="a ${i>6?'amb2':''}" style="--d:${(.2+i*.09).toFixed(2)}s">${c}</span>`).join('')}</div>
+  <div class="tagl a" style="--d:1.4s">Folders, splits, commands and a memory for every Claude session.</div>
+  <div class="kg a" style="--d:2s">${[['⌘T','new tab'],['⌘D','split right'],['⌘P','palette'],['⌘E','extract'],['⌘⇧P','pin'],['⌘I','insert'],['⌘⇧A','needs you'],['⌥⌘N','worktree'],['⇧⌘T','reopen']].map(([k,t])=>`<div>${kc(k)}${t}</div>`).join('')}</div></div>`});
+
+/* ---------------- player ---------------- */
+const world=document.getElementById('world'),stage=document.getElementById('stage'),cap=document.getElementById('cap'),chipsEl=document.getElementById('chips'),pp=document.getElementById('pp');
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+let idx=0,t=0,playing=!reduce,last=0;
+chipsEl.innerHTML=SC.map((s,i)=>`<button class="chip" data-i="${i}"><span>${String(i+1).padStart(2,'0')} ${s.chip}</span><i></i></button>`).join('');
+const chips=[...chipsEl.children];
+chips.forEach(c=>c.onclick=()=>{go(+c.dataset.i);if(!reduce)setPlay(true)});
+function fit(){world.style.transform=`scale(${stage.clientWidth/1200})`}
+new ResizeObserver(fit).observe(stage);fit();
+function render(){const s=SC[idx];world.innerHTML=s.html();world.className='world'+(reduce?' still':'')+(playing?'':' paused');
+ cap.innerHTML=`<div class="no">${String(idx+1).padStart(2,'0')} / ${SC.length}</div><div><h2>${s.title}</h2><p>${s.text}</p>${s.keys.length?`<div class="keys">${s.keys.map(kc).join('')}</div>`:''}</div>`;
+ chips.forEach((c,i)=>{c.classList.toggle('on',i===idx);c.querySelector('i').style.width=i<idx?'100%':'0'})}
+function go(i){idx=(i+SC.length)%SC.length;t=0;render()}
+function setPlay(p){playing=p;world.classList.toggle('paused',!p);pp.innerHTML=p?'❚❚ PAUSE':'▶ PLAY';if(p&&idx===SC.length-1&&t>=SC[idx].dur)go(0)}
+pp.onclick=()=>{if(reduce)world.classList.remove('still');setPlay(!playing)};
+document.getElementById('prev').onclick=()=>go(idx-1);
+document.getElementById('next').onclick=()=>go(idx+1);
+document.getElementById('rep').onclick=()=>{if(reduce)world.classList.remove('still');go(idx);if(!playing)setPlay(true)};
+addEventListener('keydown',e=>{if(e.target.closest('button')&&e.key===' ')return;if(e.key===' '){e.preventDefault();setPlay(!playing)}else if(e.key==='ArrowRight')go(idx+1);else if(e.key==='ArrowLeft')go(idx-1)});
+function tick(now){const dt=last?Math.min((now-last)/1000,.1):0;last=now;
+ if(playing&&!world.classList.contains('still')){t+=dt;const s=SC[idx];chips[idx].querySelector('i').style.width=Math.min(100,t/s.dur*100)+'%';
+  if(t>=s.dur){if(idx<SC.length-1)go(idx+1);else{t=s.dur;setPlay(false)}}}
+ requestAnimationFrame(tick)}
+render();if(reduce)pp.innerHTML='▶ PLAY';requestAnimationFrame(tick);
+</script>
