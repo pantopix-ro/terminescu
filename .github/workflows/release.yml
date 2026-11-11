@@ -84,6 +84,12 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
+          # An empty secret still sets the variable, and Tauri then tries to import it as a
+          # certificate. Unset the empty ones so an unsigned build signs ad hoc.
+          for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY \
+            APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD; do
+            [ -n "${!v}" ] || unset "$v"
+          done
           export TERMINESCU_BUILD="$(git rev-parse --short HEAD)"
           if [ "$UPDATES" = "true" ]; then
             pnpm tauri build --config src-tauri/tauri.release.conf.json
