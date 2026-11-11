@@ -7,11 +7,24 @@ import { NOT_AFFILIATED, PRIVACY_POINTS } from "./privacy";
 
 type Api = Pick<Host, "appInfo" | "feedbackOpen" | "uninstallHelpers" | "appQuit" | "openUrl" | "settings" | "setSettings">;
 
-function Sheet({ label, className = "", onClose, children }: { label: string; className?: string; onClose(): void; children: ReactNode }) {
+function Sheet({
+  label,
+  className = "",
+  onClose,
+  backdrop = true,
+  children,
+}: {
+  label: string;
+  className?: string;
+  onClose(): void;
+  /** False keeps the sheet open on a click outside it; Esc still closes it. */
+  backdrop?: boolean;
+  children: ReactNode;
+}) {
   const frame = useRef<HTMLDivElement>(null);
   useEffect(() => frame.current?.focus(), []);
   return (
-    <div className="sheet-back" onPointerDown={onClose}>
+    <div className="sheet-back" onPointerDown={backdrop ? onClose : undefined}>
       <div
         ref={frame}
         tabIndex={-1}
@@ -221,7 +234,9 @@ export function UninstallSheet({ host, onError, onClose }: AppSheetProps) {
           disabled={busy}
           onClick={() => {
             setBusy(true);
-            void host.uninstallHelpers(data).then(
+            // Kept data keeps the hook consent, so turn it off first: the next launch must not add the hook back.
+            const consent = data ? Promise.resolve() : host.settings().then((s) => host.setSettings({ ...s, hook: "off" }));
+            void consent.then(() => host.uninstallHelpers(data)).then(
               () => setDone(true),
               (e: unknown) => {
                 setBusy(false);
@@ -237,16 +252,25 @@ export function UninstallSheet({ host, onError, onClose }: AppSheetProps) {
   );
 }
 
-/** The first-run screen (D6): what lives outside the bundle, and the hook question. */
-export function FirstRunSheet({ host, onError, onClose, onPrivacy }: AppSheetProps & { onPrivacy(): void }) {
-  const [hook, setHook] = useState(true);
+/**
+ * The first-run screen (D6): what lives outside the bundle, and the hook question. The app holds
+ * the hook tick, so it survives a trip to Privacy and back.
+ */
+export function FirstRunSheet({
+  host,
+  onError,
+  onClose,
+  onPrivacy,
+  hook,
+  setHook,
+}: AppSheetProps & { onPrivacy(): void; hook: boolean; setHook(on: boolean): void }) {
   const finish = (on: boolean) =>
     void host
       .settings()
       .then((s) => host.setSettings({ ...s, hook: on ? "on" : "off", firstRunDone: true }))
       .then(onClose, (e: unknown) => onError(String(e)));
   return (
-    <Sheet label="Welcome to Terminescu" className="first-run-sheet" onClose={() => finish(false)}>
+    <Sheet label="Welcome to Terminescu" className="first-run-sheet" backdrop={false} onClose={() => finish(false)}>
       <h2 className="ao-pixel">TERMINESCU</h2>
       <p>A terminal manager for working in Claude Code all day: side tabs per ticket, split panes, and a side tab that turns amber when Claude waits for you.</p>
       <p className="small">To do that, Terminescu keeps two helpers in its support folder, outside the app:</p>

@@ -24,6 +24,8 @@ test("Send Feedback opens a prefixed email with no log by default", async ({ pag
   expect(urls).toHaveLength(1);
   expect(urls[0]).toMatch(/^mailto:salut@pantopix\.com\?subject=%5BTerminescu%5D%20Feedback&body=/);
   expect(decodeURIComponent(urls[0] ?? "")).toContain("macOS 15.0");
+  expect(decodeURIComponent(urls[0] ?? "")).not.toContain("app.log");
+  expect(urls).not.toContain("reveal:app.log");
 });
 
 test("Report an Issue opens the repo's new issue and reveals the log when ticked", async ({ page }) => {

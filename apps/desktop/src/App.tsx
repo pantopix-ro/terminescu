@@ -403,6 +403,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     | "feedback-issue"
     | "uninstall"
   >();
+  // The first-run hook tick, kept here so a look at Privacy does not reset it.
+  const [firstRunHook, setFirstRunHook] = useState(true);
   const [toSave, setToSave] = useState("");
   const [libraryKey, setLibraryKey] = useState<string>();
   // Text panes' documents as their panes last reported them: titles and unsaved edits (D27).
@@ -2325,7 +2327,14 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         />
       )}
       {sheet === "first-run" && (
-        <FirstRunSheet host={host} onError={setError} onClose={closeSheet} onPrivacy={() => setSheet("privacy")} />
+        <FirstRunSheet
+          host={host}
+          onError={setError}
+          onClose={closeSheet}
+          onPrivacy={() => setSheet("privacy")}
+          hook={firstRunHook}
+          setHook={setFirstRunHook}
+        />
       )}
       {sheet === "about" && <AboutSheet host={host} onError={setError} onClose={closeSheet} onLicenses={() => setSheet("licenses")} />}
       {sheet === "licenses" && <LicensesSheet onClose={closeSheet} />}
