@@ -74,8 +74,9 @@ pub fn remove(settings: &mut Map<String, Value>) -> Result<bool, &'static str> {
     if !settings.contains_key("hooks") {
         return Ok(false);
     }
+    let was_empty = matches!(settings.get("hooks"), Some(Value::Object(h)) if h.is_empty());
     let changed = rewrite(settings, None)?;
-    if matches!(settings.get("hooks"), Some(Value::Object(h)) if h.is_empty()) {
+    if !was_empty && matches!(settings.get("hooks"), Some(Value::Object(h)) if h.is_empty()) {
         settings.remove("hooks");
     }
     Ok(changed)
@@ -113,10 +114,13 @@ fn rewrite(settings: &mut Map<String, Value>, command: Option<&str>) -> Result<b
         return Err("a non-object \"hooks\"");
     };
     // Drop every Terminescu hook, then the groups and events that end up empty because of it.
-    for (_, groups) in hooks.iter_mut() {
+    // An event the person left empty stays as it was.
+    let mut emptied = Vec::new();
+    for (event, groups) in hooks.iter_mut() {
         let Value::Array(groups) = groups else {
             continue;
         };
+        let had = groups.len();
         groups.retain_mut(|group| {
             let Some(Value::Array(list)) = group.get_mut("hooks") else {
                 return true;
@@ -129,8 +133,11 @@ fn rewrite(settings: &mut Map<String, Value>, command: Option<&str>) -> Result<b
             });
             had == list.len() || !list.is_empty()
         });
+        if had > 0 && groups.is_empty() {
+            emptied.push(event.clone());
+        }
     }
-    hooks.retain(|_, groups| !matches!(groups, Value::Array(g) if g.is_empty()));
+    hooks.retain(|event, _| !emptied.contains(event));
     let Some(command) = command else {
         return Ok(!same_order(&before, settings));
     };
@@ -359,6 +366,25 @@ mod tests {
         assert!(!uninstall(&gone).unwrap());
         assert!(!gone.exists());
         assert!(!present(&gone));
+    }
+
+    #[test]
+    fn remove_keeps_empty_events_and_hooks_the_person_left() {
+        let mut theirs = json!({ "hooks": { "Stop": [], "Notification": [{ "hooks": [] }] } });
+        let Value::Object(map) = &mut theirs else {
+            unreachable!()
+        };
+        assert!(!remove(map).unwrap());
+        assert_eq!(
+            theirs,
+            json!({ "hooks": { "Stop": [], "Notification": [{ "hooks": [] }] } })
+        );
+        let mut empty = json!({ "hooks": {} });
+        let Value::Object(map) = &mut empty else {
+            unreachable!()
+        };
+        assert!(!remove(map).unwrap());
+        assert_eq!(empty, json!({ "hooks": {} }));
     }
 
     #[test]
