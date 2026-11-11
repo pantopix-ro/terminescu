@@ -1,207 +1,182 @@
-# Terminescu
+<p align="center">
+  <img src="docs/media/icon.png" width="112" height="112" alt="Terminescu app icon">
+</p>
 
-Terminescu is a macOS terminal manager for working in Claude Code all day. Side tabs group your
-terminals by ticket. Each side tab has its own browser-style tabs and split panes. It also
-remembers what came out of those sessions: variables, pins, links, prompts and the files
-Claude edited. When a Claude session waits on a permission prompt, its side tab turns amber,
-whichever of your 20 terminals it lives in.
+<h1 align="center">Terminescu</h1>
 
-It doesn't orchestrate Claude. You start every session yourself by typing `claude` in a
-shell, and Terminescu never starts a turn on its own.
+<p align="center">
+  A macOS terminal manager for working in Claude Code all day.<br>
+  Folders, tabs and split panes, saved commands, and a memory for every Claude session.
+</p>
 
-> Status: pre-release, macOS on Apple silicon. The DMG is ad-hoc signed until an Apple
-> Developer ID exists, so the first launch needs Open Anyway in System Settings › Privacy &
-> Security. Updates are signed and checked against the key built into the app. To build from
-> source, read [Getting started](docs/getting-started.md).
+<p align="center">
+  <a href="https://github.com/lzrmihnea/terminescu/releases">Download</a> ·
+  <a href="https://claude.ai/artifact/9xWiUJnmsdS2z4aYauTGik">Interactive tour</a> ·
+  <a href="docs/getting-started.md">Build from source</a> ·
+  <a href="PRIVACY.md">Privacy</a>
+</p>
 
-## The model
+<p align="center">
+  <a href="https://claude.ai/artifact/9xWiUJnmsdS2z4aYauTGik"><img src="docs/media/reel.webp" alt="The Terminescu tour: folders, split panes, the amber needs-you row, extracting a variable, running a saved command and Claude's session changes" width="100%"></a>
+</p>
 
-```
-Window            an OS window
-└─ Side tab       a row in the sidebar; owns one context
-   └─ Tab         listed under its side tab; Settings can show them in a top bar
-      └─ Pane     a split: terminal, transcript or text
-```
+You run five Claude sessions, a test watcher, a dev server and a log tail. One of them asks a
+question and waits. In a plain terminal you find out ten minutes later. In Terminescu its row
+turns amber, the title bar counts it and `⌘⇧A` takes you there.
 
-- **Context, per side tab.** Holds variables, pins, links, text and the files Claude edited.
-  Every tab in the side tab shares it. `⌘E` turns a selection into a variable. `⌘⇧P` pins a
-  selection or a whole message.
-- **Prompts.** A versioned library with `{{variables}}`. `⌘I` inserts a prompt or a variable
-  at the cursor and fills it from the context. It never presses Enter for you.
-- **Statuses.** Built-in statuses come from Claude Code hooks and shell integration. You can
-  rename them, recolor them and add your own. Rules and the `terminescu status` CLI can set
-  them too. Amber is reserved for "needs you".
-- **Text tabs.** `⌥⌘T` opens a plain-text tab next to your terminals. It's built on
-  CodeMirror 6, saves files byte for byte, keeps unsaved work across restarts (hot exit) and
-  can act as `$EDITOR`. That means Claude Code's `⌃G` and `git commit` open in a pane
-  beside the terminal.
-- **Git.** Each tab shows its branch, and its pull request when `gh` is logged in. The
-  Changes section lists the row's changed files; one click opens a diff tab you can edit in
-  place, side by side or unified (`⌥⌘U`). `⌥⌘N` makes a branch and a worktree and opens a row
-  in it, and closing that row asks whether to keep the worktree. `⌥⇧⌘G` checks out a pull
-  request as a row. `{{branch}}`, `{{repo}}` and `{{pr}}` fill prompts.
-- **Claude insights.** A Claude tab shows how full its context is (amber at 80%), its model and
-  mode, compaction and running subagents. A waiting tab names what it waits on, as
-  "Bash: npm publish". The context panel mirrors Claude's todo list and lists what the session
-  changed, each file opening as a diff against its text before the session. `⌥⌘R` resumes one
-  of the row's past sessions, `⌥⌘C` opens the project's `CLAUDE.md` and `⌥⇧⌘R` shows the
-  transcript in Finder. Settings › Claude sets the threshold and each model's context window.
-- **Drag like a browser.** Drag a tab to reorder it. Drop it on the sidebar to make a new side
-  tab, on a side tab to move it there, or outside the window to open a new window. Drop one
-  side tab onto another to merge them.
-- **Keys.** Plain keys always reach the terminal. App and plugin actions are `⌘` chords. Settings
-  › Keys rebinds each one or turns it off, and the hints in the app follow.
+Terminescu groups your terminals into folders, one per ticket or repo. Each folder remembers
+what came out of its sessions: the PR link you copied, the line you pinned, Claude's todo list
+and every file Claude changed. The next prompt or command fills itself from that context.
 
-## Architecture
+It doesn't drive Claude. You start every session yourself by typing `claude` in a shell, and
+Terminescu never starts a turn on its own.
 
-```
- Terminescu.app (Tauri 2)                        terminescu-ptyd (detached daemon)
- ┌───────────────────────────────────┐  unix    ┌──────────────────────────────┐
- │ one webview per window            │  socket  │ a pty per pane (login shell) │
- │  React 19, xterm.js, CodeMirror 6 │◀────────▶│ screen model, OSC 133/7      │
- │        ▲ commands  │ patches      │  v1      │ foreground process           │
- │        │  (Host)   ▼              │          │ session + secret variables   │
- │ Rust core: state, SQLite,         │          └──────────────────────────────┘
- │  statuses, rules, documents       │◀── terminescu hook     (Claude Code hooks)
- │  hook socket                      │◀── terminescu status / var / edit (any shell)
- └───────────────────────────────────┘
-```
+> **Status: pre-release.** macOS 14 or later on Apple silicon. The app isn't notarized by
+> Apple yet, so the first launch needs one extra step (see [Install](#install)). The images on
+> this page come from the [interactive tour](https://claude.ai/artifact/9xWiUJnmsdS2z4aYauTGik)
+> and use invented data.
 
-- **The Rust core is the single source of truth.** Windows send commands, and the core
-  applies them, persists them to SQLite and broadcasts patches to every window. Pty output
-  streams to each window over a binary IPC channel.
-- **`terminescu-ptyd` owns every shell.** Sessions survive closing a window, quitting the app
-  and upgrading it. A reboot ends them, and the app then restores the layout with fresh
-  shells and offers a "resume" button for each Claude session.
-- **Claude is the unmodified `claude` CLI.** Terminescu learns about it through Claude Code
-  hooks. It never reads or stores a Claude token and never uses the Agent SDK.
-- **Claude support and git are plugins.** The core knows a generic agent; the Claude plugin
-  turns hook events into agent changes and draws the transcript pane. The git plugin runs the
-  person's `git` and `gh` and never reads a GitHub token. The app builds and runs without
-  either, and a check keeps the core from reaching a plugin. See
-  [docs/plugins.md](docs/plugins.md).
-- **Every table carries `owner_id`.** v1 has one local owner. A later change, `add-remote-view`,
-  serves the same protocol over WebSocket so a browser can view the Mac, with no cloud
-  involved.
+## What it does
 
-The decisions behind each choice are numbered D1 to D36 in
-[design.md](openspec/changes/add-terminescu-foundation/design.md).
+### Folders, tabs and panes
 
-## Plan
+![A folder named PROJ-482 holds three tabs: claude, zsh and logs. Rows for infra and notes sit below it, and saved commands sit at the bottom of the sidebar.](docs/media/folders.png)
 
-Planning follows [OpenSpec](https://github.com/Fission-AI/OpenSpec). One change holds the
-foundation:
+The sidebar holds your work. A row is one tab. Drag a row onto another and the two become a
+folder, with a coloured square per tab. `⌘T` adds a tab to the selected folder, in the
+folder's working directory. Every tab in a folder shares one context. New tabs open your login
+shell, never `claude`.
 
-| File | Contents |
-|---|---|
-| [proposal.md](openspec/changes/add-terminescu-foundation/proposal.md) | Why, what changes, scope, phases, resolved and open questions |
-| [design.md](openspec/changes/add-terminescu-foundation/design.md) | Decisions D1 to D36, risks |
-| [tasks.md](openspec/changes/add-terminescu-foundation/tasks.md) | Tasks, each with how it's verified |
-| [specs/](openspec/changes/add-terminescu-foundation/specs) | Requirements and scenarios for 9 capabilities |
-| [sequence.mmd](openspec/changes/add-terminescu-foundation/sequence.mmd) | The needs-you flow, from Claude Code hook to amber side tab |
-| [review](docs/review-2026-11-04.md) | Plan review: issues found, fixes, risks, confidence |
-| [getting started](docs/getting-started.md) | Run from source, build a `.dmg`, install, update, remove |
-| [spikes](docs/spikes) | Spike notes 0.1 to 0.5: reattach, keys, daemon lifetime, throughput, hooks |
+Tabs move like browser tabs: drag one to reorder it, onto another row to move it, or outside
+the window to open a new window. `⇧⌘T` reopens the last closed tab with its name, status,
+variables and pins.
 
-Delivery runs in three phases:
+### Split panes, and two rows side by side
 
-1. **P1, daily use.** Five spikes tested the riskiest assumptions on 2026-11-04 (all go, see
-   `docs/spikes/`); the work then lands in four milestones. Each milestone is usable on its own:
-   - M1: terminal manager (ptyd, tabs, splits, persistence, statuses from hooks)
-   - M2: context and prompts
-   - M3: commands, settings and keys
-   - M4: text tabs
-2. **P2, the browser moves.** Cross-window drag, side tab merge, extraction rules, the full
-   transcript pane.
-3. **P3, reach.** Signing, notarization, auto-update.
+![Three panes: Claude on the left, a test watcher top right and a log tail bottom right, with the left pane focused.](docs/media/split-panes.png)
 
-Later changes: `add-remote-view`, `add-flows`, `add-workspaces`, `add-mcp-pin-tool`, and a
-rich editor layer.
+`⌘D` splits right and `⌘⇧D` splits down. `⌘⌥` and an arrow moves the focus, and `⌘⇧M` shows the
+focused pane alone until you press it again.
 
-## Repository layout
+![The claude tab of PROJ-482 and the infra row shown side by side, each area headed by its name.](docs/media/side-by-side.png)
 
-| Path | Role |
-|---|---|
-| `apps/desktop` | Tauri 2 app: windows, sidebar, tabs, panes, context panel |
-| `crates/core` | `terminescu-core`: state, SQLite, statuses, documents, hook socket |
-| `crates/ptyd` | `terminescu-ptyd`: shells, scrollback, session and secret variables |
-| `crates/cli` | `terminescu`: `hook`, `status`, `var`, `edit` |
-| `crates/protocol` | The versioned core and daemon protocol |
-| `crates/plugin-api`, `packages/plugin-api` | The plugin API, Rust and UI halves |
-| `crates/plugin-claude`, `packages/plugin-claude` | The Claude plugin: hook adapter, transcript pane, hook helper, context meter, todos, session changes and history |
-| `crates/plugin-git`, `packages/plugin-git` | The git plugin: branch and pull request chips, Changes, diff tab, worktree rows |
-| `packages/ui` | React components and design tokens |
-| `packages/host` | The `Host` interface: Tauri IPC now, WebSocket later; a mock for tests |
-| `scripts/sidecars.mjs` | Builds the daemon and the CLI for the app bundle |
-| `scripts/check-plugins.mjs` | Fails when the core reaches a plugin (`pnpm check:plugins`) |
-| `seeds/prompts` | Seed prompts for the library |
-| `design/` | Design system and canvas sources |
-| `openspec/` | Change proposals, designs, specs and tasks |
-| `docs/` | Reviews and notes that don't belong to one change |
+Drop a row, or a folder's tab, on a pane's edge and it shows beside the current one. Each
+area keeps its own head and context, and the window remembers the view across restarts.
 
-## Design
+### Amber means it needs you
 
-`design/system` builds the Workbench design system and `design/canvas` holds the screen
-boards. Both get published as the artifacts linked above.
+![The claude tab turns amber and reads "Bash: npm run migrate:dev". The title bar says NEEDS YOU · 1 and a notification shows the same text.](docs/media/needs-you.png)
 
-    python3 design/system/build_tokens.py
-    python3 design/system/build_comps.py project
-    PLAYWRIGHT_FROM=/path/to/package.json node design/render/render.mjs design/system/project out/
+Claude Code hooks tell Terminescu when a session waits on you. Its tab gets Claude Code's ✳,
+its row turns amber and names what it waits on. The title bar counts the waits, the dock icon
+bounces and a notification goes out. `⌘⇧A` jumps to the oldest one. Answer it and the amber
+clears.
 
-`PLAYWRIGHT_FROM` points at any `package.json` whose project depends on `playwright-core`.
-The `ds/agentorch` folder name is left over from the old project name.
+Amber is reserved for this. Your own statuses, set by hand with `⌘⇧S`, by rules or by the
+`terminescu status` CLI, pick from the other colours.
 
-Visual rules: dark only, every color a token, Geist Mono for text and Silkscreen for short
-uppercase labels. Frames have hard shadows, icons are 8x8 pixel art and motion moves in steps.
-Amber means needs you, focus and drop targets, and it's never offered as a color for your own
-statuses.
+### Context per folder
 
-## Working rules
+![A selected PR link becomes the variable pr_api, and a selected sentence becomes a pin. Both appear in the context panel on the right.](docs/media/context.png)
 
-- Branches start from `develop`.
-- Commit messages run 9 lines at most, in the present tense, and never mention AI assistants.
-- Seeds, tests, specs and designs use invented data only (`PROJ-482`, `acme/api`). Never put
-  client tickets, tokens or real names in the repo.
-- Run `openspec validate add-terminescu-foundation --strict` after every change to the plan.
+Select text in any pane. `⌘E` saves it as a variable and `⌘⇧P` pins it. The context panel shows
+the folder's variables and pins next to Claude's model and context meter, its todo list and the
+files it changed this session.
 
-## Requirements
+### Commands you save once
 
-macOS 14 or later, Rust stable, Node 24, pnpm, and Claude Code with a logged-in `claude`.
-The git plugin needs git 2.30 or later; its GitHub items need a logged-in `gh`.
+![Running "deploy {{env}}" asks for the missing env value, then runs the command in a new tab of the folder.](docs/media/commands.png)
+
+A command is a saved shell line with `{{variables}}`, kept in the sidebar. Run types it with
+Enter into the focused pane, a new tab or a new row. Insert types it without Enter. A value the
+context lacks is asked for once and never saved. A launcher, such as a dev server, shows UP or
+DOWN and restarts in one click.
+
+### And the rest
+
+<table>
+<tr>
+<td width="50%"><img src="docs/media/prompts.png" alt="The ⌘I picker shows the Review PR prompt with the pr_api variable filled in."></td>
+<td width="50%"><img src="docs/media/claude-insights.png" alt="The context meter at 81% in amber, the todo list, and a diff of src/webhook.ts against its text before the session."></td>
+</tr>
+<tr>
+<td><b>Prompts.</b> A versioned library with <code>{{variables}}</code>. <code>⌘I</code> fills one from the context and pastes it. It never presses Enter for you.</td>
+<td><b>Claude insights.</b> The context meter turns amber at 80%. Each changed file opens as a diff against its text before the session. <code>⌥⌘R</code> resumes a past session.</td>
+</tr>
+<tr>
+<td><img src="docs/media/git.png" alt="The New branch and worktree dialog with feat/retry-metrics typed in."></td>
+<td><img src="docs/media/editor.png" alt="Claude Code waits while its prompt is edited in a text pane beside the terminal."></td>
+</tr>
+<tr>
+<td><b>Git.</b> Each tab shows its branch and pull request. <code>⌥⌘N</code> makes a branch, a worktree and a row in it. <code>⌥⇧⌘G</code> checks out a pull request as a row.</td>
+<td><b>Text tabs.</b> <code>⌥⌘T</code> opens a plain-text tab. Set <code>EDITOR</code> to <code>terminescu edit --wait</code> and Claude Code's <code>⌃G</code> opens beside the terminal.</td>
+</tr>
+</table>
+
+**Secrets stay off disk.** `terminescu var set API_TOKEN --secret` keeps a value in memory only.
+It shows masked and inserts as `$API_TOKEN`, so the value never lands in your scrollback.
+
+**Quitting loses nothing.** A small daemon owns every shell, so sessions survive closing a
+window, quitting the app and updating it. After a reboot the layout comes back with fresh
+shells and a resume button for each Claude session.
+
+## Keys
+
+Plain keys always reach the terminal. App actions are `⌘` chords, and Settings › Keys rebinds
+or turns off each one.
+
+| Key | Action | Key | Action |
+|---|---|---|---|
+| `⌘T` | New tab | `⌘E` | Extract selection to variable |
+| `⌘N` | New window | `⌘⇧P` | Pin selection |
+| `⌘D` / `⌘⇧D` | Split right / down | `⌘I` | Insert prompt or variable |
+| `⌘⇧M` | Maximize pane | `⌘⇧A` | Jump to waiting session |
+| `⇧⌘T` | Reopen closed tab | `⌘⇧S` | Edit status |
+| `⌥⌘T` | New text tab | `⌘P` | Command palette |
+| `⌥⌘N` | New branch and worktree | `⌘⇧F` | Find in all panes |
+| `⌃⌘1` to `⌃⌘9` | Switch row | `⌘1` to `⌘9` | Switch tab |
 
 ## Install
 
-Terminescu needs macOS 14 or later on Apple silicon.
+You need macOS 14 or later on Apple silicon, and Claude Code with a logged-in `claude`.
 
-1. Download the `.dmg` from the newest [release](https://github.com/pantopix/terminescu/releases).
+1. Download the `.dmg` from the newest [release](https://github.com/lzrmihnea/terminescu/releases).
 2. Open it and drag Terminescu to Applications.
-3. Double-click Terminescu. macOS says it "could not verify" the app, because this build is
-   not notarized by Apple yet. Close the warning.
+3. Double-click Terminescu. macOS says it "could not verify" the app, because Apple has not
+   notarized this build. Close the warning.
 4. Open System Settings › Privacy & Security. Under Security, click **Open Anyway** next to
    Terminescu, then confirm.
 
-You do this once. Later versions arrive through Terminescu › Check for Updates, and each one
-is checked against the project's update key before it installs. On the first launch,
-Terminescu asks before it adds its hook to Claude Code's settings. Help › Uninstall Terminescu
-Helpers removes the hook and the helpers again.
+You do this once. On the first launch, Terminescu asks before it adds its hook to Claude Code's
+settings. Help › Uninstall Terminescu Helpers removes the hook and the helpers again. A build
+that carries the update key installs later versions through Terminescu › Check for Updates and
+checks each one against that key first.
 
-## Build and run
+The git features need git 2.30 or later. Pull requests need a logged-in `gh`.
 
-[Getting started](docs/getting-started.md) has the full steps: tools, development mode, the
-`.dmg` build, install, update and removal.
+## Privacy
+
+Terminescu runs on your Mac and sends no telemetry. Its only automatic network call is the
+update check. The hook reads Claude Code's events and transcripts on your Mac, and secrets live
+only in memory. It never reads or stores a Claude token. [PRIVACY.md](PRIVACY.md) lists
+everything it reads and keeps.
+
+## Build from source
 
 ```
 pnpm install
-pnpm dev                      # the app with hot reload
-pnpm build --bundles dmg      # Terminescu.app and a .dmg, in target/release/bundle
-pnpm build --debug            # a faster debug bundle, in target/debug/bundle
-pnpm check:rust               # rustfmt, clippy and Rust tests: run before every commit
-pnpm test                     # TypeScript tests
-pnpm --filter @terminescu/desktop e2e   # Playwright on the mock host
-pnpm tokens                   # after editing design/system/build_tokens.py
+pnpm dev                     # the app with hot reload
+pnpm build --bundles dmg     # Terminescu.app and a .dmg, in target/release/bundle
 ```
 
-`pnpm --filter @terminescu/desktop dev` serves the UI alone in a browser on a mock `Host`.
+[Getting started](docs/getting-started.md) has the tools and every step.
+[Development](docs/development.md) covers the architecture, the plan, the repository layout
+and the design system.
+
+## Contributing
+
+Issues and pull requests are welcome. Pull requests need a signed Contributor License
+Agreement, which a bot asks for once. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
@@ -209,5 +184,6 @@ Terminescu is made by [PANTOPIX RO](https://pantopix.ro) and ships under the
 [Functional Source License 1.1, Apache 2.0 future license](LICENSE.md) (FSL-1.1-ALv2). You may
 read, run, change and share the code for any purpose except a product that competes with
 Terminescu. Each release becomes Apache 2.0 two years after it ships. The FSL is not an OSI
-open source license. Contributions need a signed CLA: see [CONTRIBUTING.md](CONTRIBUTING.md).
+open source license.
+
 Terminescu works with Claude Code and is not affiliated with Anthropic.
