@@ -140,3 +140,11 @@ A path inside the session's folder shows relative to it.
 
 Hook entries change on the next launch through the existing idempotent install. No database
 migration. Removing the plugin leaves `baselines/` for Uninstall Helpers.
+
+## Review fixes
+
+- Secret-looking paths (`.env*`, keys, `~/.ssh` and similar) are never copied by the hook and, when untracked, stay out of the snapshot (`baseline::is_secret_path`).
+- The snapshot adds `:(exclude,literal)` pathspecs for untracked files over the 5 MB cap and for secrets; unlike `core.excludesFile` this adds to the person's own ignore rules. It is skipped when the repository root is the home folder.
+- A session with no `SessionEnd` counts as ended when its folder, meta or files folder was last written longer ago than the retention.
+- The `ready` marker holds the snapshot root on its second line; the hook skips the copy only for paths under it. Known gap: a gitignored file inside the root has no snapshot copy and, once `ready` exists, no hook copy either.
+- The snapshot thread re-reads the meta before writing, so a `SessionEnd` during the snapshot is kept.

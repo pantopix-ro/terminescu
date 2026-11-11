@@ -7,7 +7,7 @@
 //!
 //! ```text
 //! <session>/            0700
-//!   ready               the working-tree snapshot is done (its tree id inside)
+//!   ready               the working-tree snapshot is done (its tree id, then its root folder)
 //!   index, objects/     the snapshot's own git index and object directory
 //!   files/<key>.path    the file's absolute path; made first, with O_EXCL, so one hook wins
 //!   files/<key>         a clone of the file before the first edit, 0600
@@ -58,8 +58,62 @@ pub fn key(path: &Path) -> String {
 pub enum Touch {
     /// A copy, or a marker, was made now.
     Made,
-    /// The session already had a copy or marker for the path, or the snapshot is ready.
+    /// The session already had a copy or marker for the path, or the snapshot is ready and
+    /// covers the path.
     Had,
+    /// The path looks like a secret ([`is_secret_path`]): nothing was copied.
+    Skipped,
+}
+
+/// Home folders whose files are never copied, relative to `$HOME`.
+const SECRET_DIRS: [&str; 4] = [".ssh", ".aws", ".gnupg", ".config/gh"];
+
+/// Whether `path` looks like a secret: `.env` and `.env.*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`,
+/// private keys (`id_*` without `.pub`), `.npmrc`, `.netrc`, `credentials`, and anything under
+/// `~/.ssh`, `~/.aws`, `~/.gnupg` or `~/.config/gh`. The hook never copies such a file and the
+/// snapshot keeps untracked ones out of the store.
+pub fn is_secret_path(path: &Path) -> bool {
+    is_secret_path_in(path, std::env::var_os("HOME").as_deref().map(Path::new))
+}
+
+/// [`is_secret_path`] with the home folder given.
+pub fn is_secret_path_in(path: &Path, home: Option<&Path>) -> bool {
+    if let Some(home) = home.filter(|h| h.is_absolute())
+        && SECRET_DIRS.iter().any(|d| path.starts_with(home.join(d)))
+    {
+        return true;
+    }
+    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+    let name = name.to_ascii_lowercase();
+    if name == ".env"
+        || name.starts_with(".env.")
+        || matches!(name.as_str(), ".npmrc" | ".netrc" | "credentials")
+        || (name.starts_with("id_") && !name.ends_with(".pub"))
+    {
+        return true;
+    }
+    matches!(
+        Path::new(&name).extension().and_then(|e| e.to_str()),
+        Some("pem" | "key" | "p12" | "pfx")
+    )
+}
+
+/// The folder a ready snapshot covers: the second line of the `ready` marker.
+pub fn snapshot_root(dir: &Path) -> Option<PathBuf> {
+    let text = std::fs::read(dir.join(READY)).ok()?;
+    let line = text.split(|b| *b == b'\n').nth(1)?;
+    (!line.is_empty()).then(|| PathBuf::from(std::ffi::OsStr::from_bytes(line)))
+}
+
+/// Whether the session's snapshot holds `path`: it is ready and `path` lies under its root
+/// (gitignored files under it are not in the snapshot; a known gap, see design.md).
+fn snapshot_covers(dir: &Path, path: &Path) -> bool {
+    !path
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+        && snapshot_root(dir).is_some_and(|root| path.starts_with(root))
 }
 
 fn private_dir(dir: &Path) -> std::io::Result<()> {
@@ -79,8 +133,8 @@ fn small_file(path: &Path, text: &str, exclusive: bool) -> std::io::Result<()> {
 
 /// Before an agent's first edit of `path` in `session`: an APFS clone of the file, or a marker
 /// when it is new, over `cap`, or on another volume. One `stat`, one `clonefile`, no reads of
-/// the file's contents. Does nothing once the session's snapshot is ready, since the snapshot
-/// holds the file then.
+/// the file's contents. Does nothing for a secret-looking path, nor once the session's snapshot
+/// is ready and covers the path (it lies under the snapshot's root).
 pub fn first_touch(store: &Path, session: &str, path: &Path, cap: u64) -> std::io::Result<Touch> {
     let Some(dir) = session_dir(store, session) else {
         return Err(std::io::Error::other("not a session id"));
@@ -88,7 +142,10 @@ pub fn first_touch(store: &Path, session: &str, path: &Path, cap: u64) -> std::i
     if !path.is_absolute() {
         return Err(std::io::Error::other("not an absolute path"));
     }
-    if dir.join(READY).exists() {
+    if is_secret_path(path) {
+        return Ok(Touch::Skipped);
+    }
+    if snapshot_covers(&dir, path) {
         return Ok(Touch::Had);
     }
     let files = dir.join("files");
@@ -261,14 +318,102 @@ mod tests {
         let store = dir.join("store");
         first_touch(&store, "s-1", &dir.join("fresh.md"), SIZE_CAP).unwrap();
         assert_eq!(copies(&store, "s-1")[0].1, Copy::New);
-        std::fs::write(store.join("s-1").join(READY), "tree").unwrap();
-        let other = dir.join("other.md");
-        std::fs::write(&other, "x").unwrap();
+        std::fs::write(
+            store.join("s-1").join(READY),
+            format!("tree\n{}\n", dir.join("repo").display()),
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.join("repo")).unwrap();
+        let inside = dir.join("repo").join("other.md");
+        std::fs::write(&inside, "x").unwrap();
         assert_eq!(
-            first_touch(&store, "s-1", &other, SIZE_CAP).unwrap(),
+            first_touch(&store, "s-1", &inside, SIZE_CAP).unwrap(),
             Touch::Had
         );
         assert_eq!(copies(&store, "s-1").len(), 1);
+    }
+
+    #[test]
+    fn a_ready_snapshot_does_not_cover_files_outside_its_root() {
+        let dir = temp("outside");
+        let store = dir.join("store");
+        std::fs::create_dir_all(store.join("s-1")).unwrap();
+        std::fs::write(
+            store.join("s-1").join(READY),
+            format!("tree\n{}\n", dir.join("repo").display()),
+        )
+        .unwrap();
+        let notes = dir.join("notes").join("x.md");
+        std::fs::create_dir_all(notes.parent().unwrap()).unwrap();
+        std::fs::write(&notes, "before\n").unwrap();
+        // A sibling whose name starts like the root, and a dotdot escape, are outside too.
+        let sibling = dir.join("repo2").join("y.md");
+        std::fs::create_dir_all(sibling.parent().unwrap()).unwrap();
+        std::fs::write(&sibling, "y\n").unwrap();
+        let escape = dir.join("repo").join("..").join("notes").join("x.md");
+        for p in [&notes, &sibling] {
+            assert_eq!(
+                first_touch(&store, "s-1", p, SIZE_CAP).unwrap(),
+                Touch::Made
+            );
+        }
+        assert_eq!(
+            first_touch(&store, "s-1", &escape, SIZE_CAP).unwrap(),
+            Touch::Made
+        );
+        assert_eq!(copies(&store, "s-1").len(), 3);
+    }
+
+    #[test]
+    fn secret_looking_paths_are_recognised() {
+        let home = Path::new("/Users/owner");
+        for p in [
+            "/w/.env",
+            "/w/.env.local",
+            "/w/tls/server.PEM",
+            "/w/a.key",
+            "/w/a.p12",
+            "/w/a.pfx",
+            "/w/id_rsa",
+            "/w/id_ed25519",
+            "/w/id_custom",
+            "/w/.npmrc",
+            "/w/.netrc",
+            "/w/credentials",
+            "/Users/owner/.ssh/config",
+            "/Users/owner/.aws/anything/deep",
+            "/Users/owner/.gnupg/pubring.kbx",
+            "/Users/owner/.config/gh/hosts.yml",
+        ] {
+            assert!(is_secret_path_in(Path::new(p), Some(home)), "{p}");
+        }
+        for p in [
+            "/w/id_rsa.pub",
+            "/w/env.md",
+            "/w/.envrc",
+            "/w/src/key.ts",
+            "/w/identity.ts",
+            "/w/credentials.md",
+            "/Users/owner/.config/ghost/x",
+            "/Users/owner/.sshx/x",
+            "/Users/owner/notes/x.md",
+        ] {
+            assert!(!is_secret_path_in(Path::new(p), Some(home)), "{p}");
+        }
+        assert!(!is_secret_path_in(Path::new("/Users/owner/.ssh/x"), None));
+    }
+
+    #[test]
+    fn a_secret_file_is_never_copied() {
+        let dir = temp("secret");
+        let store = dir.join("store");
+        let file = dir.join(".env.local");
+        std::fs::write(&file, "TOKEN=x\n").unwrap();
+        assert_eq!(
+            first_touch(&store, "s-1", &file, SIZE_CAP).unwrap(),
+            Touch::Skipped
+        );
+        assert!(copies(&store, "s-1").is_empty());
     }
 
     #[test]

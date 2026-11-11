@@ -7,6 +7,7 @@
 //! the repository's objects as an alternate, read-only.
 
 use serde::{Deserialize, Serialize};
+use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -203,6 +204,15 @@ impl Store {
         terminescu_plugin_api::atomic::write(&dir.join(META), &bytes)
     }
 
+    /// Reads the session's meta now, lets `change` edit it, and writes it back. For writers that
+    /// held a copy for a while (the snapshot thread): only the fields they change are theirs,
+    /// so a `SessionEnd` that landed meanwhile is not lost.
+    pub fn update_meta(&self, id: &str, change: impl FnOnce(&mut Meta)) -> std::io::Result<()> {
+        let mut meta = self.meta(id).unwrap_or_default();
+        change(&mut meta);
+        self.set_meta(id, &meta)
+    }
+
     /// The session whose baseline `id` uses.
     fn holder(&self, id: &str) -> String {
         self.meta(id)
@@ -245,6 +255,12 @@ impl Store {
     /// The working-tree snapshot (D2). Writes `ready` with the tree id when it is done.
     pub fn snapshot(&self, id: &str, repo: &Repo, limit: Duration) -> Result<String, String> {
         let dir = self.session(id).ok_or("not a session id")?;
+        if is_home(
+            &repo.root,
+            std::env::var_os("HOME").as_deref().map(Path::new),
+        ) {
+            return Err("the repository is the home folder".into());
+        }
         private_dir(&dir.join("objects")).map_err(|e| e.to_string())?;
         let index = dir.join("index");
         // A copy of the repository's index: files whose stat data still match are not hashed again.
@@ -254,7 +270,9 @@ impl Store {
             return Err(e.to_string());
         }
         let tree = self.write_tree(&dir, &index, repo, limit)?;
-        terminescu_plugin_api::atomic::write(&dir.join(READY), format!("{tree}\n").as_bytes())
+        // The tree, then the root the snapshot covers: the hook reads the second line.
+        let ready = format!("{tree}\n{}\n", repo.root.display());
+        terminescu_plugin_api::atomic::write(&dir.join(READY), ready.as_bytes())
             .map_err(|e| e.to_string())?;
         Ok(tree)
     }
@@ -274,7 +292,27 @@ impl Store {
             ("GIT_ALTERNATE_OBJECT_DIRECTORIES", &alternates),
         ];
         let start = std::time::Instant::now();
-        self.run_git(&repo.root, &["add", "-A", "--", "."], &env, limit)?;
+        // Untracked files that look like secrets or are over the size cap stay out of the store.
+        // They go in as exclude pathspecs, which add to the person's own ignore rules; tracked
+        // files are already in the repository's objects.
+        let spec = dir.join("pathspec");
+        let skipped = self.write_pathspec(repo, &spec, &env, start, limit)?;
+        let mut add = vec!["add", "-A"];
+        let from;
+        if skipped {
+            from = format!("--pathspec-from-file={}", spec.display());
+            add.extend([from.as_str(), "--pathspec-file-nul"]);
+        } else {
+            add.extend(["--", "."]);
+        }
+        self.run_git(
+            &repo.root,
+            &add,
+            &env,
+            limit
+                .saturating_sub(start.elapsed())
+                .max(Duration::from_millis(100)),
+        )?;
         let left = limit
             .saturating_sub(start.elapsed())
             .max(Duration::from_millis(100));
@@ -286,9 +324,48 @@ impl Store {
         Ok(tree)
     }
 
+    /// Writes `.` and one `:(exclude,literal)` pathspec per untracked, not ignored file that
+    /// [`is_secret_path`] names or that is over [`SIZE_CAP`]. False when there is none.
+    fn write_pathspec(
+        &self,
+        repo: &Repo,
+        spec: &Path,
+        env: &[(&str, &Path)],
+        start: std::time::Instant,
+        limit: Duration,
+    ) -> Result<bool, String> {
+        let list = self.run_git(
+            &repo.root,
+            &["ls-files", "-z", "--others", "--exclude-standard"],
+            env,
+            limit,
+        )?;
+        let mut out: Vec<u8> = Vec::new();
+        for rel in list.split(|b| *b == 0).filter(|r| !r.is_empty()) {
+            if start.elapsed() > limit {
+                return Err("git took too long".into());
+            }
+            let path = repo.root.join(std::ffi::OsStr::from_bytes(rel));
+            let big =
+                std::fs::symlink_metadata(&path).is_ok_and(|m| m.is_file() && m.len() > SIZE_CAP);
+            if big || terminescu_plugin_api::baseline::is_secret_path(&path) {
+                out.extend_from_slice(b":(exclude,literal)");
+                out.extend_from_slice(rel);
+                out.push(0);
+            }
+        }
+        if out.is_empty() {
+            let _ = std::fs::remove_file(spec);
+            return Ok(false);
+        }
+        out.splice(0..0, b".\0".iter().copied());
+        terminescu_plugin_api::atomic::write(spec, &out).map_err(|e| e.to_string())?;
+        Ok(true)
+    }
+
     fn ready_tree(&self, id: &str) -> Option<String> {
         let text = std::fs::read_to_string(self.session(id)?.join(READY)).ok()?;
-        let tree = text.trim().to_string();
+        let tree = text.lines().next().unwrap_or("").trim().to_string();
         (!tree.is_empty()).then_some(tree)
     }
 
@@ -517,26 +594,42 @@ impl Store {
                 (id, meta, size)
             })
             .collect();
-        // Sessions another running session still reads from.
-        let held: std::collections::HashSet<String> = sessions
-            .iter()
-            .filter(|(_, m, _)| m.as_ref().is_some_and(|m| m.ended.is_none()))
-            .filter_map(|(_, m, _)| m.as_ref().and_then(|m| m.base.clone()))
-            .collect();
-        // A folder without meta is a hook's copy for a session the plugin never saw start:
-        // it ends when its folder was last written.
-        let ended = |id: &str, m: &Option<Meta>| -> Option<u64> {
-            if held.contains(id) {
-                return None;
-            }
-            match m {
-                Some(m) => m.ended,
-                None => std::fs::metadata(self.dir.join(id))
+        // A session that never sent SessionEnd (Claude killed, a crash) ended when it was last
+        // written: the newest of its folder, its meta file and its files folder.
+        let end_of = |id: &str, m: &Option<Meta>| -> Option<u64> {
+            let dir = self.dir.join(id);
+            let touched = |p: PathBuf| {
+                std::fs::metadata(p)
                     .and_then(|md| md.modified())
                     .ok()
                     .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                    .map(|d| d.as_secs()),
+                    .map(|d| d.as_secs())
+            };
+            let last = [dir.clone(), dir.join(META), dir.join("files")]
+                .into_iter()
+                .filter_map(touched)
+                .max();
+            match m {
+                Some(m) => m
+                    .ended
+                    .or_else(|| last.filter(|l| now.saturating_sub(*l) >= keep.as_secs())),
+                // A folder without meta is a hook's copy for a session the plugin never saw
+                // start.
+                None => last,
             }
+        };
+        let ends: std::collections::HashMap<String, Option<u64>> = sessions
+            .iter()
+            .map(|(id, m, _)| (id.clone(), end_of(id, m)))
+            .collect();
+        // Sessions another running session still reads from.
+        let held: std::collections::HashSet<String> = sessions
+            .iter()
+            .filter(|(id, m, _)| m.is_some() && ends[id].is_none())
+            .filter_map(|(_, m, _)| m.as_ref().and_then(|m| m.base.clone()))
+            .collect();
+        let ended = |id: &str, _m: &Option<Meta>| -> Option<u64> {
+            if held.contains(id) { None } else { ends[id] }
         };
         let mut gone = Vec::new();
         sessions.retain(|(id, m, _)| match ended(id, m) {
@@ -571,6 +664,12 @@ pub struct Repo {
     pub root: PathBuf,
     pub git_dir: PathBuf,
     pub common: PathBuf,
+}
+
+/// Whether `root` is the user's home folder, where a snapshot would walk everything.
+fn is_home(root: &Path, home: Option<&Path>) -> bool {
+    let Some(home) = home else { return false };
+    root == home || matches!((root.canonicalize(), home.canonicalize()), (Ok(a), Ok(b)) if a == b)
 }
 
 fn private_dir(dir: &Path) -> std::io::Result<()> {
@@ -634,6 +733,39 @@ fn parse_name_status(raw: &[u8]) -> Vec<(String, char)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_home_folder_is_recognised() {
+        assert!(is_home(
+            Path::new("/Users/owner"),
+            Some(Path::new("/Users/owner"))
+        ));
+        assert!(!is_home(
+            Path::new("/Users/owner/code"),
+            Some(Path::new("/Users/owner"))
+        ));
+        assert!(!is_home(Path::new("/Users/owner"), None));
+    }
+
+    #[test]
+    fn update_meta_keeps_what_it_does_not_change() {
+        let dir = std::env::temp_dir().join(format!("tsc-meta-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let store = Store::new(&dir);
+        store.set_meta("s-1", &Meta::default()).unwrap();
+        // SessionEnd lands while the snapshot thread holds an older copy.
+        let mut ended = store.meta("s-1").unwrap();
+        ended.ended = Some(7);
+        store.set_meta("s-1", &ended).unwrap();
+        store
+            .update_meta("s-1", |m| {
+                m.snapshot_failed = Some("git took too long".into())
+            })
+            .unwrap();
+        let got = store.meta("s-1").unwrap();
+        assert_eq!(got.ended, Some(7));
+        assert_eq!(got.snapshot_failed.as_deref(), Some("git took too long"));
+    }
 
     #[test]
     fn numstat_and_name_status_parse() {

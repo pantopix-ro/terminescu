@@ -449,12 +449,11 @@ impl ClaudePlugin {
             .name("claude-snapshot".into())
             .spawn(move || {
                 if let Some(repo) = store.repo_of(&cwd) {
-                    let mut meta = store.meta(&session).unwrap_or_default();
-                    meta.root = Some(repo.root.display().to_string());
-                    let _ = store.set_meta(&session, &meta);
+                    let root = repo.root.display().to_string();
+                    let _ = store.update_meta(&session, |m| m.root = Some(root));
                     if let Err(why) = store.snapshot(&session, &repo, baseline::SNAPSHOT_LIMIT) {
-                        meta.snapshot_failed = Some(why);
-                        let _ = store.set_meta(&session, &meta);
+                        // Re-read: a SessionEnd may have landed during the snapshot.
+                        let _ = store.update_meta(&session, |m| m.snapshot_failed = Some(why));
                     }
                 }
                 lock(&state).snapshotting.remove(&session);

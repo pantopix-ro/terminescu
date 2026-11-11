@@ -306,3 +306,54 @@ fn the_cap_spares_running_sessions() {
         assert!(store.meta(id).is_some(), "{id}");
     }
 }
+
+#[test]
+fn the_snapshot_keeps_secrets_and_big_files_out_of_the_store() {
+    let (base, repo) = repo("excluded");
+    std::fs::write(repo.join(".env.local"), "TOKEN=x\n").unwrap();
+    std::fs::write(repo.join("server.pem"), "key\n").unwrap();
+    std::fs::write(repo.join("-odd [name]*.txt"), "ok\n").unwrap();
+    std::fs::write(repo.join("video.bin"), vec![0u8; SIZE_CAP as usize + 1]).unwrap();
+    let store = Store::new(&base.join("support"));
+    start(&store, "sess-1", &repo);
+    for gone in [".env.local", "server.pem", "video.bin"] {
+        let t = store.base_text("sess-1", &repo.join(gone)).unwrap();
+        assert!(!t.exists, "{gone} is not in the snapshot");
+    }
+    for kept in ["notes.md", "-odd [name]*.txt"] {
+        assert!(
+            store.base_text("sess-1", &repo.join(kept)).unwrap().exists,
+            "{kept}"
+        );
+    }
+    // The second snapshot, taken by `changes`, leaves them out too.
+    let changes = store.changes("sess-1").unwrap();
+    assert!(changes.files.is_empty(), "{:?}", changes.files);
+    // Ready names the root the snapshot covers.
+    let ready = std::fs::read_to_string(store.dir.join("sess-1").join(store::READY)).unwrap();
+    assert_eq!(ready.lines().nth(1), Some(repo.to_str().unwrap()));
+}
+
+#[test]
+fn a_session_that_never_ended_is_pruned_when_stale() {
+    let base = folder("stale");
+    let store = Store::new(&base.join("support"));
+    let day = 24 * 3600;
+    for id in ["stale-1", "live-1"] {
+        store.set_meta(id, &Meta::default()).unwrap();
+        std::fs::create_dir_all(store.dir.join(id).join("files")).unwrap();
+    }
+    let old = std::time::SystemTime::now() - Duration::from_secs(30 * day);
+    let touch = |p: PathBuf| std::fs::File::open(p).unwrap().set_modified(old).unwrap();
+    let dir = store.dir.join("stale-1");
+    touch(dir.join("meta.json"));
+    touch(dir.join("files"));
+    touch(dir);
+    let gone = store.prune(
+        Duration::from_secs(7 * day),
+        u64::MAX,
+        terminescu_plugin_claude::baseline::now(),
+    );
+    assert_eq!(gone, ["stale-1"]);
+    assert!(store.meta("live-1").is_some());
+}
