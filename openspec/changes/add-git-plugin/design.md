@@ -109,3 +109,8 @@ chips through the row decorator in `packages/plugin-git`.
 
 No migration. The plugin ships behind cargo feature `plugin-git` and its switch in Settings ›
 Plugins.
+
+## Review fixes
+- Every git call passes `-c core.fsmonitor=false`, so no repository hook or daemon starts on a poll.
+- `gh` drops GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE and GIT_COMMON_DIR like git does (shared list).
+- Removing a worktree without force asks again when it holds ignored files (.env, node_modules); the second dialog says so.

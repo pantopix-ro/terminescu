@@ -64,7 +64,7 @@ interface Removed {
 const files = (n: number) => (n === 1 ? "1 changed file" : `${n} changed files`);
 
 /**
- * A marked row asks Keep worktree (the default) or Remove worktree. A worktree with changes asks
+ * A marked row asks Keep worktree (the default) or Remove worktree. A worktree with changes or ignored files asks
  * again, naming the count; Keep stays the default there too. No branch is ever deleted. Cancel
  * (Escape) keeps the row open.
  */
@@ -87,7 +87,12 @@ export async function beforeRowClose(cx: RowCloseContext): Promise<boolean> {
   const n = tried.changed ?? mark.changed;
   const second = await cx.ask({
     title: "Remove worktree with changes",
-    text: n == null ? "The worktree has changes that would be lost." : `${files(n)} in the worktree would be lost.`,
+    text:
+      n == null
+        ? "The worktree has changes or ignored files that would be lost."
+        : n === 0
+          ? "The worktree holds ignored files, such as .env or build output, that would be lost."
+          : `${files(n)} in the worktree would be lost, and so would ignored files such as .env.`,
     detail: mark.worktree,
     choices: [
       { id: "keep", label: "Keep worktree" },

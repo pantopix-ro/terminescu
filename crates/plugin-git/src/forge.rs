@@ -97,6 +97,10 @@ impl GhCli {
             .env("GH_NO_UPDATE_NOTIFIER", "1")
             .env("NO_COLOR", "1")
             .env("GIT_TERMINAL_PROMPT", "0");
+        // `gh pr checkout` runs git in the new worktree; the shell's repository must not leak in.
+        for k in crate::cli::LEAKING_GIT_ENV {
+            cmd.env_remove(k);
+        }
         for (k, v) in &self.env {
             cmd.env(k, v);
         }

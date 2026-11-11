@@ -16,6 +16,14 @@ const COUNT_LINES_UP_TO: u64 = 1024 * 1024;
 pub const COUNT_FILES_UP_TO: usize = 200;
 const COUNT_BYTES_UP_TO: u64 = 8 << 20;
 
+/// Variables that point git at a repository chosen by the shell around the app.
+pub const LEAKING_GIT_ENV: [&str; 4] = [
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_COMMON_DIR",
+];
+
 #[derive(Debug, Clone)]
 pub struct GitCli {
     program: PathBuf,
@@ -88,15 +96,17 @@ impl GitCli {
         cmd.arg("-C")
             .arg(dir)
             .args(["--no-optional-locks", "-c", "core.quotepath=off"])
+            // A repository's fsmonitor hook must not run on a poll, and the built-in daemon
+            // would outlive the process-group kill.
+            .args(["-c", "core.fsmonitor=false"])
             .args(args)
             .env("GIT_OPTIONAL_LOCKS", "0")
             .env("LC_ALL", "C")
-            .env("GIT_TERMINAL_PROMPT", "0")
+            .env("GIT_TERMINAL_PROMPT", "0");
+        for k in LEAKING_GIT_ENV {
             // A repository chosen by the shell around the app must not leak in.
-            .env_remove("GIT_DIR")
-            .env_remove("GIT_WORK_TREE")
-            .env_remove("GIT_INDEX_FILE")
-            .env_remove("GIT_COMMON_DIR");
+            cmd.env_remove(k);
+        }
         for (k, v) in &self.env {
             cmd.env(k, v);
         }
@@ -295,6 +305,10 @@ impl Vcs for GitCli {
     }
 
     fn worktree_remove(&self, root: &Path, at: &Path, force: bool) -> Result<(), VcsError> {
+        if !force && self.has_ignored(at) {
+            // `worktree remove` deletes ignored files (.env, node_modules) without --force.
+            return Err(VcsError::HasChanges);
+        }
         let at = at.to_string_lossy();
         let mut args = vec!["worktree", "remove"];
         if force {
@@ -310,6 +324,26 @@ impl Vcs for GitCli {
             return Err(VcsError::HasChanges);
         }
         Err(VcsError::Failed(out.stderr))
+    }
+}
+
+impl GitCli {
+    /// Whether the worktree holds any ignored file. `--directory` keeps a folder such as
+    /// node_modules as one entry. A failed read counts as none: `worktree remove` decides then.
+    fn has_ignored(&self, at: &Path) -> bool {
+        self.read(
+            at,
+            &[
+                "ls-files",
+                "--others",
+                "--ignored",
+                "--exclude-standard",
+                "--directory",
+                "-z",
+            ],
+        )
+        .map(|o| o.ok && !o.stdout.is_empty())
+        .unwrap_or(false)
     }
 }
 

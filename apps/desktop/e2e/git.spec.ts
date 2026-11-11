@@ -211,7 +211,7 @@ test("closing a worktree row with changes asks twice", async ({ page }) => {
   await close();
   await expect(first).toContainText("/code/shop-api-PROJ-490-refunds");
   await first.getByRole("button", { name: "Remove worktree" }).click();
-  await expect(second).toContainText("2 changed files in the worktree would be lost.");
+  await expect(second).toContainText("2 changed files in the worktree would be lost, and so would ignored files such as .env.");
   await second.getByRole("button", { name: "Cancel" }).click();
   await expect(second).toBeHidden();
   expect(await titles(page)).toEqual([null, "PROJ-490-refunds"]);

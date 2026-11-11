@@ -108,3 +108,42 @@ fn a_relative_worktree_path_is_refused() {
         .unwrap_err();
     assert!(matches!(err, VcsError::Failed(m) if m.contains("absolute")));
 }
+
+#[test]
+fn a_worktree_with_only_ignored_files_asks_again() {
+    let repo = repo("shop-api");
+    write(&repo, ".gitignore", ".env\nnode_modules/\n");
+    git(&repo, &["add", "."]);
+    git(&repo, &["commit", "-qm", "ignore"]);
+    let at = path_for(&repo, "shop-api", "PROJ-492", None);
+    let cli = git_cli();
+    cli.worktree_add(&repo, "PROJ-492", "main", &at).unwrap();
+    write(&at, ".env", "SECRET=1\n");
+    write(&at, "node_modules/x/index.js", "x\n");
+    assert!(cli.changes(&at).unwrap().is_empty());
+    assert_eq!(
+        cli.worktree_remove(&repo, &at, false),
+        Err(VcsError::HasChanges)
+    );
+    assert!(at.join(".env").exists());
+    cli.worktree_remove(&repo, &at, true).unwrap();
+    assert!(!at.exists());
+}
+
+#[test]
+fn a_repository_fsmonitor_hook_does_not_run() {
+    use std::os::unix::fs::PermissionsExt;
+    let repo = repo("shop-api");
+    let marker = repo.parent().unwrap().join("fsmonitor-ran");
+    let hook = repo.parent().unwrap().join("hook.sh");
+    std::fs::write(&hook, format!("#!/bin/sh\ntouch {}\n", marker.display())).unwrap();
+    std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+    git(
+        &repo,
+        &["config", "core.fsmonitor", &hook.to_string_lossy()],
+    );
+    let cli = git_cli();
+    cli.facts(&repo).unwrap();
+    cli.changes(&repo).unwrap();
+    assert!(!marker.exists());
+}

@@ -58,12 +58,12 @@ describe("closing a worktree row", () => {
   it("names the changed files and forces only on Remove anyway", async () => {
     const cancel = setup(2, ["remove", null]);
     expect(await cancel.run()).toBe(false);
-    expect(cancel.asked[1]?.text).toBe("2 changed files in the worktree would be lost.");
+    expect(cancel.asked[1]?.text).toBe("2 changed files in the worktree would be lost, and so would ignored files such as .env.");
     expect(cancel.asked[1]?.choices[0]?.id).toBe("keep");
     expect(removes(cancel.calls)).toEqual([{ row: "s2" }]);
     const keep = setup(1, ["remove", "keep"]);
     expect(await keep.run()).toBe(true);
-    expect(keep.asked[1]?.text).toBe("1 changed file in the worktree would be lost.");
+    expect(keep.asked[1]?.text).toBe("1 changed file in the worktree would be lost, and so would ignored files such as .env.");
     expect(removes(keep.calls)).toEqual([{ row: "s2" }]);
     const force = setup(2, ["remove", "remove"]);
     expect(await force.run()).toBe(true);
