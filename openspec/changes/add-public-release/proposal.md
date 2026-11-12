@@ -90,4 +90,5 @@ condition on top of it. Archive the foundation first, then fold `setup`'s consen
    (needs a D-U-N-S number) before announcing the app widely.
 2. GitHub organization slug. Answered 2026-11-11: `lzrmihnea/terminescu` for now, kept in one
    constant; a later move to `pantopix/terminescu` changes that constant.
+   Moved 2026-11-12: the repo now lives at `pantopix-ro/terminescu`.
 3. CLA tool. Recommendation: the CLA Assistant GitHub app with a short individual CLA.

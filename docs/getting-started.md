@@ -21,7 +21,7 @@ transcript pane.
 ## 2. Get the code
 
 ```
-git clone https://github.com/lzrmihnea/terminescu.git
+git clone https://github.com/pantopix-ro/terminescu.git
 cd terminescu
 pnpm install
 ```

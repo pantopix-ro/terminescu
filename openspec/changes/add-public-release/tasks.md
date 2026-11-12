@@ -11,11 +11,11 @@
 - [ ] 1.3 Scan the whole git history for real names, paths, tokens and emails before the repo
       goes public. Rewrite or squash anything found. Verify: the scan pattern from CLAUDE.md
       over `git log -p --all` prints nothing.
-- [ ] 1.4 Owner: the repo stays at `lzrmihnea/terminescu` for now (owner decision, 2026-11-11),
+- [ ] 1.4 Owner: the repo moved to `pantopix-ro/terminescu` on 2026-11-12 (from `lzrmihnea/terminescu`),
       which `PUBLIC_REPO` and the update feed name. Install the CLA Assistant app and make the
-      repo public. A later move to `pantopix/terminescu` changes `PUBLIC_REPO` in both
-      `public.rs` and `protocol.ts`, the remote and the README, and ships before the first
-      release that moved. The release job refuses to run anywhere else. Verify: manual,
+      repo public. The move changed `PUBLIC_REPO` in both `public.rs` and `protocol.ts`, the
+      remote, the README and the getting-started doc; it ships before the first release from
+      the new repo. The release job refuses to run anywhere else. Verify: manual,
       `git remote -v` names the repository in `PUBLIC_REPO`.
 
 ## 2. Credits and license checks

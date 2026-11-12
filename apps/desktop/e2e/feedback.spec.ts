@@ -35,7 +35,7 @@ test("Report an Issue opens the repo's new issue and reveals the log when ticked
   await sheet.getByRole("checkbox", { name: /Include app.log/ }).check();
   await sheet.getByRole("button", { name: "Open issue" }).click();
   const urls = await opened(page);
-  expect(urls[0]).toMatch(/^https:\/\/github\.com\/lzrmihnea\/terminescu\/issues\/new\?body=/);
+  expect(urls[0]).toMatch(/^https:\/\/github\.com\/pantopix-ro\/terminescu\/issues\/new\?body=/);
   expect(decodeURIComponent(urls[0] ?? "")).toContain("Terminescu 0.1.0 (dev)");
   expect(urls).toContain("reveal:app.log");
 });

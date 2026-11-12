@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/lzrmihnea/terminescu/releases">Download</a> ·
+  <a href="https://github.com/pantopix-ro/terminescu/releases">Download</a> ·
   <a href="https://claude.ai/artifact/9xWiUJnmsdS2z4aYauTGik">Interactive tour</a> ·
   <a href="docs/getting-started.md">Build from source</a> ·
   <a href="PRIVACY.md">Privacy</a>
@@ -140,7 +140,7 @@ or turns off each one.
 
 You need macOS 14 or later on Apple silicon, and Claude Code with a logged-in `claude`.
 
-1. Download the `.dmg` from the newest [release](https://github.com/lzrmihnea/terminescu/releases).
+1. Download the `.dmg` from the newest [release](https://github.com/pantopix-ro/terminescu/releases).
 2. Open it and drag Terminescu to Applications.
 3. Double-click Terminescu. macOS says it "could not verify" the app, because Apple has not
    notarized this build. Close the warning.
