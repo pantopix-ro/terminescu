@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { addTab } from "./add-tab";
 
-// Task 8.89: a row dragged into the gap between rows moves there (hand-sorted order only); the
+// Task 8.72: a row dragged into the gap between rows moves there (hand-sorted order only); the
 // middle of a row still merges.
 
 async function start(page: Page) {

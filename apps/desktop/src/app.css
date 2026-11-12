@@ -331,7 +331,7 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
    is easy to hit and no row moves; a tab listed in a folder shows an orange line where the
    dropped tab goes. */
 .ao-side.dragging .side-gap { height: 10px; margin: -3px 0; position: relative; z-index: 6; }
-/* Task 8.89: a dragged row also lands between rows, so the gaps take 6 points off each row's edge. */
+/* Task 8.72: a dragged row also lands between rows, so the gaps take 6 points off each row's edge. */
 .ao-side.reorder .side-gap { height: 16px; margin: -6px 0; }
 .ao-side.dragging .side-gap.remote-hot { height: 10px; background: none; box-shadow: inset 0 4px 0 0 var(--amber), inset 0 -4px 0 0 var(--amber); }
 .app-side .ao-st-kids .ao-st-kid.remote-hot { box-shadow: inset 0 0 0 2px var(--amber); }

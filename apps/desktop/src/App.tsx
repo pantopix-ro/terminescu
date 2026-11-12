@@ -2269,7 +2269,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       return startMerge(tabId.slice(5), into, { run });
     }
     if (tabId.startsWith("side:") && at?.startsWith("gap:")) {
-      // Task 8.89: a row dropped between rows moves there; the core counts the index before the
+      // Task 8.72: a row dropped between rows moves there; the core counts the index before the
       // row leaves, so a gap below it needs no adjusting here.
       refocus();
       return void send({ type: "MoveSideTab", sideTabId: tabId.slice(5), windowId, index: Number(at.slice(4)) });
