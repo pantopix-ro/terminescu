@@ -314,8 +314,12 @@ const collide: CollisionDetection = (args) => {
   if (String(args.active.id).startsWith("pane:")) return [];
   if (inside(".app-pane", args.pointerCoordinates)) return [];
   const under = pointerWithin(args);
-  // A side tab merges only into a row under the pointer.
-  if (String(args.active.id).startsWith("side:")) return under.filter((c) => String(c.id).startsWith("into:"));
+  // A side tab merges into a row under the pointer, or moves into a gap between rows; the gap
+  // wins where it grows over a row's edge (task 8.72).
+  if (String(args.active.id).startsWith("side:")) {
+    const hit = (p: string) => under.filter((c) => String(c.id).startsWith(p));
+    return [...hit("gap:"), ...hit("into:")];
+  }
   if (under.length) return under;
   const tabs = args.droppableContainers.filter((c) => !String(c.id).includes(":"));
   return closestCenter({ ...args, droppableContainers: tabs });
@@ -2239,7 +2243,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       // drops there, and this window, emptied, closes. A drop in this window cancels it.
       const begun = dragBegun.current;
       dragBegun.current = undefined;
-      const local = !!beside || !!at?.startsWith("into:");
+      const local = !!beside || !!at?.startsWith("into:") || !!at?.startsWith("gap:");
       void begun
         ?.then((token) => (token === undefined ? undefined : host.dragEnd(token, !local)))
         .then((end) => end && end.kind !== "local" && end.kind !== "cancelled" && refocus())
@@ -2263,6 +2267,12 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         refocus();
       };
       return startMerge(tabId.slice(5), into, { run });
+    }
+    if (tabId.startsWith("side:") && at?.startsWith("gap:")) {
+      // Task 8.89: a row dropped between rows moves there; the core counts the index before the
+      // row leaves, so a gap below it needs no adjusting here.
+      refocus();
+      return void send({ type: "MoveSideTab", sideTabId: tabId.slice(5), windowId, index: Number(at.slice(4)) });
     }
     if (tabId.startsWith("side:")) return refocus();
     // The core saw where the cursor was (task 8.1): only a release over this window drops here.

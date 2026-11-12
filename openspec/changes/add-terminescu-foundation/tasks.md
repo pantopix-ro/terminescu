@@ -772,9 +772,14 @@ buffers once per sheet.
       over another window it joins that window, and its own window closes when emptied; out of
       every window it opens a new one. ⌘T and the sidebar's + still add a row to a window left
       with none. Verify: `windows.spec.ts`; manual: drag a second window's only row back.
-- [ ] 8.72 Sidebar drags, part 3. A row dragged between rows reorders (hand-sorted only), and
-      a folder row carries all its tabs to another window or out to a new one (8.83 did one-tab
-      rows; 8.86 does folders).
+- [x] 8.72 Sidebar drags, part 3. A row dragged between rows reorders (hand-sorted only); the
+      folder-across-windows half is done by 8.83 and 8.86. The gaps between rows (16 points
+      while a row drags, 6 over each row's edge) draw the amber line and the drop sends
+      `MoveSideTab` to that index; a drop on a row's middle still merges. A folder moves as a
+      row, tabs kept. The gaps just above and below the dragged row show no line. Sorted by
+      background, status or name the gaps stay off and the drag only merges or leaves the
+      window; switch to manual to reorder. Verify: `row-reorder.spec.ts`; core test
+      `a_side_tab_moves_to_a_gap_and_keeps_its_id`.
 - [x] 8.84 Merge all windows. Window › Merge All Windows (⌃⌘M) and the palette move every
       other window's rows to the end of this one, in window order, as rows; the emptied windows
       close. With one window it does nothing and the palette hides it. Verify: core test `merge_windows_moves_every_row`;

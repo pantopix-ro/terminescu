@@ -217,8 +217,8 @@ export const dragKid = (tabId: string) => `kid:${tabId}`;
 /** The tab a drag or drop id stands for: a listed tab's, or the tab bar's own tab id. */
 export const tabOfDrag = (id: string) => (id.startsWith("kid:") ? id.slice(4) : id);
 
-function Gap({ index, dragging, end }: { index: number; dragging: boolean; end?: boolean }) {
-  const { setNodeRef, isOver } = useDroppable({ id: end ? DROP_END : dropGap(index), disabled: !dragging });
+function Gap({ index, dragging, end, skip }: { index: number; dragging: boolean; end?: boolean; skip?: boolean }) {
+  const { setNodeRef, isOver } = useDroppable({ id: end ? DROP_END : dropGap(index), disabled: !dragging || skip });
   if (end) {
     return (
       <div ref={setNodeRef} className="ao-drop side-end" hidden={!dragging}>
@@ -228,7 +228,7 @@ function Gap({ index, dragging, end }: { index: number; dragging: boolean; end?:
   }
   return (
     <div ref={setNodeRef} className="side-gap" data-gap={index}>
-      {isOver && <div className="ao-drop-line" />}
+      {isOver && !skip && <div className="ao-drop-line" />}
     </div>
   );
 }
@@ -639,8 +639,14 @@ export function SideTabList({
   const picked = picker.at && sideTabs.find((s) => s.id === picker.at!.sideId);
   // Open marks show only while two tabs or more share the window.
   const shown = open.length > 1 ? open : [];
+  // A dragged row also moves between rows, in hand-sorted order only (task 8.72).
+  const reorder = dragging && !!draggingSide && sort === "manual";
+  const at = draggingSide ? sideTabs.findIndex((x) => x.id === draggingSide) : -1;
+  // The gaps just above and below the dragged row would leave it where it is.
+  const still = (i: number) => at >= 0 && (i === at || i === at + 1);
+  const gapOn = dragging && (draggingSide ? reorder : sort === "manual");
   return (
-    <nav className={`ao-side${collapsed ? " collapsed" : ""}${shown.length ? " split" : ""}${dragging ? " dragging" : ""}`} aria-label="Side tabs">
+    <nav className={`ao-side${collapsed ? " collapsed" : ""}${shown.length ? " split" : ""}${dragging ? " dragging" : ""}${reorder ? " reorder" : ""}`} aria-label="Side tabs">
       <div className="side-list" onScroll={hideAll}>
         {sideTabs.map((s, i) => (
           <div
@@ -648,7 +654,7 @@ export function SideTabList({
             className={`side-item${s.id === activeId ? " active" : ""}${shown.some((t) => s.tabs.some((x) => x.id === t)) ? " open" : ""}`}
             data-open={shown.some((t) => s.tabs.some((x) => x.id === t)) ? "true" : undefined}
           >
-            <Gap index={i} dragging={dragging && !draggingSide && sort === "manual"} />
+            <Gap index={i} dragging={gapOn} skip={still(i)} />
             <Row
               side={s}
               index={i}
@@ -683,7 +689,7 @@ export function SideTabList({
             />
           </div>
         ))}
-        <Gap index={sideTabs.length} dragging={dragging && !draggingSide && sort === "manual"} />
+        <Gap index={sideTabs.length} dragging={gapOn} skip={still(sideTabs.length)} />
         <Gap index={sideTabs.length} dragging={dragging && !draggingSide} end />
         {/* The empty space under the last row: hovering it shows a + that adds a terminal at the
             selected row's level (task 8.79). */}
