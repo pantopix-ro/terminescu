@@ -244,6 +244,8 @@ export interface AgentView {
   lastMessage: string | null;
   /** While it waits: what for, as "Bash: npm publish" (add-claude-insights 2.3). */
   reason?: string | null;
+  /** The session's name: `/rename`, else Claude's own (task 8.88). It names the pane's tab. */
+  name?: string | null;
 }
 
 /** One pane's agent changed; `agent: null` means the pane shows its shell again. */

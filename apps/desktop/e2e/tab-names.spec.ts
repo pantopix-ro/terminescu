@@ -49,6 +49,9 @@ test("tabs are named after their terminal, and only a row with two tabs or more 
   await host(page, "runCommand", pane, "claude", null);
   await host(page, "setAgent", pane, { session: "s-1", state: "running", lastMessage: null });
   await expect(page.locator(`.ao-tab[data-tab="${tab}"] .n`)).toHaveText("claude");
+  // Once the session has a name, `/rename` or Claude's own, the tab takes it (task 8.88).
+  await host(page, "setAgent", pane, { session: "s-1", state: "running", lastMessage: null, name: "Fix the export" });
+  await expect(page.locator(`.ao-tab[data-tab="${tab}"] .n`)).toHaveText("Fix the export");
   await host(page, "setAgent", pane, null);
   await host(page, "runCommand", pane, "claude", 0);
   await expect(page.locator(`.ao-tab[data-tab="${tab}"] .n`)).toHaveText("zsh");
