@@ -59,6 +59,22 @@ test("a one-tab row shows the status set on its tab", async ({ page }) => {
   await expect(sideRow(page).locator(".ao-stat")).toHaveText("Blocked");
 });
 
+test("a row status from before 8.89 moves to the tab and can go back to auto", async ({ page }) => {
+  await start(page);
+  const side = (await workspace(page)).windows[0].sideTabs[0];
+  await page.evaluate(
+    (id) => (window as any).__terminescu.host.send({ type: "SetStatus", targetId: id, status: { label: "Old", accent: null, background: null } }),
+    side.id,
+  );
+  await expect(sideRow(page).locator(".ao-stat")).toHaveText("Old");
+  await sideRow(page).click({ button: "right" });
+  await expect(page.getByLabel("Status label")).toHaveValue("Old");
+  await edit(page).getByRole("button", { name: "back to auto" }).click();
+  await expect.poll(async () => (await workspace(page)).windows[0].sideTabs[0].status ?? null).toBeNull();
+  expect((await workspace(page)).windows[0].sideTabs[0].tabs[0].status ?? null).toBeNull();
+  await expect(sideRow(page).locator(".ao-stat.manual")).toHaveCount(0);
+});
+
 test("the keyboard opens the edit dialog; its actions run; Esc closes it", async ({ page }) => {
   await start(page);
   await sideRow(page).focus();

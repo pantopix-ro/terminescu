@@ -84,14 +84,17 @@ export function StatusEditor(props: StatusEditorProps) {
   const [picked, setTarget] = useState<"side" | "tab">(props.initialTarget === "tab" && tab ? "tab" : "side");
   const target = lone ? "tab" : picked;
   const owner = target === "tab" && tab ? tab : side;
-  const [draft, setDraft] = useState<ManualStatus>(owner.status ?? EMPTY);
+  // A status set on a one-tab row before task 8.89 still shows on the row; the editor starts
+  // from it and moves it to the tab on the next save, so it never gets stuck.
+  const own = owner.status ?? (lone ? side.status : undefined) ?? null;
+  const [draft, setDraft] = useState<ManualStatus>(own ?? EMPTY);
   // Typed or recolored since the last load: a change from elsewhere then leaves the draft alone.
   const [dirty, setDirty] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const [name, setName] = useState(owner.title ?? "");
   const named = target === "side" ? props.sideName : (props.tabName ?? "");
   useEffect(() => {
-    setDraft(owner.status ?? EMPTY);
+    setDraft(own ?? EMPTY);
     setDirty(false);
     setName(owner.title ?? "");
     input.current?.focus();
@@ -104,9 +107,9 @@ export function StatusEditor(props: StatusEditorProps) {
     const next = name.trim() || null;
     if (props.onRename && next !== (owner.title ?? null)) props.onRename(owner.id, next);
   };
-  const current = JSON.stringify(owner.status ?? null);
+  const current = JSON.stringify(own);
   useEffect(() => {
-    if (!dirty) setDraft(owner.status ?? EMPTY);
+    if (!dirty) setDraft(own ?? EMPTY);
   }, [current]);
 
   const local = config.statuses.filter((s) => s.sideTabId === side.id);
@@ -115,11 +118,15 @@ export function StatusEditor(props: StatusEditorProps) {
   const auto = shown?.auto ?? "idle";
   const promotable = local.find((s) => s.id === draft.statusId);
 
+  const set = (s: ManualStatus | null) => {
+    if (lone && side.status) void props.onSet(side.id, null);
+    return props.onSet(owner.id, s);
+  };
   // A preset applies at once; typing or recoloring makes the draft a status of its own.
   const apply = (s: ManualStatus) => {
     setDraft(s);
     setDirty(false);
-    void props.onSet(owner.id, s);
+    void set(s);
   };
   const edit = (patch: Partial<Look>) => {
     setDirty(true);
@@ -128,13 +135,13 @@ export function StatusEditor(props: StatusEditorProps) {
   const done = () => {
     saveName();
     const label = draft.label.trim();
-    void props.onSet(owner.id, label ? { ...draft, label } : null);
+    void set(label ? { ...draft, label } : null);
     props.onClose();
   };
   const backToAuto = () => {
     setDraft(EMPTY);
     setDirty(false);
-    void props.onSet(owner.id, null);
+    void set(null);
   };
   const resetAll = () => {
     setDraft(EMPTY);
@@ -264,7 +271,7 @@ export function StatusEditor(props: StatusEditorProps) {
           </label>
           <div className="small ao-dim">
             auto would say: <StatusChip chip={chipOf({ auto, waiting: false, source: "auto" }, config.builtins)} />
-            {owner.status && (
+            {own && (
               <>
                 {" · "}
                 <button type="button" className="link" onClick={backToAuto}>
