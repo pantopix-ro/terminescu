@@ -1,0 +1,22 @@
+erDiagram
+    windows ||--o{ side_tabs : holds
+    side_tabs ||--o{ tabs : holds
+    windows {
+        TEXT id PK
+        TEXT owner_id FK
+        INTEGER position
+        TEXT frame_json
+        INTEGER zoom_percent "NEW 0015, NULL = Settings zoom"
+        INTEGER created_at
+    }
+    side_tabs {
+        TEXT id PK
+        TEXT window_id FK
+        INTEGER position
+    }
+    tabs {
+        TEXT id PK
+        TEXT side_tab_id FK
+        INTEGER position
+        TEXT layout_json "Pane leaf gains optional zoom"
+    }

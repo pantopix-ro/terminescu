@@ -1,0 +1,29 @@
+sequenceDiagram
+    autonumber
+    actor P as Person
+    participant W as Window (webview UI)
+    participant Co as Rust core
+    participant T as Tauri host (main.rs)
+    participant Pd as ptyd
+
+    Note over P,W: Show Alone (D2)
+    P->>W: ⌥⌘M on pane server
+    loop each other pane of the tab, reading order
+        W->>Co: PaneToTab {paneId, index + n}
+        Co-->>W: workspace patch (new tab, same shell)
+    end
+    W->>W: view = focused tab alone (localStorage)
+
+    Note over P,W: Zoom follows focus (D7)
+    P->>W: ⌘+
+    alt focus in a pane, row or folder
+        W->>Co: SetPaneZoom {paneIds, zoom}
+        Co-->>W: layout patch (leaf zoom)
+        W->>W: font × zoom, refit
+        W->>Pd: resize (cols, rows)
+    else focus on window chrome
+        W->>Co: SetWindowZoom {windowId, zoom}
+        Co->>T: window zoom changed
+        T->>W: set_zoom on this webview only
+    end
+    W->>P: notice "Pane server · 110%"
