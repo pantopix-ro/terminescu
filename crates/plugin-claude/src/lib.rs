@@ -51,6 +51,10 @@ impl AgentAdapter for ClaudeAdapter {
         changed
     }
 
+    fn on_name_line(&self, agent: &mut Agent, line: &[u8]) -> bool {
+        agent::on_name_line(agent, line)
+    }
+
     fn events(&self, event: &Value) -> Vec<AgentEvent> {
         agent::events(event)
     }

@@ -56,4 +56,19 @@ describe("tab subtitles", () => {
     const [side] = withLiveNames([{ tabs: [tab] }], {}, { p1: { process: "zsh" } }, {});
     expect(side!.tabs[0]).toMatchObject({ live: "zsh" });
   });
+
+  it("names a Claude tab after its session and leaves a title that repeats it out of the subtitle", () => {
+    // Task 8.88: `/rename`, else Claude's own name; `claude` before the session has one.
+    expect(paneName({ process: "2.1.0" }, true, "billing")).toBe("billing");
+    expect(paneName({ process: "2.1.0" }, true, null)).toBe("claude");
+    expect(paneName({ program: "npm" }, false, "billing")).toBe("npm");
+    const tab: Tab = { id: "t1", title: null, layout: { type: "pane", id: "p1" } };
+    const agents = { p1: { ...running, name: "Fix PROJ-482" } };
+    const labels = { p1: { path: "~/work/api", title: "Fix PROJ-482" } };
+    expect(withLiveNames([{ tabs: [tab] }], {}, labels, agents)[0]!.tabs[0]).toMatchObject({ live: "Fix PROJ-482" });
+    expect(tabSubtitles([tab], {}, labels, agents)).toEqual({ t1: "~/work/api" });
+    // A title that says something else stays, and a tab the person named keeps it too.
+    expect(tabSubtitles([tab], {}, { p1: { ...labels.p1, title: "Retry webhooks" } }, agents)).toEqual({ t1: "~/work/api · Retry webhooks" });
+    expect(tabSubtitles([{ ...tab, title: "mine" }], {}, labels, agents)).toEqual({ t1: "~/work/api · claude · Fix PROJ-482" });
+  });
 });

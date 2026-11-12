@@ -794,10 +794,19 @@ buffers once per sheet.
       leaves the list. A tab goes back to its row at its index, else as a new row; a row to its
       window at its index, else the focused window. Verify: core test
       `reopen_restores_a_row_with_its_context`; `windows.spec.ts` "⇧⌘T reopens a tab and a row".
+- [x] 8.88 Claude session names. A tab running Claude takes its session's name: the last
+      `/rename` (`custom-title` in the log), else Claude Code's own name (`ai-title`), else
+      `claude`. The core reads each session's log from its start in any state, so a name given
+      while Claude rests still shows; a tab the person named keeps its name, and the subtitle
+      drops a window title that only repeats the session's name. Verify: plugin-claude tests
+      `the_persons_name_wins_over_claudes_and_the_last_of_each_counts`, core test
+      `the_name_reader_starts_at_the_top_and_stays_in_any_state`, `tab-names.spec.ts`.
 - [x] 8.89 A one-tab row is its tab. Its edit dialog edits the tab alone (name, icon, colour,
       status) with no Side tab / Tab picker, and keeps the row's actions; the row shows the
       tab's title and status first. A sidebar name is edited in a block over the whole
-      row that wraps a long name; Enter saves, Esc keeps the old one.
+      row that wraps a long name; Enter saves, Esc keeps the old one. A status set on the row
+      before this moves to the tab on the next save. Verify: `sidebar-menu.spec.ts`,
+      `rename-dblclick.spec.ts`, `sidebar-layout.spec.ts`.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

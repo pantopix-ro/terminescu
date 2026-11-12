@@ -26,6 +26,10 @@ pub struct Agent {
     pub last_message: Option<String>,
     /// While it waits: what for, as "Bash: npm publish" (add-claude-insights 2.3).
     pub reason: Option<String>,
+    /// The name the person gave the session (Claude Code's `/rename`), from its log (task 8.88).
+    pub title: Option<String>,
+    /// The name the agent gave the session itself; [`Agent::title`] wins over it.
+    pub ai_title: Option<String>,
 }
 
 /// What the UI gets per pane.
@@ -37,6 +41,9 @@ pub struct AgentView {
     pub last_message: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+    /// The session's name, which names the pane's tab (task 8.88).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 /// One pane's agent changed; `agent: None` means the pane shows its shell again.
@@ -53,7 +60,13 @@ impl Agent {
             state: self.state,
             last_message: self.last_message.clone(),
             reason: self.reason.clone(),
+            name: self.name().map(str::to_owned),
         }
+    }
+
+    /// The session's name: the person's, else the agent's own.
+    pub fn name(&self) -> Option<&str> {
+        self.title.as_deref().or(self.ai_title.as_deref())
     }
 }
 
@@ -93,6 +106,11 @@ pub trait AgentAdapter: Send + Sync {
     fn on_hook(&self, agent: Option<Agent>, event: &Value) -> Option<Agent>;
     /// One transcript line read while the agent runs or waits. True when the state changed.
     fn on_line(&self, agent: &mut Agent, line: &[u8]) -> bool;
+    /// One transcript line read from the start, in any state, for the session's name (task
+    /// 8.88). True when the name changed.
+    fn on_name_line(&self, _agent: &mut Agent, _line: &[u8]) -> bool {
+        false
+    }
     /// Replies, touched files and the pane's session in a hook event.
     fn events(&self, event: &Value) -> Vec<AgentEvent>;
     /// The line that resumes `session` in a shell, typed without Enter by the caller.

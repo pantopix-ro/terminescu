@@ -47,6 +47,8 @@ pub fn on_hook(agent: Option<Agent>, event: &Value) -> Option<Agent> {
             state: AgentState::Idle,
             last_message: None,
             reason: None,
+            title: None,
+            ai_title: None,
         },
     };
     if let Some(t) = transcript_of(event) {
@@ -225,6 +227,48 @@ pub fn on_entry(agent: &mut Agent, entry: &Entry) -> bool {
     false
 }
 
+/// Longest session name kept, in characters.
+const MAX_NAME: usize = 80;
+
+/// A transcript line that names the session (task 8.88): `/rename` writes `custom-title`, Claude
+/// Code's own name is `ai-title`, and the last of each wins. True when the shown name changed.
+pub fn on_name_line(agent: &mut Agent, line: &[u8]) -> bool {
+    // Most lines are messages: skip them before parsing any JSON.
+    let custom = contains(line, br#""custom-title""#);
+    if !custom && !contains(line, br#""ai-title""#) {
+        return false;
+    }
+    let Ok(v) = serde_json::from_slice::<Value>(line) else {
+        return false;
+    };
+    if v.get("sessionId").and_then(Value::as_str) != Some(agent.session.as_str()) {
+        return false;
+    }
+    let before = agent.name().map(str::to_owned);
+    match str_of(&v, "type") {
+        Some("custom-title") => agent.title = str_of(&v, "customTitle").and_then(clean_name),
+        Some("ai-title") => agent.ai_title = str_of(&v, "aiTitle").and_then(clean_name),
+        _ => return false,
+    }
+    agent.name() != before.as_deref()
+}
+
+/// A name fit for a tab: one line without control characters, cut to [`MAX_NAME`].
+fn clean_name(raw: &str) -> Option<String> {
+    let one: String = raw
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect();
+    let name: String = one.split_whitespace().collect::<Vec<_>>().join(" ");
+    let name: String = name.chars().take(MAX_NAME).collect();
+    let name = name.trim_end();
+    (!name.is_empty()).then(|| name.to_owned())
+}
+
+fn contains(hay: &[u8], needle: &[u8]) -> bool {
+    hay.windows(needle.len()).any(|w| w == needle)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -369,5 +413,77 @@ mod tests {
         assert_eq!(a.reason.as_deref(), Some("Which branch?"));
         let a = on_hook(None, &ask(Value::Null)).unwrap();
         assert_eq!(a.reason.as_deref(), Some("Claude asks a question"));
+    }
+
+    fn named(session: &str) -> Agent {
+        on_hook(
+            None,
+            &json!({ "hook_event_name": "SessionStart", "session_id": session }),
+        )
+        .unwrap()
+    }
+
+    fn title_line(kind: &str, key: &str, text: &str, session: &str) -> Vec<u8> {
+        serde_json::to_vec(&json!({ "type": kind, key: text, "sessionId": session })).unwrap()
+    }
+
+    #[test]
+    fn the_persons_name_wins_over_claudes_and_the_last_of_each_counts() {
+        let mut a = named("sess-0b5c");
+        assert_eq!(a.view().name, None);
+        assert!(on_name_line(
+            &mut a,
+            &title_line("ai-title", "aiTitle", "Fix the export", "sess-0b5c")
+        ));
+        assert_eq!(a.view().name.as_deref(), Some("Fix the export"));
+        assert!(on_name_line(
+            &mut a,
+            &title_line("custom-title", "customTitle", "billing", "sess-0b5c")
+        ));
+        assert_eq!(a.view().name.as_deref(), Some("billing"));
+        // A later name of Claude's own stays behind the person's.
+        assert!(!on_name_line(
+            &mut a,
+            &title_line("ai-title", "aiTitle", "Retry webhooks", "sess-0b5c")
+        ));
+        assert_eq!(a.view().name.as_deref(), Some("billing"));
+        assert!(on_name_line(
+            &mut a,
+            &title_line("custom-title", "customTitle", "billing v2", "sess-0b5c")
+        ));
+        assert_eq!(a.view().name.as_deref(), Some("billing v2"));
+    }
+
+    #[test]
+    fn a_name_is_one_short_line_and_other_lines_and_sessions_are_ignored() {
+        let mut a = named("sess-0b5c");
+        let long = "x".repeat(200);
+        assert!(on_name_line(
+            &mut a,
+            &title_line(
+                "custom-title",
+                "customTitle",
+                &format!("a\n\u{1b}[31mb  {long}"),
+                "sess-0b5c"
+            )
+        ));
+        let name = a.view().name.unwrap();
+        assert!(name.starts_with("a [31mb x"), "{name}");
+        assert_eq!(name.chars().count(), MAX_NAME);
+        let mut b = named("sess-0b5c");
+        assert!(!on_name_line(
+            &mut b,
+            &title_line("custom-title", "customTitle", "other", "sess-9f00")
+        ));
+        assert!(!on_name_line(
+            &mut b,
+            br#"{"type":"user","message":{"content":"custom-title"}}"#
+        ));
+        assert!(!on_name_line(&mut b, br#"{"type":"custom-title""#));
+        assert!(!on_name_line(
+            &mut b,
+            &title_line("custom-title", "customTitle", "  ", "sess-0b5c")
+        ));
+        assert_eq!(b.view().name, None);
     }
 }

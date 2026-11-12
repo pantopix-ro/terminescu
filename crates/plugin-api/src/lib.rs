@@ -363,6 +363,8 @@ mod tests {
                 state: AgentState::Running,
                 last_message: None,
                 reason: None,
+                title: None,
+                ai_title: None,
             })
         }
         fn on_line(&self, agent: &mut Agent, line: &[u8]) -> bool {

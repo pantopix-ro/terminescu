@@ -79,6 +79,8 @@ struct Live {
     agent: Agent,
     adapter: Arc<dyn AgentAdapter>,
     tail: Option<LineTail>,
+    /// The whole log, from its start and in any state, for the session's name (task 8.88).
+    names: Option<LineTail>,
 }
 /// Receives each change of a pane's Claude session state (task 4.2).
 pub type AgentSink = Box<dyn Fn(&AgentUpdate) + Send + Sync>;
@@ -1185,7 +1187,61 @@ impl Runtime {
                 self.mark_status();
             }
             self.report_failures(failed);
+            self.read_names();
         }
+    }
+
+    /// Reads what each session's log gained for its name (task 8.88), with no lock held while
+    /// reading, and tells the UI of each name that changed.
+    fn read_names(&self) {
+        let open: Vec<(Id, String, LineTail)> = lock(&self.inner.agents)
+            .iter()
+            .filter_map(|(pane, l)| Some((pane.clone(), l.agent.session.clone(), l.names.clone()?)))
+            .collect();
+        let read: Vec<_> = open
+            .into_iter()
+            .filter_map(|(pane, session, mut t)| {
+                let from = t.offset();
+                let lines = t.read().ok()?;
+                Some((pane, session, from, t, lines))
+            })
+            .collect();
+        let mut agents = lock(&self.inner.agents);
+        let mut updates = Vec::new();
+        let mut failed = Vec::new();
+        for (pane, session, from, t, lines) in read {
+            let Some(l) = agents.get_mut(&pane) else {
+                continue;
+            };
+            if l.agent.session != session
+                || l.names
+                    .as_ref()
+                    .is_none_or(|c| c.path() != t.path() || c.offset() != from)
+            {
+                continue;
+            }
+            let adapter = l.adapter.clone();
+            let mut renamed = false;
+            for (_, line) in &lines {
+                renamed |= guarded(
+                    adapter.as_ref(),
+                    "panicked in on_name_line",
+                    &mut failed,
+                    || adapter.on_name_line(&mut l.agent, line),
+                )
+                .unwrap_or(false);
+            }
+            l.names = Some(t);
+            if renamed {
+                updates.push(AgentUpdate {
+                    pane,
+                    agent: Some(l.agent.view()),
+                });
+            }
+        }
+        self.tell(updates);
+        drop(agents);
+        self.report_failures(failed);
     }
 
     /// Asks the status thread to compute the statuses again.
@@ -1806,10 +1862,13 @@ fn agent_step(
             .clone(),
     };
     let shown = live.as_ref().map(|l| l.agent.view());
-    let (old, old_tail) = match live.as_ref() {
-        Some(l) if l.adapter.id() == adapter.id() => (Some(l.agent.clone()), l.tail.clone()),
-        _ => (None, None),
+    let (old, old_tail, old_names) = match live.as_ref() {
+        Some(l) if l.adapter.id() == adapter.id() => {
+            (Some(l.agent.clone()), l.tail.clone(), l.names.clone())
+        }
+        _ => (None, None, None),
     };
+    let old_session = old.as_ref().map(|a| a.session.clone());
     let next = guarded(adapter.as_ref(), "panicked in on_hook", failed, || {
         adapter.on_hook(old, event)
     })?;
@@ -1823,10 +1882,16 @@ fn agent_step(
             },
             _ => None,
         };
+        // A new session or log reads its name again from the top.
+        let names = agent.transcript.as_ref().map(|path| match old_names {
+            Some(n) if n.path() == path && old_session.as_deref() == Some(&agent.session) => n,
+            _ => LineTail::new(path),
+        });
         Live {
             agent,
             adapter: adapter.clone(),
             tail,
+            names,
         }
     });
     Some((shown != live.as_ref().map(|l| l.agent.view()), adapter))
@@ -2041,6 +2106,8 @@ mod adapter_tests {
                 state,
                 last_message: None,
                 reason: None,
+                title: None,
+                ai_title: None,
             });
             a.state = state;
             Some(a)
@@ -2091,6 +2158,26 @@ mod adapter_tests {
         let (live, changed) = step(Some(live), json!({ "tool": "one", "state": "done" }));
         assert!(!changed);
         assert!(live.unwrap().tail.is_none());
+    }
+
+    #[test]
+    fn the_name_reader_starts_at_the_top_and_stays_in_any_state() {
+        let (live, _) = step(None, json!({ "tool": "one", "state": "done" }));
+        let mut live = live.unwrap();
+        // Done: the turn's log is not read, the name's is, from its first byte (task 8.88).
+        assert!(live.tail.is_none());
+        let names = live.names.as_mut().expect("a name reader");
+        assert_eq!(names.offset(), 0);
+        *names = super::LineTail::at(names.path(), 42);
+        let (live, _) = step(Some(live), json!({ "tool": "one", "state": "running" }));
+        assert_eq!(
+            live.as_ref().unwrap().names.as_ref().unwrap().offset(),
+            42,
+            "kept across events"
+        );
+        // Another tool in the pane reads its own log from the top again.
+        let (live, _) = step(live, json!({ "tool": "two", "state": "running" }));
+        assert_eq!(live.unwrap().names.unwrap().offset(), 0);
     }
 
     #[test]

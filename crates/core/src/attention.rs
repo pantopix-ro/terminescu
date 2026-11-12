@@ -152,6 +152,7 @@ mod tests {
                 state,
                 last_message: None,
                 reason: None,
+                name: None,
             }),
         }
     }
