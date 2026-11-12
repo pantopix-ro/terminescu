@@ -74,7 +74,7 @@ test("a name the row cuts short shows whole in a tooltip; one that fits does not
 
   const long = "PROJ-482 review of the acme/api rate limiter rollout";
   await name.dblclick();
-  await page.getByRole("textbox", { name: "Side tab name" }).fill(long);
+  await page.getByRole("textbox", { name: "Tab name" }).fill(long);
   await page.keyboard.press("Enter");
   await expect(name).toHaveText(long);
   await page.mouse.move(1000, 400);

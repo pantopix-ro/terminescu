@@ -14,15 +14,22 @@ async function start(page: Page) {
   await page.locator(".term-pane").first().click();
 }
 
-test("a double click on a side tab's name renames it", async ({ page }) => {
+test("a double click on a one-tab row's name renames its tab in a block over the row", async ({ page }) => {
   await start(page);
-  await page.locator(".ao-st .t").first().dblclick();
-  const input = page.getByLabel("Side tab name");
+  const row = page.locator(".ao-st").first();
+  await row.locator(".t").dblclick();
+  // Task 8.89: the row is its tab, and the name is edited in a wrapping block as wide as the row.
+  const input = page.getByLabel("Tab name");
   await expect(input).toBeFocused();
+  expect(await input.evaluate((e) => e.tagName)).toBe("TEXTAREA");
+  const [box, rowBox] = [(await input.boundingBox())!, (await row.boundingBox())!];
+  expect(box.width).toBeGreaterThan(rowBox.width - 32);
+  expect(box.height).toBeGreaterThanOrEqual(40);
   await input.fill("acme/api");
   await input.press("Enter");
   await expect(page.locator(".ao-st .t").first()).toHaveText("acme/api");
-  expect((await workspace(page)).windows[0].sideTabs[0].title).toBe("acme/api");
+  const side = (await workspace(page)).windows[0].sideTabs[0];
+  expect([side.title, side.tabs[0].title]).toEqual([null, "acme/api"]);
 });
 
 test("a double click on a tab's name in the tab bar renames only there", async ({ page }) => {

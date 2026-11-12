@@ -19,31 +19,44 @@ const item = (page: Page, name: string) => page.getByRole("menuitem", { name, ex
 
 const edit = (page: Page) => page.getByRole("dialog", { name: "Edit" });
 
-test("right-click renames a side tab in its edit dialog; Esc keeps the name, blank goes back", async ({ page }) => {
+test("right-click on a one-tab row edits its tab alone; Esc keeps the name, blank goes back", async ({ page }) => {
   await start(page);
   const generated = (await sideRow(page).locator(".t").textContent())!;
   await sideRow(page).click({ button: "right" });
   await expect(edit(page)).toBeVisible();
   await expect(page.getByRole("menu")).toHaveCount(0);
-  await page.getByLabel("Side tab name").fill("PROJ-482");
+  // Task 8.89: the row is its tab, so there is no side tab to pick.
+  await expect(edit(page).getByRole("tablist", { name: "Apply to" })).toHaveCount(0);
+  await expect(edit(page)).toContainText("tab ·");
+  await page.getByLabel("Tab name").fill("PROJ-482");
   await page.keyboard.press("Enter");
   await expect(edit(page)).toBeHidden();
   await expect(sideRow(page).locator(".t")).toHaveText("PROJ-482");
-  expect((await workspace(page)).windows[0].sideTabs[0].title).toBe("PROJ-482");
+  expect((await workspace(page)).windows[0].sideTabs[0].tabs[0].title).toBe("PROJ-482");
 
   // Esc keeps the name it had.
   await sideRow(page).click({ button: "right" });
-  await expect(page.getByLabel("Side tab name")).toHaveValue("PROJ-482");
-  await page.getByLabel("Side tab name").fill("something else");
+  await expect(page.getByLabel("Tab name")).toHaveValue("PROJ-482");
+  await page.getByLabel("Tab name").fill("something else");
   await page.keyboard.press("Escape");
   await expect(edit(page)).toBeHidden();
   await expect(sideRow(page).locator(".t")).toHaveText("PROJ-482");
 
   await sideRow(page).click({ button: "right" });
-  await page.getByLabel("Side tab name").fill("   ");
+  await page.getByLabel("Tab name").fill("   ");
   await page.keyboard.press("Enter");
   await expect(sideRow(page).locator(".t")).toHaveText(generated);
-  expect((await workspace(page)).windows[0].sideTabs[0].title).toBeNull();
+  expect((await workspace(page)).windows[0].sideTabs[0].tabs[0].title).toBeNull();
+});
+
+test("a one-tab row shows the status set on its tab", async ({ page }) => {
+  await start(page);
+  await sideRow(page).click({ button: "right" });
+  await page.getByLabel("Status label").fill("Blocked");
+  await page.getByLabel("Status label").press("Enter");
+  await expect.poll(async () => (await workspace(page)).windows[0].sideTabs[0].tabs[0].status?.label).toBe("Blocked");
+  expect((await workspace(page)).windows[0].sideTabs[0].status ?? null).toBeNull();
+  await expect(sideRow(page).locator(".ao-stat")).toHaveText("Blocked");
 });
 
 test("the keyboard opens the edit dialog; its actions run; Esc closes it", async ({ page }) => {
@@ -61,13 +74,15 @@ test("the keyboard opens the edit dialog; its actions run; Esc closes it", async
   await expect.poll(async () => (await workspace(page)).windows[0].sideTabs[0].tabs.length).toBe(2);
 });
 
-test("the row colour comes from the neons and the tab bar opens a tab's dialog", async ({ page }) => {
+test("the colour comes from the neons and the tab bar opens a tab's dialog", async ({ page }) => {
   await start(page);
   await sideRow(page).click({ button: "right" });
-  const colours = edit(page).getByRole("radiogroup", { name: "Row colour" });
+  // A one-tab row colours its tab (task 8.89).
+  const colours = edit(page).getByRole("radiogroup", { name: "Tab colour" });
   await colours.getByRole("radio", { name: "lime" }).click();
   await expect(colours.getByRole("radio", { name: "lime" })).toHaveAttribute("aria-checked", "true");
-  await expect.poll(async () => (await workspace(page)).windows[0].sideTabs[0].accent).toBe("lime");
+  await expect.poll(async () => (await workspace(page)).windows[0].sideTabs[0].tabs[0].accent).toBe("lime");
+  await expect(sideRow(page)).toHaveAttribute("style", /--neon-lime/);
   await page.keyboard.press("Escape");
 
   const tab = page.locator(".ao-tabs [role=tab]").first();

@@ -79,7 +79,10 @@ const lookOf = (s: SavedStatus): ManualStatus => ({ statusId: s.id, label: s.lab
 /** `⌘⇧S`: the status of the focused side tab or its active tab (design board "Status"). */
 export function StatusEditor(props: StatusEditorProps) {
   const { side, tab, statuses, config } = props;
-  const [target, setTarget] = useState<"side" | "tab">(props.initialTarget === "tab" && tab ? "tab" : "side");
+  // A row with one tab is that tab: the editor edits the tab alone (task 8.89).
+  const lone = side.tabs.length === 1 && tab !== undefined;
+  const [picked, setTarget] = useState<"side" | "tab">(props.initialTarget === "tab" && tab ? "tab" : "side");
+  const target = lone ? "tab" : picked;
   const owner = target === "tab" && tab ? tab : side;
   const [draft, setDraft] = useState<ManualStatus>(owner.status ?? EMPTY);
   // Typed or recolored since the last load: a change from elsewhere then leaves the draft alone.
@@ -172,6 +175,7 @@ export function StatusEditor(props: StatusEditorProps) {
           </span>
         </div>
         <div className="ao-frame-body status-body">
+          {!lone && (
           <div role="tablist" aria-label="Apply to" className="status-targets">
             <button type="button" className={`ao-btn${target === "side" ? "" : " ghost"}`} role="tab" aria-selected={target === "side"} onClick={() => setTarget("side")}>
               Side tab
@@ -182,6 +186,7 @@ export function StatusEditor(props: StatusEditorProps) {
               </button>
             )}
           </div>
+          )}
           {props.onRename && (
             <div className="edit-ident">
               <label className="ao-field grow">
@@ -316,7 +321,8 @@ export function StatusEditor(props: StatusEditorProps) {
             <div className="ao-field">
               <span className="ao-pixel ao-dim">{target === "side" ? "Side tab" : "Tab"}</span>
               <div className="edit-actions">
-                {props.actions(target)
+                {/* A one-tab row's actions are the row's: merge, move, close. */}
+                {props.actions(lone ? "side" : target)
                   .filter((a): a is Exclude<MenuEntry, "-"> => a !== "-")
                   .map((a) => (
                     <ActionControl key={a.id} entry={a} onDone={props.onClose} />

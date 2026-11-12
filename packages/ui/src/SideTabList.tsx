@@ -122,8 +122,11 @@ function menuAt(e: MouseEvent | KeyboardEvent): { x: number; y: number } {
 
 const menuKey = (e: KeyboardEvent) => e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey);
 
-/** A name edited in place: Enter or leaving the field saves, Esc keeps the old one. */
-export function RenameInput({ value, label, onDone, onCancel }: { value: string; label: string; onDone(v: string): void; onCancel(): void }) {
+/**
+ * A name edited in place: Enter or leaving the field saves, Esc keeps the old one. In the
+ * sidebar it is a block over the whole row that wraps a long name (task 8.89).
+ */
+export function RenameInput({ value, label, block = false, onDone, onCancel }: { value: string; label: string; block?: boolean; onDone(v: string): void; onCancel(): void }) {
   const [text, setText] = useState(value);
   // Esc and Enter end the edit once; the blur that follows must not save again.
   const [ended, setEnded] = useState(false);
@@ -133,30 +136,39 @@ export function RenameInput({ value, label, onDone, onCancel }: { value: string;
     if (save) onDone(text);
     else onCancel();
   };
+  const Field = block ? "textarea" : "input";
   return (
-    <input
-      className="ao-input side-rename"
+    <Field
+      className={`ao-input side-rename${block ? " block" : ""}`}
       aria-label={label}
       value={text}
       autoFocus
       spellCheck={false}
-      onFocus={(e) => e.currentTarget.select()}
-      onChange={(e) => setText(e.target.value)}
+      {...(block ? { rows: 3 } : {})}
+      onFocus={(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => e.currentTarget.select()}
+      // A name is one line: a pasted line break becomes a space.
+      onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setText(e.target.value.replace(/[\r\n]+/g, " "))}
       // The row drags and selects on these; typing a name does neither.
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
-      onKeyDown={(e) => {
+      onKeyDown={(e: React.KeyboardEvent) => {
         e.stopPropagation();
-        if (e.key === "Enter") end(true);
-        else if (e.key === "Escape") end(false);
+        if (e.key === "Enter") {
+          e.preventDefault();
+          end(true);
+        } else if (e.key === "Escape") end(false);
       }}
       onBlur={() => end(true)}
     />
   );
 }
 
-/** A side tab's name: its own title, else its animal once it holds two tabs (task 8.60), else its first tab's name. */
+/**
+ * A side tab's name: a one-tab row's tab title (task 8.89), else its own title, else its animal
+ * once it holds two tabs (task 8.60), else its first tab's name.
+ */
 export function sideTabName(s: SideTab, docs: DocMarks = {}): string {
+  if (s.tabs.length === 1 && s.tabs[0]!.title) return s.tabs[0]!.title;
   if (s.title) return s.title;
   if (s.tabs.length > 1 && s.name) return s.name;
   return s.tabs[0] ? tabName(s.tabs[0], docs) : "shell";
@@ -256,7 +268,9 @@ function Row(props: {
 }) {
   const { side, active, expanded, dragging, agents, statuses, builtins, docs, collapsed, tips, picker } = props;
   const name = sideTabName(side, docs);
-  const shown = statuses[side.id];
+  // A row with one tab is that tab: it shows the tab's own status once the tab has one (task 8.89).
+  const lone = side.tabs.length === 1 ? side.tabs[0] : undefined;
+  const shown = (lone?.status && statuses[lone.id]) || statuses[side.id];
   const need = shown?.waiting || side.tabs.some((t) => tabAgent(t, agents)?.state === "waiting" || tabRequest(t, docs));
   const chip = chipOf(shown, builtins);
   // What a waiting agent waits on, for the amber chip's tip.
@@ -301,7 +315,7 @@ function Row(props: {
         role="button"
         tabIndex={0}
         aria-roledescription="side tab"
-        className={`ao-st${single ? " single" : ""}${active ? " active" : ""}${isOver ? " drop-into" : ""}${need ? " need" : ""}${drag.isDragging ? " lifted" : ""}`}
+        className={`ao-st${single ? " single" : ""}${props.renaming === side.id ? " renaming" : ""}${active ? " active" : ""}${isOver ? " drop-into" : ""}${need ? " need" : ""}${drag.isDragging ? " lifted" : ""}`}
         style={style}
         data-side={side.id}
         aria-current={active ? "true" : undefined}
@@ -352,9 +366,11 @@ function Row(props: {
         />
         {props.renaming === side.id ? (
           <RenameInput
-            value={side.title ?? name}
-            label="Side tab name"
-            onDone={(v) => props.onRename?.(side.id, v.trim() || null)}
+            value={lone ? (lone.title ?? name) : (side.title ?? name)}
+            label={lone ? "Tab name" : "Side tab name"}
+            block
+            // A one-tab row names its tab (task 8.89).
+            onDone={(v) => props.onRename?.(lone?.id ?? side.id, v.trim() || null)}
             onCancel={() => props.onRenameEnd?.()}
           />
         ) : (
@@ -400,7 +416,7 @@ function Row(props: {
               chip={chip}
               why={why}
               label={`Status ${chip.label}: edit the status of ${name}`}
-              onClick={props.onStatus && ((at) => props.onStatus!(side.id, undefined, at))}
+              onClick={props.onStatus && ((at) => props.onStatus!(side.id, lone?.id, at))}
             />
           </span>
         ) : (
@@ -474,7 +490,7 @@ function Kid(props: Parameters<typeof Row>[0] & { tab: Tab; index: number }) {
       {...drag.listeners}
       role="button"
       tabIndex={-1}
-      className={`ao-st-kid${active && t.id === props.activeTabId ? " active" : ""}${props.shown.includes(t.id) ? " open" : ""}${drag.isDragging ? " lifted" : ""}${line}`}
+      className={`ao-st-kid${props.renaming === t.id ? " renaming" : ""}${active && t.id === props.activeTabId ? " active" : ""}${props.shown.includes(t.id) ? " open" : ""}${drag.isDragging ? " lifted" : ""}${line}`}
       style={kidStyle(t, statuses[t.id])}
       data-kid={t.id}
       data-open={props.shown.includes(t.id) ? "true" : undefined}
@@ -505,6 +521,7 @@ function Kid(props: Parameters<typeof Row>[0] & { tab: Tab; index: number }) {
         <RenameInput
           value={t.title ?? tabName(t, docs)}
           label="Tab name"
+          block
           onDone={(v) => props.onRename?.(t.id, v.trim() || null)}
           onCancel={() => props.onRenameEnd?.()}
         />
