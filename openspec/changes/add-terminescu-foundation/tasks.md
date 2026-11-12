@@ -794,6 +794,10 @@ buffers once per sheet.
       leaves the list. A tab goes back to its row at its index, else as a new row; a row to its
       window at its index, else the focused window. Verify: core test
       `reopen_restores_a_row_with_its_context`; `windows.spec.ts` "⇧⌘T reopens a tab and a row".
+- [x] 8.89 A one-tab row is its tab. Its edit dialog edits the tab alone (name, icon, colour,
+      status) with no Side tab / Tab picker, and keeps the row's actions; the row shows the
+      tab's title and status first. A sidebar name is edited in a block over the whole
+      row that wraps a long name; Enter saves, Esc keeps the old one.
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

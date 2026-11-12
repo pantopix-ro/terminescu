@@ -364,6 +364,10 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 .ctx-sep { height: 1px; margin: var(--space-1) 0; background: var(--line); }
 .side-rename { flex: 1; min-width: 0; height: 20px; padding: 0 var(--space-1); font-size: 12px; }
 .ao-tab .side-rename { width: 120px; flex: none; }
+/* Task 8.89: a sidebar name is edited in a block over the whole row, wrapping a long name. */
+.app-side .renaming { display: block !important; height: auto !important; padding-block: var(--space-1) !important; }
+.app-side .renaming > :not(.side-rename) { display: none !important; }
+.side-rename.block { display: block; width: 100%; height: auto; min-height: 56px; padding: var(--space-1) var(--space-2); font-size: 13px; line-height: 18px; resize: none; white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; }
 
 /* Task 8.23: the sidebar's width, its collapse button and the icons-only sidebar. */
 .side-resize { position: absolute; top: 0; bottom: 0; right: -5px; width: 8px; cursor: col-resize; z-index: 6; }
