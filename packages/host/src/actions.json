@@ -62,6 +62,12 @@
    "accel": "Cmd+Shift+N"
   },
   {
+   "id": "new_folder",
+   "label": "New Folder",
+   "menu": "Shell",
+   "accel": "Ctrl+Cmd+N"
+  },
+  {
    "id": "split_right",
    "label": "Split Right",
    "menu": "Shell",

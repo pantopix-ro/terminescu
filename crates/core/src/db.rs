@@ -18,6 +18,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (12, include_str!("../migrations/0012_folder_icon.sql")),
     (13, include_str!("../migrations/0013_plugins.sql")),
     (14, include_str!("../migrations/0014_document_views.sql")),
+    (15, include_str!("../migrations/0015_side_tab_folder.sql")),
 ];
 
 pub const SCHEMA_VERSION: u32 = MIGRATIONS[MIGRATIONS.len() - 1].0;

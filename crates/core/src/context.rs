@@ -438,6 +438,7 @@ mod tests {
             windows: vec![Window {
                 id: "w1".into(),
                 side_tabs: vec![SideTab {
+                    folder: false,
                     accent: None,
                     name: None,
                     status: None,

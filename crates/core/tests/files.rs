@@ -14,6 +14,7 @@ fn db() -> Db {
         windows: vec![Window {
             id: "w1".into(),
             side_tabs: vec![SideTab {
+                folder: false,
                 status: None,
                 name: None,
                 accent: None,

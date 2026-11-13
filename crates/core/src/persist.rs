@@ -91,13 +91,13 @@ pub fn save(db: &Db, saved: &Saved) -> Result<()> {
         ids[0].push(&w.id);
         for (si, s) in w.side_tabs.iter().enumerate() {
             tx.execute(
-                "INSERT INTO side_tabs (id, owner_id, window_id, position, title, status_json, created_at, icon, accent, name)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?7, ?6, ?8, ?9, ?10)
+                "INSERT INTO side_tabs (id, owner_id, window_id, position, title, status_json, created_at, icon, accent, name, folder)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?7, ?6, ?8, ?9, ?10, ?11)
                  ON CONFLICT (id) DO UPDATE SET window_id = excluded.window_id,
                    position = excluded.position, title = excluded.title,
                    status_json = excluded.status_json, icon = excluded.icon, accent = excluded.accent,
-                   name = excluded.name",
-                params![s.id, owner, w.id, si as i64, s.title, now, status_json(&s.status), s.icon, s.accent, s.name],
+                   name = excluded.name, folder = excluded.folder",
+                params![s.id, owner, w.id, si as i64, s.title, now, status_json(&s.status), s.icon, s.accent, s.name, s.folder],
             )?;
             ids[1].push(&s.id);
             for (ti, t) in s.tabs.iter().enumerate() {
@@ -282,7 +282,7 @@ pub fn load(db: &Db) -> Result<Option<Saved>> {
     }
     let mut side_tabs: Vec<(Id, SideTab)> = conn
         .prepare(
-            "SELECT window_id, id, title, status_json, icon, accent, name FROM side_tabs WHERE owner_id = ?1 ORDER BY position",
+            "SELECT window_id, id, title, status_json, icon, accent, name, folder FROM side_tabs WHERE owner_id = ?1 ORDER BY position",
         )?
         .query_map([&owner], |r| {
             Ok((
@@ -295,6 +295,7 @@ pub fn load(db: &Db) -> Result<Option<Saved>> {
                     icon: icon_of(r.get(4)?),
                     accent: accent_of(r.get(5)?),
                     name: r.get::<_, Option<String>>(6)?.filter(|n| !n.trim().is_empty()),
+                    folder: r.get(7)?,
                 },
             ))
         })?
@@ -371,8 +372,9 @@ pub fn load(db: &Db) -> Result<Option<Saved>> {
         }
     }
     for (window_id, s) in side_tabs {
-        // A side tab left without tabs would be a sidebar row with nothing behind it.
-        if s.tabs.is_empty() {
+        // A side tab left without tabs would be a sidebar row with nothing behind it; a folder
+        // made from the + may be empty (task 8.91).
+        if s.tabs.is_empty() && !s.folder {
             continue;
         }
         if let Some(w) = windows.iter_mut().find(|w| w.id == window_id) {
@@ -429,6 +431,7 @@ mod tests {
                 id: "w1".into(),
                 side_tabs: vec![
                     SideTab {
+                        folder: false,
                         accent: None,
                         name: None,
                         status: None,
@@ -455,6 +458,7 @@ mod tests {
                         ],
                     },
                     SideTab {
+                        folder: false,
                         accent: None,
                         name: None,
                         status: None,
@@ -543,6 +547,23 @@ mod tests {
             .unwrap();
         let loaded = load(&db).unwrap().unwrap();
         assert_eq!(loaded.workspace.windows[0].side_tabs[0].accent, None);
+    }
+
+    #[test]
+    fn an_empty_folder_survives_a_reload() {
+        let db = Db::open_in_memory().unwrap();
+        let mut saved = sample();
+        let w = &mut saved.workspace.windows[0];
+        w.side_tabs[1].folder = true;
+        w.side_tabs[1].tabs.clear();
+        saved.panes.remove("p4");
+        save(&db, &saved).unwrap();
+        assert_eq!(load(&db).unwrap(), Some(saved.clone()));
+        // A row that is not a folder still drops when its tabs are gone.
+        saved.workspace.windows[0].side_tabs[1].folder = false;
+        save(&db, &saved).unwrap();
+        saved.workspace.windows[0].side_tabs.remove(1);
+        assert_eq!(load(&db).unwrap(), Some(saved));
     }
 
     #[test]

@@ -110,6 +110,8 @@ import {
   type FindHit,
   SideTabList,
   sideTabName,
+  isFolder,
+  loneTab,
   SearchBar,
   type SearchBarHandle,
   SplitView,
@@ -434,7 +436,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     return side && tab ? { side: side.id, tab } : undefined;
   };
   const [sideTabId, setSideTabId] = useState<string | undefined>(() => firstShown()?.side);
-  const activeSide = sideTabs.find((s) => s.id === pick(sideTabs.map((s) => s.id), sideTabId));
+  // An empty folder (task 8.91) has nothing to show, so it is never the selected row.
+  const activeSide = sideTabs.find((s) => s.id === pick(sideTabs.filter((s) => s.tabs.length).map((s) => s.id), sideTabId));
   const tabs = activeSide?.tabs ?? [];
   const [tabBySide, setTabBySide] = useState<Record<string, string>>(() => {
     const f = firstShown();
@@ -486,7 +489,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   });
   const areaOfPane = (paneId: string) => areas.find((a) => panesOf(a.tab.layout).includes(paneId));
   /** A shown tab's name: a folder's tab as "Folder › tab". */
-  const areaName = (x: { side: SideTab; tab: Tab }) => (x.side.tabs.length > 1 ? `${sideTabName(x.side, docs)} › ${tabName(x.tab, docs)}` : sideTabName(x.side, docs));
+  const areaName = (x: { side: SideTab; tab: Tab }) => (isFolder(x.side) ? `${sideTabName(x.side, docs)} › ${tabName(x.tab, docs)}` : sideTabName(x.side, docs));
   // The pane each tab shows alone (task 8.39), for this session only; a pane that left the tab
   // shows the whole layout again.
   const [maxByTab, setMaxByTab] = useState<Record<string, string>>({});
@@ -568,6 +571,11 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const [libraryKey, setLibraryKey] = useState<string>();
   // Text panes' documents as their panes last reported them: titles and unsaved edits (D27).
   const [docs, setDocs] = useState<Record<string, DocView>>({});
+  // Each window carries its row's name, so the dock's window list and Exposé tell windows apart.
+  const windowTitle = activeSide ? `${sideTabName(activeSide, docs)} · Terminescu` : "Terminescu";
+  useEffect(() => {
+    void host.setWindowTitle(windowTitle).catch(() => {});
+  }, [host, windowTitle]);
   const noteDoc = (d: DocView) => setDocs((m) => ({ ...m, [d.id]: d }));
   // `⌘O`: open while `finder` is set; `list` arrives after (D27).
   const [finder, setFinder] = useState<{ list?: FileList }>();
@@ -656,7 +664,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const newTextBeside = () => {
     // An emptied last window has no selected row: the text opens in a row of its own.
     if (!activeSide) return newTextSide();
-    if (activeSide.tabs.length > 1) return void host.newText(activeSide.id).then((d) => revealDoc(d.id), setError);
+    if (isFolder(activeSide)) return void host.newText(activeSide.id).then((d) => revealDoc(d.id), setError);
     newTextSide(sideTabs.findIndex((s) => s.id === activeSide.id) + 1);
   };
   const followTab = (tabId: string) => {
@@ -683,7 +691,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       followNewSide();
       return void send({ type: "CreateSideTab", windowId });
     }
-    if (activeSide.tabs.length > 1) {
+    if (isFolder(activeSide)) {
       followNewTab(activeSide.id);
       return void send({ type: "CreateTab", sideTabId: activeSide.id });
     }
@@ -858,7 +866,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           ? sideTabs.flatMap((sd) => sd.tabs).find((t) => panesOf(t.layout).includes(command.paneId) && !worksBesides(t.layout, command.paneId))?.id
           : undefined;
     const side = tabId ? sideTabs.find((sd) => sd.tabs.some((t) => t.id === tabId)) : undefined;
-    return side && side.tabs.length === 1 ? side.id : undefined;
+    return side && loneTab(side) ? side.id : undefined;
   };
   // A row's close runs the plugins' close hooks last, after every question of the app's own,
   // so a Cancel there cannot leave a row whose worktree a hook removed (add-git-plugin 3.3).
@@ -1019,6 +1027,11 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       case "new_side_tab":
         followNewSide();
         return void send({ type: "CreateSideTab", windowId });
+      // An empty folder under the selected row (task 8.91); tabs join it by drag or its +.
+      case "new_folder": {
+        const at = sideTabs.findIndex((s) => s.id === activeSide?.id);
+        return void send({ type: "CreateFolder", windowId, index: at < 0 ? null : at + 1 });
+      }
       case "split_right":
       case "split_down":
         if (!activeTab || !focused) return;
@@ -1699,7 +1712,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       if (!to) return;
       // A side tab's only tab merges its side tab in, so its variables and pins come along.
       const from = sideTabs.find((s) => s.tabs.some((t) => t.id === tabId));
-      if (from && from.id !== to.id && from.tabs.length === 1) return startMerge(from.id, to.id);
+      if (from && from.id !== to.id && loneTab(from)) return startMerge(from.id, to.id);
       followTab(tabId);
       return void send({ type: "MoveTab", tabId, toSideTabId: to.id, index: to.tabs.length });
     }
@@ -1832,6 +1845,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     if (target.kind === "list") {
       return [
         { id: "new-side", label: "New side tab", hint: chordText("new_side_tab"), run: () => act("new_side_tab") },
+        { id: "new-folder", label: "New folder", hint: chordText("new_folder"), run: () => act("new_folder") },
         { id: "new-window", label: "New window", hint: chordText("new_window"), run: () => act("new_window") },
         "-",
         {
@@ -1851,7 +1865,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         // Adds into this row, so on a one-tab row it makes a folder (task 8.81).
         {
           id: "new-tab",
-          label: side.tabs.length > 1 ? "Add tab to this folder" : "Add tab to this row",
+          label: isFolder(side) ? "Add tab to this folder" : "Add tab to this row",
           run: () => {
             followNewTab(side.id);
             void send({ type: "CreateTab", sideTabId: side.id });
@@ -1886,7 +1900,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         id: "move",
         label: "Move to",
         items: [
-          { id: "move:new", label: "New side tab", disabled: side.tabs.length === 1, run: () => moveTab(tab.id, { newAt: sideTabs.length }) },
+          { id: "move:new", label: "New side tab", disabled: !!loneTab(side), run: () => moveTab(tab.id, { newAt: sideTabs.length }) },
           { id: "move:window", label: "New window", run: () => void send({ type: "MoveTabToNewWindow", tabId: tab.id }) },
           ...(others.length ? (["-"] as MenuEntry[]) : []),
           ...others.map((o) => ({ id: `move:${o.id}`, label: sideTabName(o, docs), run: () => moveTab(tab.id, { side: o.id }) })),
@@ -1988,7 +2002,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     // A side tab's only tab merges its side tab in first, so its variables and pins come
     // along (task 8.70); a gap moves the whole side tab in the core.
     const from = ws.windows.flatMap((w) => w.sideTabs).find((s) => s.tabs.some((t) => t.id === p.tabId));
-    const only = from?.tabs.length === 1;
+    const only = !!from && !!loneTab(from);
     // On a pane's edge it shows beside that tab (task 8.75).
     const docked = dockAt(p.tabId, p.x, p.y);
     if (docked && docked.side !== "center" && !docked.small) return placeBeside(p.tabId, docked.area, docked.side);
@@ -2091,7 +2105,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       return side && { side, tabs: side.tabs.map((t) => t.id), lone: true };
     }
     const side = ws.windows.flatMap((w) => w.sideTabs).find((s) => s.tabs.some((t) => t.id === dragId));
-    return side && { side, tabs: [dragId], lone: side.tabs.length === 1 };
+    return side && { side, tabs: [dragId], lone: !!loneTab(side) };
   };
   const dockAt = (dragId: string, x: number, y: number): Dock | undefined => {
     const el = document
@@ -2303,7 +2317,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     if (!at || !from) return;
     // A side tab's only tab takes its side tab along: to a gap the side tab moves, and into
     // another side tab it merges, so its variables and pins stay (task 8.70).
-    const only = from.tabs.length === 1;
+    const only = !!loneTab(from);
     // The only tab of a side tab dropped next to it would make the same sidebar again.
     const idx = sideTabs.findIndex((s) => s.id === from.id);
     const gap = at === DROP_END ? sideTabs.length : at.startsWith("gap:") ? Number(at.slice(4)) : -1;
@@ -2409,7 +2423,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           // one-tab row carries its tab, which takes the row along (task 8.83); a folder row
           // carries itself (task 8.86). Either can go to another window.
           const row = id.startsWith("side:") ? sideTabs.find((s) => s.id === id.slice(5)) : undefined;
-          const tab = row ? (row.tabs.length === 1 ? row.tabs[0] : undefined) : allTabs.find((t) => t.id === tabOfDrag(id));
+          const tab = row ? loneTab(row) : allTabs.find((t) => t.id === tabOfDrag(id));
           const item: [DragItem, string] | undefined = tab
             ? [{ tabId: tab.id }, tabName(tab, docs)]
             : row
@@ -2505,6 +2519,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               }}
               onNew={newBeside}
               onNewText={newTextBeside}
+              onNewFolder={() => act("new_folder")}
               newExtra={plugins.composed.actions
                 .filter((a) => a.newMenu)
                 .map((a) => ({ id: a.id, label: a.label, ...(a.accel ? { hint: chordLabel(a.accel) } : {}), run: () => runPluginAction(a.id) }))}
@@ -2563,7 +2578,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               decorate={activeSide ? (tabId) => decorate.tab(activeSide, tabId) : undefined}
               tabs={appSettings.topTabs ? tabs : []}
               folder={
-                activeSide && activeSide.tabs.length > 1
+                activeSide && isFolder(activeSide)
                   ? { name: sideTabName(activeSide, docs), accent: activeSide.accent, lines: tabLines(activeSide, activeTab?.id) }
                   : undefined
               }
@@ -2619,7 +2634,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                           const area = areas.find((x) => x.tab.layout.id === id);
                           if (!area) return body;
                           const { side, tab } = area;
-                          const folder = side.tabs.length > 1;
+                          const folder = isFolder(side);
                           const accent = (!folder && tab.accent) || side.accent;
                           return (
                             <div className={`view-area${tab.id === activeTab?.id ? " on" : ""}`} data-area={tab.id}>
@@ -3157,7 +3172,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
           >
             <div className="ao-frame-body">
               <p>
-                Close {sideTabName(closingSide, docs)} and its {closingSide.tabs.length === 1 ? "tab" : `${closingSide.tabs.length} tabs`}?
+                Close {sideTabName(closingSide, docs)}{closingSide.tabs.length === 0 ? "" : closingSide.tabs.length === 1 ? " and its tab" : ` and its ${closingSide.tabs.length} tabs`}?
               </p>
               <p className="small ao-dim">Its shells end, and its context goes with it: variables, pins, links, files and its own commands.</p>
               <div className="close-actions">
