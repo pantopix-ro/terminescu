@@ -694,7 +694,7 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
   const inRange = (i: number, len: number) => (i >= 0 && i <= len ? i : fail("IndexOutOfRange", i));
   const closesSource = (tid: string, target?: string): Patch[] => {
     const s = holder(tid);
-    return s.tabs.length === 1 && s.id !== target ? [{ type: "SideTabClosed", sideTabId: s.id }] : [];
+    return s.tabs.length === 1 && !s.folder && s.id !== target ? [{ type: "SideTabClosed", sideTabId: s.id }] : [];
   };
 
   // One batch through the reducer to every window, as the core's `handle` and emit.
@@ -802,6 +802,12 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
         const index = inRange(c.index ?? w.sideTabs.length, w.sideTabs.length);
         return [{ type: "SideTabCreated", windowId: c.windowId, index, sideTab: newSideTab() }];
       }
+      case "CreateFolder": {
+        const w = window(c.windowId);
+        const index = inRange(c.index ?? w.sideTabs.length, w.sideTabs.length);
+        const sid = id();
+        return [{ type: "SideTabCreated", windowId: c.windowId, index, sideTab: { id: sid, title: null, tabs: [], accent: pickNeon(sid), name: pickName(sid), folder: true } }];
+      }
       case "CreateTab": {
         const index = sideTab(c.sideTabId).tabs.length;
         return [{ type: "TabCreated", sideTabId: c.sideTabId, index, tab: newTab(sideTab(c.sideTabId).tabs) }];
@@ -819,7 +825,7 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
       }
       case "MoveTabToNewSideTab": {
         const from = holder(c.tabId);
-        if (from.tabs.length === 1) return plan({ type: "MoveSideTab", sideTabId: from.id, windowId: c.windowId, index: c.index });
+        if (from.tabs.length === 1 && !from.folder) return plan({ type: "MoveSideTab", sideTabId: from.id, windowId: c.windowId, index: c.index });
         inRange(c.index, window(c.windowId).sideTabs.length);
         const closed = closesSource(c.tabId);
         const sid = id();
@@ -832,7 +838,7 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
       }
       case "MoveTabToNewWindow": {
         const from = holder(c.tabId);
-        if (from.tabs.length === 1) return plan({ type: "MoveSideTabToNewWindow", sideTabId: from.id });
+        if (from.tabs.length === 1 && !from.folder) return plan({ type: "MoveSideTabToNewWindow", sideTabId: from.id });
         const closed = closesSource(c.tabId);
         const windowId = id();
         const sid = id();
@@ -1213,7 +1219,12 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
         at: Date.now(),
       });
       const len = target.tabs.length;
+      // As the core does: a one-tab row's own name moves to its tab, so the folder keeps it.
+      const keep = (s: SideTab): Patch[] =>
+        s.tabs.length === 1 && !s.folder && s.title && !s.tabs[0]!.title ? [{ type: "TabRenamed", tabId: s.tabs[0]!.id, title: s.title }] : [];
       await commit([
+        ...keep(target),
+        ...keep(source),
         ...source.tabs.map((t, i): Patch => ({ type: "TabMoved", tabId: t.id, toSideTabId: into, index: len + i })),
         { type: "SideTabClosed", sideTabId: from },
       ]);
@@ -1830,6 +1841,9 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
     },
     async bounceDock() {
       bounces++;
+    },
+    async setWindowTitle(title) {
+      document.title = title;
     },
     // Invented profiles: the mock reads no Terminal.app preferences.
     async importTerminalApp() {

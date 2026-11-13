@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Every Terminescu window talks to the core through the Host commands; start-dragging lets data-tauri-drag-region move the window",
   "windows": ["*"],
-  "permissions": ["core:default", "core:window:allow-start-dragging", "dialog:allow-open", "dialog:allow-save"]
+  "permissions": ["core:default", "core:window:allow-start-dragging", "core:window:allow-set-title", "dialog:allow-open", "dialog:allow-save"]
 }

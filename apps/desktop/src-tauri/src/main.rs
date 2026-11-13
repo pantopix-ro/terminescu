@@ -1344,6 +1344,42 @@ fn bounce_dock(window: tauri::WebviewWindow) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// A click on the dock icon with two windows or more on screen spreads them out (App Exposé),
+/// so the person picks one (task 8.92). macOS has no public call for it; the Dock's own
+/// notification is looked up at run time, and a macOS without it just keeps today's behaviour.
+#[cfg(target_os = "macos")]
+fn show_app_windows() {
+    use std::ffi::{c_char, c_void};
+    #[link(name = "CoreFoundation", kind = "framework")]
+    unsafe extern "C" {
+        fn CFStringCreateWithCString(
+            alloc: *const c_void,
+            s: *const c_char,
+            encoding: u32,
+        ) -> *const c_void;
+        fn CFRelease(cf: *const c_void);
+    }
+    const UTF8: u32 = 0x0800_0100;
+    // SAFETY: dlsym only looks the name up; the symbol, when present, has this C signature.
+    unsafe {
+        let sym = libc::dlsym(libc::RTLD_DEFAULT, c"CoreDockSendNotification".as_ptr());
+        if sym.is_null() {
+            return;
+        }
+        let send: extern "C" fn(*const c_void, i32) -> i32 = std::mem::transmute(sym);
+        let name = CFStringCreateWithCString(
+            std::ptr::null(),
+            c"com.apple.expose.front.awake".as_ptr(),
+            UTF8,
+        );
+        if name.is_null() {
+            return;
+        }
+        send(name, 0);
+        CFRelease(name);
+    }
+}
+
 /// Settings › Terminal › Import from Terminal.app (task 8.47): its default profile.
 #[tauri::command]
 async fn import_terminal_app() -> Result<term_import::Profile, String> {
@@ -2234,6 +2270,26 @@ fn main() {
         .build(tauri::generate_context!())
         .unwrap_or_else(|e| crashlog::fail(&e));
     app.run(|app, event| {
+        #[cfg(target_os = "macos")]
+        if let RunEvent::Reopen { .. } = &event {
+            let shown = app
+                .webview_windows()
+                .into_iter()
+                .filter(|(l, w)| {
+                    l != drag::GHOST
+                        && w.is_visible().unwrap_or(false)
+                        && !w.is_minimized().unwrap_or(false)
+                })
+                .count();
+            if shown >= 2 {
+                // The click activates the app first; Exposé then spreads this app's windows.
+                let app = app.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(150));
+                    let _ = app.run_on_main_thread(show_app_windows);
+                });
+            }
+        }
         if let RunEvent::WindowEvent {
             label,
             event: tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_),

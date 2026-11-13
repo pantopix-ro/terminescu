@@ -25,6 +25,7 @@ fn tab(id: &str, pane: &str) -> Tab {
 
 fn side(id: &str, title: &str, tabs: Vec<Tab>) -> SideTab {
     SideTab {
+        folder: false,
         accent: None,
         name: None,
         status: None,

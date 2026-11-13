@@ -25,6 +25,8 @@ export interface SideTabListProps {
   onNew(): void;
   /** The + menu's Text: a new side tab that holds an untitled text (task 8.59). */
   onNewText?(): void;
+  /** `+ ▾` › Folder: an empty folder (task 8.91). */
+  onNewFolder?(): void;
   /** The plugins' entries in the + menu, after Terminal and Text. */
   newExtra?: readonly NewMenuItem[];
   /** The small + under a folder's last tab: a new tab in that folder (task 8.59). */
@@ -163,14 +165,21 @@ export function RenameInput({ value, label, block = false, onDone, onCancel }: {
   );
 }
 
+/** A row holding two tabs or more, or one made as a folder from the + (task 8.91). */
+export const isFolder = (s: SideTab): boolean => !!s.folder || s.tabs.length > 1;
+
+/** A row that is its one tab (task 8.89); a folder's only tab stays a tab of the folder. */
+export const loneTab = (s: SideTab): Tab | undefined => (!s.folder && s.tabs.length === 1 ? s.tabs[0] : undefined);
+
 /**
  * A side tab's name: a one-tab row's tab title (task 8.89), else its own title, else its animal
- * once it holds two tabs (task 8.60), else its first tab's name.
+ * once it is a folder (task 8.60), else its first tab's name.
  */
 export function sideTabName(s: SideTab, docs: DocMarks = {}): string {
-  if (s.tabs.length === 1 && s.tabs[0]!.title) return s.tabs[0]!.title;
+  const lone = loneTab(s);
+  if (lone?.title) return lone.title;
   if (s.title) return s.title;
-  if (s.tabs.length > 1 && s.name) return s.name;
+  if (isFolder(s) && s.name) return s.name;
   return s.tabs[0] ? tabName(s.tabs[0], docs) : "shell";
 }
 
@@ -269,7 +278,7 @@ function Row(props: {
   const { side, active, expanded, dragging, agents, statuses, builtins, docs, collapsed, tips, picker } = props;
   const name = sideTabName(side, docs);
   // A row with one tab is that tab: it shows the tab's own status once the tab has one (task 8.89).
-  const lone = side.tabs.length === 1 ? side.tabs[0] : undefined;
+  const lone = loneTab(side);
   const shown = (lone?.status && statuses[lone.id]) || statuses[side.id];
   const need = shown?.waiting || side.tabs.some((t) => tabAgent(t, agents)?.state === "waiting" || tabRequest(t, docs));
   const chip = chipOf(shown, builtins);
@@ -284,7 +293,8 @@ function Row(props: {
     disabled: !dragging || (draggingSide ? draggingSide === side.id : own),
   });
   const drag = useDraggable({ id: dragSide(side.id) });
-  const folder = side.tabs.length > 1;
+  const folder = isFolder(side);
+  const empty = side.tabs.length === 0;
   // A row with one tab is one line, as a folder's tab (task 8.77).
   const single = !folder && !collapsed;
   const only = side.tabs[0];
@@ -331,6 +341,8 @@ function Row(props: {
         // A click on the selected folder opens or closes its tabs; on another one it selects
         // that one and opens it (task 8.61).
         onClick={() => {
+          // An empty folder has nothing to select; a click opens or closes it (task 8.91).
+          if (empty) return void (!collapsed && props.onToggle());
           if (folder && !collapsed && (active ? true : !expanded)) props.onToggle();
           props.onSelect();
         }}
@@ -344,6 +356,7 @@ function Row(props: {
           if (e.target !== e.currentTarget) return;
           // Enter does what a click does; → opens a folder and ← closes it.
           if (e.key === "Enter") {
+            if (empty) return void (!collapsed && props.onToggle());
             if (folder && !collapsed && (active ? true : !expanded)) props.onToggle();
             props.onSelect();
           } else if (folder && !collapsed && ((e.key === "ArrowRight" && !expanded) || (e.key === "ArrowLeft" && expanded))) {
@@ -421,11 +434,11 @@ function Row(props: {
           </span>
         ) : (
         <span className="m">
-          {/* One square per tab, in the tab's neon (task 8.26). A closed folder's squares blink
-              for their tabs, since its shell list is hidden (task 8.54). */}
+          {/* One square per tab, in the tab's neon (task 8.26). Each square blinks with its tab,
+              open folder or closed (tasks 8.54, 8.93). */}
           <span className="ao-strip" aria-hidden="true">
             {side.tabs.map((t) => (
-              <i key={t.id} className={`ao-cell${folder && !open ? actClass(props.activity[t.id]) : ""}`} data-cell={t.id} style={t.accent && { background: `var(--neon-${t.accent})` }} />
+              <i key={t.id} className={`ao-cell${actClass(props.activity[t.id])}`} data-cell={t.id} style={t.accent && { background: `var(--neon-${t.accent})` }} />
             ))}
           </span>
           {/* A one-tab row shows its tab's live subtitle here; a folder's tabs show theirs below (task 8.30). */}
@@ -446,6 +459,7 @@ function Row(props: {
           {side.tabs.map((t, i) => (
             <Kid key={t.id} {...props} tab={t} index={i} />
           ))}
+          {empty && <div className="kid-empty small ao-dim">Empty. Drag a tab here or press +.</div>}
           {props.onNewTab && (
             <button
               type="button"
@@ -595,6 +609,7 @@ export function SideTabList({
   onSelectTab,
   onNew,
   onNewText,
+  onNewFolder,
   newExtra,
   onNewTab,
   dragging,
@@ -707,7 +722,7 @@ export function SideTabList({
               <i className="ao-i ao-i-plus" />
             </button>
             {onNewText && (
-              <NewMenu onNew={onNew} onNewText={() => onNewText()} hints={[newChord ?? ""]} textTitle="A new side tab with an untitled text" className="side-add more" label="Choose side tab kind" extra={newExtra} />
+              <NewMenu onNew={onNew} onNewText={() => onNewText()} onNewFolder={onNewFolder} hints={[newChord ?? ""]} textTitle="A new side tab with an untitled text" className="side-add more" label="Choose side tab kind" extra={newExtra} />
             )}
           </div>
         )}
@@ -725,7 +740,7 @@ export function SideTabList({
           <div className="px-pick-head">
             <span className="px-tip-name">{sideTabName(picked, docs)}</span>
             {/* A renamed folder still shows its animal, so it can be told apart (task 8.62). */}
-            {picked.title && picked.tabs.length > 1 && picked.name && <span className="px-tip-alias">{picked.name}</span>}
+            {picked.title && isFolder(picked) && picked.name && <span className="px-tip-alias">{picked.name}</span>}
             <span className="px-tip-status">{chipOf(statuses[picked.id], builtins).label}</span>
             {/* What a waiting agent in the row waits on (add-claude-insights 2.3). */}
             {(() => {

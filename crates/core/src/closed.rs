@@ -506,6 +506,7 @@ mod tests {
                 window_id: "w".into(),
                 index: 0,
                 side_tab: SideTab {
+                    folder: false,
                     id: format!("s{i}"),
                     title: None,
                     tabs: vec![],
