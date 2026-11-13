@@ -213,6 +213,10 @@ pub struct SideTab {
     /// holds two tabs or more; `title` overrides it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// Made as a folder from the sidebar's + (task 8.91): it stays a folder with one tab or
+    /// none, where other rows close with their last tab.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub folder: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -261,6 +265,11 @@ pub enum Command {
     CreateWindow,
     /// A new side tab with one new tab, at `index` in the window's sidebar (end when absent).
     CreateSideTab {
+        window_id: Id,
+        index: Option<usize>,
+    },
+    /// An empty folder at `index` in the window's sidebar (end when absent), task 8.91.
+    CreateFolder {
         window_id: Id,
         index: Option<usize>,
     },
@@ -872,6 +881,7 @@ impl Core {
             tabs,
             status: None,
             icon: None,
+            folder: false,
             accent,
         }
     }
@@ -881,8 +891,10 @@ impl Core {
         let ws = &self.ws;
         let source_empties = |tab_id: &str, target: Option<&str>| -> Option<Patch> {
             let (s, _) = ws.locate_tab(tab_id)?;
-            (s.tabs.len() == 1 && Some(s.id.as_str()) != target).then(|| Patch::SideTabClosed {
-                side_tab_id: s.id.clone(),
+            (s.tabs.len() == 1 && !s.folder && Some(s.id.as_str()) != target).then(|| {
+                Patch::SideTabClosed {
+                    side_tab_id: s.id.clone(),
+                }
             })
         };
         Ok(match cmd {
@@ -911,6 +923,33 @@ impl Core {
                     return Err(CommandError::IndexOutOfRange(index));
                 }
                 let side_tab = self.new_side_tab();
+                vec![Patch::SideTabCreated {
+                    window_id,
+                    index,
+                    side_tab,
+                }]
+            }
+            Command::CreateFolder { window_id, index } => {
+                let w = ws
+                    .windows
+                    .iter()
+                    .find(|w| w.id == window_id)
+                    .ok_or(CommandError::UnknownWindow(window_id.clone()))?;
+                let index = index.unwrap_or(w.side_tabs.len());
+                if index > w.side_tabs.len() {
+                    return Err(CommandError::IndexOutOfRange(index));
+                }
+                let id = (self.new_id)();
+                let side_tab = SideTab {
+                    accent: Some(pick_neon(ws, &id)),
+                    name: Some(pick_name(ws, &id)),
+                    id,
+                    title: None,
+                    tabs: vec![],
+                    status: None,
+                    icon: None,
+                    folder: true,
+                };
                 vec![Patch::SideTabCreated {
                     window_id,
                     index,
@@ -971,7 +1010,7 @@ impl Core {
                 let (from, _) = ws
                     .locate_tab(&tab_id)
                     .ok_or(CommandError::UnknownTab(tab_id.clone()))?;
-                if from.tabs.len() == 1 {
+                if from.tabs.len() == 1 && !from.folder {
                     let side_tab_id = from.id.clone();
                     return self.plan(Command::MoveSideTab {
                         side_tab_id,
@@ -997,6 +1036,7 @@ impl Core {
                     tabs: vec![],
                     status: None,
                     icon: None,
+                    folder: false,
                 };
                 let to_side_tab_id = side_tab.id.clone();
                 [
@@ -1020,7 +1060,7 @@ impl Core {
                 let (from, _) = ws
                     .locate_tab(&tab_id)
                     .ok_or(CommandError::UnknownTab(tab_id.clone()))?;
-                if from.tabs.len() == 1 {
+                if from.tabs.len() == 1 && !from.folder {
                     let side_tab_id = from.id.clone();
                     return self.plan(Command::MoveSideTabToNewWindow { side_tab_id });
                 }
@@ -1035,6 +1075,7 @@ impl Core {
                     tabs: vec![],
                     status: None,
                     icon: None,
+                    folder: false,
                 };
                 let to_side_tab_id = side_tab.id.clone();
                 [
@@ -1113,21 +1154,34 @@ impl Core {
                 let source = ws
                     .side_tab(&from)
                     .ok_or(CommandError::UnknownSideTab(from.clone()))?;
-                let len = ws
+                let target = ws
                     .side_tab(&into)
-                    .ok_or(CommandError::UnknownSideTab(into.clone()))?
-                    .tabs
-                    .len();
-                let mut patches: Vec<Patch> = source
-                    .tabs
-                    .iter()
-                    .enumerate()
-                    .map(|(i, t)| Patch::TabMoved {
-                        tab_id: t.id.clone(),
-                        to_side_tab_id: into.clone(),
-                        index: len + i,
-                    })
-                    .collect();
+                    .ok_or(CommandError::UnknownSideTab(into.clone()))?;
+                let len = target.tabs.len();
+                // A one-tab row's name often sits on the row; in a folder each tab shows its own
+                // name, so the name moves to the tab and nothing the person named is lost.
+                let keep = |s: &SideTab| match (s.tabs.as_slice(), &s.title) {
+                    ([t], Some(title)) if t.title.is_none() && !s.folder => {
+                        Some(Patch::TabRenamed {
+                            tab_id: t.id.clone(),
+                            title: Some(title.clone()),
+                        })
+                    }
+                    _ => None,
+                };
+                let mut patches: Vec<Patch> =
+                    keep(target).into_iter().chain(keep(source)).collect();
+                patches.extend(
+                    source
+                        .tabs
+                        .iter()
+                        .enumerate()
+                        .map(|(i, t)| Patch::TabMoved {
+                            tab_id: t.id.clone(),
+                            to_side_tab_id: into.clone(),
+                            index: len + i,
+                        }),
+                );
                 patches.push(Patch::SideTabClosed { side_tab_id: from });
                 patches
             }
@@ -1191,7 +1245,7 @@ impl Core {
                     .iter()
                     .find(|w| w.id == window_id)
                     .ok_or(CommandError::UnknownWindow(window_id.clone()))?;
-                if side_tab.tabs.is_empty()
+                if (side_tab.tabs.is_empty() && !side_tab.folder)
                     || ws.side_tab(&side_tab.id).is_some()
                     || !side_tab.tabs.iter().all(|t| absent(ws, t))
                 {
@@ -1233,6 +1287,7 @@ impl Core {
                     tabs: vec![tab],
                     status: None,
                     icon: None,
+                    folder: false,
                 };
                 vec![Patch::SideTabCreated {
                     window_id,
@@ -1796,6 +1851,111 @@ mod tests {
     }
 
     #[test]
+    fn a_folder_starts_empty_and_outlives_its_last_tab() {
+        let mut c = core();
+        c.handle(Command::CreateFolder {
+            window_id: "id1".into(),
+            index: Some(0),
+        })
+        .unwrap();
+        let folder = c.workspace().windows[0].side_tabs[0].clone();
+        assert!(folder.folder && folder.tabs.is_empty() && folder.name.is_some());
+        let other = c.workspace().windows[0].side_tabs[1].clone();
+        let tab = other.tabs[0].id.clone();
+        // A row's only tab moves in; the row it left closes, the folder keeps it.
+        c.handle(Command::MoveTab {
+            tab_id: tab.clone(),
+            to_side_tab_id: folder.id.clone(),
+            index: 0,
+        })
+        .unwrap();
+        let w = &c.workspace().windows[0];
+        assert_eq!(w.side_tabs.len(), 1);
+        assert_eq!(w.side_tabs[0].tabs[0].id, tab);
+        // Out to its own row, the tab goes alone and the folder stays.
+        c.handle(Command::MoveTabToNewSideTab {
+            tab_id: tab.clone(),
+            window_id: "id1".into(),
+            index: 1,
+        })
+        .unwrap();
+        let w = &c.workspace().windows[0];
+        assert_eq!(w.side_tabs.len(), 2);
+        assert!(w.side_tabs[0].tabs.is_empty());
+        // Merged into, the folder takes no row name onto the tab.
+        c.handle(Command::RenameSideTab {
+            side_tab_id: folder.id.clone(),
+            title: Some("infra".into()),
+        })
+        .unwrap();
+        let row = c.workspace().windows[0].side_tabs[1].id.clone();
+        c.handle(Command::MergeSideTab {
+            from: row,
+            into: folder.id.clone(),
+        })
+        .unwrap();
+        let f = &c.workspace().windows[0].side_tabs[0];
+        assert_eq!((f.title.as_deref(), f.tabs.len()), (Some("infra"), 1));
+        assert_eq!(f.tabs[0].title, None);
+        // Its last tab closes; the folder stays.
+        c.handle(Command::CloseTab { tab_id: tab }).unwrap();
+        assert_eq!(c.workspace().windows[0].side_tabs.len(), 1);
+        assert!(c.workspace().windows[0].side_tabs[0].tabs.is_empty());
+    }
+
+    #[test]
+    fn a_merge_keeps_the_names_of_one_tab_rows() {
+        let mut c = core();
+        c.handle(Command::CreateSideTab {
+            window_id: "id1".into(),
+            index: None,
+        })
+        .unwrap();
+        let second = c.workspace().windows[0].side_tabs[1].clone();
+        let tab = second.tabs[0].id.clone();
+        for (id, title) in [("id4", "web"), (second.id.as_str(), "api")] {
+            c.handle(Command::RenameSideTab {
+                side_tab_id: id.into(),
+                title: Some(title.into()),
+            })
+            .unwrap();
+        }
+        c.handle(Command::MergeSideTab {
+            from: second.id.clone(),
+            into: "id4".into(),
+        })
+        .unwrap();
+        let folder = &c.workspace().windows[0].side_tabs[0];
+        let names: Vec<Option<&str>> = folder.tabs.iter().map(|t| t.title.as_deref()).collect();
+        assert_eq!(names, [Some("web"), Some("api")]);
+        assert_eq!(folder.tabs[1].id, tab);
+        // A tab the person named keeps that name over its row's.
+        c.handle(Command::CreateSideTab {
+            window_id: "id1".into(),
+            index: None,
+        })
+        .unwrap();
+        let third = c.workspace().windows[0].side_tabs[1].clone();
+        c.handle(Command::RenameSideTab {
+            side_tab_id: third.id.clone(),
+            title: Some("row".into()),
+        })
+        .unwrap();
+        c.handle(Command::RenameTab {
+            tab_id: third.tabs[0].id.clone(),
+            title: Some("logs".into()),
+        })
+        .unwrap();
+        c.handle(Command::MergeSideTab {
+            from: third.id,
+            into: "id4".into(),
+        })
+        .unwrap();
+        let folder = &c.workspace().windows[0].side_tabs[0];
+        assert_eq!(folder.tabs[2].title.as_deref(), Some("logs"));
+    }
+
+    #[test]
     fn merge_moves_every_tab_and_restore_puts_them_back() {
         let mut c = core();
         // A second side tab id6 (tab id5, pane …) after id4, with two tabs.
@@ -1844,6 +2004,7 @@ mod tests {
             window_id: "id1".into(),
             index: 0,
             side_tab: SideTab {
+                folder: false,
                 accent: None,
                 name: None,
                 id: "fresh".into(),
@@ -1859,6 +2020,7 @@ mod tests {
             window_id: "id1".into(),
             index: 0,
             side_tab: SideTab {
+                folder: false,
                 accent: None,
                 name: None,
                 id: "fresh".into(),

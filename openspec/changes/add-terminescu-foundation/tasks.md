@@ -812,6 +812,24 @@ buffers once per sheet.
       row that wraps a long name; Enter saves, Esc keeps the old one. A status set on the row
       before this moves to the tab on the next save. Verify: `sidebar-menu.spec.ts`,
       `rename-dblclick.spec.ts`, `sidebar-layout.spec.ts`.
+- [x] 8.90 A merge keeps the names. A one-tab row's name sits on the row; when the row joins
+      a folder, or a folder forms, that name moves onto its tab. A tab the person named keeps
+      its own name. Verify: core test `a_merge_keeps_the_names_of_one_tab_rows`;
+      `sidebar-folders.spec.ts` "merged rows keep their names as tabs of the folder".
+- [x] 8.91 Empty folders. The sidebar's `+ ▾` › Folder, ⌃⌘N, the Shell menu and the empty
+      space's right-click make an empty folder under the selected row. It stays a folder with
+      one tab or none, survives a restart, and a click opens or closes it. Migration
+      `0015_side_tab_folder.sql` adds `side_tabs.folder`; `Command::CreateFolder` is new.
+      Verify: core tests `a_folder_starts_empty_and_outlives_its_last_tab`,
+      `an_empty_folder_survives_a_reload`; `sidebar-folders.spec.ts`.
+- [x] 8.92 The dock lists every window. Each window takes its selected row's name in its
+      title, so the dock's right-click menu and the Window menu tell windows apart. A dock
+      click with two windows or more on screen spreads them out (App Exposé) to pick one; a
+      macOS without the Dock call keeps the plain click. Verify: `sidebar-folders.spec.ts`
+      "the window is named after its selected row"; by hand, two windows and a dock click.
+- [x] 8.93 A folder's squares blink with their tabs whether the folder is open or closed.
+      Verify: `activity.spec.ts` "a folder row keeps its icon still while its shells and their
+      squares blink".
 From the group 8 review: the drag tracker holds no lock across a window call (a deadlock with
 the main thread), each drag has a token, and a closed source window ends its drag. A new
 window opens before an emptied one closes, at the drop point on any screen. Merge undo moves

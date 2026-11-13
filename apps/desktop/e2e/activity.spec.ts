@@ -58,7 +58,7 @@ test("reduced motion keeps the icons still", async ({ page }) => {
   await expect(icon).toHaveCSS("animation-name", "none");
 });
 
-test("a folder row keeps its icon still while its shells blink", async ({ page }) => {
+test("a folder row keeps its icon still while its shells and their squares blink", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/?top-tabs");
   await page.locator(".term-pane").first().click();
@@ -70,10 +70,11 @@ test("a folder row keeps its icon still while its shells blink", async ({ page }
   await expect(page.locator(`.ao-st-kid[data-kid="${tab.id}"] .ao-i`).first()).toHaveClass(/act-busy/);
   await expect(page.locator(`.ao-tab[data-tab="${tab.id}"] .ao-i`).first()).toHaveClass(/act-busy/);
   await expect(page.locator(`.ao-st[data-side="${side.id}"] > .ao-i`)).not.toHaveClass(/act-/);
-  // Open, the shell list shows it; the squares stay still.
+  // Open or closed, the running tab's square blinks with it; the others stay still.
   const cell = page.locator(`.ao-cell[data-cell="${tab.id}"]`);
-  await expect(cell).not.toHaveClass(/act-/);
-  // Closed, the running tab's square blinks and the others stay still.
+  await expect(cell).toHaveClass(/act-busy/);
+  await expect(cell).toHaveCSS("animation-name", "act-blink");
+  await expect(page.locator(`.ao-cell[data-cell="${side.tabs[1].id}"]`)).not.toHaveClass(/act-/);
   await page.getByLabel("Collapse side tab").click();
   await expect(page.locator(".ao-st-kid")).toHaveCount(0);
   await expect(cell).toHaveClass(/act-busy/);

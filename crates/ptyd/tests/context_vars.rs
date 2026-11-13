@@ -58,6 +58,7 @@ fn db_at(path: &std::path::Path) -> Db {
         windows: vec![Window {
             id: "w1".into(),
             side_tabs: vec![SideTab {
+                folder: false,
                 accent: None,
                 name: None,
                 status: None,

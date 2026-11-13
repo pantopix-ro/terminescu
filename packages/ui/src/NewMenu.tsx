@@ -9,10 +9,11 @@ export interface NewMenuItem {
   run(): void;
 }
 
-/** `+ ▾`: a terminal or a text. The tab bar makes tabs; the sidebar makes side tabs. */
+/** `+ ▾`: a terminal or a text. The tab bar makes tabs; the sidebar makes side tabs and folders. */
 export function NewMenu({
   onNew,
   onNewText,
+  onNewFolder,
   hints,
   textTitle = "Hold ⌥ to split the focused pane",
   className = "ao-tab-new more",
@@ -21,6 +22,8 @@ export function NewMenu({
 }: {
   onNew(): void;
   onNewText(beside: boolean): void;
+  /** The sidebar's menu also makes an empty folder (task 8.91). */
+  onNewFolder?(): void;
   hints?: readonly [string, string?];
   textTitle?: string;
   className?: string;
@@ -29,6 +32,7 @@ export function NewMenu({
 }) {
   const newTab = useChord("new_tab");
   const newText = useChord("new_text");
+  const newFolder = useChord("new_folder");
   const [termHint, textHint] = hints ?? [newTab, newText];
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLSpanElement>(null);
@@ -86,6 +90,20 @@ export function NewMenu({
             <span className="grow">Text</span>
             {textHint && <span className="small ao-dim">{textHint}</span>}
           </button>
+          {onNewFolder && (
+            <button
+              type="button"
+              role="menuitem"
+              title="An empty folder; drag tabs into it or add one with its +"
+              onClick={() => {
+                setOpen(false);
+                onNewFolder();
+              }}
+            >
+              <span className="grow">Folder</span>
+              {newFolder && <span className="small ao-dim">{newFolder}</span>}
+            </button>
+          )}
           {extra.map((x) => (
             <button
               key={x.id}
