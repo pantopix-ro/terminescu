@@ -24,6 +24,7 @@ fn var(name: &str, value: Option<&str>, mode: Mode) -> Variable {
 fn db() -> Db {
     let db = Db::open_in_memory().unwrap();
     let side = |id: &str, tab: &str, pane: &str| SideTab {
+        folder: false,
         status: None,
         name: None,
         accent: None,

@@ -183,6 +183,7 @@ export function createIpcHost(): Host {
     onUpdate: (listener) => listen<string>(UPDATE_EVENT, (e) => listener(e.payload)),
     openPathWith: (pane, path, reveal) => invoke("path_open", { pane, path, reveal }),
     bounceDock: () => invoke("bounce_dock"),
+    setWindowTitle: (title) => getCurrentWebviewWindow().setTitle(title),
     importTerminalApp: () => invoke<TerminalProfile>("import_terminal_app"),
     importTerminalFile: (path) => invoke<TerminalProfile>("import_terminal_file", { path }),
     newText: (sideTab, beside) => invoke<DocView>("doc_new", { sideTab, beside: beside ?? null }),

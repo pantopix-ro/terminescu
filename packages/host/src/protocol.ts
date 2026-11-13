@@ -53,6 +53,8 @@ export interface SideTab {
   accent?: Neon;
   /** A random animal or bird, unique across windows (task 8.60). It names the row while the row holds two tabs or more; `title` overrides it. */
   name?: string;
+  /** Made as a folder from the sidebar's + (task 8.91): it stays a folder with one tab or none. */
+  folder?: boolean;
 }
 
 /** Neon row accents, as `--neon-*` tokens. Mirrors `NEONS` in state.rs; no amber. */
@@ -150,6 +152,8 @@ export type DockSide = "left" | "right" | "up" | "down";
 export type Command =
   | { type: "CreateWindow" }
   | { type: "CreateSideTab"; windowId: Id; index?: number | null }
+  /** An empty folder (task 8.91). */
+  | { type: "CreateFolder"; windowId: Id; index?: number | null }
   | { type: "CreateTab"; sideTabId: Id }
   | { type: "CloseTab"; tabId: Id }
   | { type: "MoveTab"; tabId: Id; toSideTabId: Id; index: number }

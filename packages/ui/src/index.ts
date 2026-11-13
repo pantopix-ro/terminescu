@@ -22,6 +22,8 @@ export {
   KidIcon,
   SideTabList,
   sideTabName,
+  isFolder,
+  loneTab,
   tabChord,
   tabDirty,
   tabName,
