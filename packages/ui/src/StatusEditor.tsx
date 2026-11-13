@@ -80,7 +80,7 @@ const lookOf = (s: SavedStatus): ManualStatus => ({ statusId: s.id, label: s.lab
 export function StatusEditor(props: StatusEditorProps) {
   const { side, tab, statuses, config } = props;
   // A row with one tab is that tab: the editor edits the tab alone (task 8.89).
-  const lone = side.tabs.length === 1 && tab !== undefined;
+  const lone = !side.folder && side.tabs.length === 1 && tab !== undefined;
   const [picked, setTarget] = useState<"side" | "tab">(props.initialTarget === "tab" && tab ? "tab" : "side");
   const target = lone ? "tab" : picked;
   const owner = target === "tab" && tab ? tab : side;
@@ -225,7 +225,7 @@ export function StatusEditor(props: StatusEditorProps) {
                       props.onPickIcon?.(owner.id, { x: r.left, y: r.bottom + 4 });
                     }}
                   >
-                    <i className={`ao-i ao-i-${owner.icon ?? (target === "tab" ? "term" : side.tabs.length > 1 ? "folder" : (side.tabs[0]?.icon ?? "term"))}`} style={owner.accent ? { color: `var(--neon-${owner.accent})` } : undefined} />
+                    <i className={`ao-i ao-i-${owner.icon ?? (target === "tab" ? "term" : side.folder || side.tabs.length > 1 ? "folder" : (side.tabs[0]?.icon ?? "term"))}`} style={owner.accent ? { color: `var(--neon-${owner.accent})` } : undefined} />
                   </button>
                 </div>
               )}

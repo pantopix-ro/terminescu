@@ -215,6 +215,8 @@ export interface Host {
   openPathWith(paneId: Id, path: string, reveal: boolean): Promise<void>;
   /** Bounces the dock icon once, for a terminal's bell while the app is in the background. */
   bounceDock(): Promise<void>;
+  /** Names this window after its row, so the dock's window list and Exposé tell windows apart (task 8.92). */
+  setWindowTitle(title: string): Promise<void>;
   /** Settings › Terminal (task 8.47): Terminal.app's default profile. */
   importTerminalApp(): Promise<TerminalProfile>;
   /** A `.terminal` profile or an `.itermcolors` preset. */

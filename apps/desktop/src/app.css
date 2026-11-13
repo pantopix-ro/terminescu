@@ -40,6 +40,9 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 .kid-add { position: absolute; right: var(--space-2); bottom: -8px; z-index: 5; width: 16px; height: 16px; display: grid; place-items: center; padding: 0; border: 1px solid var(--line-strong); background: var(--panel-2); color: var(--dim); cursor: pointer; opacity: 0; }
 .kid-add .ao-i { transform: scale(0.75); }
 .ao-st-kids:hover .kid-add, .kid-add:focus-visible { opacity: 1; }
+/* An empty folder (task 8.91) says so, and keeps its + in sight. */
+.kid-empty { padding: 4px var(--space-2) 6px 28px; }
+.ao-st-kids:has(.kid-empty) .kid-add { opacity: 1; }
 .kid-add:hover { color: var(--fg); border-color: var(--focus); }
 .side-add:hover { color: var(--fg); border-color: var(--focus); background: var(--panel); }
 .side-add:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--focus); }
