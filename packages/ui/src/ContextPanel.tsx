@@ -1,7 +1,9 @@
 import { VAR_MODES, type Item, type ItemKind, type NewVariable, type Pin, type Prompt, type TouchedFile, type Variable, type VarMode, type VariableChange } from "@terminescu/host";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { parseTtl, timeAgo, timeLeft } from "./names";
-import { useChord } from "./chords";
+import { Tip, useTip } from "./Tip";
+import { PromptTip } from "./PromptTip";
+import { tipSlots } from "./prompt-tip";
 
 export type ContextMode = "pinned" | "auto";
 
@@ -34,8 +36,12 @@ export interface ContextPanelProps {
   onForgetFile?(id: string): Promise<unknown>;
   /** The library, last used first (D14). */
   prompts?: Prompt[];
-  /** Opens the library at a prompt, or at its start. */
+  /** Opens the library at a prompt, or at its start. A right click on a prompt calls it. */
   onOpenPrompt?(key?: string): void;
+  /** A left click on a prompt: insert it filled, or ask for what is missing (refine-context-panel D6). */
+  onUsePrompt?(prompt: Prompt): void;
+  /** The Prompts head `+`: the library on a new prompt. */
+  onNewPrompt?(): void;
   /** Sections the enabled plugins add after the app's, each drawn by its plugin (D7). */
   sections?: readonly PanelPart[];
 }
@@ -47,10 +53,9 @@ export interface PanelPart {
   body: ReactNode;
   /** The plugin hid the section; its body stays mounted. */
   hidden?: boolean;
+  /** The count the plugin reported for the head (`setCount`). */
+  count?: number;
 }
-
-const SECTIONS = ["Context", "Pins", "Prompts"] as const;
-type Section = (typeof SECTIONS)[number];
 
 /** How long the pointer rests on the edge before the panel slides in. */
 export const HOVER_MS = 150;
@@ -67,34 +72,45 @@ function useMinuteTick(on: boolean) {
   }, [on]);
 }
 
-function metaOf(v: Variable): string {
-  const left = v.expiresAt != null ? ` · ${timeLeft(v.expiresAt)}` : "";
-  if (v.mode === "secret") return `inserts as $${v.name}${left}`;
-  if (v.mode === "session") return `not stored · gone on reboot${left}`;
-  return v.source ?? "";
-}
-
 /** A variable a plugin provides: it shows and inserts, but only the plugin changes it. */
 const provided = (v: Variable) => v.id.startsWith("plugin:");
 
-function VariableRow({ v, props, fail }: { v: Variable; props: ContextPanelProps; fail(e: unknown): void }) {
+/** The mode line of a variable's tooltip: storage, and what is left of a TTL. */
+function modeLine(v: Variable): string {
+  const left = v.expiresAt != null ? ` · ${timeLeft(v.expiresAt)}` : "";
+  if (v.mode === "secret") return `inserts as $${v.name}${left}`;
+  if (v.mode === "session") return `not stored · gone on reboot${left}`;
+  return `saved${left}`;
+}
+
+/** The tooltip of a variable (D4): its value, never a secret's, then the mode and the source. */
+function varTip(v: Variable): { name: string; lines: string[] } {
+  if (provided(v)) return { name: v.value ?? "", lines: [`from ${v.source?.replace(/^plugin:/, "") ?? "a plugin"} · read-only`] };
+  const source = v.source ? [`from ${v.source}`] : [];
+  if (v.mode === "secret") return { name: modeLine(v), lines: source };
+  return { name: v.value || "(empty)", lines: [modeLine(v), ...source] };
+}
+
+type Hover = { onPointerEnter(e: React.PointerEvent<HTMLElement>): void; onPointerLeave(): void; onFocus(e: React.FocusEvent<HTMLElement>): void; onBlur(): void };
+
+function VariableRow({ v, props, fail, hover }: { v: Variable; props: ContextPanelProps; fail(e: unknown): void; hover(v: Variable): Hover }) {
   const [editing, setEditing] = useState<string>();
   const secret = v.mode === "secret";
+  const tip = hover(v);
   if (provided(v))
     return (
-      <li className="ctx-var provided" data-var={v.name} data-mode={v.mode} data-provided="">
+      <li className="ctx-var provided" data-var={v.name} data-mode={v.mode} data-provided="" {...tip}>
         <span className="ctx-name">{`{{${v.name}}}`}</span>
-        <span className="ctx-value small" title={v.value ?? ""}>
+        <span className="ctx-value small">
           {v.value}
         </span>
         <span className="ctx-row-acts">
           {props.onInsertVariable && (
             <button type="button" className="ao-btn ghost ctx-insert" aria-label={`Insert ${v.name}`} title="Types the value, without Enter" onClick={() => props.onInsertVariable?.(v)}>
-              insert
+              ↵
             </button>
           )}
         </span>
-        <span className="ctx-meta">{`from ${v.source?.replace(/^plugin:/, "") ?? "a plugin"} · read-only`}</span>
       </li>
     );
   const commit = () => {
@@ -104,7 +120,7 @@ function VariableRow({ v, props, fail }: { v: Variable; props: ContextPanelProps
     if (value.trim() && value !== v.value) void props.onChangeVariable?.(v.name, { value })?.catch(fail);
   };
   return (
-    <li className={`ctx-var ${v.mode}`} data-var={v.name} data-mode={v.mode}>
+    <li className={`ctx-var ${v.mode}`} data-var={v.name} data-mode={v.mode} {...tip}>
       <span className="ctx-name">{`{{${v.name}}}`}</span>
       {editing !== undefined ? (
         <input
@@ -128,7 +144,6 @@ function VariableRow({ v, props, fail }: { v: Variable; props: ContextPanelProps
         <button
           type="button"
           className={`ctx-value small link-plain${secret ? " masked" : ""}`}
-          title={secret ? "Set a new value" : (v.value ?? "")}
           onClick={() => setEditing(secret ? "" : (v.value ?? ""))}
         >
           {secret ? "••••••••••••" : v.value}
@@ -154,19 +169,18 @@ function VariableRow({ v, props, fail }: { v: Variable; props: ContextPanelProps
             title={secret ? `Types $${v.name}; the value stays in the environment` : "Types the value, without Enter"}
             onClick={() => props.onInsertVariable?.(v)}
           >
-            insert
+            ↵
           </button>
         )}
         {props.onEditVariable && !secret && (
-          <button type="button" className="ao-btn ghost" aria-label={`Edit ${v.name} in a text tab`} onClick={() => props.onEditVariable?.(v)}>
-            edit
+          <button type="button" className="ao-btn ghost" aria-label={`Edit ${v.name} in a text tab`} title="Edit in a text tab" onClick={() => props.onEditVariable?.(v)}>
+            ✎
           </button>
         )}
         <button type="button" className="ctx-pin-x" aria-label={`Remove ${v.name}`} onClick={() => void props.onRemoveVariable?.(v.name)?.catch(fail)}>
           ×
         </button>
       </span>
-      <span className="ctx-meta">{metaOf(v)}</span>
     </li>
   );
 }
@@ -219,7 +233,7 @@ function AddVariable({ props, fail, done }: { props: ContextPanelProps; fail(e: 
   );
 }
 
-function AddItem({ props, fail }: { props: ContextPanelProps; fail(e: unknown): void }) {
+function AddItem({ props, fail, done }: { props: ContextPanelProps; fail(e: unknown): void; done(): void }) {
   const [value, setValue] = useState("");
   return (
     <form
@@ -230,10 +244,16 @@ function AddItem({ props, fail }: { props: ContextPanelProps; fail(e: unknown): 
         const v = value.trim();
         if (!v) return;
         const kind: ItemKind = /^https?:\/\/\S+$/.test(v) ? "link" : "text";
-        void props.onAddItem?.(kind, v)?.then(() => setValue(""), fail);
+        void props.onAddItem?.(kind, v)?.then(done, fail);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          done();
+        }
       }}
     >
-      <input className="ao-input" aria-label="Link or text" placeholder="paste a link or a note" value={value} onChange={(e) => setValue(e.target.value)} />
+      <input className="ao-input" aria-label="Link or text" placeholder="paste a link or a note" autoFocus value={value} onChange={(e) => setValue(e.target.value)} />
       <button type="submit" className="ao-btn ghost">
         Add
       </button>
@@ -241,68 +261,88 @@ function AddItem({ props, fail }: { props: ContextPanelProps; fail(e: unknown): 
   );
 }
 
-function Items(props: ContextPanelProps & { section: Section }) {
-  const extractChord = useChord("extract");
-  const libraryChord = useChord("prompt_library");
-  const { section, variables = [], items = [], pins = [], files = [], onOpenPin, onRemovePin } = props;
-  const [adding, setAdding] = useState(false);
-  const [error, setError] = useState<string>();
-  const fail = (e: unknown) => setError(String(e));
-  useMinuteTick(section === "Context" && (files.length > 0 || variables.some((v) => v.expiresAt != null)));
-  if (section === "Context") {
-    return (
-      <>
-        <div className="ctx-group">
-          <span className="ao-pixel ao-dim">Variables</span>
-          <span className="small ao-dim">{variables.length}</span>
-          <span className="grow" />
-          <button type="button" className="ao-btn ghost ctx-mode" onClick={() => setAdding((a) => !a)} aria-expanded={adding}>
-            + variable
-          </button>
-        </div>
-        {adding && <AddVariable props={props} fail={fail} done={() => setAdding(false)} />}
-        {error && (
-          <p className="small app-error ctx-empty" role="alert" onClick={() => setError(undefined)}>
-            {error}
-          </p>
-        )}
-        {variables.length ? (
+/** One head row for every section: the title, the count, and a `+` where there is an add action (D1). */
+function SectionHead({ title, count, onAdd, addLabel, adding }: { title: string; count?: number; onAdd?(): void; addLabel?: string; adding?: boolean }) {
+  return (
+    <div className="ctx-sec-head">
+      <h3 className="ao-pixel">{title}</h3>
+      {count !== undefined && <span className="ctx-count small ao-dim">{count}</span>}
+      <span className="grow" />
+      {onAdd && (
+        <button type="button" className="ao-btn ghost ctx-add-btn" aria-label={addLabel} aria-expanded={adding} title={addLabel} onClick={onAdd}>
+          +
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** The five app sections, each one head and rows (D1, D2): empty means the head alone. */
+function CoreSections(props: ContextPanelProps) {
+  const { variables = [], items = [], pins = [], files = [], prompts = [], onOpenPin, onRemovePin } = props;
+  const [adding, setAdding] = useState<"variable" | "item">();
+  const [error, setError] = useState<{ at: string; text: string }>();
+  const fail = (at: string) => (e: unknown) => setError({ at, text: String(e) });
+  const tips = useTip();
+  useMinuteTick(files.length > 0 || variables.some((v) => v.expiresAt != null));
+  const toggle = (what: "variable" | "item") => setAdding((a) => (a === what ? undefined : what));
+  const err = (at: string) =>
+    error?.at === at && (
+      <p className="small app-error ctx-empty" role="alert" onClick={() => setError(undefined)}>
+        {error.text}
+      </p>
+    );
+  const varHover = (v: Variable): Hover => {
+    const show = (el: HTMLElement) => {
+      const t = varTip(v);
+      tips.beside(el, t.name, t.lines);
+    };
+    return { onPointerEnter: (e) => show(e.currentTarget), onPointerLeave: tips.hide, onFocus: (e) => show(e.currentTarget), onBlur: tips.hide };
+  };
+  const promptTip = (el: HTMLElement, p: Prompt) => tips.beside(el, p.name, undefined, <PromptTip parts={tipSlots(p.body, variables, pins)} />);
+  return (
+    <>
+      <section className="ctx-section" aria-label="Variables" data-section="Variables">
+        <SectionHead title="Variables" count={variables.length} onAdd={() => toggle("variable")} addLabel="Add a variable" adding={adding === "variable"} />
+        {adding === "variable" && <AddVariable props={props} fail={fail("Variables")} done={() => setAdding(undefined)} />}
+        {err("Variables")}
+        {variables.length > 0 && (
           <ul className="ctx-list" aria-label="Variables">
             {variables.map((v) => (
-              <VariableRow key={v.id} v={v} props={props} fail={fail} />
+              <VariableRow key={v.id} v={v} props={props} fail={fail("Variables")} hover={varHover} />
             ))}
           </ul>
-        ) : (
-          <p className="small ao-dim ctx-empty">No variables yet. Select text{extractChord ? ` and press ${extractChord}` : " and extract it from the Edit menu"}.</p>
         )}
-        <div className="ctx-group">
-          <span className="ao-pixel ao-dim">Links and text</span>
-          <span className="small ao-dim">{items.length}</span>
-        </div>
-        <AddItem props={props} fail={fail} />
-        <ul className="ctx-list" aria-label="Links and text">
-          {items.map((i) => (
-            <li key={i.id} className={`ctx-item ${i.kind}`}>
-              {i.kind === "link" ? (
-                <button type="button" className="ctx-value link" title={i.value} onClick={() => props.onOpenUrl?.(i.value)}>
-                  {i.value.replace(/^https?:\/\//, "")}
+      </section>
+      <section className="ctx-section" aria-label="Links and text" data-section="Links and text">
+        <SectionHead title="Links and text" count={items.length} onAdd={() => toggle("item")} addLabel="Add a link or text" adding={adding === "item"} />
+        {adding === "item" && <AddItem props={props} fail={fail("Links and text")} done={() => setAdding(undefined)} />}
+        {err("Links and text")}
+        {items.length > 0 && (
+          <ul className="ctx-list" aria-label="Links and text">
+            {items.map((i) => (
+              <li key={i.id} className={`ctx-item ${i.kind}`}>
+                {i.kind === "link" ? (
+                  <button type="button" className="ctx-value link" title={i.value} onClick={() => props.onOpenUrl?.(i.value)}>
+                    {i.value.replace(/^https?:\/\//, "")}
+                  </button>
+                ) : (
+                  <span className="ctx-value" title={i.value}>
+                    {i.value}
+                  </span>
+                )}
+                <button type="button" className="ctx-pin-x" aria-label="Remove" onClick={() => void props.onRemoveItem?.(i.id)?.catch(fail("Links and text"))}>
+                  ×
                 </button>
-              ) : (
-                <span className="ctx-value" title={i.value}>
-                  {i.value}
-                </span>
-              )}
-              <button type="button" className="ctx-pin-x" aria-label="Remove" onClick={() => void props.onRemoveItem?.(i.id)?.catch(fail)}>
-                ×
-              </button>
-            </li>
-          ))}
-        </ul>
-        <div className="ctx-group">
-          <span className="ao-pixel ao-dim">Files</span>
-          <span className="small ao-dim">{files.length}</span>
-        </div>
-        {files.length ? (
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <section className="ctx-section" aria-label="Files" data-section="Files">
+        <SectionHead title="Files" count={files.length} />
+        {err("Files")}
+        {files.length > 0 && (
           <ul className="ctx-list" aria-label="Files">
             {files.map((f) => (
               <li key={f.id} className={`ctx-item file ${f.change}`}>
@@ -313,61 +353,67 @@ function Items(props: ContextPanelProps & { section: Section }) {
                   {f.shown}
                 </button>
                 <span className="small ao-dim">{timeAgo(f.updatedAt)}</span>
-                <button type="button" className="ctx-pin-x" aria-label={`Forget ${f.shown}`} onClick={() => void props.onForgetFile?.(f.id)?.catch(fail)}>
+                <button type="button" className="ctx-pin-x" aria-label={`Forget ${f.shown}`} onClick={() => void props.onForgetFile?.(f.id)?.catch(fail("Files"))}>
                   ×
                 </button>
               </li>
             ))}
           </ul>
-        ) : (
-          <p className="small ao-dim ctx-empty">Files Claude writes or edits here show up in this list.</p>
         )}
-      </>
-    );
-  }
-  if (section === "Pins" && pins.length) {
-    return (
-      <ul className="ctx-list">
-        {pins.map((p) => (
-          <li key={p.id} className="ctx-pin" data-pin={p.id} data-kind={p.paneId ? "terminal" : "transcript"}>
-            <button type="button" className="ctx-pin-open" title={p.paneId ? "Show in the terminal" : "Show in the transcript"} onClick={() => onOpenPin?.(p)}>
-              <i className={`ao-i x1 ${p.paneId ? "ao-i-term" : "ao-i-pin"}`} />
-              <span className="ctx-quote">{p.exact}</span>
-            </button>
-            <button type="button" className="ctx-pin-x" aria-label="Remove pin" onClick={() => onRemovePin?.(p)}>
-              ×
-            </button>
-          </li>
-        ))}
-      </ul>
-    );
-  }
-  if (section === "Prompts") {
-    const { prompts = [], onOpenPrompt } = props;
-    return (
-      <>
-        <div className="ctx-group">
-          <span className="small ao-dim">{prompts.length} saved</span>
-          <span className="grow" />
-          <button type="button" className="ao-btn ghost ctx-mode" onClick={() => onOpenPrompt?.()}>
-            library{libraryChord && ` ${libraryChord}`}
-          </button>
-        </div>
-        <ul className="ctx-list" aria-label="Prompts">
-          {prompts.map((p) => (
-            <li key={p.id} className="ctx-item" data-prompt={p.key}>
-              <button type="button" className="ctx-value link-plain" title={p.body} onClick={() => onOpenPrompt?.(p.key)}>
-                {p.name}
-              </button>
-              <span className="small ao-dim">{p.variables.map((v) => `{{${v}}}`).join(" ")}</span>
-            </li>
-          ))}
-        </ul>
-        {prompts.length === 0 && <p className="small ao-dim ctx-empty">No prompts yet.</p>}
-      </>
-    );
-  }
-  return <p className="small ao-dim ctx-empty">No pins yet.</p>;
+      </section>
+      <section className="ctx-section" aria-label="Pins" data-section="Pins">
+        <SectionHead title="Pins" count={pins.length} />
+        {pins.length > 0 && (
+          <ul className="ctx-list">
+            {pins.map((p) => (
+              <li key={p.id} className="ctx-pin" data-pin={p.id} data-kind={p.paneId ? "terminal" : "transcript"}>
+                <button type="button" className="ctx-pin-open" title={p.paneId ? "Show in the terminal" : "Show in the transcript"} onClick={() => onOpenPin?.(p)}>
+                  <i className={`ao-i x1 ${p.paneId ? "ao-i-term" : "ao-i-pin"}`} />
+                  <span className="ctx-quote">{p.exact}</span>
+                </button>
+                <button type="button" className="ctx-pin-x" aria-label="Remove pin" onClick={() => onRemovePin?.(p)}>
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <section className="ctx-section" aria-label="Prompts" data-section="Prompts">
+        <SectionHead title="Prompts" count={prompts.length} onAdd={props.onNewPrompt} addLabel="New prompt" />
+        {prompts.length > 0 && (
+          <ul className="ctx-list" aria-label="Prompts">
+            {prompts.map((p) => (
+              <li key={p.id} className="ctx-item" data-prompt={p.key}>
+                <button
+                  type="button"
+                  className="ctx-value link-plain"
+                  onPointerEnter={(e) => promptTip(e.currentTarget, p)}
+                  onPointerLeave={tips.hide}
+                  onFocus={(e) => promptTip(e.currentTarget, p)}
+                  onBlur={tips.hide}
+                  onClick={() => {
+                    tips.hide();
+                    props.onUsePrompt ? props.onUsePrompt(p) : props.onOpenPrompt?.(p.key);
+                  }}
+                  onContextMenu={(e) => {
+                    // The window's Edit menu skips an event that is already handled.
+                    e.preventDefault();
+                    tips.hide();
+                    props.onOpenPrompt?.(p.key);
+                  }}
+                >
+                  {p.name}
+                </button>
+                <span className="small ao-dim">{p.variables.map((v) => `{{${v}}}`).join(" ")}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <Tip tip={tips.tip} />
+    </>
+  );
 }
 
 function Body(props: ContextPanelProps) {
@@ -390,15 +436,10 @@ function Body(props: ContextPanelProps) {
         </button>
       </div>
       <div className="ctx-scroll">
-        {SECTIONS.map((s) => (
-          <section key={s} className="ctx-section" aria-label={s} data-section={s}>
-            <h3 className="ctx-sec-head ao-pixel">{s}</h3>
-            <Items {...props} section={s} />
-          </section>
-        ))}
+        <CoreSections {...props} />
         {props.sections?.map((s) => (
           <section key={s.key} className="ctx-section plugin" aria-label={s.title} data-section={s.key} hidden={s.hidden}>
-            <h3 className="ctx-sec-head ao-pixel">{s.title}</h3>
+            <SectionHead title={s.title} count={s.count} />
             {s.body}
           </section>
         ))}

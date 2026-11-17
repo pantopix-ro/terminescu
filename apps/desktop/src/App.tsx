@@ -82,6 +82,7 @@ import {
   MergeDialog,
   PasteDialog,
   shellPaths,
+  renderPrompt,
   ContextMenu,
   type MenuEntry,
   chipOf,
@@ -569,6 +570,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   // Documents a plugin's pane view draws, as a diff tab: the text pane under a plugin's
   // decoration. For this window's life; a view whose plugin is off shows plain text.
   const [libraryKey, setLibraryKey] = useState<string>();
+  // Open the library on its new-prompt form, and the prompt the insert dialog opens on.
+  const [newPrompt, setNewPrompt] = useState(false);
+  const [insertPrompt, setInsertPrompt] = useState<Prompt>();
   // Text panes' documents as their panes last reported them: titles and unsaved edits (D27).
   const [docs, setDocs] = useState<Record<string, DocView>>({});
   // Each window carries its row's name, so the dock's window list and Exposé tell windows apart.
@@ -1130,9 +1134,11 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         return setSheet("feedback-issue");
       case "insert":
         if (!focused || !activeTab || transcriptOf(activeTab.layout, focused)) return setError("Focus a terminal pane to insert.");
+        setInsertPrompt(undefined);
         return setSheet((s) => (s === "insert" ? undefined : "insert"));
       case "prompt_library":
         setLibraryKey(undefined);
+        setNewPrompt(false);
         return setSheet((s) => (s === "prompts" ? undefined : "prompts"));
       case "context_panel":
         return changeMode(mode === "pinned" ? "auto" : "pinned");
@@ -1234,6 +1240,8 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const setStatus = (targetId: string, status: ManualStatus | null) => send({ type: "SetStatus", targetId, status });
   const closeSheet = () => {
     setSheet(undefined);
+    setNewPrompt(false);
+    setInsertPrompt(undefined);
     refocus();
   };
   const report = (e: unknown) => {
@@ -1527,6 +1535,24 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     }
     return f;
   };
+  // The counts a plugin reported for its section heads (refine-context-panel D3).
+  const [sectionCounts, setSectionCounts] = useState<ReadonlyMap<string, number>>(() => new Map());
+  const counters = useRef(new Map<string, (count: number | undefined) => void>());
+  const sectionCounter = (key: string) => {
+    let f = counters.current.get(key);
+    if (!f) {
+      f = (count: number | undefined) =>
+        setSectionCounts((cur) => {
+          if (cur.get(key) === count) return cur;
+          const next = new Map(cur);
+          if (count === undefined) next.delete(key);
+          else next.set(key, count);
+          return next;
+        });
+      counters.current.set(key, f);
+    }
+    return f;
+  };
   // Each enabled plugin's watcher runs while this window lives (polish-git-plugin D6).
   const askRef = useRef(ask);
   askRef.current = ask;
@@ -1624,6 +1650,14 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     if (!insertInto(text, send)) return setError("Focus a terminal pane to insert.");
     if (prompt) void host.markPromptUsed(prompt.id).catch((e: unknown) => setError(String(e)));
     secretNote(shownCtx.variables.filter((v) => v.mode === "secret" && text.includes(`$${v.name}`)).map((v) => v.name));
+  };
+  // A prompt clicked in the panel (refine-context-panel D6): inserted filled, or asked for first.
+  const usePrompt = (prompt: Prompt) => {
+    if (!focused || !activeTab || transcriptOf(activeTab.layout, focused)) return setError("Focus a terminal pane to insert.");
+    const { text, missing } = renderPrompt(prompt.body, shownCtx.variables, shownCtx.pins);
+    if (!missing.length) return insertChosen(text, false, prompt);
+    setInsertPrompt(prompt);
+    setSheet("insert");
   };
   const [notice, setNotice] = useState<string>();
   // Which status the editor opens on: the side tab's, or its active tab's (a tab's chip).
@@ -2816,6 +2850,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                       key,
                       title: sec.title,
                       hidden: hiddenSections.has(key),
+                      count: sectionCounts.get(key),
                       body: (
                         <sec.render
                           sideTabId={activeSide.id}
@@ -2824,6 +2859,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                           app={{ openText }}
                           bridge={plugins.bridge(sec.plugin)}
                           setHidden={sectionHider(key)}
+                          setCount={sectionCounter(key)}
                         />
                       ),
                     };
@@ -2853,8 +2889,15 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
             prompts={prompts}
             onOpenPrompt={(key) => {
               setLibraryKey(key);
+              setNewPrompt(false);
               setSheet("prompts");
             }}
+            onNewPrompt={() => {
+              setLibraryKey(undefined);
+              setNewPrompt(true);
+              setSheet("prompts");
+            }}
+            onUsePrompt={usePrompt}
             onOpenUrl={(url) => void host.openUrl(url).catch((e: unknown) => setError(String(e)))}
           />
           <StatusLine
@@ -3021,7 +3064,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       )}
       {sheet === "insert" && (
         <InsertDialog
+          key={insertPrompt?.id ?? "list"}
           prompts={prompts}
+          initialPrompt={insertPrompt}
           variables={shownCtx.variables}
           pins={shownCtx.pins}
           onInsert={insertChosen}
@@ -3065,6 +3110,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         <PromptLibrary
           host={host}
           selectKey={libraryKey}
+          startNew={newPrompt}
           onError={setError}
           onClose={closeSheet}
           onEditInText={(promptId) => {
