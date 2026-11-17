@@ -3,6 +3,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod crashlog;
+mod dock_menu;
 mod docs;
 mod drag;
 mod edit;
@@ -2066,6 +2067,9 @@ fn build_menu(
 
 /// Sends a menu action to the focused window only; other windows keep their state.
 fn send_action(app: &AppHandle, id: &str) {
+    if dock_menu::pick(app, id) {
+        return;
+    }
     let focused = app
         .webview_windows()
         .into_iter()
@@ -2132,6 +2136,8 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     plugins::observe(app.handle(), &runtime, plugins.clone());
     plugins.dispatch(&terminescu_plugin_api::CoreEvent::AppLaunched);
     app.manage(plugins);
+    app.manage(dock_menu::Rows::default());
+    dock_menu::install(app.handle());
     app.manage(AppState {
         runtime,
         db,
@@ -2179,6 +2185,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             edit::edit_command,
+            dock_menu::dock_rows,
             plugins::plugin_call,
             plugins::plugin_menu,
             plugins::helpers_list,
@@ -2315,6 +2322,9 @@ fn main() {
         } = &event
         {
             end_recording(app, label);
+            if let Some(rows) = app.try_state::<dock_menu::Rows>() {
+                rows.forget(label);
+            }
             // The hidden ghost must not keep the app alive once the last window is gone.
             let left = app.webview_windows().into_keys().any(|l| l != drag::GHOST);
             if !left && let Some(g) = app.get_webview_window(drag::GHOST) {
