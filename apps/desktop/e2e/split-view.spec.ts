@@ -197,3 +197,74 @@ test("the tab bar starts with the selected folder's name, and its pixel tip list
   await expect(page.locator(".ao-tabs [role=tab]")).toHaveCount(1);
   await expect(folder).toHaveCount(0);
 });
+
+// Tasks 1.1 to 1.3: the area head's × hides the area; it never closes a pane.
+
+/** Two rows side by side: the first (right, dropped on) and a new one. */
+async function sideBySide(page: Page) {
+  await start(page);
+  const [first] = await sideIds(page);
+  const second = await addRow(page);
+  await rowToRight(page, first!);
+  await expect(page.locator(".view-head")).toHaveCount(2);
+  return { first: first!, second };
+}
+
+const hasPane = async (page: Page, pane: string) =>
+  (await workspace(page)).windows.some((w: any) => w.sideTabs.some((s: any) => s.tabs.some((t: any) => JSON.stringify(t.layout).includes(`"${pane}"`))));
+
+test("× hides an area, its shell keeps running", async ({ page }) => {
+  const { first, second } = await sideBySide(page);
+  const pane = await paneOf(page, second);
+  let confirmed = false;
+  page.on("dialog", (d) => {
+    confirmed = true;
+    void d.dismiss();
+  });
+  // A one-pane tab's pane head carries no Close pane; the area head carries one ×.
+  await expect(page.locator(".ao-tp-head .tp-close[aria-label='Close pane']")).toHaveCount(0);
+  const area = page.locator(`.view-area[data-area="${await tabOf(page, second)}"]`);
+  await area.locator(".view-head button[aria-label='Hide from view']").click();
+  await expect(page.locator(".view-area")).toHaveCount(0);
+  await expect(page.locator(".app-pane .ao-tp")).toHaveCount(1);
+  expect(await hasPane(page, pane)).toBe(true);
+  expect(confirmed).toBe(false);
+  await expect(page.locator(`.ao-st[data-side="${second}"]`)).toBeVisible();
+  await expect.poll(() => openIds(page)).toEqual([]);
+  expect(first).toBeTruthy();
+});
+
+test("hiding down to one drops the area heads", async ({ page }) => {
+  const { second } = await sideBySide(page);
+  await page.locator(`.view-area[data-area="${await tabOf(page, second)}"] .view-head button[aria-label='Hide from view']`).click();
+  await expect(page.locator(".view-head")).toHaveCount(0);
+  await expect(page.locator(".ao-tp-head")).toHaveCount(0);
+});
+
+test("a hidden tab comes back when picked, and the view is saved with the window", async ({ page }) => {
+  // The mock host forgets its workspace on a reload, so the saved view is read from storage.
+  const { first, second } = await sideBySide(page);
+  const savedRows = () =>
+    page.evaluate(() => {
+      const key = Object.keys(localStorage).find((k) => k.startsWith("terminescu.view."));
+      const rows = (v: any): string[] => (v.type === "pane" ? [v.id] : v.children.flatMap(rows));
+      return key ? rows(JSON.parse(localStorage.getItem(key)!)).length : 0;
+    });
+  await expect.poll(() => savedRows()).toBe(2);
+  await page.locator(`.view-area[data-area="${await tabOf(page, second)}"] .view-head button[aria-label='Hide from view']`).click();
+  await expect(page.locator(".view-head")).toHaveCount(0);
+  // One area left: no split to save, the hidden rows stay in the sidebar.
+  await expect.poll(() => savedRows()).toBe(0);
+  await expect(page.locator(`.ao-st[data-side="${second}"]`)).toBeVisible();
+  // Picking the hidden row shows it in place of the one selected.
+  await page.locator(`.ao-st[data-side="${second}"]`).click();
+  await expect(page.locator(`.app-pane .ao-tp[data-pane="${await paneOf(page, second)}"]`)).toBeVisible();
+  await expect(page.locator(".app-pane .ao-tp")).toHaveCount(1);
+  expect(first).toBeTruthy();
+});
+
+test("a split tab keeps a Close pane × on each pane head", async ({ page }) => {
+  await sideBySide(page);
+  await page.keyboard.press("Meta+d");
+  await expect(page.locator(".ao-tp-head .tp-close[aria-label='Close pane']")).toHaveCount(2);
+});

@@ -67,17 +67,15 @@ with its message and SHALL be written, with every panic, to `logs/app.log` in th
 - **THEN** an alert names the error and the log file, and the app quits
 
 ### Requirement: Zoom
-`⌘=` and `⌘+` SHALL zoom every window in one step, fonts and elements and terminal text alike,
-`⌘-` SHALL zoom out and `⌘0` SHALL go back to 100%. The zoom SHALL run from 50% to 200% and
-SHALL be saved with the settings, so a restart and a new window keep it.
+`⌘=`, `⌘+`, `⌘-` and `⌘0` SHALL zoom what has focus: a pane's text, the panes of a focused
+sidebar row or folder, or one window's whole UI. The `zoom` capability of the change
+`refine-pane-view-and-zoom` holds the scopes, the 50% to 200% range, persistence and the
+notice. The Settings zoom SHALL be the default of every window without a zoom of its own,
+new windows included.
 
-#### Scenario: Zoom in and reset
-- **WHEN** the person presses `⌘+` twice and then `⌘0`
-- **THEN** the UI shows at 110% and 125%, and then at 100%, with the terminals refitted each time
-
-#### Scenario: Zoom kept
-- **WHEN** the person zooms to 125% and quits, then opens the app again
-- **THEN** every window opens at 125%
+#### Scenario: Zoom in and reset a window
+- **WHEN** window chrome has focus and the person presses `⌘+` twice and then `⌘0`
+- **THEN** that window shows at 110% and 125%, and then at the Settings default, with its terminals refitted each time
 
 ### Requirement: Attention signals
 When a session waits, the status line SHALL show the count in amber, the dock icon SHALL show

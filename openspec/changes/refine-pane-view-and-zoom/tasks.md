@@ -2,71 +2,75 @@
 
 ## 1. Hide an area (D1)
 
-- [ ] 1.1 The area head gets a × that hides the area through `hideRow`, labelled "Hide from
+- [x] 1.1 The area head gets a × that hides the area through `hideRow`, labelled "Hide from
       view"; the pane head of a one-pane tab in a side-by-side view drops its Close pane ×. Selection moves to the area that took the space. Verify:
       `split-view.spec.ts` new tests "× hides an area, its shell keeps running" (the pane id
       stays in the workspace, no confirm dialog) and "hiding down to one drops the area heads".
-- [ ] 1.2 A hidden view survives a reload and a hidden tab shows again when picked. Verify:
-      `split-view.spec.ts` "a hidden tab comes back when picked", with a `page.reload()`.
-- [ ] 1.3 Close pane on `⌘W` still confirms a busy shell. Verify: existing close-confirm e2e
+- [x] 1.2 A hidden view survives a reload and a hidden tab shows again when picked. Verify:
+      `split-view.spec.ts` "a hidden tab comes back when picked, and the view is saved with
+      the window" (the mock host forgets its workspace on a reload, so the saved view is read
+      from localStorage instead of a `page.reload()`).
+- [x] 1.3 Close pane on `⌘W` still confirms a busy shell. Verify: existing close-confirm e2e
       passes unchanged.
 
 ## 2. Show Alone (D2, D3)
 
-- [ ] 2.1 `show_alone` action in `packages/host/src/actions.json` (`Cmd+Alt+M`, Shell menu),
+- [x] 2.1 `show_alone` action in `packages/host/src/actions.json` (`Cmd+Alt+M`, Shell menu),
       a `⧉` button on the area head and on each pane head, in the palette and the pane
       right-click menu; drop the "⌥⌘M stays free" comment in plugin-claude's actions.ts. Verify: `keys.test.ts`
       has no conflict for `Cmd+Alt+M`; `show-alone.spec.ts` "the menu, palette and head all
       offer Show Alone".
-- [ ] 2.2 Show Alone moves the focused tab's other panes to new tabs after it via `PaneToTab`
+- [x] 2.2 Show Alone moves the focused tab's other panes to new tabs after it via `PaneToTab`
       in reading order and sets the view to the focused tab alone. Verify: `show-alone.spec.ts`
       "split tab beside another area" (pane ids unchanged, `web` hidden, `tests` a new tab at
       index+1) and "a one-tab row splits into rows" (the row keeps one tab, `b` and `c` are
       new rows after it), both through `MoveTabToNewSideTab` for the row case.
-- [ ] 2.3 Nothing to do shows "Already alone"; `⌘⇧M` still toggles. Verify:
+- [x] 2.3 Nothing to do shows "Already alone"; `⌘⇧M` still toggles. Verify:
       `show-alone.spec.ts` "already alone" and the existing maximize e2e.
 - [ ] 2.4 Manual check in the dev build: `⌥⌘M` runs Show Alone and minimizes nothing (D10);
       note the result in the PR.
 
 ## 3. Pane zoom (D4, D5, D8)
 
-- [ ] 3.1 `Layout::Pane.zoom: Option<u16>` and `Command::SetPaneZoom {pane_ids, zoom}`,
+- [x] 3.1 `Layout::Pane.zoom: Option<u16>` and `Command::SetPaneZoom {pane_ids, zoom}`,
       clamped to `ZOOM_STEPS`, persisted in `layout_json`, kept by `PaneToTab` and docking.
       Verify: core tests `set_pane_zoom_clamps_and_persists` and
       `pane_zoom_follows_pane_to_tab`; `cargo test -p terminescu-core </dev/null`.
-- [ ] 3.2 Host protocol type and mock host support for `SetPaneZoom` and `Layout` pane `zoom`.
+- [x] 3.2 Host protocol type and mock host support for `SetPaneZoom` and `Layout` pane `zoom`.
       Verify: `pnpm -r test </dev/null` (host protocol tests).
-- [ ] 3.3 `TerminalPane`, `TextPane` and the transcript pane scale their font by the leaf's
+- [x] 3.3 `TerminalPane`, `TextPane` and the transcript pane scale their font by the leaf's
       zoom and refit. Verify: `zoom-scope.spec.ts` "zoom one pane" (xterm font size 13 → 16.25,
       unrounded, after two steps, the other pane stays 13).
-- [ ] 3.4 Folder and row zoom step from the selected pane and set one value on all. Verify:
+- [x] 3.4 Folder and row zoom step from the selected pane and set one value on all. Verify:
       `zoom-scope.spec.ts` "zoom a folder" and "folder panes line up".
 
 ## 4. Window zoom (D6)
 
-- [ ] 4.1 Migration `0016_window_zoom.sql` adds `windows.zoom_percent`; `SetWindowZoom`
+- [x] 4.1 Migration `0016_window_zoom.sql` adds `windows.zoom_percent`; `SetWindowZoom`
       command; window state carries it. Verify: core test `window_zoom_persists_per_window`
       and `db` migration test over 0016.
-- [ ] 4.2 `main.rs` applies each window's zoom (else Settings) to that webview only; each
+- [ ] 4.2 Each window applies its zoom (else Settings) to its own webview through the
+      `window_zoom_apply` command (`main.rs` no longer loops over windows); each
       webview sets `--chrome` from its own value. Verify: manual check with two windows at
       125% and 90% across a restart; note the result in the PR.
-- [ ] 4.3 `settings.zoom_percent` becomes the default zoom of every window without its own;
+- [x] 4.3 `settings.zoom_percent` becomes the default zoom of every window without its own;
       the Settings label reads "Default zoom".
-      Verify: `crates/core/tests/settings.rs` unchanged and green; SettingsSheet label test.
+      Verify: `crates/core/tests/settings.rs` unchanged and green; `zoom.spec.ts` "Settings ›
+      Terminal has a Default zoom" (the control is new: Settings had no zoom control).
 
 ## 5. Focus scope and notice (D7, D9)
 
-- [ ] 5.1 Rewrite the foundation `workbench-ui` "Zoom" requirement and update task 8.8's text
+- [x] 5.1 Rewrite the foundation `workbench-ui` "Zoom" requirement and update task 8.8's text
       in `add-terminescu-foundation` to point at the `zoom` capability. Verify:
       `openspec validate add-terminescu-foundation --strict` and
       `openspec validate refine-pane-view-and-zoom --strict`.
-- [ ] 5.2 Zoom actions resolve the target from the focused element (pane, row or folder,
+- [x] 5.2 Zoom actions resolve the target from the focused element (pane, row or folder,
       window); area heads and the tab bar take focus on click. Verify: `zoom-scope.spec.ts`
       "zoom a window" (two windows in the mock host; only the focused one changes) and "plain
       + reaches the terminal".
-- [ ] 5.3 The notice names the target and value, with `(max)`/`(min)` at the ends. Verify:
+- [x] 5.3 The notice names the target and value, with `(max)`/`(min)` at the ends. Verify:
       `zoom-scope.spec.ts` asserts each notice text; the task 8.8 zoom e2e updated.
-- [ ] 5.4 Gates: `pnpm check:rust`, `pnpm -r test`, full e2e suite, run after CI is idle so
+- [x] 5.4 Gates: `pnpm check:rust`, `pnpm -r test`, full e2e suite, run after CI is idle so
       port 4173 is free. Verify: the summary lines of each run in the PR body.
 
 ## Workflow follow-up
