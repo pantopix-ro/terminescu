@@ -1,0 +1,13 @@
+sequenceDiagram
+  participant UI as Window UI (App.tsx)
+  participant Core as Tauri app (main.rs)
+  participant Mac as macOS Dock
+  UI->>Core: dock_rows(rows: id, name, active) on change, 250 ms debounce
+  Core->>Core: store rows per window label
+  Mac->>Core: applicationDockMenu:
+  Core->>Core: entries(snapshot order, rows) and build muda::Menu
+  Core-->>Mac: NSMenu
+  Mac->>Core: click, muda MenuEvent "dock:s:win:side"
+  Core->>Core: send_action: unminimize and focus window
+  Core->>UI: emit host://reveal-side (side tab id)
+  UI->>UI: setSideTabId and refocus pane
