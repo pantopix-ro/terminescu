@@ -1,9 +1,6 @@
 ---
 key: review-plan
-name: Review the plan
-variables: [pins]
+name: Review plan
+variables: [confidencePercThreshold]
 ---
-Review the plan. Check for issues, risks, problems, and fix them.
-
-Decisions pinned so far:
-{{pins}}
+Review the plan. Check for issues, risks, problems, and fix them. Assess confidence to implement in percentage. If percentage over {{confidencePercThreshold}}, implement.

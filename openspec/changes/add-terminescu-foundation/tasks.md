@@ -232,7 +232,7 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       Done: `terminescu_core::prompts` keeps immutable versions (migration 0005 adds last used
       and use count); search needs every word, `#tag` a whole tag, other words the name, a tag
       or the body; restore and save add versions, duplicate starts a `-copy` key at v1, archive
-      hides. The 8 files in `seeds/prompts` are embedded and imported once per database; a key
+      hides. The 3 files in `seeds/prompts` are embedded and imported once per database; a key
       the person has wins, a deleted seed stays deleted. `crates/core/tests/prompts.rs` covers
       it. The library opens with `⌘⇧I` or from the panel's Prompts section. Limits: the body is
       a plain textarea until text tabs land (group 7, D29), and images in prompts wait too.

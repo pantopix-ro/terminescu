@@ -129,7 +129,9 @@ text tabs (D29).
 
 Built in group 6, on 2026-11-05. Until text tabs land (group 7), the library edits a body in
 a plain textarea and a prompt holds no images. Seeds import once per database; a seed the
-person deleted stays deleted.
+person deleted stays deleted. On 2026-11-17 the seed set became Plan, Review plan and Review
+code. A database seeded with the first set gets it once: the 7 dropped seeds are archived,
+`review-plan` takes the new body as a new version, and the missing seeds are added.
 
 ### D15. Statuses: built-in, global, local, dynamic
 Three tiers. Built-in auto statuses (Running, Waiting, Done, Failed, Idle) come from hooks and
