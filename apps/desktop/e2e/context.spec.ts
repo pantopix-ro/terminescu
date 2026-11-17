@@ -153,12 +153,13 @@ test("inserting a secret types only $NAME, and a Claude pane says where the valu
 });
 
 // Task 8.27: the three sections stack in one scrolling panel.
-test("empty side tab shows five heads and no sentence", async ({ page }) => {
+test("empty side tab shows four heads and no sentence; Pins hides while empty", async ({ page }) => {
   await start(page);
   const panel = page.locator("aside.ctx-pinned");
   const heads = panel.locator(".ctx-sec-head").filter({ visible: true });
-  await expect(heads.locator("h3")).toHaveText(["Variables", "Links and text", "Files", "Pins", "Prompts"]);
-  for (const s of ["Variables", "Links and text", "Files", "Pins"]) {
+  await expect(heads.locator("h3")).toHaveText(["Variables", "Links and text", "Files", "Prompts"]);
+  await expect(panel.locator('[data-section="Pins"]')).toBeHidden();
+  for (const s of ["Variables", "Links and text", "Files"]) {
     await expect(panel.locator(`[data-section="${s}"] .ctx-count`)).toHaveText("0");
     await expect(panel.locator(`[data-section="${s}"]`)).not.toContainText(/yet|show up/);
   }
@@ -233,10 +234,10 @@ test("Variables to Prompts stack one under the other and the panel scrolls", asy
   // The Claude plugin's sections follow the app's own (add-claude-insights 2.2, 3.2), hidden
   // while the tab has no Claude session (polish-claude-insights D2).
   await expect(heads.locator("h3")).toHaveText(["Variables", "Links and text", "Files", "Pins", "Prompts", "Claude's plan", "What Claude changed"]);
-  await expect(heads.filter({ visible: true }).locator("h3")).toHaveText(["Variables", "Links and text", "Files", "Pins", "Prompts"]);
+  await expect(heads.filter({ visible: true }).locator("h3")).toHaveText(["Variables", "Links and text", "Files", "Prompts"]);
   await expect(panel.getByRole("tab")).toHaveCount(0);
-  const tops = await panel.locator(".ctx-section").evaluateAll((els) => els.map((e) => e.getBoundingClientRect().top));
-  for (let i = 1; i < 5; i++) expect(tops[i - 1]!).toBeLessThan(tops[i]!);
+  const tops = await panel.locator(".ctx-section:not([hidden])").evaluateAll((els) => els.map((e) => e.getBoundingClientRect().top));
+  for (let i = 1; i < 4; i++) expect(tops[i - 1]!).toBeLessThan(tops[i]!);
 
   const scroll = panel.locator(".ctx-scroll");
   for (let i = 0; i < 6; i++) {
@@ -322,4 +323,26 @@ test("a removed pin waits on its toast, and a second removal deletes the first",
   await panel.locator('.ctx-var[data-var="ticket"]').getByLabel("Remove ticket").click();
   await expect(page.locator(".toast")).toContainText("Removed ticket.");
   await expect.poll(pins).toBe(0);
+});
+
+// Links on one host differ at the end, so the end shows; a link or text shows once.
+test("links keep their end in view and each shows once", async ({ page }) => {
+  await start(page);
+  const panel = page.locator("aside.ctx-pinned");
+  await page.evaluate(async () => {
+    const host = (window as any).__terminescu.host;
+    const side = (await host.workspace()).windows[0].sideTabs[0].id;
+    const base = "https://example.test/acme/platform-api/pull/";
+    for (const n of [4821, 4822, 4821]) await host.addItem(side, "link", `${base}${n}`, "auto", null);
+    for (let i = 0; i < 2; i++) await host.addItem(side, "text", "api, web", "typed", null);
+  });
+  const rows = panel.locator('[data-section="Links and text"] .ctx-item');
+  await expect(rows).toHaveCount(3);
+  await expect(panel.locator('[data-section="Links and text"] .ctx-count')).toHaveText("3");
+  await expect(rows.locator(".ctx-link-tail")).toHaveText(["platform-api/pull/4821".slice(-18), "platform-api/pull/4822".slice(-18)]);
+  // The end is on screen even in a narrow panel.
+  const tail = rows.first().locator(".ctx-link-tail");
+  const box = await tail.boundingBox();
+  const row = await rows.first().boundingBox();
+  expect(box!.x + box!.width).toBeLessThanOrEqual(row!.x + row!.width);
 });

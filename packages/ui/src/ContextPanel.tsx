@@ -261,6 +261,19 @@ function AddItem({ props, fail, done }: { props: ContextPanelProps; fail(e: unkn
   );
 }
 
+/** Links on one host differ at the end: the end always shows, the middle gives way. */
+export const LINK_TAIL = 18;
+function LinkText({ url }: { url: string }) {
+  const bare = url.replace(/^https?:\/\//, "");
+  if (bare.length <= LINK_TAIL * 2) return <span className="ctx-link-head">{bare}</span>;
+  return (
+    <>
+      <span className="ctx-link-head">{bare.slice(0, -LINK_TAIL)}</span>
+      <span className="ctx-link-tail">{bare.slice(-LINK_TAIL)}</span>
+    </>
+  );
+}
+
 /** One head row for every section: the title, the count, and a `+` where there is an add action (D1). */
 function SectionHead({ title, count, onAdd, addLabel, adding }: { title: string; count?: number; onAdd?(): void; addLabel?: string; adding?: boolean }) {
   return (
@@ -324,7 +337,7 @@ function CoreSections(props: ContextPanelProps) {
               <li key={i.id} className={`ctx-item ${i.kind}`}>
                 {i.kind === "link" ? (
                   <button type="button" className="ctx-value link" title={i.value} onClick={() => props.onOpenUrl?.(i.value)}>
-                    {i.value.replace(/^https?:\/\//, "")}
+                    <LinkText url={i.value} />
                   </button>
                 ) : (
                   <span className="ctx-value" title={i.value}>
@@ -361,7 +374,8 @@ function CoreSections(props: ContextPanelProps) {
           </ul>
         )}
       </section>
-      <section className="ctx-section" aria-label="Pins" data-section="Pins">
+      {/* Hidden while empty: a pin only comes from Shell › Pin Selection (⌘⇧P). */}
+      <section className="ctx-section" aria-label="Pins" data-section="Pins" hidden={pins.length === 0}>
         <SectionHead title="Pins" count={pins.length} />
         {pins.length > 0 && (
           <ul className="ctx-list">
