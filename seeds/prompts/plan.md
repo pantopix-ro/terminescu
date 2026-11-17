@@ -1,15 +1,16 @@
 ---
-key: plan-backend-openspec
-name: Plan backend work (OpenSpec)
-variables: [projects, ticket, constraints]
+key: plan
+name: Plan
+variables: [projects, jiraTicketIdAndTitle, jiraTicketDescription]
 ---
-Analyze the projects: {{projects}}. Here are the requirements:
+Analyze the following projects: {{projects}}. Here are the requirements:
 
 ```
-{{ticket}}
+{{jiraTicketIdAndTitle}}
+
+{{jiraTicketDescription}}
 ```
 
 Plan for the implementation of the backend part of this in OpenSpec format.
-{{constraints}}
 Ask questions to clarify uncertainties. For each question, research and present recommendations.
 Propose improvements.

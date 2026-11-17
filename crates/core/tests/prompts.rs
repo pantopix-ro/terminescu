@@ -202,7 +202,7 @@ fn seeds_import_once_and_skip_taken_keys() {
         prompts::by_key(&db, "review-plan").unwrap().unwrap().body,
         "my own"
     );
-    let seeded = prompts::by_key(&db, "api-contracts").unwrap().unwrap();
+    let seeded = prompts::by_key(&db, "review-code").unwrap().unwrap();
     assert_eq!(seeded.tags, ["seed"]);
 
     // A deleted seed stays deleted: the import runs once per database.
@@ -211,6 +211,50 @@ fn seeds_import_once_and_skip_taken_keys() {
         .execute("DELETE FROM prompts WHERE id = ?1", [&seeded.id])
         .unwrap();
     assert_eq!(prompts::import_seeds(&db, prompts::SEEDS).unwrap(), 0);
-    assert!(prompts::by_key(&db, "api-contracts").unwrap().is_none());
+    assert!(prompts::by_key(&db, "review-code").unwrap().is_none());
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_database_seeded_with_the_first_set_gets_the_second_once() {
+    let (db, dir) = db();
+    let owner = db.local_owner().unwrap();
+    let old = |key: &str, body: &str| {
+        prompts::create(
+            &db,
+            &NewPrompt {
+                key: Some(key.into()),
+                ..new(key, &["seed"], body)
+            },
+        )
+        .unwrap()
+    };
+    let implement = old("implement", "Proceed with implementation.");
+    let review = old("review-plan", "Review the plan. {{pins}}");
+    let mine = prompts::create(&db, &new("Review code", &[], "my own")).unwrap();
+    db.conn()
+        .execute(
+            "INSERT INTO app_state (owner_id, key, value) VALUES (?1, 'prompts.seeded', '1')",
+            [&owner],
+        )
+        .unwrap();
+
+    assert_eq!(prompts::import_seeds(&db, prompts::SEEDS).unwrap(), 1);
+    assert_eq!(
+        prompts::get(&db, &mine.id).unwrap().body,
+        "my own",
+        "a prompt the person made keeps its key and body"
+    );
+    assert!(prompts::get(&db, &implement.id).unwrap().archived);
+    let review = prompts::get(&db, &review.id).unwrap();
+    assert_eq!(review.name, "Review plan");
+    assert_eq!(review.variables, ["confidencePercThreshold"]);
+    assert_eq!(review.version, 2, "the old body stays as version 1");
+    assert!(prompts::by_key(&db, "plan").unwrap().is_some());
+
+    // Once: a later start leaves the person's edits alone.
+    prompts::save(&db, &review.id, "mine").unwrap();
+    assert_eq!(prompts::import_seeds(&db, prompts::SEEDS).unwrap(), 0);
+    assert_eq!(prompts::get(&db, &review.id).unwrap().body, "mine");
     let _ = std::fs::remove_dir_all(dir);
 }

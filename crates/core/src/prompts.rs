@@ -429,33 +429,10 @@ pub fn mark_used(db: &Db, id: &str) -> Result<()> {
 
 /// The seed prompts shipped with the app (`seeds/prompts`).
 pub const SEEDS: &[(&str, &str)] = &[
+    ("plan.md", include_str!("../../../seeds/prompts/plan.md")),
     (
-        "api-contracts.md",
-        include_str!("../../../seeds/prompts/api-contracts.md"),
-    ),
-    (
-        "confidence.md",
-        include_str!("../../../seeds/prompts/confidence.md"),
-    ),
-    (
-        "finalize-prs.md",
-        include_str!("../../../seeds/prompts/finalize-prs.md"),
-    ),
-    (
-        "implement.md",
-        include_str!("../../../seeds/prompts/implement.md"),
-    ),
-    (
-        "plan-backend-openspec.md",
-        include_str!("../../../seeds/prompts/plan-backend-openspec.md"),
-    ),
-    (
-        "refine-plan.md",
-        include_str!("../../../seeds/prompts/refine-plan.md"),
-    ),
-    (
-        "review-and-open-prs.md",
-        include_str!("../../../seeds/prompts/review-and-open-prs.md"),
+        "review-code.md",
+        include_str!("../../../seeds/prompts/review-code.md"),
     ),
     (
         "review-plan.md",
@@ -464,6 +441,23 @@ pub const SEEDS: &[(&str, &str)] = &[
 ];
 
 const SEEDED: &str = "prompts.seeded";
+/// Marks the second seed set: a database seeded before it has its old seeds replaced once.
+const SEEDED_2: &str = "prompts.seeded.2";
+
+/// The keys of the first seed set that the second set drops. A database that has them
+/// archives them once, so a person can still restore one from the archive.
+const RETIRED: &[&str] = &[
+    "api-contracts",
+    "confidence",
+    "finalize-prs",
+    "implement",
+    "plan-backend-openspec",
+    "refine-plan",
+    "review-and-open-prs",
+];
+
+/// The keys both seed sets share: an old seed with one takes the new name and body.
+const CARRIED: &[&str] = &["review-plan"];
 
 /// Parses a seed: `---` frontmatter with `key`, `name` and optional `tags: [a, b]`, then the
 /// body. `variables` in the frontmatter is informational; the body is the source of truth.
@@ -507,39 +501,64 @@ pub fn parse_seed(file: &str, text: &str) -> Result<NewPrompt> {
     Ok(seed)
 }
 
-/// Imports the seeds once per database. A key the person already has is left alone, and a
-/// seed they deleted later does not come back. Returns how many prompts were added.
-pub fn import_seeds(db: &Db, seeds: &[(&str, &str)]) -> Result<usize> {
-    let owner = db.local_owner()?;
-    let done = db
+fn flag(db: &Db, owner: &str, key: &str) -> Result<bool> {
+    Ok(db
         .conn()
         .query_row(
             "SELECT 1 FROM app_state WHERE owner_id = ?1 AND key = ?2",
-            params![owner, SEEDED],
+            params![owner, key],
             |_| Ok(()),
         )
         .optional()?
-        .is_some();
-    if done {
+        .is_some())
+}
+
+/// Imports the seeds once per database. A key the person already has is left alone, and a
+/// seed they deleted later does not come back. A database seeded with the first set gets
+/// the second once instead: the retired seeds are archived, `review-plan` takes the new name
+/// and body (as a new version), and the missing seeds are added. Returns how
+/// many prompts were added.
+pub fn import_seeds(db: &Db, seeds: &[(&str, &str)]) -> Result<usize> {
+    let owner = db.local_owner()?;
+    if flag(db, &owner, SEEDED_2)? {
         return Ok(0);
+    }
+    let replace = flag(db, &owner, SEEDED)?;
+    if replace {
+        for key in RETIRED {
+            if let Some(p) = by_key(db, key)?
+                && !p.archived
+            {
+                set_archived(db, &p.id, true)?;
+            }
+        }
     }
     let mut added = 0;
     for (file, text) in seeds {
-        let seed = parse_seed(file, text)?;
-        if key_taken(db, &owner, seed.key.as_deref().unwrap_or_default())? {
-            continue;
-        }
-        let mut seed = seed;
+        let mut seed = parse_seed(file, text)?;
         if seed.tags.is_empty() {
             seed.tags = vec!["seed".into()];
+        }
+        let key = seed.key.as_deref().unwrap_or_default();
+        if let Some(have) = by_key(db, key)? {
+            if replace && CARRIED.contains(&key) {
+                save(db, &have.id, &seed.body)?;
+                update(db, &have.id, &seed.name, &have.tags)?;
+                if have.archived {
+                    set_archived(db, &have.id, false)?;
+                }
+            }
+            continue;
         }
         create(db, &seed)?;
         added += 1;
     }
-    db.conn().execute(
-        "INSERT INTO app_state (owner_id, key, value) VALUES (?1, ?2, '1')",
-        params![owner, SEEDED],
-    )?;
+    for key in [SEEDED, SEEDED_2] {
+        db.conn().execute(
+            "INSERT OR IGNORE INTO app_state (owner_id, key, value) VALUES (?1, ?2, '1')",
+            params![owner, key],
+        )?;
+    }
     Ok(added)
 }
 
