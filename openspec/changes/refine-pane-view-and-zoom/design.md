@@ -6,8 +6,11 @@
   tree whose leaves are tab ids. Only the window knows it; `saveView` keeps it in localStorage
   per window. `hideRow` already removes a leaf and the palette already offers "Hide from the
   window…".
-- The area head (App.tsx, near line 2660) has Maximize and Close pane. Close pane sends
-  `ClosePane`; the core drops the tab when its last pane goes, and the row with its last tab.
+- The area head (`.view-head`, App.tsx) shows names only, no buttons. Each pane head
+  (`PaneHead`, shown when two or more panes are on screen) has Maximize (□) and Close pane (×).
+  Close pane sends `ClosePane`; the core drops the tab when its last pane goes, and the row
+  with its last tab. So in the side-by-side view, the × a person sees on a one-pane area is
+  Close pane, and it ends the tab.
 - `pane_to_tab` (`⌘⇧B`) sends `PaneToTab {paneId, index}`; the core moves the pane, process and
   all, into a new tab at `index` of the same side tab.
 - Zoom (task 8.8) is `settings.zoom_percent`, 50-200 in `ZOOM_STEPS`. `main.rs` calls
@@ -15,7 +18,11 @@
   strip. Terminal font size comes from `terminalFontOptions(settings)`.
 - A tab's split tree is `Layout` in `crates/core/src/layout.rs`, stored as `tabs.layout_json`.
   `Layout::Pane` already carries optional `resume`, `transcript` and `doc`.
-- `windows` has `frame_json` and no zoom column. The last migration is `0014_document_views.sql`.
+- `windows` has `frame_json` and no zoom column. The last migration is
+  `0015_side_tab_folder.sql` (PR #23); this branch stacks on it.
+- `MoveTabToNewSideTab {tabId, windowId, index}` moves a tab into a new row at `index`.
+- `⌥⌘M` is free in `actions.json` and the plugins; a comment in
+  `packages/plugin-claude/src/actions.ts` kept it free for macOS's Minimize All.
 
 ## Goals / Non-Goals
 
@@ -29,17 +36,23 @@
 
 ## Decisions
 
-### D1. The area × hides; Close pane leaves the head
-The × calls `changeView(v => hideRow(v, tab))`, the same path as the palette's "Hide from the
-window…". Close pane stays on `⌘W`, the Shell menu and the pane menu, with its existing
-confirmation for a busy shell.
-Rejected: keep × as Close pane and add a separate hide icon. Two icons side by side invite the
-wrong click, and the destructive one is the one people hit today.
+### D1. The area head gets a hiding ×; a lone pane's Close pane leaves its head
+The area head gains a × ("Hide from view") that calls `changeView(v => hideRow(v, tab))`, the
+same path as the palette's "Hide from the window…". In a side-by-side view, the pane head of a
+tab with one pane drops its ×, so each area shows one × and it hides. A split tab keeps its
+pane heads' × for Close pane: closing one of several panes is what that × means today. Close
+pane stays on `⌘W`, the Shell menu and the pane menu, with its existing confirmation for a
+busy shell.
+Rejected: keep the lone pane's Close pane × next to the new hide ×. Two × side by side invite
+the wrong click, and the destructive one is the one people hit today.
 
 ### D2. Show Alone composes existing moves
 Show Alone runs in the UI: for each other pane of the focused tab, in reading order, send
-`PaneToTab` with `index = focusedTabIndex + 1 + n`; then set the view to the one leaf of the
-focused tab. No new core command.
+`PaneToTab` with `index = focusedTabIndex + 1 + n`. In a one-tab row (not `isFolder`), each new
+tab then moves to its own row with `MoveTabToNewSideTab` at `rowIndex + 1 + n`, so the row
+stays a one-tab row (owner answer 1). Then set the view to the one leaf of the focused tab. No
+new core command. A Show Alone button (`⧉`) sits on the area head and on each pane head, next
+to Maximize.
 Rejected: a core `ShowAlone` command that splits the tab atomically. It would duplicate
 `PaneToTab`'s move logic for a gain only visible if the app crashed between two moves, and a
 half-done Show Alone still leaves every pane running.
@@ -60,19 +73,21 @@ Rejected: keep pane zoom in localStorage. It would not follow a pane to another 
 lost with site data.
 
 ### D5. A pane scales its own fonts
-`TerminalPane` multiplies `terminalFontOptions(settings).fontSize` by `zoom / 100`, rounds to
-0.5 px, and refits, which sends the new size to ptyd as any resize does. `TextPane` and the
-transcript pane set their editor font size the same way. Window zoom still applies on top
+`TerminalPane` multiplies `terminalFontOptions(settings).fontSize` by `zoom / 100`, unrounded
+(xterm takes fractional sizes), and refits, which sends the new size to ptyd as any resize does. `TextPane` moves its fixed
+`fontSize: "13px"` into a CodeMirror compartment and sets it the same way; the transcript pane
+scales its root font size. Window zoom still applies on top
 through `set_zoom`, so the two multiply.
 Rejected: CSS `zoom` on the pane element. xterm.js measures cells in CSS pixels and misplaces
 the cursor and selection under a scaled ancestor.
 
 ### D6. Window zoom moves to the window row
-Migration `0015_window_zoom.sql` adds `windows.zoom_percent INTEGER` (NULL means "the Settings
-value"). A new core command `SetWindowZoom {windowId, zoom: u16 | null}` writes it and the
+Migration `0016_window_zoom.sql` adds `windows.zoom_percent INTEGER` (NULL means "the Settings
+value", read live). A new core command `SetWindowZoom {windowId, zoom: u16 | null}` writes it and the
 window state carries it. `main.rs` calls `set_zoom` on that window's webview only, and each
-webview sets `--chrome` from its own value. `settings.zoom_percent` stays, now meaning the
-zoom a new window opens at; existing windows read NULL and so keep today's zoom.
+webview sets `--chrome` from its own value. `settings.zoom_percent` stays: every window without its own
+zoom (NULL) follows it, new windows included, so existing windows keep today's zoom. `⌘0` on a
+window sets NULL. The Settings label reads "Default zoom".
 Rejected: keep zoom in `frame_json`. The frame is written on every move and resize from the
 host side, and a zoom write would race it.
 
@@ -97,12 +112,22 @@ the notice could not name one value.
 `Window · N%`; at a range end, `… · N% (max)` or `(min)`. Show Alone with nothing to do says
 `Already alone`. Names come from `tabName`/`paneName`, so no user text is added.
 
+### D10. `⌥⌘M` sits in the Shell menu
+The native Shell menu comes before the Window menu, so AppKit matches the Show Alone item's key
+equivalent before any "Minimize All" alternate of the Window menu's Minimize. The comment in
+`plugin-claude/src/actions.ts` that kept `⌥⌘M` free goes. A person who wants Minimize All back
+rebinds Show Alone in Settings › Keys.
+
 No ptyd protocol change; `PROTOCOL_VERSION` stays 1. The core/UI protocol gains `SetPaneZoom`
 and `SetWindowZoom`, and the `Layout` and window types gain optional fields, which old
 `layout_json` reads as absent.
 
 ## Risks / Trade-offs
 
+- [`⌥⌘M` minimizes every window instead] → manual check in the PR (D10); if macOS wins, the
+  default becomes `⌃⌥⌘M` and the owner is asked.
+- [This branch depends on PR #23 and PR #24] → it stacks on `fix/sidebar-folders-windows`;
+  retarget to `develop` after both merge, and keep the migration at 0016.
 - [A focused sidebar row zooms many panes at once by surprise] → the notice names the folder
   and pane count; `⌘0` on the same focus undoes it.
 - [Show Alone in a big split creates many tabs] → they land in reading order next to the
@@ -114,7 +139,7 @@ and `SetWindowZoom`, and the `Layout` and window types gain optional fields, whi
 
 ## Migration Plan
 
-`0015_window_zoom.sql` adds a nullable column; no backfill. Rollback: an older build never
+`0016_window_zoom.sql` adds a nullable column; no backfill. Rollback: an older build never
 reads the column, and `Layout` has no `deny_unknown_fields`, so it drops the leaf's `zoom` and
 opens every window at the Settings zoom.
 

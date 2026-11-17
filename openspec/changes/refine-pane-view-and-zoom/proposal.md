@@ -2,20 +2,24 @@
 
 ## Why
 
-A split screen has no way back to one pane. The area head's × runs Close pane, which ends the
-shell and, with the last pane, the tab and its row; `⌘⇧M` only maximizes until pressed again.
+A split screen has no way back to one pane. The only × on screen is the pane head's Close
+pane, which ends the shell and, with the last pane, the tab and its row; `⌘⇧M` only maximizes until pressed again.
 Zoom is one setting for every window, so a person can't enlarge one Claude session on a
 projector or shrink a log pane beside it.
 
 ## What Changes
 
-- The × on an area head of the side-by-side view (task 8.75) hides that area from the view. The
-  tab keeps running and stays in the sidebar; picking it shows it again. Close pane stays on
-  `⌘W`, the Shell menu and the pane's right-click menu, and still asks when something runs.
-- New action **Show Alone** (`⌥⌘M`, the area head, the palette, the pane's right-click menu):
-  the focused pane fills the window. Other areas leave the view. The focused tab's other panes
-  each move to their own tab beside it, in the same row or folder, as `⌘⇧B` does. Nothing
-  closes and no process stops. `⌘⇧M` stays the temporary maximize.
+- The area head of the side-by-side view (task 8.75) gains a × that hides that area from the
+  view. The tab keeps running and stays in the sidebar; picking it shows it again. A tab with
+  one pane shown beside other areas loses its pane head ×, so the area carries one × only. A
+  split tab keeps a × per pane head for Close pane. Close pane also stays on `⌘W`, the Shell
+  menu and the pane's right-click menu, and still asks when something runs.
+- New action **Show Alone** (`⌥⌘M`, a button on the area head and on each pane head, the
+  palette, the pane's right-click menu): the focused pane fills the window. Other areas leave
+  the view. The focused tab's other panes each move out, as `⌘⇧B` does: in a folder, to new
+  tabs right after the focused tab; in a one-tab row, to new rows right after that row, so the
+  row stays a one-tab row. Nothing closes and no process stops. `⌘⇧M` stays the temporary
+  maximize.
 - **BREAKING** (behaviour) `⌘+`, `⌘-` and `⌘0` zoom what has focus:
   - a pane (terminal, text or transcript) scales its own text; the zoom is saved with the pane;
   - a sidebar row or folder with focus scales every pane of its tabs;
@@ -42,8 +46,8 @@ contradiction.
 ## Impact
 
 - `crates/core`: `Layout::Pane` gains an optional `zoom` (percent) kept in `layout_json`; a
-  new command sets it on a set of panes. Migration `0015_window_zoom.sql` adds
-  `windows.zoom_percent`. No ptyd protocol change, so `PROTOCOL_VERSION` stays 1.
+  new command sets it on a set of panes. Migration `0016_window_zoom.sql` adds
+  `windows.zoom_percent` (0015 is `side_tab_folder`, from PR #23, which this branch stacks on). No ptyd protocol change, so `PROTOCOL_VERSION` stays 1.
 - `apps/desktop/src-tauri/src/main.rs`: `set_zoom` per window from its own value, not from
   `settings.zoom_percent`, which becomes the zoom a new window starts at.
 - `packages/host`: protocol types for the new command and window zoom; actions.json adds
@@ -57,10 +61,8 @@ Out of scope: a gesture zoom (pinch, `⌘` scroll), zooming the sidebar alone, a
 Show Alone (the moved panes are tabs and can be docked back with the existing drag). None has
 an owning change yet.
 
-## Unresolved questions
+## Resolved questions (owner, 2026-11-17)
 
-1. Show Alone in a one-tab row with three panes turns the row into a folder of three tabs.
-   Recommended: accept it, since a folder is how the app shows several tabs of one context.
-2. Should a pane with its own zoom ignore window zoom, or multiply with it? Recommended:
-   multiply (window 125% × pane 110%), so window zoom still enlarges everything.
-3. `⌥⌘M` for Show Alone. Recommended; it sits next to `⌘⇧M` maximize and is free today.
+1. Show Alone in a one-tab row: the row stays a one-tab row; the other panes become new rows.
+2. Pane zoom multiplies with window zoom.
+3. `⌥⌘M` for Show Alone, with a button for it too.

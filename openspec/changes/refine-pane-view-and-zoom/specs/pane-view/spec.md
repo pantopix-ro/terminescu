@@ -8,7 +8,8 @@ one pane takes the whole window while every other pane keeps running.
 
 ### Requirement: Hide an area from the view
 When a window shows two or more tabs side by side, each area head SHALL carry a × labelled
-"Hide from view" that hides that area. Hiding SHALL NOT close a pane, stop a process or remove
+"Hide from view" that hides that area. The pane head of a tab with one pane SHALL then carry
+no ×, so the area shows one ×. Hiding SHALL NOT close a pane, stop a process or remove
 the tab from the sidebar. The remaining areas SHALL take the freed space in proportion to their
 shares, and a selection in the hidden area SHALL move to the area that took its place.
 
@@ -29,8 +30,8 @@ it beside a pane. The view, hidden areas included, SHALL survive a restart.
 - **THEN** the window opens with `api` and `web` side by side and `logs` in the sidebar
 
 ### Requirement: Close pane keeps its own entry points
-Close pane SHALL stay on `⌘W`, the Shell menu and the pane's right-click menu, and SHALL NOT
-be on the area head. It SHALL ask before closing a pane whose shell runs a command, as it does
+Close pane SHALL stay on `⌘W`, the Shell menu, the pane's right-click menu and the pane heads
+of a split tab, and SHALL NOT be on the area head. It SHALL ask before closing a pane whose shell runs a command, as it does
 today.
 
 #### Scenario: ⌘W on a busy pane
@@ -38,10 +39,11 @@ today.
 - **THEN** a confirmation names the running command, and the pane closes only after it is confirmed
 
 ### Requirement: Show a pane alone
-The action Show Alone (`⌥⌘M`, the area head, the palette and the pane's right-click menu) SHALL
-leave the focused pane as the only thing in the window. Every other area SHALL leave the view
-as "Hide from view" does. Every other pane of the focused tab SHALL move to its own new tab
-right after the focused tab, in the same row or folder, in reading order. No pane SHALL close
+The action Show Alone (`⌥⌘M`, a button on the area head and on each pane head, the palette and
+the pane's right-click menu) SHALL leave the focused pane as the only thing in the window.
+Every other area SHALL leave the view as "Hide from view" does. In a folder, every other pane
+of the focused tab SHALL move to its own new tab right after the focused tab, in reading
+order. No pane SHALL close
 and no process SHALL stop.
 
 #### Scenario: Show alone from a split tab beside another area
@@ -49,14 +51,15 @@ and no process SHALL stop.
 - **THEN** `server` fills the window, `tests` is a new tab right after `api` in the same folder with its shell still running, and `web` is hidden but still in the sidebar
 
 ### Requirement: Show Alone edge cases
-A one-tab row whose tab splits through Show Alone SHALL become a folder of those tabs. When the
+In a one-tab row, every other pane of the focused tab SHALL move to its own new row right
+after that row, in reading order, and the row SHALL stay a one-tab row. When the
 focused pane is already alone in the window, the action SHALL change nothing and the notice
 SHALL say so. Show Alone SHALL persist, while `⌘⇧M` SHALL stay a temporary maximize that a
 second press undoes.
 
 #### Scenario: Show alone in a one-tab row
 - **WHEN** a one-tab row holds a tab with panes `a`, `b` and `c`, `a` has focus, and the person runs Show Alone from the palette
-- **THEN** the row becomes a folder of three tabs, the first showing `a` alone and selected
+- **THEN** the row still holds one tab showing `a` alone and selected, and `b` and `c` are two new rows right after it with their shells running
 
 #### Scenario: Nothing to do
 - **WHEN** the focused pane already fills the window and the person presses `⌥⌘M`
