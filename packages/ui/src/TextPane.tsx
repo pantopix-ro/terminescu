@@ -102,7 +102,7 @@ export const fromCore = Annotation.define<boolean>();
 /** The text pane's look, for an editor beside it such as a diff's base side. */
 export const editorTheme = EditorView.theme(
   {
-    "&": { height: "100%", color: "var(--fg)", backgroundColor: "var(--panel)", fontSize: "13px" },
+    "&": { height: "100%", color: "var(--fg)", backgroundColor: "var(--panel)", fontSize: "calc(13px * var(--pz, 1))" }, // --pz: the pane's zoom, set on its section (D5)
     ".cm-scroller": { fontFamily: '"Geist Mono", ui-monospace, monospace', lineHeight: "1.5" },
     ".cm-content": { caretColor: "var(--amber)" },
     ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--amber)", borderLeftWidth: "2px" },

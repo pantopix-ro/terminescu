@@ -19,6 +19,7 @@ import {
   SIDEBAR_MIN,
   SIDEBAR_WIDTH,
   stepZoom,
+  ZOOM_STEPS,
   withBindings,
   docOf,
   hasSplit,
@@ -1076,6 +1077,9 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
         if (maxPane) restore(activeTab.id);
         else setMaxByTab((m) => ({ ...m, [activeTab.id]: focused }));
         return refocus();
+      case "show_alone":
+        if (!activeTab || !focused) return;
+        return void showAlone(activeTab.id, focused);
       case "pane_to_tab":
         // A tab's only pane is already a tab.
         if (!activeTab || !focused || activeTab.layout.type !== "split") return;
@@ -1373,13 +1377,21 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   }, [host]);
   // The title row keeps its size on screen at any zoom, like a native title bar: the traffic
   // lights don't zoom, so the strip beside them must not either.
+  // The window's own zoom, else the Settings default (D6); the host applies it to this webview.
+  const windowZoom = win?.zoomPercent ?? appSettings.zoomPercent;
   useEffect(() => {
-    document.documentElement.style.setProperty("--chrome", String(100 / appSettings.zoomPercent));
-  }, [appSettings.zoomPercent]);
+    document.documentElement.style.setProperty("--chrome", String(100 / windowZoom));
+    void host.applyZoom(windowZoom).catch(() => undefined);
+  }, [host, windowZoom]);
   // Task 8.36: Settings › Terminal sets the tab text size and every terminal's font, live.
   useEffect(() => {
     document.documentElement.style.setProperty("--tab-font", `${appSettings.tabFontSize}px`);
   }, [appSettings.tabFontSize]);
+  /** A pane's terminal font: the Settings size times the pane's own zoom, unrounded (D5). */
+  const paneFont = (tab: Tab, paneId: string) => {
+    const z = leaf(tab.layout, paneId)?.zoom;
+    return z ? { ...termFont, fontSize: (termFont.fontSize * z) / 100 } : termFont;
+  };
   const { terminalFont, terminalFontSize, terminalLineHeight, terminalLetterSpacing, terminalFontWeight } = appSettings;
   const termFont = useMemo(
     () => terminalFontOptions({ terminalFont, terminalFontSize, terminalLineHeight, terminalLetterSpacing, terminalFontWeight }),
@@ -1662,19 +1674,38 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   const [notice, setNotice] = useState<string>();
   // Which status the editor opens on: the side tab's, or its active tab's (a tab's chip).
   const [statusFor, setStatusFor] = useState<"side" | "tab">("side");
-  // Task 8.8: one zoom for every window, saved with the settings; the host applies it.
-  const zoom = async (dir: 1 | -1 | 0) => {
-    try {
-      const now = await host.settings();
-      const zoomPercent = dir ? stepZoom(now.zoomPercent, dir) : 100;
-      if (zoomPercent !== now.zoomPercent) await host.setSettings({ ...now, zoomPercent });
-      // The level shows briefly; a later press keeps it up longer.
-      const text = `Zoom ${zoomPercent}%`;
-      setNotice(text);
-      setTimeout(() => setNotice((n) => (n === text ? undefined : n)), 1500);
-    } catch (e) {
-      setError(String(e));
+  // Tasks 8.8, 5.2 (D7): focus picks what zooms. A pane scales its own text, a sidebar row or
+  // folder every pane of its tabs, anything else this window's whole UI.
+  const zoom = (dir: 1 | -1 | 0) => {
+    const el = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const stepped = (now: number) => ({ to: dir ? stepZoom(now, dir) : 100, end: dir > 0 && now >= ZOOM_STEPS.at(-1)! ? "max" : dir < 0 && now <= ZOOM_STEPS[0]! ? "min" : "" });
+    const say = (what: string, to: number, end: string) => flash(`${what} · ${to}%${end ? ` (${end})` : ""}`);
+    const paneId = el?.closest<HTMLElement>(".ao-tp[data-pane]")?.dataset.pane;
+    const rowTab = el?.closest<HTMLElement>("[data-kid]")?.dataset.kid;
+    const row = el?.closest<HTMLElement>("[data-side]")?.dataset.side;
+    const side = rowTab ? sideTabs.find((s) => s.tabs.some((t) => t.id === rowTab)) : sideTabs.find((s) => s.id === row);
+    const zoomOf = (tab: Tab, id: string) => leaf(tab.layout, id)?.zoom ?? 100;
+    if (paneId) {
+      const tab = allTabs.find((t) => panesOf(t.layout).includes(paneId));
+      if (!tab) return;
+      const { to, end } = stepped(zoomOf(tab, paneId));
+      say(`Pane ${paneHeadName(paneId, !!transcriptOf(tab.layout, paneId))}`, to, end);
+      return void send({ type: "SetPaneZoom", paneIds: [paneId], zoom: to === 100 ? null : to });
     }
+    if (side?.tabs.length) {
+      // From the zoom of the row's selected pane, so every pane lands on one value (D8).
+      const selected = side.id === activeSide?.id ? activeTab : side.tabs.find((t) => t.id === tabBySide[side.id]);
+      const base = selected ?? side.tabs[0]!;
+      const basePane = pick(panesOf(base.layout), focusByTab[base.id]) ?? panesOf(base.layout)[0]!;
+      const ids = side.tabs.flatMap((t) => panesOf(t.layout));
+      const { to, end } = stepped(zoomOf(base, basePane));
+      say(`${isFolder(side) ? "Folder" : "Row"} ${sideTabName(side, docs)} · ${ids.length} pane${ids.length === 1 ? "" : "s"}`, to, end);
+      return void send({ type: "SetPaneZoom", paneIds: ids, zoom: to === 100 ? null : to });
+    }
+    const { to, end } = stepped(windowZoom);
+    // ⌘0 goes back to following the default; the notice shows what that is.
+    say("Window", dir ? to : appSettings.zoomPercent, end);
+    return void send({ type: "SetWindowZoom", windowId, zoom: dir ? to : null });
   };
   const sideOfTab = (tabId: string) => sideTabs.find((s) => s.tabs.some((t) => t.id === tabId))?.id;
 
@@ -1883,6 +1914,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       action("split_right", "Split Right"),
       action("split_down", "Split Down"),
       action("maximize_pane", "Maximize Pane"),
+      action("show_alone", "Show Alone"),
       action("pane_to_tab", "Move Pane to New Tab"),
       "-",
       action("close", "Close Pane", true),
@@ -2267,6 +2299,48 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
       return true;
     });
     void send({ type: "MoveTabToNewSideTab", tabId, windowId, index: sideTabs.length });
+  };
+  /** A short message that goes by itself (D9). */
+  const flash = (text: string, ms = 1500) => {
+    setNotice(text);
+    setTimeout(() => setNotice((n) => (n === text ? undefined : n)), ms);
+  };
+  /**
+   * Show Alone (D2): `paneId` of tab `tabId` fills the window. The tab's other panes move out
+   * as `⌘⇧B` does, to new tabs after it, or in a one-tab row to new rows after the row. Every
+   * other area leaves the view; nothing closes.
+   */
+  const showAlone = async (tabId: string, paneId: string) => {
+    const side = sideTabs.find((s) => s.tabs.some((t) => t.id === tabId));
+    const tab = side?.tabs.find((t) => t.id === tabId);
+    if (!side || !tab) return;
+    const others = panesOf(tab.layout).filter((p) => p !== paneId);
+    if (!others.length && openTabs.length === 1 && !maxPane) return flash("Already alone");
+    const lone = !isFolder(side);
+    const tabAt = side.tabs.indexOf(tab);
+    const rowAt = (win?.sideTabs ?? []).findIndex((s) => s.id === side.id);
+    for (const [n, other] of others.entries()) {
+      // In a one-tab row each new tab leaves at once, so the next lands at the same index.
+      if (!(await send({ type: "PaneToTab", paneId: other, index: tabAt + 1 + (lone ? 0 : n) }))) return;
+      if (!lone) continue;
+      // The new tab leaves for a row of its own, so the row stays a one-tab row.
+      const made = await newTabOf(other);
+      if (!made || !(await send({ type: "MoveTabToNewSideTab", tabId: made, windowId, index: rowAt + 1 + n }))) return;
+    }
+    changeView(() => ({ type: "pane", id: tabId }));
+    restore(tabId);
+    selectTab(side.id, tabId);
+    focusIn(tabId, paneId);
+    refocus();
+  };
+  /** The tab that holds `paneId` alone, once the store has it. */
+  const newTabOf = async (paneId: string) => {
+    for (let i = 0; i < 150; i++) {
+      for (const sd of sidesOf(workspace.store.getState().workspace))
+        for (const t of sd.tabs) if (t.layout.type === "pane" && t.layout.id === paneId) return t.id;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    return undefined;
   };
   /** A pane of the active tab becomes a tab at `index`, and that tab opens. */
   const paneToTab = (paneId: string, index: number) => {
@@ -2688,11 +2762,12 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                             <div className={`view-area${tab.id === activeTab?.id ? " on" : ""}`} data-area={tab.id}>
                               <div
                                 className="view-head"
+                                tabIndex={-1}
                                 style={accent ? ({ "--st-accent": `var(--neon-${accent})` } as React.CSSProperties) : undefined}
                                 onPointerDown={() => {
                                   areaTip.hide();
+                                  // The head keeps the focus, so zoom acts on the window (D7).
                                   focusArea(tab.id, pick(panesOf(tab.layout), focusByTab[tab.id])!);
-                                  refocus();
                                 }}
                                 // A folder's head names the folder and the tab it shows; the tip
                                 // lists the folder's tabs, the shown one marked.
@@ -2709,6 +2784,33 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                                   <KidIcon agent={tabAgent(tab, agents)} icon={tab.icon} accent={tab.accent} act={activity[tab.id]} />
                                   <span className="view-tab-name">{tabName(tab, docs)}</span>
                                 </span>
+                                <span className="grow" />
+                                <button
+                                  type="button"
+                                  className="tp-close"
+                                  aria-label="Show alone"
+                                  title={`Show alone (${chordLabel(withBindings(ACTIONS, keyBindings).find((a) => a.id === "show_alone")!.accel)})`}
+                                  onPointerDown={(e) => e.stopPropagation()}
+                                  onClick={() => {
+                                    focusArea(tab.id, pick(panesOf(tab.layout), focusByTab[tab.id])!);
+                                    void showAlone(tab.id, pick(panesOf(tab.layout), focusByTab[tab.id])!);
+                                  }}
+                                >
+                                  ⧉
+                                </button>
+                                <button
+                                  type="button"
+                                  className="tp-close"
+                                  aria-label="Hide from view"
+                                  title="Hide from view"
+                                  onPointerDown={(e) => e.stopPropagation()}
+                                  onClick={() => {
+                                    areaTip.hide();
+                                    changeView((v) => hideRow(v, tab.id));
+                                  }}
+                                >
+                                  ×
+                                </button>
                               </div>
                               <div className="view-body">{body}</div>
                             </div>
@@ -2722,6 +2824,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                     <section
                       className={`ao-tp${multi && paneId === focused ? " focused" : ""}${dock?.pane === paneId && dock.side !== "center" ? ` dock-target${dock.small ? " too-small" : ""}` : ""}`}
                       data-pane={paneId}
+                      style={{ "--pz": (leaf(own.layout, paneId)?.zoom ?? 100) / 100 } as React.CSSProperties}
                       onPointerDown={() => focusArea(own.id, paneId)}
                     >
                       {multi && (
@@ -2746,12 +2849,25 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
                           <button
                             type="button"
                             className="tp-close"
-                            aria-label="Close pane"
+                            aria-label="Show alone"
+                            title={`Show alone (${chordLabel(withBindings(ACTIONS, keyBindings).find((a) => a.id === "show_alone")!.accel)})`}
                             onPointerDown={(e) => e.stopPropagation()}
-                            onClick={() => closePane(paneId)}
+                            onClick={() => void showAlone(own.id, paneId)}
                           >
-                            ×
+                            ⧉
                           </button>
+                          {/* A one-tab-one-pane area closes nothing here: its area head hides it. */}
+                          {panesOf(own.layout).length > 1 && (
+                            <button
+                              type="button"
+                              className="tp-close"
+                              aria-label="Close pane"
+                              onPointerDown={(e) => e.stopPropagation()}
+                              onClick={() => closePane(paneId)}
+                            >
+                              ×
+                            </button>
+                          )}
                         </PaneHead>
                       )}
                       {/* Agent bars (hook off, resume offer) belong to their plugin (D7). */}
@@ -2942,7 +3058,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
               key={paneId}
               paneId={paneId}
               tint={statuses[tab.id]?.look?.background ?? statuses[side.id]?.look?.background}
-              font={termFont}
+              font={paneFont(tab, paneId)}
               behaviour={termBehaviour}
               scheme={scheme}
               opacity={terminalOpacity}
