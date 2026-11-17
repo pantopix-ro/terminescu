@@ -113,6 +113,7 @@ export function createIpcHost(): Host {
     allCommands: () => invoke<SavedCommand[]>("commands_all"),
     settings: () => invoke<AppSettings>("settings_get"),
     setSettings: (settings) => invoke<AppSettings>("settings_set", { settings }),
+    applyZoom: (percent) => invoke<void>("window_zoom_apply", { percent }),
     onSettings: (listener) => listen(SETTINGS_EVENT, () => listener()),
     keyBindings: () => invoke<KeyBindings>("keys_get"),
     setKeyBindings: (bindings) => invoke<KeyBindings>("keys_set", { bindings }),

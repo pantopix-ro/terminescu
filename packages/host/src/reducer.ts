@@ -86,6 +86,13 @@ export function applyPatch(ws: Workspace, p: Patch): void {
     case "LayoutChanged":
       findTab(ws, p.tabId).layout = structuredClone(p.layout);
       return;
+    case "WindowZoomSet": {
+      const w = ws.windows.find((x) => x.id === p.windowId);
+      if (!w) throw new PatchError(`unknown window ${p.windowId}`);
+      if (p.zoom === null) delete w.zoomPercent;
+      else w.zoomPercent = p.zoom;
+      return;
+    }
     case "StatusSet": {
       const all = sideTabs(ws);
       const target = all.flatMap((s) => s.tabs).find((t) => t.id === p.id) ?? all.find((s) => s.id === p.id);

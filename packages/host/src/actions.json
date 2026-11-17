@@ -104,6 +104,12 @@
    "accel": "Cmd+Shift+M"
   },
   {
+   "id": "show_alone",
+   "label": "Show Alone",
+   "menu": "Shell",
+   "accel": "Cmd+Alt+M"
+  },
+  {
    "id": "open_transcript",
    "label": "Open Transcript",
    "menu": "Shell",

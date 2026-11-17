@@ -51,7 +51,6 @@ export const resume: PluginAction = {
 /** The row and its shown shell, for the calls that need the row's folder. */
 const rowArgs = (cx: ActionContext) => ({ row: needRow(cx), ...(cx.shellPaneId ? { pane: cx.shellPaneId } : {}) });
 
-// ⌥⌘M stays free: macOS reads it as Minimize All.
 export const openMemory: PluginAction = {
   id: "openMemory",
   label: "Open CLAUDE.md",

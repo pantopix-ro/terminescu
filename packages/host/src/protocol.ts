@@ -16,6 +16,8 @@ export type Layout =
       transcript?: string;
       /** Set on a text pane: the document it edits; such a pane has no shell (D27). */
       doc?: Id;
+      /** The pane's own text zoom in percent; absent is 100. Multiplies with the window's zoom. */
+      zoom?: number;
     }
   | { type: "split"; id: Id; dir: Dir; children: Layout[]; sizes: number[] };
 
@@ -140,6 +142,8 @@ export interface StatusConfig {
 export interface Window {
   id: Id;
   sideTabs: SideTab[];
+  /** This window's own UI zoom in percent; absent follows the Settings default zoom. */
+  zoomPercent?: number;
 }
 
 export interface Workspace {
@@ -179,6 +183,10 @@ export type Command =
   | { type: "DockTab"; tabId: Id; paneId: Id; side: DockSide }
   /** A pane dragged to the tab bar (task 8.32): a new tab at `index` in its side tab. */
   | { type: "PaneToTab"; paneId: Id; index: number }
+  /** Sets the text zoom of several panes at once; snapped to a zoom step, null or 100 resets. */
+  | { type: "SetPaneZoom"; paneIds: Id[]; zoom: number | null }
+  /** Sets a window's own UI zoom; null follows the Settings default. */
+  | { type: "SetWindowZoom"; windowId: Id; zoom: number | null }
   | { type: "OpenTranscript"; paneId: Id; session: string }
   /** A text pane editing `docId`: beside `beside` on the right, or in a new tab (D27). */
   | { type: "OpenText"; sideTabId: Id; docId: Id; beside?: Id | null }
@@ -204,6 +212,7 @@ export type Patch =
   | { type: "TabMoved"; tabId: Id; toSideTabId: Id; index: number }
   | { type: "TabRenamed"; tabId: Id; title: string | null }
   | { type: "LayoutChanged"; tabId: Id; layout: Layout }
+  | { type: "WindowZoomSet"; windowId: Id; zoom: number | null }
   | { type: "StatusSet"; id: Id; status: ManualStatus | null }
   | { type: "IconSet"; id: Id; icon: Icon | null }
   | { type: "AccentSet"; id: Id; accent: Neon };
@@ -705,6 +714,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
 /** The steps `⌘+` and `⌘-` walk, in percent. Same as `ZOOM_STEPS` in settings.rs. */
 export const ZOOM_STEPS: readonly number[] = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200];
+
+/** `percent` snapped to the nearest zoom step; a pane's 100 comes back as null (its default). */
+export function snapZoom(percent: number | null, keep100 = false): number | null {
+  if (percent === null) return null;
+  const near = ZOOM_STEPS.reduce((a, b) => (Math.abs(b - percent) < Math.abs(a - percent) ? b : a));
+  return near === 100 && !keep100 ? null : near;
+}
 
 /** The next zoom step in or out from `percent`, which need not be a step; the ends stay put. */
 export function stepZoom(percent: number, dir: 1 | -1): number {
