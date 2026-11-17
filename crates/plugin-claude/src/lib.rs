@@ -81,6 +81,9 @@ pub struct ClaudeHook {
     pub cli: PathBuf,
     /// The baseline store, which Uninstall Helpers removes too.
     pub baselines: Option<PathBuf>,
+    /// A build on a separate data folder (`$TERMINESCU_HOME`) reads the entry but never writes
+    /// it, so the person's Claude settings keep pointing at the installed app.
+    pub read_only: bool,
 }
 
 impl Helper for ClaudeHook {
@@ -103,6 +106,10 @@ impl Helper for ClaudeHook {
 
     /// Idempotent: an entry for an older CLI path moves to this one.
     fn install(&self) -> Result<(), PluginError> {
+        if self.read_only {
+            eprintln!("terminescu: separate data folder, Claude Code hook left as it is");
+            return Ok(());
+        }
         hook::install(&self.settings, &self.cli)
             .map(drop)
             .map_err(|e| PluginError::Failed(e.to_string()))
@@ -110,6 +117,9 @@ impl Helper for ClaudeHook {
 
     /// Takes the entries out, and the baselines with them (add-claude-insights 1.4).
     fn uninstall(&self) -> Result<(), PluginError> {
+        if self.read_only {
+            return Ok(());
+        }
         hook::uninstall(&self.settings)
             .map(drop)
             .map_err(|e| PluginError::Failed(e.to_string()))?;
@@ -363,6 +373,8 @@ impl ClaudePlugin {
                 settings: hook::user_settings(),
                 cli,
                 baselines: Some(store.dir.clone()),
+                // The same test as `paths::separate_home`, without the protocol crate.
+                read_only: std::env::var_os("TERMINESCU_HOME").is_some_and(|d| !d.is_empty()),
             },
             store,
             state: Arc::default(),
@@ -374,6 +386,7 @@ impl ClaudePlugin {
     /// temporary one.
     pub fn with_config(mut self, dir: PathBuf) -> Self {
         self.hook.settings = dir.join("settings.json");
+        self.hook.read_only = false;
         self.config = dir;
         self
     }

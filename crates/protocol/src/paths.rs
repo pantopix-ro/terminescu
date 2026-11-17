@@ -11,6 +11,15 @@ pub const CORE_SOCKET_ENV: &str = "TERMINESCU_CORE_SOCKET";
 /// Overrides the support folder, for tests and for running two builds side by side.
 pub const HOME_ENV: &str = "TERMINESCU_HOME";
 
+/// Whether `$TERMINESCU_HOME` moves this build's data away from the installed app's, as
+/// `pnpm run dev` does. The database then lives in it too, and Claude Code's own settings stay
+/// with the installed app.
+pub fn separate_home() -> Option<PathBuf> {
+    std::env::var_os(HOME_ENV)
+        .filter(|d| !d.is_empty())
+        .map(PathBuf::from)
+}
+
 /// `sun_path` holds 104 bytes on macOS, the terminating NUL included.
 pub const SOCKET_PATH_MAX: usize = 103;
 
@@ -22,10 +31,10 @@ pub struct RunPaths {
     pub core_socket: PathBuf,
 }
 
-/// `~/Library/Application Support/Terminescu`, or `$TERMINESCU_HOME`.
+/// `~/Library/Application Support/Terminescu`, or `$TERMINESCU_HOME` when set and not empty.
 pub fn support_dir() -> PathBuf {
-    if let Some(dir) = std::env::var_os(HOME_ENV) {
-        return PathBuf::from(dir);
+    if let Some(dir) = separate_home() {
+        return dir;
     }
     let home = std::env::var_os("HOME")
         .map(PathBuf::from)
