@@ -16,6 +16,8 @@ describe("chords", () => {
     expect(actionFor(key("ArrowLeft", { metaKey: true, altKey: true }, "ArrowLeft"))).toBe("focus_left");
     expect(actionFor(key("KeyS", { metaKey: true, shiftKey: true }))).toBe("status_editor");
     expect(actionFor(key("Comma", { metaKey: true }, ","))).toBe("settings");
+    expect(actionFor(key("KeyM", { metaKey: true, altKey: true }, "m"))).toBe("show_alone");
+    expect(actionFor(key("KeyM", { metaKey: true, shiftKey: true }))).toBe("maximize_pane");
     expect(actionFor(key("KeyT"))).toBeUndefined();
     expect(actionFor(key("KeyC", { ctrlKey: true }))).toBeUndefined();
     expect(actionFor(key("KeyC", { metaKey: true }))).toBeUndefined();

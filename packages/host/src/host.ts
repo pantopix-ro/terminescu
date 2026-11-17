@@ -116,6 +116,8 @@ export interface Host {
   allCommands(): Promise<SavedCommand[]>;
   settings(): Promise<AppSettings>;
   setSettings(settings: AppSettings): Promise<AppSettings>;
+  /** Sets this window's native page zoom in percent (the window works out which value). */
+  applyZoom(percent: number): Promise<void>;
   /** Settings changed in any window. */
   onSettings(listener: () => void): Promise<() => void>;
   /** Chords changed in Settings › Keys, by action id (D17). */

@@ -69,4 +69,24 @@ describe("mock dock commands", () => {
     const tabs = host.workspace().windows[0]!.sideTabs[0]!.tabs;
     expect(tabs.map((t) => panesOf(t.layout))).toEqual([["p2"], ["p1"]]);
   });
+
+  it("zooms panes and windows, snapped to the steps, and the zoom follows the pane", async () => {
+    const host = createMockHost(seed());
+    await host.send({ type: "DockTab", tabId: "t2", paneId: "p1", side: "right" });
+    await host.send({ type: "SetPaneZoom", paneIds: ["p2"], zoom: 124 });
+    await host.send({ type: "PaneToTab", paneId: "p2", index: 0 });
+    const tabs = host.workspace().windows[0]!.sideTabs[0]!.tabs;
+    expect(tabs[0]!.layout).toMatchObject({ id: "p2", zoom: 125 });
+    expect(tabs[1]!.layout).not.toHaveProperty("zoom");
+    await host.send({ type: "SetPaneZoom", paneIds: ["p2"], zoom: 100 });
+    expect(host.workspace().windows[0]!.sideTabs[0]!.tabs[0]!.layout).not.toHaveProperty("zoom");
+    await expect(host.send({ type: "SetPaneZoom", paneIds: ["nope"], zoom: 110 })).rejects.toMatchObject({ error: { code: "UnknownPane" } });
+    const win = host.workspace().windows[0]!.id;
+    await host.send({ type: "SetWindowZoom", windowId: win, zoom: 126 });
+    expect(host.workspace().windows[0]!.zoomPercent).toBe(125);
+    await host.send({ type: "SetWindowZoom", windowId: win, zoom: 100 });
+    expect(host.workspace().windows[0]!.zoomPercent).toBe(100);
+    await host.send({ type: "SetWindowZoom", windowId: win, zoom: null });
+    expect(host.workspace().windows[0]!).not.toHaveProperty("zoomPercent");
+  });
 });

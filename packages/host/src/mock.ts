@@ -19,6 +19,7 @@ import {
   PUBLIC_REPO,
   MAX_TTL_SECS,
   ZOOM_STEPS,
+  snapZoom,
   SIDEBAR_MAX,
   FONT_FAMILY_MAX,
   FONT_NAME,
@@ -944,6 +945,26 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
           { type: "TabCreated", sideTabId: side.id, index: c.index, tab: made },
         ];
       }
+      case "SetPaneZoom": {
+        const zoom = snapZoom(c.zoom);
+        const out: Patch[] = [];
+        for (const id of c.paneIds) tabOfPane(id);
+        for (const t of allSideTabs().flatMap((s) => s.tabs)) {
+          const mine = c.paneIds.filter((id) => leaf(t.layout, id));
+          if (!mine.length) continue;
+          const layout = structuredClone(t.layout);
+          for (const id of mine) {
+            const l = leaf(layout, id)!;
+            if (zoom === null) delete l.zoom;
+            else l.zoom = zoom;
+          }
+          if (JSON.stringify(layout) !== JSON.stringify(t.layout)) out.push({ type: "LayoutChanged", tabId: t.id, layout });
+        }
+        return out;
+      }
+      case "SetWindowZoom":
+        window(c.windowId);
+        return [{ type: "WindowZoomSet", windowId: c.windowId, zoom: snapZoom(c.zoom, true) }];
       case "ClosePane": {
         const tab = tabOfPane(c.paneId);
         const layout = removePane(tab.layout, c.paneId);
@@ -1649,8 +1670,6 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
       }
       const sidebarWidth = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(next.sidebarWidth)));
       settings = { ...next, sidebarWidth, terminalFont, terminalOpacity: opacity, terminalTheme: theme, terminalColors: c, terminalKeys: tk, hook, firstRunDone: next.firstRunDone ?? settings.firstRunDone };
-      // The app zooms its webview natively; a browser has CSS zoom on the root.
-      if (typeof document !== "undefined") document.documentElement.style.zoom = zoom === 100 ? "" : String(zoom / 100);
       settingsListeners.forEach((l) => l());
       return { ...settings };
     },
@@ -1670,6 +1689,10 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
     async onKeyBindings(listener) {
       keyListeners.add(listener);
       return () => keyListeners.delete(listener);
+    },
+    async applyZoom(percent) {
+      // The app zooms its webview natively; a browser has CSS zoom on the root.
+      if (typeof document !== "undefined") document.documentElement.style.zoom = percent === 100 ? "" : String(percent / 100);
     },
     async onSettings(listener) {
       settingsListeners.add(listener);
