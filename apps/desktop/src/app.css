@@ -126,6 +126,10 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 .ctx-sec-head h3 { margin: 0; font-size: 9px; font-weight: normal; color: var(--amber); }
 .ctx-sec-head .grow { flex: 1; }
 .ctx-add-btn { height: 20px; min-width: 20px; padding: 0 6px; }
+/* A link keeps its end in view, where links on one host differ; the middle is cut. */
+.ctx-value.link { display: flex; min-width: 0; }
+.ctx-link-head { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctx-link-tail { flex: none; white-space: nowrap; }
 .ctx-empty { padding: var(--space-3); }
 
 /* Palette (⌘P). */

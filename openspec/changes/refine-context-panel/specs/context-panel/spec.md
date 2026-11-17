@@ -4,12 +4,12 @@
 The context panel SHALL show Variables, Links and text, Files, Pins and Prompts as peer
 sections, then the plugin sections. Each section SHALL have one head row with its title, its
 count, and a `+` button when the section has an add action (Variables, Links and text,
-Prompts). A section with no rows SHALL show its head only, with no empty-state text. An error
-SHALL still show under its head.
+Prompts). A section with no rows SHALL show its head only, with no empty-state text; Pins
+SHALL hide entirely while empty. An error SHALL still show under its head.
 
 #### Scenario: Empty side tab
 - **WHEN** a new side tab with no variables, links, files or pins shows the pinned panel
-- **THEN** the Variables, Links and text, Files and Pins heads each show 0 with no sentence under them
+- **THEN** the Variables, Links and text and Files heads each show 0 with no sentence under them, and Pins does not show
 
 #### Scenario: Add a link from the head
 - **WHEN** the person clicks `+` on the Links and text head, types `https://example.test/a` and presses Enter
@@ -88,3 +88,15 @@ With reduced motion set, the values SHALL show without switching.
 #### Scenario: Missing value
 - **WHEN** the prompt uses `{{owner}}` and the side tab has no `owner`
 - **THEN** `{{owner}}` shows in both states and does not blink
+
+### Requirement: Unique links and text
+A side tab SHALL show each link and each text once, also after a merge or a moved tab brings a
+copy. Removing one SHALL remove its copies. A link SHALL keep its end in view and cut its middle.
+
+#### Scenario: Same link twice
+- **WHEN** `https://example.test/acme/platform-api/pull/4821` is added twice to one side tab
+- **THEN** the panel shows it once and counts 1
+
+#### Scenario: Links on one host
+- **WHEN** the side tab holds `.../pull/4821` and `.../pull/4822` on the same host
+- **THEN** both rows show their different endings in a narrow panel

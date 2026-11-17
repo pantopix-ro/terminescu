@@ -341,7 +341,7 @@ pub fn remove_saved(db: &Db, side_tab: &str, name: &str) -> Result<bool> {
     )? > 0)
 }
 
-/// Adds a link or a piece of text. The same link twice in one side tab is kept once.
+/// Adds a link or a piece of text. The same link or text twice in one side tab is kept once.
 pub fn add_item(
     db: &Db,
     side_tab: &str,
@@ -359,10 +359,9 @@ pub fn add_item(
         return Err(ContextError::BadLink(cut(value, 80)));
     }
     let value = cut(value, MAX_TEXT);
-    if kind == ItemKind::Link
-        && let Some(found) = items(db, side_tab)?
-            .into_iter()
-            .find(|i| i.kind == ItemKind::Link && i.value == value)
+    if let Some(found) = items(db, side_tab)?
+        .into_iter()
+        .find(|i| i.kind == kind && i.value == value)
     {
         return Ok(found);
     }
@@ -409,16 +408,25 @@ pub fn items(db: &Db, side_tab: &str) -> Result<Vec<Item>> {
             created_at: r.get(6)?,
         })
     })?;
-    Ok(rows.collect::<rusqlite::Result<_>>()?)
+    // A merge or a moved tab can bring a link the side tab already has: it shows once.
+    let mut seen = std::collections::HashSet::new();
+    let mut all: Vec<Item> = rows.collect::<rusqlite::Result<_>>()?;
+    all.retain(|i| seen.insert((i.kind, i.value.clone())));
+    Ok(all)
 }
 
-/// The side tab of a removed link or text.
+/// The side tab of a removed link or text. Copies of the same value in that side tab go too,
+/// so a hidden copy never shows up in its place.
 pub fn remove_item(db: &Db, id: &str) -> Result<Option<Id>> {
     let owner = db.local_owner()?;
     Ok(db
         .conn()
         .query_row(
-            "DELETE FROM context_items WHERE owner_id = ?1 AND id = ?2 AND kind IN ('link', 'text')
+            "DELETE FROM context_items
+             WHERE owner_id = ?1 AND kind IN ('link', 'text')
+               AND (side_tab_id, kind, value) =
+                   (SELECT side_tab_id, kind, value FROM context_items
+                    WHERE owner_id = ?1 AND id = ?2 AND kind IN ('link', 'text'))
              RETURNING side_tab_id",
             params![owner, id],
             |r| r.get(0),
@@ -518,6 +526,29 @@ mod tests {
         assert_eq!(pins(&db, "s1").unwrap(), vec![saved]);
         p.row_end = None;
         assert!(matches!(add_pin(&db, &p), Err(ContextError::BadPin)));
+    }
+
+    #[test]
+    fn a_link_or_text_shows_once_and_goes_with_its_copies() {
+        let db = db_with_side_tab();
+        let t = add_item(&db, "s1", ItemKind::Text, "api, web", "typed", None).unwrap();
+        let again = add_item(&db, "s1", ItemKind::Text, " api, web ", "auto", None).unwrap();
+        assert_eq!(t.id, again.id);
+        let url = "https://example.test/acme/api/pull/482";
+        let a = add_item(&db, "s1", ItemKind::Link, url, "pasted", None).unwrap();
+        // A merge moves rows without the check: a copy can land beside the first.
+        let owner = db.local_owner().unwrap();
+        db.conn()
+            .execute(
+                "INSERT INTO context_items (id, owner_id, side_tab_id, kind, name, value, source,
+                   position, created_at, updated_at)
+                 VALUES ('copy', ?1, 's1', 'link', NULL, ?2, 'auto', 99, 0, 0)",
+                params![owner, url],
+            )
+            .unwrap();
+        assert_eq!(items(&db, "s1").unwrap(), vec![t, a.clone()]);
+        assert_eq!(remove_item(&db, &a.id).unwrap().as_deref(), Some("s1"));
+        assert_eq!(items(&db, "s1").unwrap().len(), 1);
     }
 
     #[test]

@@ -1750,7 +1750,9 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
       contextChanged(side);
     },
     async items(side) {
-      return structuredClone(itemList.filter((i) => i.sideTabId === side));
+      // A link or text shows once per side tab, as the core keeps it (refine-context-panel).
+      const seen = new Set<string>();
+      return structuredClone(itemList.filter((i) => i.sideTabId === side && !seen.has(`${i.kind}\n${i.value}`) && !!seen.add(`${i.kind}\n${i.value}`)));
     },
     async addItem(side, kind, raw, source, originTabId = null) {
       const value = raw.trim();
@@ -1758,7 +1760,7 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
       if (kind === "link" && (!/^https?:\/\//.test(value) || /\s/.test(value))) {
         throw new Error(`${value.slice(0, 80)} is not an http(s) link`);
       }
-      const same = itemList.find((i) => i.sideTabId === side && i.kind === "link" && kind === "link" && i.value === value);
+      const same = itemList.find((i) => i.sideTabId === side && i.kind === kind && i.value === value);
       if (same) return structuredClone(same);
       const item: Item = { id: id(), sideTabId: side, kind, value, source, originTabId, createdAt: Date.now() };
       itemList.push(item);
@@ -1768,8 +1770,12 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
     async removeItem(itemId) {
       const at = itemList.findIndex((i) => i.id === itemId);
       if (at < 0) return;
-      const [gone] = itemList.splice(at, 1);
-      contextChanged(gone!.sideTabId);
+      const gone = itemList[at]!;
+      for (let i = itemList.length - 1; i >= 0; i--) {
+        const x = itemList[i]!;
+        if (x.sideTabId === gone.sideTabId && x.kind === gone.kind && x.value === gone.value) itemList.splice(i, 1);
+      }
+      contextChanged(gone.sideTabId);
     },
     async touchedFiles(side) {
       return structuredClone(touched.filter((f) => f.sideTabId === side).sort((a, b) => b.updatedAt - a.updatedAt));

@@ -35,6 +35,14 @@
       e2e "prompt tooltip blinks at a fixed size" (box size equal across phases, slot text
       changes); reduced-motion e2e shows values only.
 
+## 3b. Owner follow-ups (2026-11-17)
+
+- [x] 3.5 Pins hides while empty; a pin still comes from Shell › Pin Selection. Verify: e2e
+      "empty side tab shows four heads and no sentence; Pins hides while empty".
+- [x] 3.6 A link or text shows once per side tab and goes with its copies; links keep their end
+      in view. Verify: `cargo test -p terminescu-core` "a_link_or_text_shows_once_and_goes_with_its_copies";
+      e2e "links keep their end in view and each shows once".
+
 ## 4. Specs, tests and gates
 
 - [x] 4.1 Update foundation `workbench-ui` "Collapsible context panel" (section order, its
