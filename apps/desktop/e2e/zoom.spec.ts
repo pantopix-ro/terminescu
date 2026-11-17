@@ -1,15 +1,22 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// Task 8.8 on the mock host: ⌘=, ⌘+ and ⌘- step the zoom of the whole UI, ⌘0 resets it, and
-// the level lives in the settings. The mock zooms with CSS; the app zooms its webview.
+// Tasks 8.8, 5.2 on the mock host: with window chrome focused, ⌘=, ⌘+ and ⌘- step the zoom of
+// the window's whole UI and ⌘0 goes back to the Settings default; the level lives with the
+// window. The mock zooms with CSS; the app zooms its webview.
 
 async function start(page: Page) {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");
   await page.locator(".term-pane").first().click();
+  // The title strip takes the focus off the pane: window chrome, so zoom acts on the window.
+  await page.locator(".app-traffic").click();
 }
 
-const zoomOf = (page: Page) => page.evaluate(async () => (await (window as any).__terminescu.host.settings()).zoomPercent);
+const zoomOf = (page: Page) =>
+  page.evaluate(async () => {
+    const h = (window as any).__terminescu.host;
+    return h.workspace().windows[0].zoomPercent ?? (await h.settings()).zoomPercent;
+  });
 const rootZoom = (page: Page) => page.evaluate(() => document.documentElement.style.zoom);
 
 test("⌘= and ⌘+ zoom in, ⌘- zooms out, ⌘0 resets", async ({ page }) => {
@@ -18,7 +25,7 @@ test("⌘= and ⌘+ zoom in, ⌘- zooms out, ⌘0 resets", async ({ page }) => {
 
   await page.keyboard.press("Meta+Equal");
   await expect.poll(() => zoomOf(page)).toBe(110);
-  await expect(page.locator(".app-note")).toHaveText("Zoom 110%");
+  await expect(page.locator(".app-note")).toHaveText("Window · 110%");
   expect(await rootZoom(page)).toBe("1.1");
 
   // ⌘+ is ⌘⇧= on the keyboard.
@@ -55,4 +62,14 @@ test("the zoom chords show in Settings › Keys like any action", async ({ page 
   await expect(dialog.locator('[data-action="zoom_in"] kbd')).toHaveText("⌘=");
   await expect(dialog.locator('[data-action="zoom_out"] kbd')).toHaveText("⌘-");
   await expect(dialog.locator('[data-action="zoom_reset"] kbd')).toHaveText("⌘0");
+});
+
+test("Settings › Terminal has a Default zoom that windows without their own follow", async ({ page }) => {
+  await start(page);
+  await page.keyboard.press("Meta+Comma");
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("navigation", { name: "Settings sections" }).getByRole("button", { name: "Terminal" }).click();
+  await dialog.getByLabel("Default zoom").selectOption("125");
+  await expect.poll(() => zoomOf(page)).toBe(125);
+  await expect(dialog.getByText("Default zoom")).toBeVisible();
 });

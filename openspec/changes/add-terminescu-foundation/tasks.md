@@ -411,6 +411,8 @@ Order: 2.1, 2.6, 2.5, 2.3, 2.2, 2.4.
       the native webview zoom of every window and of each new one. Three View menu actions,
       editable in Settings › Keys; `⌘⇧=` runs zoom in unless it has its own action.
       `zoom.spec.ts` (3), keys tests.
+      Superseded by the `zoom` capability of `refine-pane-view-and-zoom`: focus decides the
+      target (pane, row or folder, window), and the setting is the default zoom.
 - [x] 8.9 Sidebar status chip (owner request, 2026-11-05): a click on a side tab's or a tab's
       status chip opens the status editor on it, with this side tab's and the global statuses.
       Verify: Playwright clicks both chips and picks a global status.

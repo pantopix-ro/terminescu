@@ -18,7 +18,7 @@ test("a terminal's right click opens the pixel menu; Paste goes to that terminal
   await page.locator(".term-pane").first().click({ button: "right", position: { x: 120, y: 80 } });
   const menu = page.getByRole("menu", { name: "Terminal" });
   await expect(menu).toBeVisible();
-  await expect(menu.getByRole("menuitem")).toHaveText([/Copy/, /Paste/, /Select All/, /Find…/, /Clear to Start/, /Split Right/, /Split Down/, /Maximize Pane/, /Move Pane to New Tab/, /Close Pane/]);
+  await expect(menu.getByRole("menuitem")).toHaveText([/Copy/, /Paste/, /Select All/, /Find…/, /Clear to Start/, /Split Right/, /Split Down/, /Maximize Pane/, /Show Alone/, /Move Pane to New Tab/, /Close Pane/]);
   await expect(menu.getByRole("menuitem", { name: /Paste/ })).toContainText("⌘V");
   await menu.getByRole("menuitem", { name: /Paste/ }).click();
   await expect(menu).toBeHidden();
