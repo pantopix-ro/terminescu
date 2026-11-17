@@ -40,6 +40,24 @@ export interface Rendered {
   missing: string[];
 }
 
+const VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
+
+/** Whether `{{name}}` can ask for a value: a name a variable could have. */
+export const isAskable = (name: string) => VARIABLE_NAME.test(name);
+
+/**
+ * What `{{name}}` becomes, or `undefined` when nothing fills it. A variable wins (a secret is
+ * `$NAME`), then a typed value, then `pins` as the pins' quotes. The one rule for the filled
+ * text and for the prompt tooltip.
+ */
+export function resolveName(name: string, variables: Variable[], pins: Pin[], extra: Record<string, string> = {}): string | undefined {
+  const v = variables.find((x) => x.name === name);
+  if (v) return v.mode === "secret" ? `$${v.name}` : (v.value ?? "");
+  if (extra[name]?.length) return extra[name]!;
+  if (name === "pins") return renderPins(pins);
+  return undefined;
+}
+
 /**
  * Fills a prompt body from the side tab's context (D13, D21): `{{name}}` takes the variable's
  * value, a secret becomes `$NAME`, `{{pins}}` the pins unless a variable is named `pins`.
@@ -49,11 +67,9 @@ export function renderPrompt(body: string, variables: Variable[], pins: Pin[], e
   const missing: string[] = [];
   const text = body.replace(/\{\{([^{}]*)\}\}/g, (whole, raw: string) => {
     const name = raw.trim();
-    const v = variables.find((x) => x.name === name);
-    if (v) return v.mode === "secret" ? `$${v.name}` : (v.value ?? "");
-    if (extra[name]?.length) return extra[name]!;
-    if (name === "pins") return renderPins(pins);
-    if (/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(name) && !missing.includes(name)) missing.push(name);
+    const value = resolveName(name, variables, pins, extra);
+    if (value !== undefined) return value;
+    if (isAskable(name) && !missing.includes(name)) missing.push(name);
     return whole;
   });
   return { text, missing };

@@ -43,9 +43,13 @@ const split = (path: string) => {
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-export function ChangesSection({ paneId, bridge, app }: PanelSectionProps) {
+export function ChangesSection({ paneId, bridge, app, setCount }: PanelSectionProps) {
   const [state, setState] = useState<{ answer?: ChangesAnswer; error?: string }>({});
   const [openError, setOpenError] = useState<string>();
+  const count = paneId ? state.answer?.total : undefined;
+  useEffect(() => {
+    setCount?.(count);
+  }, [count, setCount]);
   useEffect(() => {
     setState({});
     if (!paneId) return;
@@ -67,11 +71,11 @@ export function ChangesSection({ paneId, bridge, app }: PanelSectionProps) {
     };
   }, [paneId, bridge]);
 
-  if (!paneId) return <p className="small ao-dim ctx-empty">This tab has no shell.</p>;
+  if (!paneId) return null;
   if (state.error) return <p className="small ao-dim ctx-empty git-off">{state.error}</p>;
   const answer = state.answer;
   if (!answer) return null;
-  if (!answer.changes.length) return <p className="small ao-dim ctx-empty">No changes.</p>;
+  if (!answer.changes.length) return null;
   const open = (c: Change) => {
     if (!app) return;
     setOpenError(undefined);

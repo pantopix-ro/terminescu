@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 /** A tooltip's text and the element it points at. */
 export interface TipAt {
@@ -9,6 +9,8 @@ export interface TipAt {
   status?: string;
   /** More plain lines under the rest, one per item, as a folder's tabs (task 8.74). */
   lines?: readonly string[];
+  /** A node under the lines, as a prompt's body (refine-context-panel D8). */
+  body?: ReactNode;
   rect: DOMRect;
   /** Lay it over the element, as a name's expansion, instead of beside it. */
   over?: boolean;
@@ -28,6 +30,9 @@ export function useTip() {
     /** Under the element: the name, a plain second line and the status. */
     below: (el: Element, name: string, sub?: string, status?: string, lines?: readonly string[]) =>
       setTip({ name, sub, status, lines, rect: el.getBoundingClientRect(), below: true }),
+    /** Beside the element: a name, plain lines and an optional body node. */
+    beside: (el: Element, name: string, lines?: readonly string[], body?: ReactNode) =>
+      setTip({ name, lines, body, rect: el.getBoundingClientRect() }),
     /** The whole of a name its box cuts short, laid over it; nothing when it fits. */
     expand: (el: HTMLElement, name: string) => {
       if (!truncated(el)) return false;
@@ -79,6 +84,7 @@ export function Tip({ tip }: { tip: TipAt | undefined }) {
           {l}
         </span>
       ))}
+      {tip.body}
     </div>
   );
 }
