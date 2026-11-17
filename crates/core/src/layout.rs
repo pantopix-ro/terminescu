@@ -43,6 +43,10 @@ pub enum Layout {
         /// Set on a text pane: the document it edits (D28). Such a pane has no shell either.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         doc: Option<Id>,
+        /// The pane's own text zoom in percent; absent is 100. It multiplies with the
+        /// window's zoom and moves with the pane (D4).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        zoom: Option<u16>,
     },
     Split {
         id: Id,
@@ -68,6 +72,7 @@ impl Layout {
             resume: None,
             transcript: None,
             doc: None,
+            zoom: None,
         }
     }
 
@@ -78,6 +83,7 @@ impl Layout {
             resume: None,
             transcript: None,
             doc: Some(doc.into()),
+            zoom: None,
         }
     }
 
@@ -88,6 +94,7 @@ impl Layout {
             resume: None,
             transcript: Some(session.into()),
             doc: None,
+            zoom: None,
         }
     }
 
@@ -168,6 +175,25 @@ impl Layout {
             Layout::Pane { .. } => None,
             Layout::Split { children, .. } => children.iter().find_map(|c| c.leaf(pane)),
         }
+    }
+
+    /// The zoom of a pane in percent; `None` is 100.
+    pub fn zoom_of(&self, pane: &str) -> Option<u16> {
+        match self.leaf(pane) {
+            Some(Layout::Pane { zoom, .. }) => *zoom,
+            _ => None,
+        }
+    }
+
+    /// A copy with `zoom` set on each of `panes` that this layout holds.
+    pub fn with_zoom(&self, panes: &[Id], zoom: Option<u16>) -> Layout {
+        let mut out = self.clone();
+        for p in panes {
+            if let Some(Layout::Pane { zoom: z, .. }) = out.leaf_mut(p) {
+                *z = zoom;
+            }
+        }
+        out
     }
 
     /// The pane leaf with this id, to change.

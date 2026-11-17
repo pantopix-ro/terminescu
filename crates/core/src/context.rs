@@ -445,6 +445,7 @@ mod tests {
         let workspace = Workspace {
             windows: vec![Window {
                 id: "w1".into(),
+                zoom_percent: None,
                 side_tabs: vec![SideTab {
                     folder: false,
                     accent: None,

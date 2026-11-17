@@ -84,9 +84,10 @@ pub fn save(db: &Db, saved: &Saved) -> Result<()> {
     let mut ids: [Vec<&str>; 4] = Default::default();
     for (wi, w) in saved.workspace.windows.iter().enumerate() {
         tx.execute(
-            "INSERT INTO windows (id, owner_id, position, created_at) VALUES (?1, ?2, ?3, ?4)
-             ON CONFLICT (id) DO UPDATE SET position = excluded.position",
-            params![w.id, owner, wi as i64, now],
+            "INSERT INTO windows (id, owner_id, position, created_at, zoom_percent) VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT (id) DO UPDATE SET position = excluded.position,
+               zoom_percent = excluded.zoom_percent",
+            params![w.id, owner, wi as i64, now, w.zoom_percent],
         )?;
         ids[0].push(&w.id);
         for (si, s) in w.side_tabs.iter().enumerate() {
@@ -269,11 +270,12 @@ pub fn load(db: &Db) -> Result<Option<Saved>> {
     let owner = db.local_owner()?;
     let conn = db.conn();
     let mut windows: Vec<Window> = conn
-        .prepare("SELECT id FROM windows WHERE owner_id = ?1 ORDER BY position")?
+        .prepare("SELECT id, zoom_percent FROM windows WHERE owner_id = ?1 ORDER BY position")?
         .query_map([&owner], |r| {
             Ok(Window {
                 id: r.get(0)?,
                 side_tabs: vec![],
+                zoom_percent: r.get::<_, Option<u16>>(1)?,
             })
         })?
         .collect::<rusqlite::Result<_>>()?;
@@ -429,6 +431,7 @@ mod tests {
         let workspace = Workspace {
             windows: vec![Window {
                 id: "w1".into(),
+                zoom_percent: None,
                 side_tabs: vec![
                     SideTab {
                         folder: false,
@@ -547,6 +550,15 @@ mod tests {
             .unwrap();
         let loaded = load(&db).unwrap().unwrap();
         assert_eq!(loaded.workspace.windows[0].side_tabs[0].accent, None);
+    }
+
+    #[test]
+    fn a_window_zoom_survives_a_reload() {
+        let db = Db::open_in_memory().unwrap();
+        let mut saved = sample();
+        saved.workspace.windows[0].zoom_percent = Some(125);
+        save(&db, &saved).unwrap();
+        assert_eq!(load(&db).unwrap(), Some(saved));
     }
 
     #[test]
