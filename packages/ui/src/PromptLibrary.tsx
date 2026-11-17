@@ -19,6 +19,8 @@ export interface PromptLibraryProps {
   host: Api;
   /** The prompt to show first, by key. */
   selectKey?: string;
+  /** Open on the new-prompt form (the panel's `+`). */
+  startNew?: boolean;
   onError(message: string): void;
   onClose(): void;
   /** Opens the prompt in a text tab, where `⌘S` saves a version (D14, D27). */
@@ -166,12 +168,12 @@ function NewPromptForm({ host, run, onDone }: { host: Api; run<T>(p: Promise<T>)
 }
 
 /** The prompt library (D14): search, tags, versions with restore, duplicate, archive. */
-export function PromptLibrary({ host, selectKey, onError, onClose, onEditInText }: PromptLibraryProps) {
+export function PromptLibrary({ host, selectKey, startNew, onError, onClose, onEditInText }: PromptLibraryProps) {
   const [query, setQuery] = useState("");
   const [archived, setArchived] = useState(false);
   const [list, setList] = useState<Prompt[]>([]);
   const [selected, setSelected] = useState<string>();
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(!!startNew);
   const [tick, setTick] = useState(0);
   const search = useRef<HTMLInputElement>(null);
   const frame = useRef<HTMLDivElement>(null);

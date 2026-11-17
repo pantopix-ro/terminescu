@@ -21,7 +21,7 @@ const MARK: Record<Todo["state"], { text: string; title: string }> = {
   completed: { text: "●", title: "Done" },
 };
 
-export function TodoSection({ paneId, bridge, setHidden }: PanelSectionProps) {
+export function TodoSection({ paneId, bridge, setHidden, setCount }: PanelSectionProps) {
   const [answer, setAnswer] = useState<TodosAnswer>();
   // A tab with no Claude session shows no plan section at all (polish-claude-insights D2).
   const none = !paneId || (answer !== undefined && !answer.session);
@@ -29,6 +29,10 @@ export function TodoSection({ paneId, bridge, setHidden }: PanelSectionProps) {
   useEffect(() => {
     if (!loading) setHidden?.(none);
   }, [none, loading, setHidden]);
+  const count = answer?.session ? (answer.todos?.length ?? 0) : undefined;
+  useEffect(() => {
+    setCount?.(count);
+  }, [count, setCount]);
   useEffect(() => {
     setAnswer(undefined);
     if (!paneId) return;
@@ -50,8 +54,7 @@ export function TodoSection({ paneId, bridge, setHidden }: PanelSectionProps) {
   }, [paneId, bridge]);
 
   if (!answer) return null;
-  if (!answer.session) return <p className="small ao-dim ctx-empty">No Claude session in this tab.</p>;
-  if (!answer.todos?.length) return <p className="small ao-dim ctx-empty">No todo list yet.</p>;
+  if (!answer.session || !answer.todos?.length) return null;
   return (
     <ul className="cl-todos small" aria-label="Claude's todo list">
       {answer.todos.map((t, i) => (

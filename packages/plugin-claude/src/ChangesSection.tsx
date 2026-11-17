@@ -72,7 +72,7 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 /** The answer of a tab with no Claude session, or none recorded for it. */
 const NO_SESSION = /no Claude session|no baseline/;
 
-export function ChangesSection({ paneId, bridge, app, setHidden }: PanelSectionProps) {
+export function ChangesSection({ paneId, bridge, app, setHidden, setCount }: PanelSectionProps) {
   const [state, setState] = useState<{ answer?: ClaudeChanges; error?: string }>({});
   const [openError, setOpenError] = useState<string>();
   // Hidden in a tab with no Claude session (polish-claude-insights D2).
@@ -81,6 +81,10 @@ export function ChangesSection({ paneId, bridge, app, setHidden }: PanelSectionP
   useEffect(() => {
     if (!loading) setHidden?.(none);
   }, [none, loading, setHidden]);
+  const count = state.answer?.files.length;
+  useEffect(() => {
+    setCount?.(count);
+  }, [count, setCount]);
   useEffect(() => {
     setState({});
     if (!paneId) return;
@@ -112,22 +116,16 @@ export function ChangesSection({ paneId, bridge, app, setHidden }: PanelSectionP
     };
   }, [paneId, bridge]);
 
-  if (!paneId) return <p className="small ao-dim ctx-empty">This tab has no shell.</p>;
+  if (!paneId) return null;
   if (state.error) {
-    return <p className="small ao-dim ctx-empty">{NO_SESSION.test(state.error) ? "No Claude session in this tab." : state.error}</p>;
+    return NO_SESSION.test(state.error) ? null : <p className="small ao-dim ctx-empty">{state.error}</p>;
   }
   const answer = state.answer;
   if (!answer) return null;
   const note = !answer.tree && (
     <p className="small ao-dim cl-untracked">Outside git only Claude's own file edits show; Bash edits are not tracked.</p>
   );
-  if (!answer.files.length)
-    return (
-      <>
-        {note}
-        <p className="small ao-dim ctx-empty">No changes yet.</p>
-      </>
-    );
+  if (!answer.files.length) return note || null;
   const open = (c: ClaudeChange) => {
     if (!app) return;
     setOpenError(undefined);

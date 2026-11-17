@@ -39,6 +39,8 @@ export function trapModalFocus(root: HTMLElement): () => void {
   };
   const onKey = (e: KeyboardEvent) => {
     if (e.key !== "Tab" || e.metaKey || e.ctrlKey || e.altKey) return;
+    // A field that cycles its own siblings (the fill-in values) handles Tab itself.
+    if (e.target instanceof HTMLElement && e.target.hasAttribute("data-own-tab")) return;
     const modal = topModal(doc);
     if (!modal) return;
     const active = doc.activeElement instanceof HTMLElement && modal.contains(doc.activeElement) ? doc.activeElement : null;

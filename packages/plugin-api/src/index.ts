@@ -63,6 +63,9 @@ export interface PanelSectionProps {
   /** Hides the section's head and body, or shows them again; the body stays mounted, so it can
    * show itself when its answer changes. Stable for the section (polish-claude-insights D2). */
   setHidden?(hidden: boolean): void;
+  /** Reports the count the head shows beside the title, or `undefined` for none. Stable for
+   * the section (refine-context-panel D3). */
+  setCount?(count: number | undefined): void;
 }
 
 export interface PanelSection {

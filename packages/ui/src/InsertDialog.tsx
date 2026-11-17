@@ -6,6 +6,8 @@ import { renderPrompt } from "./insert";
 
 export interface InsertDialogProps {
   prompts: Prompt[];
+  /** Opens on this prompt's step; Escape and "‹ all" then close the dialog (the panel's click). */
+  initialPrompt?: Prompt;
   variables: Variable[];
   pins: Pin[];
   /** Writes the text to the focused terminal; Enter follows only with `send`. */
@@ -101,13 +103,20 @@ function PromptStep({ prompt, props, onBack }: { prompt: Prompt; props: InsertDi
                 ref={i === 0 ? first : undefined}
                 className="ao-input"
                 aria-label={`Value for ${name}`}
+                data-own-tab={missing.length > 1 ? "" : undefined}
                 value={extra[name] ?? ""}
                 onChange={(e) => setExtra((x) => ({ ...x, [name]: e.target.value }))}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.metaKey) {
+                  // Enter inserts; an empty value stays {{name}} (D7). Not while an IME composes.
+                  if (e.key === "Enter" && !e.metaKey && !e.nativeEvent.isComposing) {
                     e.preventDefault();
-                    const next = e.currentTarget.closest(".ins-step")?.querySelectorAll<HTMLInputElement>(".ins-var .ao-input")[i + 1];
-                    (next ?? e.currentTarget.closest(".ins-step")?.querySelector<HTMLTextAreaElement>("textarea"))?.focus();
+                    void go(false);
+                  }
+                  // Tab cycles the value fields only; a lone field keeps the normal order.
+                  if (e.key === "Tab" && !e.metaKey && !e.ctrlKey && !e.altKey && missing.length > 1) {
+                    e.preventDefault();
+                    const all = e.currentTarget.closest(".ins-step")!.querySelectorAll<HTMLInputElement>(".ins-var .ao-input");
+                    all[(i + (e.shiftKey ? -1 : 1) + all.length) % all.length]?.focus();
                   }
                 }}
               />
@@ -161,7 +170,7 @@ export function InsertDialog(props: InsertDialogProps) {
   const { prompts, variables, onClose } = props;
   const [query, setQuery] = useState("");
   const [at, setAt] = useState(0);
-  const [prompt, setPrompt] = useState<Prompt>();
+  const [prompt, setPrompt] = useState<Prompt | undefined>(props.initialPrompt);
   const search = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (!prompt) search.current?.focus();
@@ -189,14 +198,14 @@ export function InsertDialog(props: InsertDialogProps) {
           if (e.key === "Escape") {
             e.preventDefault();
             e.stopPropagation();
-            if (prompt) setPrompt(undefined);
+            if (prompt && !props.initialPrompt) setPrompt(undefined);
             else onClose();
           }
         }}
       >
         <div className="ao-frame-body">
           {prompt ? (
-            <PromptStep prompt={prompt} props={props} onBack={() => setPrompt(undefined)} />
+            <PromptStep prompt={prompt} props={props} onBack={() => (props.initialPrompt ? onClose() : setPrompt(undefined))} />
           ) : (
             <>
               <input
