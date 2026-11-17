@@ -572,6 +572,12 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   // Text panes' documents as their panes last reported them: titles and unsaved edits (D27).
   const [docs, setDocs] = useState<Record<string, DocView>>({});
   // Each window carries its row's name, so the dock's window list and Exposé tell windows apart.
+  // The Dock menu lists this window's rows as the sidebar names them (add-dock-menu D3).
+  const dockRows = JSON.stringify(shownSides.map((s) => ({ id: s.id, name: sideTabName(s, docs), active: s.id === activeSide?.id })));
+  useEffect(() => {
+    const t = setTimeout(() => void host.setDockRows(JSON.parse(dockRows)).catch(() => {}), 250);
+    return () => clearTimeout(t);
+  }, [host, dockRows]);
   const windowTitle = activeSide ? `${sideTabName(activeSide, docs)} · Terminescu` : "Terminescu";
   useEffect(() => {
     void host.setWindowTitle(windowTitle).catch(() => {});
@@ -1666,6 +1672,13 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
   };
   const revealRef = useRef(revealPane);
   revealRef.current = revealPane;
+  // A Dock menu pick selects the row and gives the keyboard to its pane (add-dock-menu D6).
+  const revealSideRef = useRef((side: string) => {});
+  revealSideRef.current = (side: string) => {
+    if (!sideTabs.some((s) => s.id === side)) return;
+    setSideTabId(side);
+    refocus();
+  };
   const openRef = useRef(openDoc);
   openRef.current = openDoc;
   useEffect(() => {
@@ -1673,6 +1686,7 @@ export function App({ windowId, host, workspace, terminals }: AppProps) {
     let gone = false;
     const keep = (o: () => void) => (gone ? o() : offs.push(o));
     void host.onRevealPane((p) => revealRef.current(p)).then(keep);
+    void host.onRevealSide((s) => revealSideRef.current(s)).then(keep);
     void host.onChime(playChime).then(keep);
     // Files dropped on a terminal go in as its shell reads them (task 8.43); anywhere else,
     // the tab bar first of all, they open in text tabs.

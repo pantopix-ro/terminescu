@@ -1,7 +1,7 @@
 // A Host without Tauri, for unit tests and Playwright runs of the Vite build (task 1.3). It
 // plans commands like crates/core/src/state.rs, with readable ids (m1, m2, ...).
 
-import type { Host, PaneView } from "./host";
+import type { DockRow, Host, PaneView } from "./host";
 import { ACTIONS, actionFor, checkBindings, normalAccel, terminalChordProblem, withBindings, type ActionDef, type KeyBindings } from "./keys";
 import { PromptStore } from "./prompt-store";
 import { dockPlace, hasSplit, holdsWork, isSessionId, leaf, panesOf, removePane, resizeSplit, splitAt, splitPane, terminalsOf } from "./layout";
@@ -90,6 +90,10 @@ export interface MockHost extends Host {
   workspace(): Workspace;
   /** Links the UI asked to open. */
   readonly openedUrls: string[];
+  /** The rows the window last reported for the Dock menu (add-dock-menu). */
+  readonly dockRows: () => DockRow[];
+  /** Picks a row from the Dock menu, as the native menu would. */
+  dockPick(sideTabId: Id): void;
   /** Edit actions the context menu sent, with the focused element's class (task 8.55). */
   readonly editCommands: { action: string; focus: string }[];
   /** Whether Claude Code's settings would hold the hook (add-public-release D5). */
@@ -434,6 +438,8 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
   let bounces = 0;
   const clears: string[] = [];
   const revealListeners = new Set<(pane: Id) => void>();
+  const revealSideListeners = new Set<(side: Id) => void>();
+  let dockRows: DockRow[] = [];
   let savedCommands: SavedCommand[] = [];
   const commandListeners = new Set<() => void>();
   const commandsChanged = () => commandListeners.forEach((l) => l());
@@ -1565,6 +1571,17 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
     async onRevealPane(listener) {
       revealListeners.add(listener);
       return () => revealListeners.delete(listener);
+    },
+    async setDockRows(rows) {
+      dockRows = structuredClone(rows);
+    },
+    dockRows: () => structuredClone(dockRows),
+    dockPick(side) {
+      for (const l of revealSideListeners) l(side);
+    },
+    async onRevealSide(listener) {
+      revealSideListeners.add(listener);
+      return () => revealSideListeners.delete(listener);
     },
     async onChime(listener) {
       chimeListeners.add(listener);

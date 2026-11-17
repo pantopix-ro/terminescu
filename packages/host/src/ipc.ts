@@ -55,6 +55,7 @@ export const LABEL_EVENT = "host://labels";
 export const STATUS_CONFIG_EVENT = "host://status-config";
 /** The core sends these to one window: the one holding the pane, for `⌘⇧A` and the chime. */
 export const REVEAL_EVENT = "host://reveal-pane";
+export const REVEAL_SIDE_EVENT = "host://reveal-side";
 export const CHIME_EVENT = "host://chime";
 /** A document changed outside the editor (D28). */
 export const DOCUMENT_EVENT = "host://document";
@@ -103,6 +104,8 @@ export function createIpcHost(): Host {
     onAgent: (listener) => listen<AgentUpdate>(AGENT_EVENT, (e) => listener(e.payload)),
     jumpWaiting: () => invoke<Id | null>("attention_jump"),
     onRevealPane: (listener) => getCurrentWebviewWindow().listen<Id>(REVEAL_EVENT, (e) => listener(e.payload)),
+    setDockRows: (rows) => invoke("dock_rows", { rows }),
+    onRevealSide: (listener) => getCurrentWebviewWindow().listen<Id>(REVEAL_SIDE_EVENT, (e) => listener(e.payload)),
     onChime: (listener) => getCurrentWebviewWindow().listen(CHIME_EVENT, () => listener()),
     attentionSettings: () => invoke<AttentionSettings>("attention_settings"),
     setAttentionSettings: (settings) => invoke("attention_set", { settings }),

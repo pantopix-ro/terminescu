@@ -20,25 +20,27 @@ NSMenu items with an objc target class (more unsafe code, its own click routing)
 
 **D2. Add `applicationDockMenu:` to the delegate's class at setup.** In `setup`, read
 `NSApp.delegate`, take its class, and `class_addMethod` a `extern "C-unwind"` function that
-returns the current menu's NSMenu pointer, or nil when there is none. `class_addMethod` fails
-cleanly if a later tao adds the method; we log it and the Dock shows macOS's default menu.
+returns the current menu's NSMenu pointer, or nil when there is none. AppKit caches which
+delegate methods exist when the delegate is set, so setup then sets the same delegate again.
+The function reaches the app through an `AppHandle` kept in a `OnceLock` from setup.
+`class_addMethod` fails cleanly if a later tao adds the method; we log it and the Dock shows
+macOS's default menu.
 Rejected: subclassing or swizzling the delegate (fragile against tao updates).
 
 **D3. The UI reports names; the core orders windows.** Row names come from `sideTabName`, which
 uses live terminal names and document titles the core does not hold. Each window calls
 `dock_rows(rows: [{ id, name, active }])` when its rows, names or selection change (debounced
 250 ms). The core keeps `Mutex<HashMap<window label, Vec<Row>>>` in `AppState`, drops a window's
-entry on `WindowEvent::Destroyed`, and orders windows by the workspace snapshot.
+entry on `WindowEvent::Destroyed`, and orders windows by the workspace snapshot, which also leaves out the hidden drag ghost.
 Rejected: naming rows in Rust (would drift from the sidebar).
 
 **D4. Rebuild on demand.** The delegate method runs on the main thread. It builds a fresh
 `muda::Menu` from the stored rows and keeps it in a `thread_local!` so the NSMenu stays alive
-until the next request. Rows number in the tens, so a rebuild costs well under 1 ms.
+until the next request. The windows come from the workspace snapshot, filtered to open webviews. Rows number in the tens, so a rebuild costs well under 1 ms.
 
 **D5. Layout.** Per window: an enabled header `Window 1 · <active row name>`, then its rows as
-items indented one level (`setIndentationLevel` is not exposed by muda, so rows get a leading
-two-space prefix instead), the active row as a `CheckMenuItem` checked. A separator between
-windows. Folder rows show their folder name; their child rows are not listed (rows only).
+items indented one level (`setIndentationLevel` is not exposed by muda, so rows get a four-space prefix instead), the active row as a `CheckMenuItem` checked. A separator between
+windows. A folder row (a side tab holding several tabs) shows its folder name; its tabs are not listed.
 
 **D6. Ids and picking.** Items use ids `dock:w:<window>` and `dock:s:<window>:<side tab>`.
 `send_action` handles the `dock:` prefix before action lookup: unminimize and focus the

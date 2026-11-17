@@ -67,6 +67,13 @@ export interface PaneView {
  * How a window talks to the core (D6). v1 runs it over Tauri IPC; the remote view (D22) will
  * run the same interface over WebSocket.
  */
+/** One sidebar row in the Dock menu. */
+export interface DockRow {
+  id: Id;
+  name: string;
+  active: boolean;
+}
+
 export interface Host {
   snapshot(): Promise<Snapshot>;
   /** Sends a command; resolves with the rev of the batch it produced. */
@@ -94,6 +101,10 @@ export interface Host {
   jumpWaiting(): Promise<Id | null>;
   /** This window must show and focus a pane. Resolves with a function that removes the listener. */
   onRevealPane(listener: (paneId: Id) => void): Promise<() => void>;
+  /** The rows this window's sidebar shows, as it names them, for the Dock menu (add-dock-menu D3). */
+  setDockRows(rows: DockRow[]): Promise<void>;
+  /** The Dock menu picked one of this window's rows: select it (add-dock-menu D6). */
+  onRevealSide(listener: (sideTabId: Id) => void): Promise<() => void>;
   /** This window plays the chime: a session started waiting and the chime is on. */
   onChime(listener: () => void): Promise<() => void>;
   /** Settings › Notifications: notification on, chime off by default. */
