@@ -398,12 +398,16 @@ function CoreSections(props: ContextPanelProps) {
         {prompts.length > 0 && (
           <ul className="ctx-list" aria-label="Prompts">
             {prompts.map((p) => (
-              <li key={p.id} className="ctx-item" data-prompt={p.key}>
+              <li
+                key={p.id}
+                className="ctx-item"
+                data-prompt={p.key}
+                onPointerEnter={(e) => promptTip(e.currentTarget, p)}
+                onPointerLeave={tips.hide}
+              >
                 <button
                   type="button"
                   className="ctx-value link-plain"
-                  onPointerEnter={(e) => promptTip(e.currentTarget, p)}
-                  onPointerLeave={tips.hide}
                   onFocus={(e) => promptTip(e.currentTarget, p)}
                   onBlur={tips.hide}
                   onClick={() => {
