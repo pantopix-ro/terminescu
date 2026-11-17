@@ -318,6 +318,15 @@ test("prompt tooltip blinks at a fixed size", async ({ page }) => {
   await expect(page.getByRole("tooltip").locator(".pt-slot")).toHaveCount(0);
 });
 
+test("the whole prompt row shows the tooltip", async ({ page }) => {
+  await insertSetup(page);
+  const row = page.locator('aside.ctx-pinned .ctx-item[data-prompt="review-plan"]');
+  await row.locator(".ao-dim").hover();
+  await expect(page.getByRole("tooltip")).toBeVisible();
+  await page.mouse.move(600, 600);
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
+});
+
 test("reduced motion shows the values, still", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await insertSetup(page);
