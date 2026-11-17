@@ -76,6 +76,7 @@ test("the todo list shows Claude's plan", async ({ page }) => {
   await host(page, "pluginEmit", "claude", "insights", { pane });
   await expect(panel.locator("h3")).toHaveText("Claude's plan");
   await expect(section.locator(".cl-todo")).toHaveCount(4);
+  await expect(panel.locator(".ctx-count")).toHaveText("4");
   await expect(section.locator(".cl-todo").first()).toHaveAttribute("data-state", "inProgress");
   await expect(section.locator(".cl-todo").first()).toHaveText(/Reading src\/retry\.ts/);
   await page.evaluate(({ pane, a }) => ((window as any).__fakeClaude = { [pane]: { todos: a } }), { pane, a: todos(["completed", "inProgress", "pending", "pending"]) });

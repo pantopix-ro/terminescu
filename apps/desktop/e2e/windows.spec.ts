@@ -339,7 +339,7 @@ test("the context panel slides over the panes without resizing them; ⌘\\ pins 
   await page.waitForTimeout(400);
   expect((await mock(page)).resizes.length, "no pane resize while the panel slides in").toBe(before);
   expect(await page.locator(".app-pane").evaluate((e) => e.getBoundingClientRect().width)).toBe(width);
-  await expect(page.locator(".ctx-over")).toContainText("No variables yet.");
+  await expect(page.locator(".ctx-over").locator('[data-section="Variables"]')).toBeVisible();
 
   await page.mouse.move(400, 400);
   await expect(page.locator(".ctx-over")).toHaveCount(0);

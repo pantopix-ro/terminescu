@@ -137,7 +137,8 @@ test("extract saves the selection as a variable with a suggested name", async ({
   const secret = page.locator('.ctx-var[data-var="PLAN_NOTE"]');
   await expect(secret).toHaveAttribute("data-mode", "secret");
   await expect(secret.locator(".ctx-value")).not.toContainText("Plan");
-  await expect(secret.locator(".ctx-meta")).toHaveText("inserts as $PLAN_NOTE");
+  await secret.locator(".ctx-name").hover();
+  await expect(page.getByRole("tooltip")).toContainText("inserts as $PLAN_NOTE");
 });
 
 test("⌘⇧L in a pane without Claude says so and opens nothing", async ({ page }) => {

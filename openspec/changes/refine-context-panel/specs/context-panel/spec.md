@@ -17,7 +17,7 @@ SHALL still show under its head.
 
 #### Scenario: Plugin count
 - **WHEN** the git section finds 3 changed files
-- **THEN** its head shows the title and 3, and with no changes it shows the head alone
+- **THEN** its head shows the title and 3, and with no changes it shows the title and 0 with nothing under it
 
 ### Requirement: Compact variables
 Each variable SHALL take one line with its name and its value cut to fit. Its actions SHALL

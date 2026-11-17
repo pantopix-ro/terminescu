@@ -69,6 +69,7 @@ test("the Changes section lists the shown tab's changes and reads them again on 
   await expect(section.locator("h3")).toHaveText("Changes");
   const items = section.locator(".git-change");
   await expect(items).toHaveCount(3);
+  await expect(section.locator(".ctx-count")).toHaveText("3");
   const retry = section.locator('.git-change[data-path="src/retry.ts"]');
   await expect(retry.locator(".git-name")).toHaveText("retry.ts");
   await expect(retry.locator(".git-lines")).toHaveText("+12 −3");
@@ -86,7 +87,12 @@ test("the Changes section lists the shown tab's changes and reads them again on 
   await host(page, "pluginEmit", "git", "facts", { pane: "elsewhere" });
   await expect(items).toHaveCount(1);
   await host(page, "pluginEmit", "git", "facts", { pane });
-  await expect(section.locator(".ctx-empty")).toHaveText("No changes.");
+  // No changes: the head with a count of 0 and no sentence.
+  await expect(items).toHaveCount(0);
+  await expect(section.locator(".ctx-sec-head")).toBeVisible();
+  await expect(section.locator(".ctx-count")).toHaveText("0");
+  await expect(section.locator(".ctx-empty")).toHaveCount(0);
+  await expect(section).not.toContainText("No changes");
 });
 
 test("outside a repository the Changes section says so", async ({ page }) => {

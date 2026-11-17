@@ -14,6 +14,7 @@ async function start(page: Page) {
 test("rows and controls in the context panel take the amber line under the mouse (tasks 8.61, 8.65)", async ({ page }) => {
   await start(page);
   const panel = page.locator("aside.ctx-pinned");
+  await panel.getByRole("button", { name: "Add a variable" }).click();
   for (const name of ["Auto-hide context", "Add"]) {
     const b = panel.getByRole("button", { name, exact: true }).first();
     await b.hover();
@@ -33,7 +34,7 @@ test("variables: add in each mode, mask a secret, refuse to unmask it", async ({
   await start(page);
   const panel = page.locator("aside.ctx-pinned");
   const add = async (name: string, value: string, mode: string, ttl?: string) => {
-    await panel.getByRole("button", { name: "+ variable" }).click();
+    await panel.getByRole("button", { name: "Add a variable" }).click();
     const form = panel.getByRole("form", { name: "Add a variable" });
     await form.getByLabel("Name").fill(name);
     await form.getByLabel("Storage").selectOption(mode);
@@ -49,9 +50,7 @@ test("variables: add in each mode, mask a secret, refuse to unmask it", async ({
   const row = (name: string) => panel.locator(`.ctx-var[data-var="${name}"]`);
   await expect(row("ticket").locator(".ctx-value")).toHaveText("PROJ-482");
   await expect(row("from_date")).toHaveAttribute("data-mode", "session");
-  await expect(row("from_date").locator(".ctx-meta")).toContainText(/gone on reboot · (59m|1h) left/);
   await expect(row("API_TOKEN").locator(".ctx-value")).not.toContainText("tok-example");
-  await expect(row("API_TOKEN").locator(".ctx-meta")).toHaveText("inserts as $API_TOKEN");
   await expect(page.locator("body")).not.toContainText("tok-example");
 
   // A saved value turns secret; a secret offers no other mode.
@@ -61,7 +60,8 @@ test("variables: add in each mode, mask a secret, refuse to unmask it", async ({
   await expect(row("ticket").locator('option[value="saved"]')).toBeDisabled();
 
   // Edit a value in place.
-  await row("from_date").locator(".ctx-value").click();
+  // The acts lie over the right end of the row, so click the value at its left edge.
+  await row("from_date").locator(".ctx-value").click({ position: { x: 4, y: 4 } });
   await row("from_date").getByLabel("Value of from_date").fill("2026-11-01");
   await row("from_date").getByLabel("Value of from_date").press("Enter");
   await expect(row("from_date").locator(".ctx-value")).toHaveText("2026-11-01");
@@ -72,13 +72,18 @@ test("variables: add in each mode, mask a secret, refuse to unmask it", async ({
 
 test("links are kept once; text is kept as typed", async ({ page }) => {
   await start(page);
+  const panel = page.locator("aside.ctx-pinned");
+  await panel.getByRole("button", { name: "Add a link or text" }).click();
   const form = page.getByRole("form", { name: "Add a link or text" });
   const field = form.getByLabel("Link or text");
   for (const v of ["https://github.com/acme/api/pull/918", "https://github.com/acme/api/pull/918", "api, web"]) {
     await field.fill(v);
     await field.press("Enter");
+    // The box closes on submit; the head opens it again.
+    await expect(form).toHaveCount(0);
+    await panel.getByRole("button", { name: "Add a link or text" }).click();
   }
-  const items = page.locator('.ctx-section[data-section="Context"] .ctx-item');
+  const items = page.locator('.ctx-section[data-section="Links and text"] .ctx-item');
   await expect(items).toHaveCount(2);
   await expect(items.nth(0)).toHaveClass(/link/);
   await expect(items.nth(1)).toHaveText(/api, web/);
@@ -124,7 +129,7 @@ test("inserting a secret types only $NAME, and a Claude pane says where the valu
   await start(page);
   const pane = await page.evaluate(() => document.querySelector<HTMLElement>(".term-pane")!.dataset.pane!);
   const panel = page.locator("aside.ctx-pinned");
-  await panel.getByRole("button", { name: "+ variable" }).click();
+  await panel.getByRole("button", { name: "Add a variable" }).click();
   const form = panel.getByRole("form", { name: "Add a variable" });
   await form.getByLabel("Name").fill("API_TOKEN");
   await form.getByLabel("Storage").selectOption("secret");
@@ -148,7 +153,77 @@ test("inserting a secret types only $NAME, and a Claude pane says where the valu
 });
 
 // Task 8.27: the three sections stack in one scrolling panel.
-test("Context, Pins and Prompts stack one under the other and the panel scrolls", async ({ page }) => {
+test("empty side tab shows five heads and no sentence", async ({ page }) => {
+  await start(page);
+  const panel = page.locator("aside.ctx-pinned");
+  const heads = panel.locator(".ctx-sec-head").filter({ visible: true });
+  await expect(heads.locator("h3")).toHaveText(["Variables", "Links and text", "Files", "Pins", "Prompts"]);
+  for (const s of ["Variables", "Links and text", "Files", "Pins"]) {
+    await expect(panel.locator(`[data-section="${s}"] .ctx-count`)).toHaveText("0");
+    await expect(panel.locator(`[data-section="${s}"]`)).not.toContainText(/yet|show up/);
+  }
+  await expect(panel.locator('[data-section="Prompts"] .ctx-count')).toHaveText("2");
+  // A + only where the section has an add action.
+  for (const [s, plus] of [["Variables", 1], ["Links and text", 1], ["Files", 0], ["Pins", 0], ["Prompts", 1]] as const)
+    await expect(panel.locator(`[data-section="${s}"] .ctx-add-btn`)).toHaveCount(plus);
+  await expect(panel.locator('[data-section="Context"]')).toHaveCount(0);
+});
+
+test("add a link from the head", async ({ page }) => {
+  await start(page);
+  const panel = page.locator("aside.ctx-pinned");
+  await expect(panel.getByRole("form", { name: "Add a link or text" })).toHaveCount(0);
+  await panel.getByRole("button", { name: "Add a link or text" }).click();
+  const field = panel.getByRole("textbox", { name: "Link or text" });
+  await field.fill("https://example.test/a");
+  await field.press("Enter");
+  await expect(panel.getByRole("form", { name: "Add a link or text" })).toHaveCount(0);
+  await expect(panel.locator('[data-section="Links and text"] .ctx-count')).toHaveText("1");
+  // Escape closes it without adding.
+  await panel.getByRole("button", { name: "Add a link or text" }).click();
+  await panel.getByRole("textbox", { name: "Link or text" }).press("Escape");
+  await expect(panel.getByRole("form", { name: "Add a link or text" })).toHaveCount(0);
+});
+
+async function addVar(page: Page, name: string, value: string, mode: string, ttl?: string) {
+  const panel = page.locator("aside.ctx-pinned");
+  await panel.getByRole("button", { name: "Add a variable" }).click();
+  const form = panel.getByRole("form", { name: "Add a variable" });
+  await form.getByLabel("Name").fill(name);
+  await form.getByLabel("Storage").selectOption(mode);
+  await form.getByLabel("Value").fill(value);
+  if (ttl) await form.getByLabel("TTL").fill(ttl);
+  await form.getByRole("button", { name: "Add" }).click();
+  await expect(form).toHaveCount(0);
+}
+
+test("variable details on hover", async ({ page }) => {
+  await start(page);
+  await addVar(page, "from_date", "2026-11-01", "session", "1h");
+  const row = page.locator('aside.ctx-pinned .ctx-var[data-var="from_date"]');
+  expect((await row.boundingBox())!.height).toBeLessThan(34);
+  await row.locator(".ctx-name").hover();
+  const tip = page.getByRole("tooltip");
+  await expect(tip).toContainText("2026-11-01");
+  await expect(tip).toContainText(/gone on reboot · (59m|1h) left/);
+  await expect(tip).toContainText("from typed");
+  expect((await row.boundingBox())!.height).toBeLessThan(34);
+  await page.mouse.move(600, 600);
+  await expect(tip).toHaveCount(0);
+});
+
+test("secret stays hidden", async ({ page }) => {
+  await start(page);
+  await addVar(page, "API_TOKEN", "tok-example", "secret");
+  const row = page.locator('aside.ctx-pinned .ctx-var[data-var="API_TOKEN"]');
+  await row.locator(".ctx-name").hover();
+  const tip = page.getByRole("tooltip");
+  await expect(tip).toContainText("inserts as $API_TOKEN");
+  await expect(tip).not.toContainText("tok-example");
+  await expect(page.locator("body")).not.toContainText("tok-example");
+});
+
+test("Variables to Prompts stack one under the other and the panel scrolls", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 420 });
   await page.goto("/");
   await expect(page.locator(".term-pane")).toHaveCount(1);
@@ -157,16 +232,15 @@ test("Context, Pins and Prompts stack one under the other and the panel scrolls"
   const heads = panel.locator(".ctx-sec-head");
   // The Claude plugin's sections follow the app's own (add-claude-insights 2.2, 3.2), hidden
   // while the tab has no Claude session (polish-claude-insights D2).
-  await expect(heads).toHaveText(["Context", "Pins", "Prompts", "Claude's plan", "What Claude changed"]);
-  await expect(heads.filter({ visible: true })).toHaveText(["Context", "Pins", "Prompts"]);
+  await expect(heads.locator("h3")).toHaveText(["Variables", "Links and text", "Files", "Pins", "Prompts", "Claude's plan", "What Claude changed"]);
+  await expect(heads.filter({ visible: true }).locator("h3")).toHaveText(["Variables", "Links and text", "Files", "Pins", "Prompts"]);
   await expect(panel.getByRole("tab")).toHaveCount(0);
   const tops = await panel.locator(".ctx-section").evaluateAll((els) => els.map((e) => e.getBoundingClientRect().top));
-  expect(tops[0]!).toBeLessThan(tops[1]!);
-  expect(tops[1]!).toBeLessThan(tops[2]!);
+  for (let i = 1; i < 5; i++) expect(tops[i - 1]!).toBeLessThan(tops[i]!);
 
   const scroll = panel.locator(".ctx-scroll");
   for (let i = 0; i < 6; i++) {
-    await panel.getByRole("button", { name: "+ variable" }).click();
+    await panel.getByRole("button", { name: "Add a variable" }).click();
     const form = panel.getByRole("form", { name: "Add a variable" });
     await form.getByLabel("Name").fill(`v${i}`);
     await form.getByLabel("Value").fill("example");
@@ -184,7 +258,7 @@ test("a removed variable comes back with Undo, and goes once the toast does", as
   await start(page);
   const panel = page.locator("aside.ctx-pinned");
   for (const [name, mode] of [["ticket", "saved"], ["API_TOKEN", "secret"]] as const) {
-    await panel.getByRole("button", { name: "+ variable" }).click();
+    await panel.getByRole("button", { name: "Add a variable" }).click();
     const form = panel.getByRole("form", { name: "Add a variable" });
     await form.getByLabel("Name").fill(name);
     await form.getByLabel("Storage").selectOption(mode);
@@ -240,7 +314,7 @@ test("a removed pin waits on its toast, and a second removal deletes the first",
   // Removing the pin, then a variable: the pin's toast gives way and the pin is deleted.
   await page.locator(".ctx-pin").getByLabel("Remove pin").click();
   const panel = page.locator("aside.ctx-pinned");
-  await panel.getByRole("button", { name: "+ variable" }).click();
+  await panel.getByRole("button", { name: "Add a variable" }).click();
   const form = panel.getByRole("form", { name: "Add a variable" });
   await form.getByLabel("Name").fill("ticket");
   await form.getByLabel("Value").fill("example");
