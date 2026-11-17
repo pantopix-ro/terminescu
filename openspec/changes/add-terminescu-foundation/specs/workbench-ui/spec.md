@@ -95,15 +95,15 @@ has waited longest.
   after 4m 0s
 
 ### Requirement: Collapsible context panel
-`⌘\` SHALL cycle the context panel between pinned and auto-hide. When auto-hidden, hovering a
-6px edge at the right of the window for 150 ms SHALL slide the panel in as an overlay over the
-panes without resizing them, and it SHALL slide out when the pointer leaves. The panel SHALL
-show its Context, Pins and Prompts sections one under the other, with no section switcher, and
+`⌘\` SHALL cycle the context panel between pinned and auto-hide. When auto-hidden, hovering the
+right edge for 150 ms SHALL slide it in over the panes without resizing them, and it SHALL slide
+out when the pointer leaves. The panel SHALL
+show its Variables, Links and text, Files, Pins and Prompts sections one under the other, with no section switcher, and
 its body SHALL scroll on its own under a fixed header.
 
 #### Scenario: All sections at once
 - **WHEN** the panel is pinned and holds more variables than its height fits
-- **THEN** Context, Pins and Prompts show stacked in that order, and the panel body scrolls down to Prompts while the header stays
+- **THEN** Variables, Links and text, Files, Pins and Prompts show stacked in that order, and the panel body scrolls down to Prompts while the header stays
 
 #### Scenario: Peek at the context
 - **WHEN** the panel is auto-hidden and the pointer rests on the right edge

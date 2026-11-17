@@ -79,7 +79,8 @@ test("a new prompt shows in the context panel and opens the library at it", asyn
   await page.keyboard.press("Meta+Backslash");
   const row = page.locator('aside.ctx-pinned .ctx-item[data-prompt="audit-export"]');
   await expect(row).toContainText("{{pr_api}}");
-  await row.getByRole("button", { name: "Audit export" }).click();
+  // A right click edits; a left click inserts (refine-context-panel D6).
+  await row.getByRole("button", { name: "Audit export" }).click({ button: "right" });
   await expect(page.locator('.pl-item.sel[data-prompt="audit-export"]')).toBeVisible();
 });
 
@@ -92,7 +93,7 @@ async function insertSetup(page: Page) {
   await page.keyboard.press("Meta+Backslash");
   const panel = page.locator("aside.ctx-pinned");
   const add = async (name: string, value: string, mode: string) => {
-    await panel.getByRole("button", { name: "+ variable" }).click();
+    await panel.getByRole("button", { name: "Add a variable" }).click();
     const form = panel.getByRole("form", { name: "Add a variable" });
     await form.getByLabel("Name").fill(name);
     await form.getByLabel("Storage").selectOption(mode);
@@ -166,7 +167,7 @@ test("saving a sent message that holds the branch value offers {{branch}}", asyn
   const pane = (await page.locator(".app-pane .ao-tp").first().getAttribute("data-pane"))!;
   await page.keyboard.press("Meta+Backslash");
   const panel = page.locator("aside.ctx-pinned");
-  await panel.getByRole("button", { name: "+ variable" }).click();
+  await panel.getByRole("button", { name: "Add a variable" }).click();
   const form = panel.getByRole("form", { name: "Add a variable" });
   await form.getByLabel("Name").fill("branch");
   await form.getByLabel("Value").fill("feature/audit-export");
@@ -223,4 +224,106 @@ test("the empty space under the last prompt shows a + that opens a new prompt", 
   await expect(add).toHaveCSS("opacity", "1");
   await add.click();
   await expect(lib.getByRole("form", { name: "New prompt" })).toBeVisible();
+});
+
+// refine-context-panel: a click in the panel inserts, a right click edits (D6, D7, D8).
+const promptRow = (page: Page, key: string) => page.locator(`aside.ctx-pinned .ctx-item[data-prompt="${key}"] .ctx-value`);
+
+test("click inserts a filled prompt", async ({ page }) => {
+  const { inputs } = await insertSetup(page);
+  const before = await inputs();
+  await promptRow(page, "review-plan").click();
+  await expect.poll(async () => (await inputs()).slice(before.length)).toMatch(/^\x1b\[200~Review the plan for PROJ-482\..*\n\x1b\[201~$/s);
+  expect((await inputs()).slice(before.length)).not.toContain("\r");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+test("click opens fill-in when a value is missing, and Escape closes it", async ({ page }) => {
+  const { inputs } = await insertSetup(page);
+  const before = await inputs();
+  await promptRow(page, "open-prs").click();
+  const dialog = page.getByRole("dialog", { name: "Insert" });
+  await expect(dialog.getByLabel("Value for branch")).toBeFocused();
+  await expect(dialog.getByLabel("Search prompts and variables")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  // The dialog closes; it does not go back to the list of prompts.
+  await expect(dialog).toHaveCount(0);
+  expect(await inputs()).toBe(before);
+  await promptRow(page, "open-prs").click();
+  await dialog.getByRole("button", { name: "‹ all" }).click();
+  await expect(dialog).toHaveCount(0);
+});
+
+test("right click edits", async ({ page }) => {
+  await insertSetup(page);
+  await promptRow(page, "review-plan").click({ button: "right" });
+  await expect(page.locator('.pl-item.sel[data-prompt="review-plan"]')).toBeVisible();
+  await expect(page.locator(".ctx-menu")).toHaveCount(0);
+});
+
+test("plus opens a new prompt", async ({ page }) => {
+  await insertSetup(page);
+  await page.locator("aside.ctx-pinned").getByRole("button", { name: "New prompt" }).click();
+  const lib = page.getByRole("dialog", { name: "Prompt library" });
+  await expect(lib.getByRole("form", { name: "New prompt" })).toBeVisible();
+});
+
+async function twoValues(page: Page) {
+  const set = await insertSetup(page);
+  await page.evaluate(() => (window as any).__terminescu.host.createPrompt({ name: "Pair", tags: [], body: "{{alpha}} and {{beta}}\n" }));
+  await promptRow(page, "pair").click();
+  return { ...set, dialog: page.getByRole("dialog", { name: "Insert" }) };
+}
+
+test("Enter inserts with a value left empty", async ({ page }) => {
+  const { dialog, inputs } = await twoValues(page);
+  const before = await inputs();
+  await dialog.getByLabel("Value for alpha").fill("PROJ-482");
+  await dialog.getByLabel("Value for alpha").press("Enter");
+  await expect(dialog).toHaveCount(0);
+  await expect.poll(async () => (await inputs()).slice(before.length)).toBe("\x1b[200~PROJ-482 and {{beta}}\n\x1b[201~");
+});
+
+test("Tab wraps between values", async ({ page }) => {
+  const { dialog } = await twoValues(page);
+  await expect(dialog.getByLabel("Value for alpha")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(dialog.getByLabel("Value for beta")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(dialog.getByLabel("Value for alpha")).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(dialog.getByLabel("Value for beta")).toBeFocused();
+});
+
+test("prompt tooltip blinks at a fixed size", async ({ page }) => {
+  await insertSetup(page);
+  await promptRow(page, "review-plan").hover();
+  const tip = page.getByRole("tooltip");
+  const slot = tip.locator(".pt-slot");
+  await expect(slot).toHaveCount(1);
+  const seen = new Set<string>();
+  const boxes = new Set<string>();
+  for (let i = 0; i < 9; i++) {
+    seen.add((await slot.textContent()) ?? "");
+    const b = (await tip.boundingBox())!;
+    boxes.add(`${Math.round(b.width)}x${Math.round(b.height)}`);
+    await page.waitForTimeout(300);
+  }
+  expect([...seen].sort()).toEqual(["PROJ-482", "{{ticket}}"]);
+  expect(boxes.size).toBe(1);
+  // A missing value never blinks.
+  await page.mouse.move(600, 600);
+  await promptRow(page, "open-prs").hover();
+  await expect(page.getByRole("tooltip")).toContainText("{{branch}}");
+  await expect(page.getByRole("tooltip").locator(".pt-slot")).toHaveCount(0);
+});
+
+test("reduced motion shows the values, still", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await insertSetup(page);
+  await promptRow(page, "review-plan").hover();
+  const slot = page.getByRole("tooltip").locator(".pt-slot");
+  await expect(slot).toHaveText("PROJ-482");
+  await page.waitForTimeout(2300);
+  await expect(slot).toHaveText("PROJ-482");
 });

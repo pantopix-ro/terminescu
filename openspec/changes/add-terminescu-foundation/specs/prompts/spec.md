@@ -29,14 +29,18 @@ SHALL be edited in the same text editor as text tabs, and saving SHALL create a 
 - **THEN** the prompt gets version 5 and version 4 stays restorable
 
 ### Requirement: Insert with variables
-`⌘I` SHALL open a palette of prompts and context variables. Inserting a prompt SHALL resolve
-`{{name}}` from the side tab's context and `{{pins}}` from its pins, SHALL ask inline for
-missing variables, SHALL allow editing before insert, and SHALL write the text to the focused
-pane as a bracketed paste without Enter unless the person picks "insert and send".
+`⌘I` SHALL open a palette of prompts and context variables. A prompt SHALL resolve `{{name}}`
+and `{{pins}}` from the side tab's context, ask inline for missing variables, allow editing, and
+go to the focused pane as a bracketed paste without Enter unless the person picks "insert and send". Enter in
+the fill-in step SHALL insert, and Tab SHALL move between its value fields only.
 
 #### Scenario: Missing variable
 - **WHEN** the person inserts `review-plan`, which uses `{{ticket}}`, in a side tab without `ticket`
 - **THEN** the dialog asks for `ticket`, and the value can be saved to the context
+
+#### Scenario: Enter with an empty value
+- **WHEN** the dialog asks for `ticket` and `branch`, the person types a value for `ticket` and presses Enter
+- **THEN** the text goes in with `{{branch}}` unchanged and the dialog closes
 
 #### Scenario: Nothing sent by itself
 - **WHEN** a prompt is inserted into a Claude pane with plain Insert

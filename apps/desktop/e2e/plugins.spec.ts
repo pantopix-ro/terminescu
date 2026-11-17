@@ -153,7 +153,9 @@ test("the row selection reaches plugins and a plugin variable shows read-only", 
   await page.keyboard.press("Meta+Backslash");
   const row = page.locator('aside.ctx-pinned .ctx-var[data-var="branch"]');
   await expect(row).toHaveAttribute("data-provided", "");
-  await expect(row.locator(".ctx-meta")).toHaveText("from fake · read-only");
+  await row.locator(".ctx-name").hover();
+  await expect(page.getByRole("tooltip")).toContainText("from fake · read-only");
+  await page.mouse.move(600, 600);
   await expect(row.getByRole("button", { name: "Remove branch" })).toHaveCount(0);
   await expect(row.getByLabel("Storage of branch")).toHaveCount(0);
   await host(page, "setPluginEnabled", "fake", false);
