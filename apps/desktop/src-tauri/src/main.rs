@@ -571,9 +571,6 @@ fn settings_set(
     let saved = settings::set(&lock(&state.db), settings).map_err(|e| e.to_string())?;
     state.runtime.set_editor(saved.editor);
     state.runtime.set_scrollback(saved.terminal_scrollback);
-    for w in app.webview_windows().values() {
-        let _ = w.set_zoom(zoom_of(&saved));
-    }
     let _ = app.emit(SETTINGS_EVENT, ());
     Ok(saved)
 }
@@ -1718,13 +1715,14 @@ fn serve_core_socket(
     )
 }
 
-/// Opens the native window of a workspace window. `at` is a drop point in screen pixels with
-/// that screen's scale: the window opens hidden, moves under it so the cursor lands near its
-/// tab bar, then shows. Physical pixels keep screens left of or above the main one right.
-/// The webview zoom for the saved percent (task 8.8): native page zoom, so xterm.js sees a new
-/// pixel ratio and refits like any resize.
-fn zoom_of(s: &settings::Settings) -> f64 {
-    f64::from(s.zoom_percent) / 100.0
+/// Sets the webview zoom of the calling window (tasks 8.8, 4.2): native page zoom, so xterm.js
+/// sees a new pixel ratio and refits like any resize. The window's own page works out the
+/// percent (its saved zoom, else the Settings default) and calls this on load and on change.
+#[tauri::command]
+fn window_zoom_apply(window: tauri::WebviewWindow, percent: u16) -> Result<(), String> {
+    window
+        .set_zoom(f64::from(percent.clamp(50, 200)) / 100.0)
+        .map_err(|e| e.to_string())
 }
 
 /// A new window's size in points.
@@ -1876,6 +1874,9 @@ fn frame_moved(app: &AppHandle, label: &str) {
     });
 }
 
+/// Opens the native window of a workspace window. `at` is a drop point in screen pixels with
+/// that screen's scale: the window opens hidden, moves under it so the cursor lands near its
+/// tab bar, then shows. Physical pixels keep screens left of or above the main one right.
 fn open_window(app: &AppHandle, window_id: &str, at: Option<(f64, f64, f64)>) -> tauri::Result<()> {
     let builder = WebviewWindowBuilder::new(app, window_id, WebviewUrl::App("index.html".into()))
         .title("Terminescu")
@@ -1906,11 +1907,6 @@ fn open_window(app: &AppHandle, window_id: &str, at: Option<(f64, f64, f64)>) ->
         // Terminal opacity (task 8.47): the page paints its own background, opaque at 100%.
         .transparent(true);
     let w = builder.build()?;
-    // The caller holds no db lock: the window opens from the patch emitter and from setup.
-    let saved = settings::get(&lock(&app.state::<AppState>().db)).unwrap_or_default();
-    if saved.zoom_percent != 100 {
-        w.set_zoom(zoom_of(&saved))?;
-    }
     if let Some((x, y, scale)) = at {
         w.set_position(tauri::PhysicalPosition::new(
             x - 120.0 * scale,
@@ -2233,6 +2229,7 @@ fn main() {
             commands_list,
             commands_all,
             settings_get,
+            window_zoom_apply,
             settings_set,
             keys_get,
             keys_set,

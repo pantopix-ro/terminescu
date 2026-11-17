@@ -23,6 +23,7 @@ import {
   COMMAND_SECS,
   TAB_FONT_SIZES,
   VAR_MODES,
+  ZOOM_STEPS,
   type ActionDef,
   type AppSettings,
   type TerminalKeys,
@@ -467,7 +468,18 @@ function TerminalSettings({ host, onError }: SettingsSheetProps) {
       <div className="srow">
         <span>Size</span>
         <NumberField label="Font size" value={settings.terminalFontSize} range={FONT_SIZES} onSave={(v) => save({ terminalFontSize: v })} />
-        <span className="small ao-dim grow">px, {FONT_SIZES[0]} to {FONT_SIZES[1]}{zoomIn && zoomOut ? `; ${zoomIn} and ${zoomOut} zoom everything on top` : ""}</span>
+        <span className="small ao-dim grow">px, {FONT_SIZES[0]} to {FONT_SIZES[1]}{zoomIn && zoomOut ? `; ${zoomIn} and ${zoomOut} zoom the focused pane, row or window on top` : ""}</span>
+      </div>
+      <div className="srow">
+        <span>Default zoom</span>
+        <select className="ao-input" aria-label="Default zoom" value={settings.zoomPercent} onChange={(e) => save({ zoomPercent: Number(e.target.value) })}>
+          {ZOOM_STEPS.map((z) => (
+            <option key={z} value={z}>
+              {z}%
+            </option>
+          ))}
+        </select>
+        <span className="small ao-dim grow">for every window that has no zoom of its own, new windows included</span>
       </div>
       <div className="srow">
         <span>Line height</span>

@@ -182,7 +182,7 @@ export function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNewText, ag
   const downChord = useChord("split_down");
   const tips = useTip();
   return (
-    <div className="ao-tabs" role="tablist" data-tauri-drag-region>
+    <div className="ao-tabs" role="tablist" tabIndex={-1} data-tauri-drag-region>
       {folder && (
         <span
           className="ao-tabs-folder"
