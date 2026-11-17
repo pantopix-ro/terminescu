@@ -92,6 +92,7 @@ fn side_tab(db: &Db) -> String {
     let workspace = Workspace {
         windows: vec![Window {
             id: "w1".into(),
+            zoom_percent: None,
             side_tabs: vec![SideTab {
                 folder: false,
                 accent: None,

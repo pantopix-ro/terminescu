@@ -57,6 +57,7 @@ fn db_at(path: &std::path::Path) -> Db {
     let workspace = Workspace {
         windows: vec![Window {
             id: "w1".into(),
+            zoom_percent: None,
             side_tabs: vec![SideTab {
                 folder: false,
                 accent: None,

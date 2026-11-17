@@ -43,6 +43,7 @@ fn db() -> Db {
     let workspace = Workspace {
         windows: vec![Window {
             id: "w1".into(),
+            zoom_percent: None,
             side_tabs: vec![side("s1", "t1", "p1"), side("s2", "t2", "p2")],
         }],
     };

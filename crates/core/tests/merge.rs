@@ -40,6 +40,7 @@ fn workspace(sides: Vec<SideTab>) -> Workspace {
     Workspace {
         windows: vec![Window {
             id: "w1".into(),
+            zoom_percent: None,
             side_tabs: sides,
         }],
     }

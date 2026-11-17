@@ -191,6 +191,9 @@ pub struct Workspace {
 pub struct Window {
     pub id: Id,
     pub side_tabs: Vec<SideTab>,
+    /// This window's own UI zoom in percent; absent follows Settings' default zoom (D6).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zoom_percent: Option<u16>,
 }
 
 /// A sidebar row. It holds one or more tabs and owns a context (D3, D4).
@@ -385,6 +388,17 @@ pub enum Command {
         pane_id: Id,
         index: usize,
     },
+    /// Sets the text zoom of several panes at once (D4): percent, snapped to a zoom step;
+    /// `None` or 100 goes back to the default.
+    SetPaneZoom {
+        pane_ids: Vec<Id>,
+        zoom: Option<u16>,
+    },
+    /// Sets a window's own UI zoom (D6); `None` follows the Settings default.
+    SetWindowZoom {
+        window_id: Id,
+        zoom: Option<u16>,
+    },
     /// A read-only transcript of `session` beside `pane_id`, on the right (task 4.4).
     OpenTranscript {
         pane_id: Id,
@@ -480,6 +494,11 @@ pub enum Patch {
     LayoutChanged {
         tab_id: Id,
         layout: Layout,
+    },
+    /// A window's own zoom; `None` follows the Settings default.
+    WindowZoomSet {
+        window_id: Id,
+        zoom: Option<u16>,
     },
     /// A tab's or side tab's manual status (`id` names either).
     StatusSet {
@@ -635,6 +654,18 @@ impl Workspace {
     }
 }
 
+/// A zoom in percent snapped to the nearest step of [`crate::settings::ZOOM_STEPS`]. A pane's
+/// 100 is the default and comes back as `None`; a window's 100 stays, since its default is
+/// the Settings zoom, which may not be 100.
+fn snap_zoom(zoom: Option<u16>, keep_100: bool) -> Option<u16> {
+    let z = zoom?;
+    let near = *crate::settings::ZOOM_STEPS
+        .iter()
+        .min_by_key(|s| s.abs_diff(z))
+        .expect("steps are not empty");
+    (keep_100 || near != 100).then_some(near)
+}
+
 /// Applies one patch. Patches come from the core, which checked them; a patch that does not
 /// fit means the copy is out of date, and the caller resyncs from a snapshot.
 pub fn apply(ws: &mut Workspace, patch: &Patch) -> Result<(), CommandError> {
@@ -646,6 +677,7 @@ pub fn apply(ws: &mut Workspace, patch: &Patch) -> Result<(), CommandError> {
             ws.windows.push(Window {
                 id: window_id.clone(),
                 side_tabs: vec![],
+                zoom_percent: None,
             });
         }
         Patch::WindowClosed { window_id } => {
@@ -750,6 +782,13 @@ pub fn apply(ws: &mut Workspace, patch: &Patch) -> Result<(), CommandError> {
                     .accent = Some(accent.clone());
             }
         }
+        Patch::WindowZoomSet { window_id, zoom } => {
+            ws.windows
+                .iter_mut()
+                .find(|w| &w.id == window_id)
+                .ok_or_else(|| CommandError::UnknownWindow(window_id.clone()))?
+                .zoom_percent = *zoom;
+        }
         Patch::LayoutChanged { tab_id, layout } => {
             let tab = ws
                 .tab_mut(tab_id)
@@ -804,6 +843,7 @@ impl Core {
         self.ws.windows.push(Window {
             id: window_id.clone(),
             side_tabs: vec![side_tab],
+            zoom_percent: None,
         });
         (window_id, panes)
     }
@@ -1526,6 +1566,46 @@ impl Core {
                     },
                 ]
             }
+            Command::SetPaneZoom { pane_ids, zoom } => {
+                let zoom = snap_zoom(zoom, false);
+                let mut out = Vec::new();
+                for tab in ws
+                    .windows
+                    .iter()
+                    .flat_map(|w| &w.side_tabs)
+                    .flat_map(|s| &s.tabs)
+                {
+                    let mine: Vec<Id> = pane_ids
+                        .iter()
+                        .filter(|p| tab.layout.has_pane(p))
+                        .cloned()
+                        .collect();
+                    if mine.is_empty() {
+                        continue;
+                    }
+                    let layout = tab.layout.with_zoom(&mine, zoom);
+                    if layout != tab.layout {
+                        out.push(Patch::LayoutChanged {
+                            tab_id: tab.id.clone(),
+                            layout,
+                        });
+                    }
+                }
+                if let Some(p) = pane_ids.iter().find(|p| ws.locate_pane(p).is_none()) {
+                    return Err(CommandError::UnknownPane(p.clone()));
+                }
+                out
+            }
+            Command::SetWindowZoom { window_id, zoom } => {
+                ws.windows
+                    .iter()
+                    .find(|w| w.id == window_id)
+                    .ok_or(CommandError::UnknownWindow(window_id.clone()))?;
+                vec![Patch::WindowZoomSet {
+                    window_id,
+                    zoom: snap_zoom(zoom, true),
+                }]
+            }
             Command::OpenText {
                 side_tab_id,
                 doc_id,
@@ -1745,6 +1825,7 @@ mod tests {
         let mut copy = Workspace::default();
         copy.windows.push(Window {
             id: "id1".into(),
+            zoom_percent: None,
             side_tabs: vec![],
         });
         assert!(
@@ -2661,6 +2742,7 @@ mod tests {
             resume: Some("sess-1".into()),
             transcript: None,
             doc: None,
+            zoom: None,
         };
         c.restore(ws);
         c.handle(Command::DismissResume {
@@ -2979,6 +3061,109 @@ mod dock_tests {
                 index: 0
             }),
             Err(CommandError::UnknownPane("nope".into()))
+        );
+    }
+
+    #[test]
+    fn set_pane_zoom_clamps_and_persists() {
+        let (mut c, _side, a, pa, _b, pb) = two_tabs();
+        c.handle(Command::SetPaneZoom {
+            pane_ids: vec![pa.clone(), pb.clone()],
+            zoom: Some(124),
+        })
+        .unwrap();
+        assert_eq!(
+            c.workspace().tab(&a).unwrap().layout.zoom_of(&pa),
+            Some(125)
+        );
+        assert_eq!(
+            c.workspace()
+                .locate_pane(&pb)
+                .unwrap()
+                .1
+                .layout
+                .zoom_of(&pb),
+            Some(125)
+        );
+        c.handle(Command::SetPaneZoom {
+            pane_ids: vec![pa.clone()],
+            zoom: Some(900),
+        })
+        .unwrap();
+        assert_eq!(
+            c.workspace().tab(&a).unwrap().layout.zoom_of(&pa),
+            Some(200)
+        );
+        c.handle(Command::SetPaneZoom {
+            pane_ids: vec![pa.clone()],
+            zoom: Some(100),
+        })
+        .unwrap();
+        assert_eq!(c.workspace().tab(&a).unwrap().layout.zoom_of(&pa), None);
+        assert_eq!(
+            c.handle(Command::SetPaneZoom {
+                pane_ids: vec!["nope".into()],
+                zoom: Some(110)
+            }),
+            Err(CommandError::UnknownPane("nope".into()))
+        );
+        // The saved layout keeps the zoom.
+        let json =
+            serde_json::to_string(&c.workspace().locate_pane(&pb).unwrap().1.layout).unwrap();
+        assert!(json.contains("\"zoom\":125"));
+    }
+
+    #[test]
+    fn pane_zoom_follows_pane_to_tab() {
+        let (mut c, side, a, pa, _b, _) = two_tabs();
+        c.handle(Command::SplitPane {
+            pane_id: pa.clone(),
+            dir: Dir::Column,
+        })
+        .unwrap();
+        let pa2 = c.workspace().tab(&a).unwrap().layout.panes()[1].clone();
+        c.handle(Command::SetPaneZoom {
+            pane_ids: vec![pa2.clone()],
+            zoom: Some(150),
+        })
+        .unwrap();
+        c.handle(Command::PaneToTab {
+            pane_id: pa2.clone(),
+            index: 1,
+        })
+        .unwrap();
+        let s = c.workspace().side_tab(&side).unwrap();
+        assert_eq!(s.tabs[1].layout.zoom_of(&pa2), Some(150));
+    }
+
+    #[test]
+    fn window_zoom_persists_per_window() {
+        let mut c = core();
+        let w = c.workspace().windows[0].id.clone();
+        c.handle(Command::SetWindowZoom {
+            window_id: w.clone(),
+            zoom: Some(126),
+        })
+        .unwrap();
+        assert_eq!(c.workspace().windows[0].zoom_percent, Some(125));
+        c.handle(Command::SetWindowZoom {
+            window_id: w.clone(),
+            zoom: Some(100),
+        })
+        .unwrap();
+        assert_eq!(c.workspace().windows[0].zoom_percent, Some(100));
+        c.handle(Command::SetWindowZoom {
+            window_id: w.clone(),
+            zoom: None,
+        })
+        .unwrap();
+        assert_eq!(c.workspace().windows[0].zoom_percent, None);
+        assert_eq!(
+            c.handle(Command::SetWindowZoom {
+                window_id: "nope".into(),
+                zoom: Some(110)
+            }),
+            Err(CommandError::UnknownWindow("nope".into()))
         );
     }
 
