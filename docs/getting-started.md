@@ -111,11 +111,22 @@ New tabs start your login shell. Type `claude` in a tab to start a Claude sessio
 
 ## 8. The development build and the installed app
 
-The development build and the installed app use the same database, the same daemon and the
-same Claude hook. Do not run the two at the same time.
+`pnpm dev` keeps its data in `~/.terminescu-dev`: the database, the daemon, its sockets and
+the copied binaries. The installed app keeps its own data, so the two run at the same time.
+A branch with a newer database migration upgrades only the copy in `~/.terminescu-dev`.
 
-Each start points the Claude hook at the CLI of the build that started. After you use
-`pnpm dev`, open the installed app again. This points the hook back to the installed CLI.
+Set `TERMINESCU_HOME` to pick another folder, for example one per branch:
+
+```
+TERMINESCU_HOME=~/.terminescu-pr23 pnpm dev
+```
+
+The development build never writes the Claude hook. Your Claude settings keep pointing at the
+installed app, so Claude sessions report to the installed app, and the development build
+shows no Claude status. To test the hook itself, quit the installed app and run the
+development build with `TERMINESCU_HOME=` set to an empty value. It then uses the installed
+app's data and points the hook at its own CLI. Open the installed app afterwards to point the
+hook back.
 
 ## 9. Remove the app
 

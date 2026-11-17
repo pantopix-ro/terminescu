@@ -6,7 +6,7 @@
     "node": ">=24"
   },
   "scripts": {
-    "dev": "pnpm --filter @terminescu/desktop tauri dev",
+    "dev": "TERMINESCU_HOME=${TERMINESCU_HOME-$HOME/.terminescu-dev} pnpm --filter @terminescu/desktop tauri dev",
     "build": "pnpm --filter @terminescu/desktop tauri:build",
     "tauri": "pnpm --filter @terminescu/desktop tauri",
     "typecheck": "pnpm -r typecheck",

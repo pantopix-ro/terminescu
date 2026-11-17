@@ -2041,10 +2041,19 @@ fn send_action(app: &AppHandle, id: &str) {
     }
 }
 
+/// The folder of the database: the app's data folder, or `data/` in `$TERMINESCU_HOME` when a
+/// build runs beside the installed app, as `pnpm run dev` does.
+pub(crate) fn data_dir(app: &tauri::AppHandle) -> tauri::Result<std::path::PathBuf> {
+    match paths::separate_home() {
+        Some(home) => Ok(home.join("data")),
+        None => app.path().app_data_dir(),
+    }
+}
+
 /// Opens the database, starts the runtime and opens the saved windows. An error here ends the
 /// start: `main` logs it and shows it in an alert.
 fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    let dir = app.path().app_data_dir()?;
+    let dir = data_dir(app.handle())?;
     std::fs::create_dir_all(&dir)?;
     let db = Db::open(dir.join("terminescu.sqlite"))?;
     db.local_owner()?;

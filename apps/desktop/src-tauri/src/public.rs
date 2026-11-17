@@ -89,13 +89,20 @@ pub fn uninstall_helpers(app: AppHandle, delete_data: bool) -> Result<(), String
         .arg(format!("{}/ptyd-", bin.display()))
         .status();
     let mut data = Vec::new();
-    if let Ok(d) = app.path().app_data_dir() {
+    if let Ok(d) = crate::data_dir(&app) {
         data.push(d);
     }
-    if let Ok(d) = app.path().app_cache_dir() {
+    // The cache and the WebKit store go by the bundle id, which a dev build shares with the
+    // installed app, so a build on a separate data folder leaves them alone.
+    let shared = paths::separate_home().is_none();
+    if let Ok(d) = app.path().app_cache_dir()
+        && shared
+    {
         data.push(d);
     }
-    if let Ok(home) = app.path().home_dir() {
+    if let Ok(home) = app.path().home_dir()
+        && shared
+    {
         data.push(home.join("Library/WebKit").join(&app.config().identifier));
     }
     let places = uninstall::Places {
