@@ -112,9 +112,12 @@ impl GitPlugin {
         let started = std::thread::Builder::new()
             .name("git-pr-link".into())
             .spawn(move || {
+                // Leaves `running` even when `gh` handling panics, or the link waits forever.
+                let mut guard = Running(shared.clone(), Some(owned.clone()));
                 let found = forge.pr_at(&owned);
                 let mut links = lock(&shared);
                 links.running.remove(&owned);
+                guard.1 = None;
                 let pr = match found {
                     Ok(pr) => pr,
                     Err(e @ (ForgeError::NoGh | ForgeError::LoggedOut)) => {
@@ -172,6 +175,17 @@ impl GitPlugin {
         }
         if more {
             cx.schedule(super::PR_POLL, LINK_READY);
+        }
+    }
+}
+
+/// Clears a lookup's `running` mark when its thread ends without an answer.
+struct Running(Arc<Mutex<LinkPrs>>, Option<String>);
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        if let Some(url) = self.1.take() {
+            lock(&self.0).running.remove(&url);
         }
     }
 }

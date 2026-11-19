@@ -191,9 +191,23 @@ fn artifact_link(event: &Value) -> Option<AgentEvent> {
     if str_of(event, "tool_name") != Some("Artifact") {
         return None;
     }
-    let response = event.get("tool_response")?;
-    let url = first_artifact_url(response)?;
     let input = event.get("tool_input");
+    // Only a page publish names a link: list, read, delete, open, pin and asset uploads
+    // mention artifacts that are not this session's page.
+    let publish = input.is_some_and(|i| {
+        matches!(str_of(i, "action"), None | Some("publish"))
+            && i.get("asset").and_then(Value::as_bool) != Some(true)
+            && (str_of(i, "file_path").is_some() || str_of(i, "type_url").is_some())
+    });
+    if !publish {
+        return None;
+    }
+    let response = event.get("tool_response")?;
+    let url = input
+        .and_then(|i| str_of(i, "url"))
+        .filter(|u| u.starts_with("https://claude.ai/") && u.contains("artifact"))
+        .map(String::from)
+        .or_else(|| first_artifact_url(response))?;
     let name = find_key(response, "title")
         .or_else(|| input.and_then(|i| str_of(i, "title")).map(String::from))
         .or_else(|| {
