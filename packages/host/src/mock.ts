@@ -1220,9 +1220,11 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
         v.sideTabId = into;
         v.id = v.mode === "saved" ? v.id : `${v.mode}:${to}`;
       }
-      const links = new Set(itemList.filter((i) => i.sideTabId === into && i.kind === "link").map((i) => i.value));
+      // A link the target holds drops, unless this copy brings a name the target lacks.
+      const links = new Map<string, boolean>();
+      for (const i of itemList.filter((x) => x.sideTabId === into && x.kind === "link")) links.set(i.value, links.get(i.value) || !!i.name);
       for (const i of itemList.filter((x) => x.sideTabId === from)) {
-        toEnd(itemList, i, !(i.kind === "link" && links.has(i.value)));
+        toEnd(itemList, i, !(i.kind === "link" && links.has(i.value) && (links.get(i.value) || !i.name)));
         i.sideTabId = into;
       }
       for (const p of pinList) if (p.sideTabId === from) p.sideTabId = into;

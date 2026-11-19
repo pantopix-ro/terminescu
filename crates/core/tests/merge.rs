@@ -320,3 +320,27 @@ fn a_tab_moved_alone_takes_what_it_made() {
     assert_eq!(files::list(&db, "s2").unwrap().len(), 1);
     assert!(files::list(&db, "s1").unwrap().is_empty());
 }
+
+/// refine-context-links D5: a link both side tabs hold keeps the stronger name after a merge,
+/// and undo gives the source its named copy back.
+#[test]
+fn a_merged_link_keeps_the_stronger_name() {
+    use terminescu_core::links::NameRank;
+    let db = two();
+    let audit = "https://example.com/docs/audit";
+    assert!(context::name_link(&db, "s1", audit, "Audit guide", NameRank::Tool).unwrap());
+    let label = |s: &str| {
+        context::items(&db, s)
+            .unwrap()
+            .into_iter()
+            .find(|i| i.value == audit)
+            .map(|i| i.label)
+    };
+    let undo = merge::merge(&db, None, "s1", "s2", None, &Resolution::default()).unwrap();
+    assert_eq!(label("s2").as_deref(), Some("Audit guide"));
+    let shown = context::items(&db, "s2").unwrap();
+    assert_eq!(shown.iter().filter(|i| i.value == audit).count(), 1);
+    merge::undo(&db, None, &undo).unwrap();
+    assert_eq!(label("s1").as_deref(), Some("Audit guide"));
+    assert_eq!(label("s2").as_deref(), Some("example.com · audit"));
+}

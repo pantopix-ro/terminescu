@@ -146,6 +146,30 @@ fn an_artifact_call_names_its_link() {
         None
     );
     assert_eq!(link(&post("Artifact", json!({}), json!("done"))), None);
+
+    // Only a publish makes a link: a list, read or delete names other pages, and an asset
+    // upload is not the page.
+    for input in [
+        json!({ "action": "list" }),
+        json!({ "action": "read", "url": ARTIFACT }),
+        json!({ "action": "delete", "url": ARTIFACT }),
+        json!({ "url": ARTIFACT, "file_path": "/x/a.png", "asset": true }),
+    ] {
+        let e = post(
+            "Artifact",
+            input.clone(),
+            json!({ "url": ARTIFACT, "title": "Other" }),
+        );
+        assert_eq!(link(&e), None, "{input}");
+    }
+    // A republish names the page by its input `url`, before any other URL in the response.
+    let other = "https://claude.ai/code/artifact/0000-bbbb";
+    let e = post(
+        "Artifact",
+        json!({ "url": ARTIFACT, "file_path": "/x/page.html" }),
+        json!(format!("See {other}; updated {ARTIFACT}")),
+    );
+    assert_eq!(link(&e), Some((ARTIFACT.into(), None)));
 }
 
 #[test]

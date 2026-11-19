@@ -16,7 +16,7 @@ use crate::vars;
 use rusqlite::params;
 use rusqlite::types::Value;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 /// A variable name both side tabs hold with different values.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -263,22 +263,35 @@ pub fn merge(
             params![into],
             |r| r.get(0),
         )?;
-        let links: HashSet<String> = crate::context::items(db, into)?
-            .into_iter()
-            .filter(|i| i.kind == crate::context::ItemKind::Link)
-            .map(|i| i.value)
-            .collect();
-        let rows: Vec<(Id, String, Option<String>, String, i64)> = {
+        // The target's links with their strongest name rank (refine-context-links D5).
+        let links: HashMap<String, i64> = {
             let mut st = tx.prepare(
-                "SELECT id, kind, name, value, position FROM context_items
+                "SELECT value, MAX(CASE WHEN name IS NULL THEN 0 ELSE name_rank END)
+                 FROM context_items WHERE owner_id = ?1 AND side_tab_id = ?2 AND kind = 'link'
+                 GROUP BY value",
+            )?;
+            st.query_map(params![owner, into], |r| Ok((r.get(0)?, r.get(1)?)))?
+                .collect::<rusqlite::Result<_>>()?
+        };
+        let rows: Vec<(Id, String, Option<String>, String, i64, i64)> = {
+            let mut st = tx.prepare(
+                "SELECT id, kind, name, value, position, name_rank FROM context_items
                  WHERE owner_id = ?1 AND side_tab_id = ?2 ORDER BY position",
             )?;
             st.query_map(params![owner, from], |r| {
-                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                ))
             })?
             .collect::<rusqlite::Result<_>>()?
         };
-        for (id, kind, name, value, position) in rows {
+        for (id, kind, name, value, position, rank) in rows {
+            let rank = if name.is_some() { rank } else { 0 };
             let name = name.unwrap_or_default();
             let drop = match kind.as_str() {
                 "variable" if target_has(&name) => match rename.get(&name) {
@@ -292,7 +305,9 @@ pub fn merge(
                     }
                     None => true,
                 },
-                "link" => links.contains(&value),
+                // A copy with a stronger name moves too: the panel shows one row with the
+                // best name, and undo takes it back.
+                "link" => links.get(&value).is_some_and(|best| rank <= *best),
                 _ => false,
             };
             if drop {
