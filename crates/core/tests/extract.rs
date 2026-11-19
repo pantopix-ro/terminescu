@@ -8,16 +8,14 @@ use terminescu_core::persist::{Saved, save};
 use terminescu_core::state::{SideTab, Tab, Window, Workspace};
 
 fn link(v: &str) -> Found {
-    Found {
-        kind: ItemKind::Link,
-        value: v.into(),
-    }
+    Found::link(v, None)
 }
 
 fn text(v: &str) -> Found {
     Found {
         kind: ItemKind::Text,
         value: v.into(),
+        name: None,
     }
 }
 

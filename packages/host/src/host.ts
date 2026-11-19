@@ -146,7 +146,7 @@ export interface Host {
   addVariable(sideTabId: Id, variable: NewVariable, replace?: boolean): Promise<Variable>;
   changeVariable(sideTabId: Id, name: string, change: VariableChange): Promise<Variable>;
   removeVariable(sideTabId: Id, name: string): Promise<void>;
-  /** Links and text of a side tab's context. */
+  /** Links and notes of a side tab's context. */
   items(sideTabId: Id): Promise<Item[]>;
   /** The same link twice is kept once. */
   addItem(sideTabId: Id, kind: ItemKind, value: string, source: string, originTabId?: Id | null): Promise<Item>;

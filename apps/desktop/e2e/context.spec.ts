@@ -83,7 +83,7 @@ test("links are kept once; text is kept as typed", async ({ page }) => {
     await expect(form).toHaveCount(0);
     await panel.getByRole("button", { name: "Add a link or text" }).click();
   }
-  const items = page.locator('.ctx-section[data-section="Links and text"] .ctx-item');
+  const items = page.locator('.ctx-section[data-section="Links"] .ctx-item');
   await expect(items).toHaveCount(2);
   await expect(items.nth(0)).toHaveClass(/link/);
   await expect(items.nth(1)).toHaveText(/api, web/);
@@ -157,15 +157,15 @@ test("empty side tab shows four heads and no sentence; Pins hides while empty", 
   await start(page);
   const panel = page.locator("aside.ctx-pinned");
   const heads = panel.locator(".ctx-sec-head").filter({ visible: true });
-  await expect(heads.locator("h3")).toHaveText(["Variables", "Links and text", "Files", "Prompts"]);
+  await expect(heads.locator("h3")).toHaveText(["Variables", "Links", "Files", "Prompts"]);
   await expect(panel.locator('[data-section="Pins"]')).toBeHidden();
-  for (const s of ["Variables", "Links and text", "Files"]) {
-    await expect(panel.locator(`[data-section="${s}"] .ctx-count`)).toHaveText("0");
+  for (const s of ["Variables", "Links", "Files"]) {
+    await expect(panel.locator(`[data-section="${s}"] .ctx-sec-head .ctx-count`)).toHaveText("0");
     await expect(panel.locator(`[data-section="${s}"]`)).not.toContainText(/yet|show up/);
   }
   await expect(panel.locator('[data-section="Prompts"] .ctx-count')).toHaveText("2");
   // A + only where the section has an add action.
-  for (const [s, plus] of [["Variables", 1], ["Links and text", 1], ["Files", 0], ["Pins", 0], ["Prompts", 1]] as const)
+  for (const [s, plus] of [["Variables", 1], ["Links", 1], ["Files", 0], ["Pins", 0], ["Prompts", 1]] as const)
     await expect(panel.locator(`[data-section="${s}"] .ctx-add-btn`)).toHaveCount(plus);
   await expect(panel.locator('[data-section="Context"]')).toHaveCount(0);
 });
@@ -179,7 +179,7 @@ test("add a link from the head", async ({ page }) => {
   await field.fill("https://example.test/a");
   await field.press("Enter");
   await expect(panel.getByRole("form", { name: "Add a link or text" })).toHaveCount(0);
-  await expect(panel.locator('[data-section="Links and text"] .ctx-count')).toHaveText("1");
+  await expect(panel.locator('[data-section="Links"] .ctx-sec-head .ctx-count')).toHaveText("1");
   // Escape closes it without adding.
   await panel.getByRole("button", { name: "Add a link or text" }).click();
   await panel.getByRole("textbox", { name: "Link or text" }).press("Escape");
@@ -233,8 +233,8 @@ test("Variables to Prompts stack one under the other and the panel scrolls", asy
   const heads = panel.locator(".ctx-sec-head");
   // The Claude plugin's sections follow the app's own (add-claude-insights 2.2, 3.2), hidden
   // while the tab has no Claude session (polish-claude-insights D2).
-  await expect(heads.locator("h3")).toHaveText(["Variables", "Links and text", "Files", "Pins", "Prompts", "Claude's plan", "What Claude changed"]);
-  await expect(heads.filter({ visible: true }).locator("h3")).toHaveText(["Variables", "Links and text", "Files", "Prompts"]);
+  await expect(heads.locator("h3")).toHaveText(["Variables", "Links", "Files", "Pins", "Prompts", "Claude's plan", "What Claude changed"]);
+  await expect(heads.filter({ visible: true }).locator("h3")).toHaveText(["Variables", "Links", "Files", "Prompts"]);
   await expect(panel.getByRole("tab")).toHaveCount(0);
   const tops = await panel.locator(".ctx-section:not([hidden])").evaluateAll((els) => els.map((e) => e.getBoundingClientRect().top));
   for (let i = 1; i < 4; i++) expect(tops[i - 1]!).toBeLessThan(tops[i]!);
@@ -325,24 +325,70 @@ test("a removed pin waits on its toast, and a second removal deletes the first",
   await expect.poll(pins).toBe(0);
 });
 
-// Links on one host differ at the end, so the end shows; a link or text shows once.
-test("links keep their end in view and each shows once", async ({ page }) => {
+// refine-context-links: a link row shows its name, or a label from the URL; the URL is in the
+// panel tooltip; a note sits under Notes; each shows once.
+test("a link row shows its name and the URL in the tooltip", async ({ page }) => {
   await start(page);
   const panel = page.locator("aside.ctx-pinned");
   await page.evaluate(async () => {
     const host = (window as any).__terminescu.host;
     const side = (await host.workspace()).windows[0].sideTabs[0].id;
-    const base = "https://example.test/acme/platform-api/pull/";
-    for (const n of [4821, 4822, 4821]) await host.addItem(side, "link", `${base}${n}`, "auto", null);
+    for (const u of ["https://github.com/Acme/Shop-API/pull/918/files", "https://github.com/acme/shop-api/pull/918?utm_source=x", "https://claude.ai/code/artifact/abc-123"])
+      await host.addItem(side, "link", u, "auto", null);
     for (let i = 0; i < 2; i++) await host.addItem(side, "text", "api, web", "typed", null);
+    host.describeLink(side, "https://claude.ai/code/artifact/abc-123", "Release checklist");
+    host.describeLink(side, "https://github.com/acme/shop-api/pull/918", "Retry failed payments", { text: "open", tone: "bad", tip: "PR #918 · Checks failing: lint" });
   });
-  const rows = panel.locator('[data-section="Links and text"] .ctx-item');
-  await expect(rows).toHaveCount(3);
-  await expect(panel.locator('[data-section="Links and text"] .ctx-count')).toHaveText("3");
-  await expect(rows.locator(".ctx-link-tail")).toHaveText(["platform-api/pull/4821".slice(-18), "platform-api/pull/4822".slice(-18)]);
-  // The end is on screen even in a narrow panel.
-  const tail = rows.first().locator(".ctx-link-tail");
-  const box = await tail.boundingBox();
-  const row = await rows.first().boundingBox();
-  expect(box!.x + box!.width).toBeLessThanOrEqual(row!.x + row!.width);
+  const rows = panel.locator('ul[aria-label="Links"] .ctx-item');
+  await expect(rows.locator(".ctx-link-label")).toHaveText(["Retry failed payments", "Release checklist"]);
+  await expect(panel.locator('[data-section="Links"] .ctx-sec-head .ctx-count')).toHaveText("2");
+  await expect(rows.first().locator(".ctx-badge")).toHaveText("open");
+  await expect(rows.first().locator(".ctx-badge")).toHaveClass(/pl-bad/);
+  await expect(rows.locator("svg.ctx-link-icon")).toHaveCount(2);
+  const link = rows.nth(1).locator("button.ctx-value");
+  await expect(link).not.toHaveAttribute("title");
+  await link.hover();
+  const tip = page.getByRole("tooltip");
+  await expect(tip).toContainText("Release checklist");
+  await expect(tip).toContainText("https://claude.ai/code/artifact/abc-123");
+  await expect(panel.locator('ul[aria-label="Notes"] .ctx-item')).toHaveText(["api, web×"]);
+});
+
+test("a captured branch goes to Notes", async ({ page }) => {
+  await start(page);
+  const panel = page.locator("aside.ctx-pinned");
+  await expect(panel.locator('[data-group="Notes"]')).toHaveCount(0);
+  await page.evaluate(async () => {
+    const host = (window as any).__terminescu.host;
+    const side = (await host.workspace()).windows[0].sideTabs[0].id;
+    await host.addItem(side, "link", "https://example.test/a", "pasted", null);
+    await host.addItem(side, "link", "https://example.test/b", "pasted", null);
+    await host.addItem(side, "text", "feature/PROJ-482-retry", "auto", null);
+  });
+  await expect(panel.locator('[data-section="Links"] .ctx-sec-head .ctx-count')).toHaveText("2");
+  await expect(panel.locator('[data-group="Notes"] .ctx-count')).toHaveText("1");
+  await expect(panel.locator('ul[aria-label="Notes"]')).toContainText("feature/PROJ-482-retry");
+});
+
+test("copy a link as Markdown", async ({ page }) => {
+  await page.addInitScript(() => {
+    const w = window as any;
+    w.__copied = [];
+    Object.defineProperty(navigator, "clipboard", { value: { writeText: async (t: string) => void w.__copied.push(t) } });
+  });
+  await start(page);
+  const panel = page.locator("aside.ctx-pinned");
+  await page.evaluate(async () => {
+    const host = (window as any).__terminescu.host;
+    const side = (await host.workspace()).windows[0].sideTabs[0].id;
+    await host.addItem(side, "link", "https://github.com/acme/shop-api/pull/918", "auto", null);
+    host.describeLink(side, "https://github.com/acme/shop-api/pull/918", "Retry failed payments");
+  });
+  const link = panel.locator('ul[aria-label="Links"] button.ctx-value');
+  await expect(link).toHaveText("Retry failed payments");
+  await link.click({ button: "right" });
+  const menu = page.getByRole("menu");
+  await expect(menu.getByRole("menuitem")).toHaveText(["Open", "Copy link", "Copy as Markdown", "Remove"]);
+  await menu.getByRole("menuitem", { name: "Copy as Markdown" }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__copied.at(-1))).toBe("[Retry failed payments](https://github.com/acme/shop-api/pull/918)");
 });

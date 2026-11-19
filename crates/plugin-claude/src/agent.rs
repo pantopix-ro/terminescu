@@ -167,7 +167,10 @@ pub fn events(event: &Value) -> Vec<AgentEvent> {
                 out.push(AgentEvent::Reply(reply.into()));
             }
         }
-        Some("PostToolUse") => out.extend(touched(event)),
+        Some("PostToolUse") => {
+            out.extend(touched(event));
+            out.extend(artifact_link(event));
+        }
         _ => {}
     }
     let session = str_of(event, "session_id").filter(|s| is_session_id(s));
@@ -180,6 +183,100 @@ pub fn events(event: &Value) -> Vec<AgentEvent> {
         _ => {}
     }
     out
+}
+
+/// The artifact an `Artifact` tool call published, with its title (refine-context-links D7):
+/// the response's or the input's `title`, else the `<title>` of the HTML file it published.
+fn artifact_link(event: &Value) -> Option<AgentEvent> {
+    if str_of(event, "tool_name") != Some("Artifact") {
+        return None;
+    }
+    let response = event.get("tool_response")?;
+    let url = first_artifact_url(response)?;
+    let input = event.get("tool_input");
+    let name = find_key(response, "title")
+        .or_else(|| input.and_then(|i| str_of(i, "title")).map(String::from))
+        .or_else(|| {
+            let path = input.and_then(|i| str_of(i, "file_path"))?;
+            html_title(Path::new(path), str_of(event, "cwd").map(Path::new))
+        });
+    Some(AgentEvent::Link { url, name })
+}
+
+/// The first claude.ai artifact URL in any string of `v`.
+fn first_artifact_url(v: &Value) -> Option<String> {
+    match v {
+        Value::String(s) => s.match_indices("https://claude.ai/").find_map(|(at, _)| {
+            let rest = &s[at..];
+            let end = rest
+                .find(|c: char| c.is_whitespace() || "\"'<>()[]{}`|\\".contains(c))
+                .unwrap_or(rest.len());
+            let url = rest[..end].trim_end_matches(['.', ',', ';', ':', '!', '?']);
+            url.contains("artifact").then(|| url.to_string())
+        }),
+        Value::Array(a) => a.iter().find_map(first_artifact_url),
+        Value::Object(m) => m.values().find_map(first_artifact_url),
+        _ => None,
+    }
+}
+
+/// A non-empty string under `key`, at any depth of `v`.
+fn find_key(v: &Value, key: &str) -> Option<String> {
+    match v {
+        Value::Object(m) => m
+            .get(key)
+            .and_then(Value::as_str)
+            .filter(|t| !t.trim().is_empty())
+            .map(String::from)
+            .or_else(|| m.values().find_map(|v| find_key(v, key))),
+        Value::Array(a) => a.iter().find_map(|v| find_key(v, key)),
+        _ => None,
+    }
+}
+
+/// Where an artifact's HTML file may sit for its `<title>` to be read: the session's folder,
+/// the per-user temp folder, or `/private/tmp`, where Claude Code keeps its scratchpad.
+fn readable_page(path: &Path, cwd: Option<&Path>) -> Option<PathBuf> {
+    if !path.is_absolute()
+        || path
+            .extension()
+            .is_none_or(|e| !e.eq_ignore_ascii_case("html"))
+    {
+        return None;
+    }
+    let real = path.canonicalize().ok()?;
+    let mut roots = vec![std::env::temp_dir(), PathBuf::from("/private/tmp")];
+    roots.extend(cwd.filter(|c| c.is_absolute()).map(Path::to_path_buf));
+    roots
+        .iter()
+        .filter_map(|r| r.canonicalize().ok())
+        .any(|r| real.starts_with(r))
+        .then_some(real)
+}
+
+/// The `<title>` in the first 8 KB of an HTML file, with the basic entities decoded.
+pub fn html_title(path: &Path, cwd: Option<&Path>) -> Option<String> {
+    use std::io::Read;
+    let real = readable_page(path, cwd)?;
+    let mut head = Vec::with_capacity(8192);
+    std::fs::File::open(real)
+        .ok()?
+        .take(8192)
+        .read_to_end(&mut head)
+        .ok()?;
+    let text = String::from_utf8_lossy(&head);
+    let lower = text.to_ascii_lowercase();
+    let open = lower.find("<title")?;
+    let start = open + lower[open..].find('>')? + 1;
+    let end = start + lower[start..].find("</title")?;
+    let title = text[start..end]
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&amp;", "&");
+    let title = title.split_whitespace().collect::<Vec<_>>().join(" ");
+    (!title.is_empty()).then_some(title)
 }
 
 fn touched(event: &Value) -> Option<AgentEvent> {

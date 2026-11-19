@@ -61,3 +61,28 @@ describe("context variables (D21)", () => {
     expect((await host.pins("s1"))[0]).toEqual(pin);
   });
 });
+
+describe("context links (refine-context-links)", () => {
+  it("cleans a link the way the core does", async () => {
+    const { cleanLink } = await import("../src/links");
+    expect(cleanLink("https://me:tok@Docs.Example.test:443/guide/?utm_source=mail&page=2#setup")).toBe("https://docs.example.test/guide?page=2#setup");
+    expect(cleanLink("https://github.com/Acme/Shop-API/pull/918/files#diff-3a")).toBe("https://github.com/acme/shop-api/pull/918");
+    expect(cleanLink("https://claude.ai/code/artifact/abc-123?tab=1")).toBe("https://claude.ai/code/artifact/abc-123");
+    expect(cleanLink("https://example.test/s?path=%2Fa%2Fb&x=%7E")).toBe("https://example.test/s?path=%2Fa%2Fb&x=%7E");
+    expect(cleanLink("https://files.example.test/a.zip?sig=abc")).toBe("https://files.example.test/a.zip?sig=abc");
+    expect(cleanLink("ftp://files.example.test/a")).toBeNull();
+    expect(cleanLink("not a link")).toBeNull();
+  });
+
+  it("keeps two forms of one PR once, labels it, and shows a name and badge", async () => {
+    const host = createMockHost(ws);
+    const pr = "https://github.com/acme/shop-api/pull/918";
+    await host.addItem("s1", "link", `${pr}/files`, "pasted");
+    await host.addItem("s1", "link", `${pr}?utm_source=x`, "pasted");
+    let items = await host.items("s1");
+    expect(items.map((i) => [i.value, i.label, i.linkType])).toEqual([[pr, "PR #918 · shop-api", "pr"]]);
+    host.describeLink("s1", pr, "Retry failed payments", { text: "open", tone: "bad", tip: "PR #918" });
+    items = await host.items("s1");
+    expect([items[0]!.label, items[0]!.name, items[0]!.badge?.text]).toEqual(["Retry failed payments", "Retry failed payments", "open"]);
+  });
+});

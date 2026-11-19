@@ -1,0 +1,19 @@
+sequenceDiagram
+  participant C as claude CLI
+  participant H as terminescu hook
+  participant PC as plugin-claude
+  participant Core as core (links, context)
+  participant PG as plugin-git
+  participant UI as ContextPanel
+  C->>H: PostToolUse Artifact
+  H->>PC: hook event
+  PC->>Core: AgentEvent::Link {url, name}
+  Core->>Core: links::clean(url), add_item(name, rank tool)
+  C->>H: Stop (reply with PR URL)
+  H->>PC: hook event
+  PC->>Core: AgentEvent::Reply
+  Core->>Core: extract::find, clean, add_item(rank text or none)
+  Core->>PG: CoreEvent::LinkAdded {side_tab, url}
+  PG->>PG: gh pr view url (cached 2 min)
+  PG->>Core: describe_link(name, badge)
+  Core->>UI: items with label, linkType, badge

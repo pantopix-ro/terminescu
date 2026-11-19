@@ -1,6 +1,7 @@
 import { VAR_MODES, type Item, type ItemKind, type NewVariable, type Pin, type Prompt, type TouchedFile, type Variable, type VarMode, type VariableChange } from "@terminescu/host";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { parseTtl, timeAgo, timeLeft } from "./names";
+import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { Tip, useTip } from "./Tip";
 import { PromptTip } from "./PromptTip";
 import { tipSlots } from "./prompt-tip";
@@ -261,17 +262,34 @@ function AddItem({ props, fail, done }: { props: ContextPanelProps; fail(e: unkn
   );
 }
 
-/** Links on one host differ at the end: the end always shows, the middle gives way. */
-export const LINK_TAIL = 18;
-function LinkText({ url }: { url: string }) {
-  const bare = url.replace(/^https?:\/\//, "");
-  if (bare.length <= LINK_TAIL * 2) return <span className="ctx-link-head">{bare}</span>;
+/** A 12 px mark for a link's type (refine-context-links D10), in `currentColor`. */
+function LinkIcon({ type }: { type: Item["linkType"] }) {
+  const path =
+    type === "pr"
+      ? "M3 2v8M3 10a1.5 1.5 0 1 0 0 .01M9 10V5.5a2 2 0 0 0-2-2H5.5M6.5 2 5 3.5 6.5 5M9 10a1.5 1.5 0 1 0 0 .01"
+      : type === "artifact"
+        ? "M2.5 1.5h5l2 2v7h-7zM7.5 1.5v2h2M4 6h4M4 8h3"
+        : "M6 1.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 1 0 0-9M1.5 6h9M6 1.5c-2.4 2.4-2.4 6.6 0 9M6 1.5c2.4 2.4 2.4 6.6 0 9";
   return (
-    <>
-      <span className="ctx-link-head">{bare.slice(0, -LINK_TAIL)}</span>
-      <span className="ctx-link-tail">{bare.slice(-LINK_TAIL)}</span>
-    </>
+    <svg className="ctx-link-icon" data-type={type ?? "web"} width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+      <path d={path} fill="none" stroke="currentColor" strokeWidth="1" />
+    </svg>
   );
+}
+
+/** Copies `text`; a refused clipboard is no error worth a dialog. */
+const copy = (text: string) => void navigator.clipboard?.writeText(text)?.catch(() => undefined);
+
+/** A link's right-click menu: Open, Copy link, Copy as Markdown, Remove (refine-context-links D10). */
+function linkMenu(i: Item, props: ContextPanelProps, fail: (e: unknown) => void): MenuEntry[] {
+  return [
+    { id: "open", label: "Open", run: () => props.onOpenUrl?.(i.value) },
+    "-",
+    { id: "copy", label: "Copy link", run: () => copy(i.value) },
+    { id: "copy-md", label: "Copy as Markdown", run: () => copy(`[${i.label.replace(/[[\]]/g, "\\$&")}](${i.value})`) },
+    "-",
+    { id: "remove", label: "Remove", danger: true, run: () => void props.onRemoveItem?.(i.id)?.catch(fail) },
+  ];
 }
 
 /** One head row for every section: the title, the count, and a `+` where there is an add action (D1). */
@@ -312,6 +330,10 @@ function CoreSections(props: ContextPanelProps) {
     };
     return { onPointerEnter: (e) => show(e.currentTarget), onPointerLeave: tips.hide, onFocus: (e) => show(e.currentTarget), onBlur: tips.hide };
   };
+  const links = items.filter((i) => i.kind === "link");
+  const notes = items.filter((i) => i.kind === "text");
+  const [menu, setMenu] = useState<{ x: number; y: number; item: Item }>();
+  const linkTip = (el: HTMLElement, i: Item) => tips.beside(el, i.name ?? i.label, [i.value]);
   const promptTip = (el: HTMLElement, p: Prompt) => tips.beside(el, p.name, undefined, <PromptTip parts={tipSlots(p.body, variables, pins)} />);
   return (
     <>
@@ -327,29 +349,62 @@ function CoreSections(props: ContextPanelProps) {
           </ul>
         )}
       </section>
-      <section className="ctx-section" aria-label="Links and text" data-section="Links and text">
-        <SectionHead title="Links and text" count={items.length} onAdd={() => toggle("item")} addLabel="Add a link or text" adding={adding === "item"} />
-        {adding === "item" && <AddItem props={props} fail={fail("Links and text")} done={() => setAdding(undefined)} />}
-        {err("Links and text")}
-        {items.length > 0 && (
-          <ul className="ctx-list" aria-label="Links and text">
-            {items.map((i) => (
-              <li key={i.id} className={`ctx-item ${i.kind}`}>
-                {i.kind === "link" ? (
-                  <button type="button" className="ctx-value link" title={i.value} onClick={() => props.onOpenUrl?.(i.value)}>
-                    <LinkText url={i.value} />
-                  </button>
-                ) : (
-                  <span className="ctx-value" title={i.value}>
-                    {i.value}
+      <section className="ctx-section" aria-label="Links" data-section="Links">
+        <SectionHead title="Links" count={links.length} onAdd={() => toggle("item")} addLabel="Add a link or text" adding={adding === "item"} />
+        {adding === "item" && <AddItem props={props} fail={fail("Links")} done={() => setAdding(undefined)} />}
+        {err("Links")}
+        {links.length > 0 && (
+          <ul className="ctx-list" aria-label="Links">
+            {links.map((i) => (
+              <li key={i.id} className="ctx-item link" data-type={i.linkType ?? "web"}>
+                <button
+                  type="button"
+                  className="ctx-value link"
+                  onPointerEnter={(e) => linkTip(e.currentTarget, i)}
+                  onPointerLeave={tips.hide}
+                  onFocus={(e) => linkTip(e.currentTarget, i)}
+                  onBlur={tips.hide}
+                  onClick={() => props.onOpenUrl?.(i.value)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    tips.hide();
+                    setMenu({ x: e.clientX, y: e.clientY, item: i });
+                  }}
+                >
+                  <LinkIcon type={i.linkType} />
+                  <span className="ctx-link-label">{i.label}</span>
+                </button>
+                {i.badge && (
+                  <span className={`ctx-badge pl-item pl-badge pl-${i.badge.tone}`} onPointerEnter={(e) => i.badge?.tip && tips.beside(e.currentTarget, i.badge.text, [i.badge.tip])} onPointerLeave={tips.hide}>
+                    {i.badge.text}
                   </span>
                 )}
-                <button type="button" className="ctx-pin-x" aria-label="Remove" onClick={() => void props.onRemoveItem?.(i.id)?.catch(fail("Links and text"))}>
+                <button type="button" className="ctx-pin-x" aria-label="Remove" onClick={() => void props.onRemoveItem?.(i.id)?.catch(fail("Links"))}>
                   ×
                 </button>
               </li>
             ))}
           </ul>
+        )}
+        {notes.length > 0 && (
+          <div className="ctx-notes" data-group="Notes">
+            <div className="ctx-sub-head">
+              <span className="small ao-dim">Notes</span>
+              <span className="ctx-count small ao-dim">{notes.length}</span>
+            </div>
+            <ul className="ctx-list" aria-label="Notes">
+              {notes.map((i) => (
+                <li key={i.id} className="ctx-item text">
+                  <span className="ctx-value" title={i.value}>
+                    {i.value}
+                  </span>
+                  <button type="button" className="ctx-pin-x" aria-label="Remove" onClick={() => void props.onRemoveItem?.(i.id)?.catch(fail("Links"))}>
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </section>
       <section className="ctx-section" aria-label="Files" data-section="Files">
@@ -421,15 +476,15 @@ function CoreSections(props: ContextPanelProps) {
                     props.onOpenPrompt?.(p.key);
                   }}
                 >
-                  {p.name}
+                  <span className="ctx-prompt-name">{p.name}</span>
                 </button>
-                <span className="small ao-dim">{p.variables.map((v) => `{{${v}}}`).join(" ")}</span>
               </li>
             ))}
           </ul>
         )}
       </section>
       <Tip tip={tips.tip} />
+      {menu && <ContextMenu x={menu.x} y={menu.y} label={`Link ${menu.item.label}`} items={linkMenu(menu.item, props, fail("Links"))} onClose={() => setMenu(undefined)} />}
     </>
   );
 }

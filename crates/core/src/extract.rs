@@ -4,12 +4,26 @@
 
 use crate::context::{self, ContextError, ItemKind};
 use crate::db::Db;
+use crate::links::NameRank;
 use std::collections::HashSet;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Found {
     pub kind: ItemKind,
     pub value: String,
+    /// A link's name and where it came from: `[Name](url)` text, or a tool call
+    /// (refine-context-links D7, D8).
+    pub name: Option<(String, NameRank)>,
+}
+
+impl Found {
+    pub fn link(value: impl Into<String>, name: Option<(String, NameRank)>) -> Self {
+        Found {
+            kind: ItemKind::Link,
+            value: value.into(),
+            name,
+        }
+    }
 }
 
 /// Branch names too common to be worth keeping.
@@ -18,26 +32,42 @@ const PLAIN: [&str; 5] = ["main", "master", "develop", "HEAD", "origin"];
 /// Every match in `text`, once each, in the order they appear.
 pub fn find(text: &str) -> Vec<Found> {
     let mut out: Vec<Found> = Vec::new();
-    let mut push = |f: Found| {
-        if !out.contains(&f) {
-            out.push(f);
-        }
-    };
     for (at, _) in text.match_indices("https://") {
         if let Some(link) = link_at(&text[at..]) {
-            push(Found {
-                kind: ItemKind::Link,
-                value: link,
-            });
+            let name = markdown_text(&text[..at]).map(|n| (n, NameRank::Text));
+            // The same link named once and bare once keeps the named find.
+            match out
+                .iter_mut()
+                .find(|f| f.kind == ItemKind::Link && f.value == link)
+            {
+                Some(f) if f.name.is_none() => f.name = name,
+                Some(_) => {}
+                None => out.push(Found::link(link, name)),
+            }
         }
     }
     for name in branches(text) {
-        push(Found {
+        let f = Found {
             kind: ItemKind::Text,
             value: name,
-        });
+            name: None,
+        };
+        if !out.contains(&f) {
+            out.push(f);
+        }
     }
     out
+}
+
+/// The text of `[text](` when `before` ends with it, on one line (D8).
+fn markdown_text(before: &str) -> Option<String> {
+    let inner = before.strip_suffix("](")?;
+    let open = inner.rfind('[')?;
+    let text = &inner[open + 1..];
+    if text.contains(['\n', ']']) || text.chars().count() > 300 {
+        return None;
+    }
+    crate::links::tidy_name(text)
 }
 
 /// A PR or artifact URL at the start of `s`, cut to its canonical form.
@@ -66,8 +96,15 @@ fn link_at(s: &str) -> Option<String> {
                     && x.chars()
                         .all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
             };
-            (ok(owner) && ok(repo) && !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
-                .then(|| format!("https://github.com/{owner}/{repo}/pull/{n}"))
+            (ok(owner) && ok(repo) && !n.is_empty() && n.chars().all(|c| c.is_ascii_digit())).then(
+                || {
+                    format!(
+                        "https://github.com/{}/{}/pull/{n}",
+                        owner.to_ascii_lowercase(),
+                        repo.to_ascii_lowercase()
+                    )
+                },
+            )
         }
         "claude.ai" => match seg.as_slice() {
             ["artifact", id, ..] if id_ok(id) => Some(format!("https://claude.ai/artifact/{id}")),
@@ -240,6 +277,23 @@ fn worth_reading(bytes: &[u8]) -> bool {
         || has(b" -c ")
 }
 
+/// What [`record_all`] changed in a side tab.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Recorded {
+    /// New rows, links and text.
+    pub added: usize,
+    /// Links that got a better name.
+    pub renamed: usize,
+    /// The links among the new rows, cleaned, for [`CoreEvent::LinkAdded`].
+    pub new_links: Vec<String>,
+}
+
+impl Recorded {
+    pub fn changed(&self) -> bool {
+        self.added + self.renamed > 0
+    }
+}
+
 /// Adds the matches a side tab does not hold yet as auto items; returns how many it added.
 pub fn record(
     db: &Db,
@@ -247,19 +301,49 @@ pub fn record(
     origin_tab: Option<&str>,
     found: &[Found],
 ) -> Result<usize, ContextError> {
+    record_all(db, side_tab, origin_tab, found).map(|r| r.added)
+}
+
+/// [`record`], also naming links the side tab holds when a match brings a better name (D5).
+///
+/// [`CoreEvent::LinkAdded`]: terminescu_plugin_api::CoreEvent::LinkAdded
+pub fn record_all(
+    db: &Db,
+    side_tab: &str,
+    origin_tab: Option<&str>,
+    found: &[Found],
+) -> Result<Recorded, ContextError> {
+    let mut out = Recorded::default();
     if found.is_empty() {
-        return Ok(0);
+        return Ok(out);
     }
-    let mut have: HashSet<String> = context::items(db, side_tab)?
+    let mut have: HashSet<(ItemKind, String)> = context::items(db, side_tab)?
         .into_iter()
-        .map(|i| i.value)
+        .map(|i| (i.kind, i.value))
         .collect();
-    let mut added = 0;
     for f in found {
-        if have.insert(f.value.clone()) {
-            context::add_item(db, side_tab, f.kind, &f.value, "auto", origin_tab)?;
-            added += 1;
+        let value = match f.kind {
+            ItemKind::Link => match crate::links::clean(&f.value) {
+                Some(v) => v,
+                None => continue,
+            },
+            ItemKind::Text => f.value.clone(),
+        };
+        if have.insert((f.kind, value.clone())) {
+            let name = f.name.as_ref().map(|(n, r)| (n.as_str(), *r));
+            let (item, new) =
+                context::add_named_item(db, side_tab, f.kind, &value, "auto", origin_tab, name)?;
+            if new {
+                out.added += 1;
+                if item.kind == ItemKind::Link {
+                    out.new_links.push(item.value);
+                }
+            }
+        } else if let (ItemKind::Link, Some((n, rank))) = (f.kind, &f.name)
+            && context::name_link(db, side_tab, &value, n, *rank)?
+        {
+            out.renamed += 1;
         }
     }
-    Ok(added)
+    Ok(out)
 }

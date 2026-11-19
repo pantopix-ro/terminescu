@@ -31,6 +31,26 @@ pub struct PullRequest {
     pub checks: Checks,
 }
 
+/// Where a pull request stands (refine-context-links D9).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PrState {
+    Open,
+    Draft,
+    Merged,
+    Closed,
+}
+
+/// A pull request a link points at: its title, state and checks.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinkedPr {
+    pub number: u32,
+    pub title: String,
+    pub state: PrState,
+    pub checks: Checks,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ForgeError {
     #[error("gh is not installed")]
@@ -52,6 +72,10 @@ pub trait Forge: Send + Sync {
     fn open_prs(&self, root: &Path) -> Result<Vec<PullRequest>, ForgeError>;
     /// Checks pull request `number` out in the working tree at `dir`, on a branch of its own.
     fn checkout(&self, dir: &Path, number: u32) -> Result<(), ForgeError>;
+    /// The pull request at a GitHub PR URL, in any state; `None` when `gh` finds none.
+    fn pr_at(&self, _url: &str) -> Result<Option<LinkedPr>, ForgeError> {
+        Ok(None)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -166,6 +190,58 @@ impl Forge for GhCli {
         self.run(dir, &["pr", "checkout", &n], self.checkout_limit)
             .map(|_| ())
     }
+
+    fn pr_at(&self, url: &str) -> Result<Option<LinkedPr>, ForgeError> {
+        // Only a cleaned PR URL goes to `gh`, never an option.
+        if !url.starts_with("https://github.com/") || !url.contains("/pull/") {
+            return Ok(None);
+        }
+        let fields = "number,title,state,isDraft,statusCheckRollup";
+        match self.run(
+            Path::new("/"),
+            &["pr", "view", url, "--json", fields],
+            self.limit,
+        ) {
+            Ok(text) => parse_linked_pr(&text).map(Some),
+            Err(ForgeError::Failed(e))
+                if e.contains("Could not resolve") || e.contains("no pull requests found") =>
+            {
+                Ok(None)
+            }
+            Err(e) => Err(e),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawLinked {
+    number: u32,
+    #[serde(default)]
+    title: String,
+    #[serde(default)]
+    state: String,
+    #[serde(default)]
+    is_draft: bool,
+    #[serde(default)]
+    status_check_rollup: Vec<Value>,
+}
+
+pub fn parse_linked_pr(text: &str) -> Result<LinkedPr, ForgeError> {
+    let raw: RawLinked =
+        serde_json::from_str(text).map_err(|e| ForgeError::Failed(format!("gh answered: {e}")))?;
+    let state = match (raw.state.as_str(), raw.is_draft) {
+        ("MERGED", _) => PrState::Merged,
+        ("CLOSED", _) => PrState::Closed,
+        (_, true) => PrState::Draft,
+        _ => PrState::Open,
+    };
+    Ok(LinkedPr {
+        number: raw.number,
+        title: raw.title,
+        state,
+        checks: checks(&raw.status_check_rollup),
+    })
 }
 
 #[derive(Deserialize)]
@@ -276,5 +352,22 @@ mod tests {
         assert_eq!(prs[0].number, 918);
         assert_eq!(prs[0].branch, "feature/PROJ-482-retry");
         assert!(parse_prs("not json").is_err());
+    }
+}
+
+#[cfg(test)]
+mod linked_tests {
+    use super::*;
+
+    #[test]
+    fn a_linked_pr_reads_state_draft_and_checks() {
+        let pr = parse_linked_pr(r#"{"number": 918, "title": "Retry", "state": "OPEN", "isDraft": true, "statusCheckRollup": []}"#).unwrap();
+        assert_eq!((pr.state, pr.checks), (PrState::Draft, Checks::None));
+        let pr = parse_linked_pr(
+            r#"{"number": 918, "title": "Retry", "state": "MERGED", "isDraft": false}"#,
+        )
+        .unwrap();
+        assert_eq!(pr.state, PrState::Merged);
+        assert!(parse_linked_pr("not json").is_err());
     }
 }

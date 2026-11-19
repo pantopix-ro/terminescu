@@ -1,0 +1,19 @@
+erDiagram
+  side_tabs ||--o{ context_items : holds
+  app_state {
+    TEXT owner_id
+    TEXT key "links.cleaned.1"
+    TEXT value
+  }
+  context_items {
+    TEXT id PK
+    TEXT owner_id FK
+    TEXT side_tab_id FK
+    TEXT kind "variable | link | text"
+    TEXT name "link: best name so far"
+    INTEGER name_rank "NEW 0 none, 1 text, 2 tool"
+    TEXT value "link: cleaned URL"
+    TEXT source
+    TEXT origin_tab_id
+    INTEGER position
+  }

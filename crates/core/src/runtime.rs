@@ -127,7 +127,10 @@ pub struct CommandEnd {
 /// Hears which side tab's daemon variables changed (D21).
 pub type ContextSink = Box<dyn Fn(&str) + Send + Sync>;
 /// Where extraction matches go: side tab, the tab they came from, the matches (D13).
-pub type FoundSink = Box<dyn Fn(&str, &str, Vec<crate::extract::Found>) + Send + Sync>;
+/// Saves what the extractor found in a side tab and tab; returns the links that landed as new
+/// rows, for [`CoreEvent::LinkAdded`].
+pub type FoundSink =
+    Box<dyn Fn(&str, &str, Vec<crate::extract::Found>) -> Vec<String> + Send + Sync>;
 /// Hears the documents whose text panes left the layout (D28).
 pub type DocSink = Box<dyn Fn(&[Id]) + Send + Sync>;
 /// Hears what plugins observe (add-plugin-architecture D3). It must not block.
@@ -938,6 +941,13 @@ impl Runtime {
         for e in events {
             match e {
                 AgentEvent::Reply(reply) => self.found(daemon, crate::extract::find(&reply)),
+                AgentEvent::Link { url, name } => self.found(
+                    daemon,
+                    vec![crate::extract::Found::link(
+                        url,
+                        name.map(|n| (n, crate::links::NameRank::Tool)),
+                    )],
+                ),
                 AgentEvent::Session(s) => session = Some(s),
                 touch @ AgentEvent::Touched { .. } => {
                     touched.extend(crate::files::Touch::of(touch))
@@ -1464,11 +1474,24 @@ impl Runtime {
         if found.is_empty() {
             return;
         }
-        if let Some((side, tab)) = self.place_of_daemon(daemon)
-            && let Some(sink) = lock(&self.inner.found_sink).as_ref()
-        {
-            sink(&side, &tab, found);
+        let Some((side, tab)) = self.place_of_daemon(daemon) else {
+            return;
+        };
+        let new_links = match lock(&self.inner.found_sink).as_ref() {
+            Some(sink) => sink(&side, &tab, found),
+            None => return,
+        };
+        for url in new_links {
+            self.link_added(&side, &url);
         }
+    }
+
+    /// Tells the plugins a new link row landed in a side tab (refine-context-links D9).
+    pub fn link_added(&self, side_tab: &str, url: &str) {
+        self.observe(CoreEvent::LinkAdded {
+            side_tab: side_tab.into(),
+            url: url.into(),
+        });
     }
 
     pub fn on_context(&self, sink: ContextSink) {

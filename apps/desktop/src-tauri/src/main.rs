@@ -1031,8 +1031,13 @@ fn prompt_used(app: AppHandle, state: State<'_, AppState>, id: String) -> Result
 }
 
 #[tauri::command(async)]
-fn items_list(state: State<'_, AppState>, side_tab: String) -> Result<Vec<context::Item>, String> {
-    context::items(&lock(&state.db), &side_tab).map_err(|e| e.to_string())
+fn items_list(
+    state: State<'_, AppState>,
+    plugins: State<'_, plugins::Plugins>,
+    side_tab: String,
+) -> Result<Vec<context::Item>, String> {
+    let items = context::items(&lock(&state.db), &side_tab).map_err(|e| e.to_string())?;
+    Ok(plugins.shared.with_badges(&side_tab, items))
 }
 
 #[tauri::command(async)]
@@ -1045,16 +1050,20 @@ fn item_add(
     source: String,
     origin_tab_id: Option<String>,
 ) -> Result<context::Item, String> {
-    let item = context::add_item(
+    let (item, new) = context::add_named_item(
         &lock(&state.db),
         &side_tab,
         kind,
         &value,
         &source,
         origin_tab_id.as_deref(),
+        None,
     )
     .map_err(|e| e.to_string())?;
     let _ = app.emit(CONTEXT_EVENT, &side_tab);
+    if new && item.kind == context::ItemKind::Link {
+        state.runtime.link_added(&side_tab, &item.value);
+    }
     Ok(item)
 }
 
@@ -1593,12 +1602,17 @@ fn start_runtime(
     }));
     let found_app = app.clone();
     runtime.on_found(Box::new(move |side: &str, tab: &str, found| {
-        match terminescu_core::extract::record(&lock(&found_db), side, Some(tab), &found) {
-            Ok(0) => {}
-            Ok(_) => {
-                let _ = found_app.emit(CONTEXT_EVENT, side);
+        match terminescu_core::extract::record_all(&lock(&found_db), side, Some(tab), &found) {
+            Ok(r) => {
+                if r.changed() {
+                    let _ = found_app.emit(CONTEXT_EVENT, side);
+                }
+                r.new_links
             }
-            Err(e) => eprintln!("terminescu: saving extracted items: {e}"),
+            Err(e) => {
+                eprintln!("terminescu: saving extracted items: {e}");
+                Vec::new()
+            }
         }
     }));
     runtime.set_status_rules(rules);
@@ -2096,6 +2110,9 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     updates::start(app.handle());
     if let Err(e) = prompts::import_seeds(&db, prompts::SEEDS) {
         eprintln!("terminescu: seed prompts not imported: {e}");
+    }
+    if let Err(e) = context::clean_saved_links(&db) {
+        eprintln!("terminescu: saved links not cleaned: {e}");
     }
     if let Err(e) = status_store::seed_defaults(&db) {
         eprintln!("terminescu: default statuses not added: {e}");

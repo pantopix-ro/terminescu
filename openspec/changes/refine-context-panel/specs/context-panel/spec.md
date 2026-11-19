@@ -1,18 +1,18 @@
 ## ADDED Requirements
 
 ### Requirement: Section heads
-The context panel SHALL show Variables, Links and text, Files, Pins and Prompts as peer
+The context panel SHALL show Variables, Links, Files, Pins and Prompts as peer
 sections, then the plugin sections. Each section SHALL have one head row with its title, its
-count, and a `+` button when the section has an add action (Variables, Links and text,
+count, and a `+` button when the section has an add action (Variables, Links,
 Prompts). A section with no rows SHALL show its head only, with no empty-state text; Pins
 SHALL hide entirely while empty. An error SHALL still show under its head.
 
 #### Scenario: Empty side tab
 - **WHEN** a new side tab with no variables, links, files or pins shows the pinned panel
-- **THEN** the Variables, Links and text and Files heads each show 0 with no sentence under them, and Pins does not show
+- **THEN** the Variables, Links and Files heads each show 0 with no sentence under them, and Pins does not show
 
 #### Scenario: Add a link from the head
-- **WHEN** the person clicks `+` on the Links and text head, types `https://example.test/a` and presses Enter
+- **WHEN** the person clicks `+` on the Links head, types `https://example.test/a` and presses Enter
 - **THEN** the add box closes and the section counts 1
 
 #### Scenario: Plugin count

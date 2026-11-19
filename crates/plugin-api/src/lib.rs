@@ -14,7 +14,7 @@ mod tail;
 pub use agent::{
     Agent, AgentAdapter, AgentEvent, AgentState, AgentUpdate, AgentView, is_session_id,
 };
-pub use decoration::{Decoration, Slot, Target, Tone};
+pub use decoration::{Decoration, LinkBadge, Slot, Target, Tone};
 pub use tail::LineTail;
 
 use serde::{Deserialize, Serialize};
@@ -99,6 +99,11 @@ pub enum CoreEvent {
     /// A timer this plugin set with [`PluginCx::schedule`] came due. No other plugin hears it.
     Timer {
         token: String,
+    },
+    /// A new link row landed in a side tab's context, cleaned (refine-context-links D9).
+    LinkAdded {
+        side_tab: Id,
+        url: String,
     },
 }
 
@@ -193,6 +198,23 @@ pub trait PluginCx: Send + Sync {
     /// under its event budget. Setting a token again moves its time (a debounce). The host
     /// keeps at most 256 timers per plugin and drops them when the plugin goes off or pauses.
     fn schedule(&self, _after: Duration, _token: &str) {}
+
+    /// The cleaned link URLs of a side tab's context, in panel order.
+    fn links(&self, _side_tab: &str) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// Names a link of a side tab (as a tool source, D5) and sets or clears its badge. A link
+    /// the side tab does not hold is left alone.
+    fn describe_link(
+        &self,
+        _side_tab: &str,
+        _url: &str,
+        _name: Option<&str>,
+        _badge: Option<LinkBadge>,
+    ) -> Result<(), PluginError> {
+        Ok(())
+    }
 
     /// The log file of an agent session: the one its hooks named, else what its adapter finds.
     fn agent_log(&self, _session: &str) -> Option<std::path::PathBuf> {
