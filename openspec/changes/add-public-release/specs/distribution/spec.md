@@ -27,7 +27,7 @@ SHALL NOT be stored in the repository.
 
 #### Scenario: Notarization fails
 - **WHEN** the secrets are set and Apple rejects the notarization
-- **THEN** the workflow fails and no release is drafted
+- **THEN** the workflow fails and no release is published
 
 ### Requirement: Signed updates
 The app SHALL check the release feed at launch and every 24 hours, and from Terminescu › Check

@@ -77,12 +77,12 @@
 ## 7. Release pipeline
 
 - [ ] 7.1 `.github/workflows/release.yml`: build `app,dmg` ad-hoc signed, write
-      `latest.json` and `SHA256SUMS`, add the Open Anyway text to the notes, draft the
+      `latest.json` and `SHA256SUMS`, add the Open Anyway text to the notes, publish the
       release. The Developer ID path switches on when the Apple secrets exist (D2). Verify:
       a `workflow_dispatch` run uploads a DMG, and `codesign -dv` on the app says
       `Signature=adhoc`.
 - [ ] 7.2 README install section with the Open Anyway steps and a screenshot, plus
-      `docs/releasing.md`: the updater key, its rotation, publishing a draft, and the Apple
+      `docs/releasing.md`: the updater key, its rotation, cutting a release, and the Apple
       secrets for later. Verify: manual read-through by the owner.
 - [ ] 7.3 First release v0.2.0, unsigned. Verify: download it on a second Mac account, use
       Open Anyway once, and the app starts; the next launch shows no warning; an update to
