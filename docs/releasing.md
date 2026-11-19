@@ -57,6 +57,9 @@ If the old private key leaked, skip step 2's wait and ask people to download the
 3. When the job is green, open the draft release. Check that it has the DMG,
    `Terminescu.app.tar.gz`, its `.sig`, `latest.json` and `SHA256SUMS`, and that the job log
    shows `Signature=adhoc`.
+   A run stops at its first step when the version already has a tag or a release, drafts
+   included. Raise the version, or delete the stale draft, and run again. Publishing a draft
+   that came from Run workflow creates the tag, and the run that tag starts stops the same way.
 4. Publish the draft. Installed apps find it at their next daily check, or at once through
    Check for Updates. The feed is `releases/latest/download/latest.json`, so a draft never
    reaches anyone.
