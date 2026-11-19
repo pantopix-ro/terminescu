@@ -1,17 +1,17 @@
 # Releasing
 
-This page is for the person who cuts a release. A release is a draft GitHub Release with the
-DMG, the signed update archive, `latest.json` and `SHA256SUMS`. The workflow is
+This page is for the person who cuts a release. A release is a published GitHub Release with
+the DMG, the signed update archive, `latest.json` and `SHA256SUMS`. One run builds and publishes it. The workflow is
 `.github/workflows/release.yml`.
 
 ## A DMG without a release
 
-Actions › Release › Run workflow, with "Draft a GitHub Release" off, runs the checks, builds
+Actions › Release › Run workflow, with "Publish a GitHub Release" off, runs the checks, builds
 the DMG and attaches it to the run as the `Terminescu-<version>` artifact for 14 days. Nothing
 is published. Use it to try a build on another Mac.
 
 Without the update key below, the workflow still builds the DMG, but that build never updates
-itself, and a drafted release says so in its notes. With the key, a drafted release must come
+itself, and the release says so in its notes. With the key, a release must come
 from the repository named in `PUBLIC_REPO` (`crates/protocol/src/public.rs`), because installed
 apps read their update feed there.
 
@@ -52,17 +52,19 @@ If the old private key leaked, skip step 2's wait and ask people to download the
 ## Cutting a release
 
 1. Raise `version` in `apps/desktop/src-tauri/tauri.conf.json` and the workspace `Cargo.toml`.
-2. Merge to `main`, then push a tag: `git tag v0.2.0 && git push origin v0.2.0`. The workflow
-   also runs from Actions › Release › Run workflow.
-3. When the job is green, open the draft release. Check that it has the DMG,
-   `Terminescu.app.tar.gz`, its `.sig`, `latest.json` and `SHA256SUMS`, and that the job log
-   shows `Signature=adhoc`.
-   A run stops at its first step when the version already has a tag or a release, drafts
-   included. Raise the version, or delete the stale draft, and run again. Publishing a draft
-   that came from Run workflow creates the tag, and the run that tag starts stops the same way.
-4. Publish the draft. Installed apps find it at their next daily check, or at once through
-   Check for Updates. The feed is `releases/latest/download/latest.json`, so a draft never
-   reaches anyone.
+2. Merge, then start the run: Actions › Release › Run workflow with "Publish a GitHub
+   Release" on, or push a tag: `git tag v0.2.0 && git push origin v0.2.0`. A run from Run
+   workflow creates the tag itself.
+3. The run publishes the release as the latest one when the job is green. A run that fails
+   publishes nothing. Installed apps find the release at their next daily check, or at once
+   through Check for Updates. The feed is `releases/latest/download/latest.json`.
+4. Open the release. Check that it has the DMG, `Terminescu.app.tar.gz`, its `.sig`,
+   `latest.json` and `SHA256SUMS`, and that the job log shows `Signature=adhoc`. A build
+   without the update key carries only the DMG and `SHA256SUMS`.
+
+A run stops at its first step when the version already has a tag or a release. Raise the
+version and run again. To try a build before anyone sees it, run with the option off and
+take the DMG from the run.
 
 ## Checking the updater by hand
 

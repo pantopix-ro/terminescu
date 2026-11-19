@@ -54,7 +54,8 @@ signing and notarization need one, at 99 USD/year. A free Apple ID cannot notari
      with the hardened runtime and `Entitlements.plist`, then notarizes and staples. A failed
      notarization fails the job.
 3. The job writes `latest.json`, the DMG, the `.app.tar.gz` update and `SHA256SUMS`.
-4. A draft GitHub Release carries them all. The owner publishes the draft by hand.
+4. A GitHub Release carries them all. The same run publishes it; a run that fails publishes
+   nothing. A manual run with the release option off only attaches the DMG to the run.
 
 Entitlements, for the signed path only: none beyond the hardened runtime defaults. Spike 7.0
 confirms that the pty spawn, the unix sockets and WebGL run under it, and adds

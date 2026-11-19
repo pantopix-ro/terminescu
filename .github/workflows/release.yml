@@ -1,5 +1,5 @@
 # add-public-release task 7.1 (D2, D4): builds the DMG and, with the update key, the signed
-# update, and drafts a GitHub Release. Ad-hoc signed until the Apple secrets exist; with
+# update, and publishes a GitHub Release with them attached. Ad-hoc signed until the Apple secrets exist; with
 # APPLE_CERTIFICATE set, Tauri signs with the Developer ID and notarizes instead.
 # A manual run without "release" only uploads the DMG to the run. docs/releasing.md has the steps.
 name: Release
@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       release:
-        description: Draft a GitHub Release (off = the DMG only, as a run artifact)
+        description: Publish a GitHub Release (off = the DMG only, as a run artifact)
         type: boolean
         default: false
   push:
@@ -25,7 +25,7 @@ jobs:
     needs: checks
     # Repo variable CI_RUNS_ON: "local" for the local Mac runner; anything else uses GitHub.
     runs-on: ${{ vars.CI_RUNS_ON == 'local' && fromJSON('["self-hosted","terminescu-runner"]') || 'macos-15' }}
-    # Drafting the release is the only write.
+    # Publishing the release is the only write.
     permissions:
       contents: write
     env:
@@ -63,8 +63,8 @@ jobs:
             echo "::error::Tag $GITHUB_REF_NAME does not match version $version in tauri.conf.json."
             exit 1
           fi
-          # A release run for a version that already has a tag or a release only adds a hidden
-          # draft beside it, and the run stays green. Stop before the build instead.
+          # A version that already has a tag or a release cannot be released again. Stop
+          # before the build instead of at the last step.
           if [ "$RELEASE" = "true" ]; then
             if [ "$GITHUB_REF_TYPE" != "tag" ]; then
               tagged=$(git ls-remote --tags origin "refs/tags/v$version")
@@ -73,11 +73,11 @@ jobs:
                 exit 1
               fi
             fi
-            # The list includes drafts, which carry the tag name before the tag exists.
+            # The list includes drafts left by hand, which carry the tag name before the tag exists.
             existing=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
               --jq ".[] | select(.tag_name == \"v$version\") | .html_url")
             if [ -n "$existing" ]; then
-              echo "::error::A release for v$version already exists: $(echo "$existing" | head -n 1). Delete that draft, or raise the version (docs/releasing.md)."
+              echo "::error::A release for v$version already exists: $(echo "$existing" | head -n 1). Raise the version, or delete it if it is a leftover draft (docs/releasing.md)."
               exit 1
             fi
           fi
@@ -159,10 +159,12 @@ jobs:
           path: dist-release/
           if-no-files-found: error
           retention-days: 14
-      - name: Draft the release
+      # gh uploads the files first and publishes last, so a failed upload leaves no public
+      # release. The tag it creates comes from the workflow token and starts no second run.
+      - name: Publish the release
         if: env.RELEASE == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v$VERSION" --draft --target "$GITHUB_SHA" --title "Terminescu $VERSION" \
+          gh release create "v$VERSION" --latest --target "$GITHUB_SHA" --title "Terminescu $VERSION" \
             --notes-file notes.md dist-release/*
