@@ -4383,7 +4383,7 @@ dependencies = [
 
 [[package]]
 name = "terminescu-cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde_json",
  "terminescu-plugin-api",
@@ -4393,7 +4393,7 @@ dependencies = [
 
 [[package]]
 name = "terminescu-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libc",
  "plist",
@@ -4409,7 +4409,7 @@ dependencies = [
 
 [[package]]
 name = "terminescu-desktop"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libc",
  "muda",
@@ -4432,7 +4432,7 @@ dependencies = [
 
 [[package]]
 name = "terminescu-plugin-api"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libc",
  "serde",
@@ -4442,7 +4442,7 @@ dependencies = [
 
 [[package]]
 name = "terminescu-plugin-claude"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -4452,7 +4452,7 @@ dependencies = [
 
 [[package]]
 name = "terminescu-plugin-git"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -4462,7 +4462,7 @@ dependencies = [
 
 [[package]]
 name = "terminescu-protocol"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libc",
  "serde",
@@ -4472,7 +4472,7 @@ dependencies = [
 
 [[package]]
 name = "terminescu-ptyd"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "alacritty_terminal",
  "libc",
