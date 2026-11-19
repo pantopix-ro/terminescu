@@ -12,7 +12,7 @@ pub mod vcs;
 pub mod worktree;
 
 pub use cli::GitCli;
-pub use forge::{Checks, Forge, ForgeError, GhCli, PullRequest};
+pub use forge::{Checks, Forge, ForgeError, GhCli, LinkedPr, PrState, PullRequest};
 pub use layers::{CachedVcs, CoalescingVcs, TimedVcs};
 pub use plugin::GitPlugin;
 pub use vcs::{Change, DiffBase, Head, Op, RepoFacts, Vcs, VcsError, Worktree};

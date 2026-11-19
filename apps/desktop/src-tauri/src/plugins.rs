@@ -8,12 +8,14 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, State};
 use terminescu_core::db::Db;
 use terminescu_core::decorations::{Decorations, Shown};
+use terminescu_core::links::NameRank;
 use terminescu_core::plugin_host::{CxFactory, PluginHost};
 use terminescu_core::runtime::Runtime;
 use terminescu_core::state::{Command, Id};
 use terminescu_core::{context, files, plugin_store};
 use terminescu_plugin_api::{
-    CoreEvent, Decoration, Helper, PaneInfo, Plugin, PluginCx, PluginError, PluginInfo, Target,
+    CoreEvent, Decoration, Helper, LinkBadge, PaneInfo, Plugin, PluginCx, PluginError, PluginInfo,
+    Target,
 };
 
 pub const DECORATIONS_EVENT: &str = "host://decorations";
@@ -23,6 +25,21 @@ pub const PLUGIN_EVENT: &str = "host://plugin";
 #[derive(Default)]
 pub struct Shared {
     pub decorations: Mutex<Decorations>,
+    /// Plugins' marks on link rows, by side tab and cleaned URL (refine-context-links D9).
+    pub link_badges: Mutex<HashMap<(Id, String), LinkBadge>>,
+}
+
+impl Shared {
+    /// The side tab's items with the plugins' link badges filled in.
+    pub fn with_badges(&self, side_tab: &str, mut items: Vec<context::Item>) -> Vec<context::Item> {
+        let badges = lock(&self.link_badges);
+        for i in &mut items {
+            i.badge = badges
+                .get(&(side_tab.to_string(), i.value.clone()))
+                .cloned();
+        }
+        items
+    }
 }
 
 pub struct Plugins {
@@ -185,6 +202,9 @@ pub fn observe(app: &AppHandle, runtime: &Runtime, plugins: Arc<Plugins>) {
             _ => None,
         };
         plugins.dispatch(&event);
+        if let CoreEvent::SideTabClosed { side_tab, .. } = &event {
+            lock(&plugins.shared.link_badges).retain(|(s, _), _| s != side_tab);
+        }
         if let Some(t) = gone {
             plugins.forget(&app, &[t]);
         }
@@ -288,8 +308,51 @@ impl PluginCx for Cx {
         } else {
             context::ItemKind::Text
         };
-        context::add_item(&lock(&self.db), side_tab, kind, text, self.id, None).map_err(failed)?;
-        self.state()?.runtime.context_changed(side_tab);
+        let (item, new) =
+            context::add_named_item(&lock(&self.db), side_tab, kind, text, self.id, None, None)
+                .map_err(failed)?;
+        let state = self.state()?;
+        state.runtime.context_changed(side_tab);
+        if new && item.kind == context::ItemKind::Link {
+            state.runtime.link_added(side_tab, &item.value);
+        }
+        Ok(())
+    }
+
+    fn links(&self, side_tab: &str) -> Vec<String> {
+        context::link_urls(&lock(&self.db), side_tab).unwrap_or_default()
+    }
+
+    fn describe_link(
+        &self,
+        side_tab: &str,
+        url: &str,
+        name: Option<&str>,
+        badge: Option<LinkBadge>,
+    ) -> Result<(), PluginError> {
+        let held = context::link_urls(&lock(&self.db), side_tab).map_err(failed)?;
+        if !held.iter().any(|u| u == url) {
+            return Ok(());
+        }
+        let mut changed = match name {
+            Some(n) => context::name_link(&lock(&self.db), side_tab, url, n, NameRank::Tool)
+                .map_err(failed)?,
+            None => false,
+        };
+        let key = (side_tab.to_string(), url.to_string());
+        let mut badges = lock(&self.shared.link_badges);
+        let before = badges.get(&key).cloned();
+        if before != badge {
+            changed = true;
+            match badge {
+                Some(b) => badges.insert(key, b),
+                None => badges.remove(&key),
+            };
+        }
+        drop(badges);
+        if changed {
+            self.state()?.runtime.context_changed(side_tab);
+        }
         Ok(())
     }
 

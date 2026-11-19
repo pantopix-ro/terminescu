@@ -126,10 +126,17 @@ body { overflow: hidden; user-select: none; -webkit-user-select: none; }
 .ctx-sec-head h3 { margin: 0; font-size: 9px; font-weight: normal; color: var(--amber); }
 .ctx-sec-head .grow { flex: 1; }
 .ctx-add-btn { height: 20px; min-width: 20px; padding: 0 6px; }
-/* A link keeps its end in view, where links on one host differ; the middle is cut. */
-.ctx-value.link { display: flex; min-width: 0; }
-.ctx-link-head { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ctx-link-tail { flex: none; white-space: nowrap; }
+/* refine-context-links D10: a link row is its type icon, its name or label cut at the end,
+   then a plugin's badge. Notes sit under the links with their own count. */
+.ctx-value.link { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.ctx-link-icon { flex: none; color: var(--dim); }
+.ctx-link-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctx-badge { flex: none; }
+.ctx-sub-head { display: flex; align-items: center; gap: var(--space-2); padding: 2px var(--space-3); border-bottom: 1px solid var(--line); }
+/* A prompt's whole name, over two lines at most; the tooltip holds the body. */
+.ctx-prompt-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; white-space: normal; overflow-wrap: anywhere; text-align: left; }
+.ctx-item:has(.ctx-prompt-name) { align-items: flex-start; }
+.ctx-item .ctx-value:has(.ctx-prompt-name) { white-space: normal; }
 .ctx-empty { padding: var(--space-3); }
 
 /* Palette (⌘P). */

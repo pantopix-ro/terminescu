@@ -371,10 +371,25 @@ export interface Item {
   id: Id;
   sideTabId: Id;
   kind: ItemKind;
+  /** A link's cleaned URL, or the text. */
   value: string;
   source: string | null;
   originTabId: Id | null;
   createdAt: number;
+  /** A link's best name so far (refine-context-links D5). */
+  name: string | null;
+  /** The name, else a label from the URL; the text for a text item. */
+  label: string;
+  linkType: "pr" | "artifact" | "web" | null;
+  /** A plugin's mark on a link, as a PR's state. */
+  badge?: LinkBadge;
+}
+
+/** A small mark on a link row (refine-context-links D9). */
+export interface LinkBadge {
+  text: string;
+  tone: "neutral" | "good" | "warn" | "bad";
+  tip?: string;
 }
 
 /** A file Claude wrote or edited in a side tab, from a `PostToolUse` hook (D30). */

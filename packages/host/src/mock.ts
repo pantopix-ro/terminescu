@@ -3,11 +3,13 @@
 
 import type { DockRow, Host, PaneView } from "./host";
 import { ACTIONS, actionFor, checkBindings, normalAccel, terminalChordProblem, withBindings, type ActionDef, type KeyBindings } from "./keys";
+import { cleanLink, linkLabel, linkType } from "./links";
 import { PromptStore } from "./prompt-store";
 import { dockPlace, hasSplit, holdsWork, isSessionId, leaf, panesOf, removePane, resizeSplit, splitAt, splitPane, terminalsOf } from "./layout";
 import {
   ACCENTS,
   type Decoration,
+  type LinkBadge,
   type PluginInfo,
   type DragEnd,
   type DragItem,
@@ -97,6 +99,8 @@ export interface MockHost extends Host {
   dockPick(sideTabId: Id): void;
   /** Edit actions the context menu sent, with the focused element's class (task 8.55). */
   readonly editCommands: { action: string; focus: string }[];
+  /** Names a link and marks it, as a tool call or the git plugin would (refine-context-links). */
+  describeLink(sideTabId: Id, url: string, name: string | null, badge?: LinkBadge): void;
   /** Whether Claude Code's settings would hold the hook (add-public-release D5). */
   readonly claudeHook: () => boolean;
   /** Each uninstall, with its delete-data answer; and whether the app quit. */
@@ -503,6 +507,7 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
   const secrets = new Map<string, string>();
   const secretKey = (side: string, name: string) => `${side}\u0000${name}`;
   const itemList: Item[] = [];
+  const linkBadges = new Map<string, LinkBadge>();
   const touched: TouchedFile[] = [];
   let pastes = 1;
   const live = (side: string) => {
@@ -1597,6 +1602,16 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
       dockRows = structuredClone(rows);
     },
     dockRows: () => structuredClone(dockRows),
+    describeLink(side, url, name, badge) {
+      const clean = cleanLink(url);
+      if (!clean) return;
+      for (const i of itemList.filter((x) => x.sideTabId === side && x.kind === "link" && x.value === clean)) {
+        if (name) Object.assign(i, { name, label: name });
+      }
+      if (badge) linkBadges.set(`${side}\n${clean}`, badge);
+      else linkBadges.delete(`${side}\n${clean}`);
+      contextChanged(side);
+    },
     dockPick(side) {
       for (const l of revealSideListeners) l(side);
     },
@@ -1773,19 +1788,39 @@ export function createMockHost(initial?: Workspace, options: MockOptions = {}): 
       contextChanged(side);
     },
     async items(side) {
-      // A link or text shows once per side tab, as the core keeps it (refine-context-panel).
-      const seen = new Set<string>();
-      return structuredClone(itemList.filter((i) => i.sideTabId === side && !seen.has(`${i.kind}\n${i.value}`) && !!seen.add(`${i.kind}\n${i.value}`)));
+      // A link or text shows once per side tab, as the core keeps it (refine-context-panel),
+      // with the best name among its copies (refine-context-links D5).
+      const seen = new Map<string, Item>();
+      for (const i of itemList.filter((x) => x.sideTabId === side)) {
+        const key = `${i.kind}\n${i.value}`;
+        const first = seen.get(key);
+        if (!first) seen.set(key, { ...i });
+        else if (!first.name && i.name) Object.assign(first, { name: i.name, label: i.label });
+      }
+      return structuredClone([...seen.values()].map((i) => {
+        const badge = linkBadges.get(`${side}\n${i.value}`);
+        return badge ? { ...i, badge } : i;
+      }));
     },
     async addItem(side, kind, raw, source, originTabId = null) {
-      const value = raw.trim();
-      if (!value) throw new Error("nothing to save");
-      if (kind === "link" && (!/^https?:\/\//.test(value) || /\s/.test(value))) {
-        throw new Error(`${value.slice(0, 80)} is not an http(s) link`);
-      }
+      const text = raw.trim();
+      if (!text) throw new Error("nothing to save");
+      const value = kind === "link" ? cleanLink(text) : text;
+      if (value === null) throw new Error(`${text.slice(0, 80)} is not an http(s) link`);
       const same = itemList.find((i) => i.sideTabId === side && i.kind === kind && i.value === value);
       if (same) return structuredClone(same);
-      const item: Item = { id: id(), sideTabId: side, kind, value, source, originTabId, createdAt: Date.now() };
+      const item: Item = {
+        id: id(),
+        sideTabId: side,
+        kind,
+        value,
+        source,
+        originTabId,
+        createdAt: Date.now(),
+        name: null,
+        label: kind === "link" ? linkLabel(value) : value,
+        linkType: kind === "link" ? linkType(value) : null,
+      };
       itemList.push(item);
       contextChanged(side);
       return structuredClone(item);

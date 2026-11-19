@@ -19,6 +19,7 @@ pub mod keys;
 pub mod labels;
 pub mod launcher;
 pub mod layout;
+pub mod links;
 pub mod merge;
 pub mod persist;
 pub mod plugin_host;

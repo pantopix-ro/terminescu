@@ -4,6 +4,8 @@
 //! the lead pane's branch also looks up its pull request, on a thread of its own, at most once
 //! a minute and after each command; short timers pick the answer up (D4).
 
+mod links;
+
 use crate::forge::{Checks, Forge, ForgeError, GhCli, PullRequest};
 use crate::vcs::{DiffBase, RepoFacts, Vcs, VcsError};
 use crate::worktree::{path_for, slug};
@@ -86,6 +88,8 @@ pub struct GitPlugin {
     git: Option<GitCli>,
     forge: Option<Arc<dyn Forge>>,
     prs: Arc<Mutex<Prs>>,
+    /// PR links in side tabs' contexts (refine-context-links D9).
+    links: Arc<Mutex<links::LinkPrs>>,
     state: Mutex<State>,
     /// What each tab shows now, so a publish changes only what differs (polish-git-plugin D2).
     shown: Mutex<HashMap<Id, Shown>>,
@@ -163,6 +167,7 @@ impl GitPlugin {
             git: Some(git),
             forge: Some(Arc::new(GhCli::default())),
             prs: Arc::default(),
+            links: Arc::default(),
             state: Mutex::default(),
             shown: Mutex::default(),
         }
@@ -175,6 +180,7 @@ impl GitPlugin {
             git: None,
             forge: None,
             prs: Arc::default(),
+            links: Arc::default(),
             state: Mutex::default(),
             shown: Mutex::default(),
         }
@@ -1246,10 +1252,16 @@ impl Plugin for GitPlugin {
             CoreEvent::PaneClosed { pane } => self.pane_closed(pane, cx),
             CoreEvent::TabClosed { tab } => self.tab_closed(tab, cx),
             CoreEvent::SideTabClosed { side_tab, data } => self.side_tab_closed(side_tab, data, cx),
-            CoreEvent::SideTabSelected { side_tab, .. } => self.selected(side_tab, cx),
+            CoreEvent::SideTabSelected { side_tab, .. } => {
+                self.selected(side_tab, cx);
+                self.links_selected(side_tab, cx);
+            }
+            CoreEvent::LinkAdded { side_tab, url } => self.link_added(side_tab, url, cx),
             CoreEvent::Timer { token } => {
                 if token == VERSION_TIMER {
                     self.check_version(cx);
+                } else if token == links::LINK_READY {
+                    self.links_ready(cx);
                 } else if let Some(pane) = token.strip_prefix(TIMER) {
                     self.refresh(pane, cx);
                 } else if let Some(pane) = token.strip_prefix(PR_READY) {

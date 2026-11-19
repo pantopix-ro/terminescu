@@ -2,6 +2,7 @@
 //! secret variables live in the daemon; [`crate::vars`] joins both stores.
 
 use crate::db::{Db, Result};
+use crate::links::{self, LinkType, NameRank};
 use crate::state::Id;
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
@@ -92,7 +93,8 @@ impl ItemKind {
     }
 }
 
-/// A link or a piece of text kept in the context without a name.
+/// A link or a piece of text kept in the context. A link carries its best name so far, and
+/// the label the panel shows (refine-context-links D5, D6).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Item {
@@ -103,6 +105,49 @@ pub struct Item {
     pub source: Option<String>,
     pub origin_tab_id: Option<Id>,
     pub created_at: i64,
+    pub name: Option<String>,
+    /// The name, else [`links::label`] for a link, else the text.
+    pub label: String,
+    pub link_type: Option<LinkType>,
+    /// A plugin's mark on a link, as a PR's state. Memory only; the app fills it in.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub badge: Option<terminescu_plugin_api::LinkBadge>,
+}
+
+impl Item {
+    /// One row's columns, with the label and type worked out.
+    #[allow(clippy::too_many_arguments)]
+    fn from_row(
+        id: Id,
+        side_tab_id: Id,
+        kind: ItemKind,
+        value: String,
+        source: Option<String>,
+        origin_tab_id: Option<Id>,
+        created_at: i64,
+        name: Option<String>,
+    ) -> Self {
+        let (label, link_type) = match kind {
+            ItemKind::Link => (
+                name.clone().unwrap_or_else(|| links::label(&value)),
+                Some(links::link_type(&value)),
+            ),
+            ItemKind::Text => (value.clone(), None),
+        };
+        Item {
+            id,
+            side_tab_id,
+            kind,
+            value,
+            source,
+            origin_tab_id,
+            created_at,
+            name,
+            label,
+            link_type,
+            badge: None,
+        }
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -350,69 +395,220 @@ pub fn add_item(
     source: &str,
     origin_tab: Option<&str>,
 ) -> std::result::Result<Item, ContextError> {
+    add_named_item(db, side_tab, kind, value, source, origin_tab, None).map(|(item, _)| item)
+}
+
+/// [`add_item`] with a name for a link and its source. A link is cleaned first
+/// ([`links::clean`]); one the side tab already holds keeps its row and only upgrades its name
+/// (D3, D5). The flag says whether a new row landed.
+pub fn add_named_item(
+    db: &Db,
+    side_tab: &str,
+    kind: ItemKind,
+    value: &str,
+    source: &str,
+    origin_tab: Option<&str>,
+    name: Option<(&str, NameRank)>,
+) -> std::result::Result<(Item, bool), ContextError> {
     let value = value.trim();
     if value.is_empty() {
         return Err(ContextError::Empty);
     }
-    let web = value.starts_with("https://") || value.starts_with("http://");
-    if kind == ItemKind::Link && (!web || value.contains(char::is_whitespace)) {
-        return Err(ContextError::BadLink(cut(value, 80)));
-    }
-    let value = cut(value, MAX_TEXT);
+    let value = match kind {
+        ItemKind::Link => {
+            links::clean(value).ok_or_else(|| ContextError::BadLink(cut(value, 80)))?
+        }
+        ItemKind::Text => cut(value, MAX_TEXT),
+    };
+    let name = match (kind, name) {
+        (ItemKind::Link, Some((n, rank))) if rank > NameRank::None => {
+            links::tidy_name(n).map(|n| (n, rank))
+        }
+        _ => None,
+    };
     if let Some(found) = items(db, side_tab)?
         .into_iter()
         .find(|i| i.kind == kind && i.value == value)
     {
-        return Ok(found);
+        if let Some((n, rank)) = &name
+            && name_link(db, side_tab, &value, n, *rank)?
+        {
+            let again = items(db, side_tab)?.into_iter().find(|i| i.id == found.id);
+            return Ok((again.unwrap_or(found), false));
+        }
+        return Ok((found, false));
     }
     let owner = db.local_owner()?;
     let now = crate::now_ms();
     let id = crate::new_id();
+    let (stored_name, rank) = match &name {
+        Some((n, r)) => (Some(n.clone()), *r as i64),
+        None => (None, 0),
+    };
     db.conn().execute(
         "INSERT INTO context_items (id, owner_id, side_tab_id, kind, name, value, source,
-           origin_tab_id, position, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6, ?7,
-           (SELECT COALESCE(MAX(position) + 1, 0) FROM context_items WHERE side_tab_id = ?3), ?8, ?8)",
-        params![id, owner, side_tab, kind.as_str(), value, source, origin_tab, now],
+           origin_tab_id, position, created_at, updated_at, name_rank)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8,
+           (SELECT COALESCE(MAX(position) + 1, 0) FROM context_items WHERE side_tab_id = ?3),
+           ?9, ?9, ?10)",
+        params![
+            id,
+            owner,
+            side_tab,
+            kind.as_str(),
+            stored_name,
+            value,
+            source,
+            origin_tab,
+            now,
+            rank
+        ],
     )?;
-    Ok(Item {
+    let item = Item::from_row(
         id,
-        side_tab_id: side_tab.into(),
+        side_tab.into(),
         kind,
         value,
-        source: Some(source.into()),
-        origin_tab_id: origin_tab.map(Into::into),
-        created_at: now,
-    })
+        Some(source.into()),
+        origin_tab.map(Into::into),
+        now,
+        stored_name,
+    );
+    Ok((item, true))
+}
+
+/// Gives every copy of a link in a side tab `name`, unless a copy has a name from a stronger
+/// source (D5). Returns whether a row changed.
+pub fn name_link(db: &Db, side_tab: &str, url: &str, name: &str, rank: NameRank) -> Result<bool> {
+    let Some(name) = links::tidy_name(name) else {
+        return Ok(false);
+    };
+    let owner = db.local_owner()?;
+    let stronger: bool = db.conn().query_row(
+        "SELECT EXISTS (SELECT 1 FROM context_items WHERE owner_id = ?1 AND side_tab_id = ?2
+           AND kind = 'link' AND value = ?3 AND name_rank > ?4)",
+        params![owner, side_tab, url, rank as i64],
+        |r| r.get(0),
+    )?;
+    if stronger {
+        return Ok(false);
+    }
+    let changed = db.conn().execute(
+        "UPDATE context_items SET name = ?4, name_rank = ?5, updated_at = ?6
+         WHERE owner_id = ?1 AND side_tab_id = ?2 AND kind = 'link' AND value = ?3
+           AND (name IS NOT ?4 OR name_rank <> ?5)",
+        params![owner, side_tab, url, name, rank as i64, crate::now_ms()],
+    )?;
+    Ok(changed > 0)
+}
+
+/// The side tab's link URLs, once each, in panel order.
+pub fn link_urls(db: &Db, side_tab: &str) -> Result<Vec<String>> {
+    Ok(items(db, side_tab)?
+        .into_iter()
+        .filter(|i| i.kind == ItemKind::Link)
+        .map(|i| i.value)
+        .collect())
 }
 
 pub fn items(db: &Db, side_tab: &str) -> Result<Vec<Item>> {
     let owner = db.local_owner()?;
     let conn = db.conn();
     let mut stmt = conn.prepare(
-        "SELECT id, side_tab_id, kind, value, source, origin_tab_id, created_at FROM context_items
+        "SELECT id, side_tab_id, kind, value, source, origin_tab_id, created_at, name, name_rank
+         FROM context_items
          WHERE owner_id = ?1 AND side_tab_id = ?2 AND kind IN ('link', 'text') ORDER BY position",
     )?;
     let rows = stmt.query_map(params![owner, side_tab], |r| {
-        Ok(Item {
-            id: r.get(0)?,
-            side_tab_id: r.get(1)?,
-            kind: if r.get::<_, String>(2)? == "link" {
-                ItemKind::Link
-            } else {
-                ItemKind::Text
-            },
-            value: r.get(3)?,
-            source: r.get(4)?,
-            origin_tab_id: r.get(5)?,
-            created_at: r.get(6)?,
-        })
+        let kind = if r.get::<_, String>(2)? == "link" {
+            ItemKind::Link
+        } else {
+            ItemKind::Text
+        };
+        let item = Item::from_row(
+            r.get(0)?,
+            r.get(1)?,
+            kind,
+            r.get(3)?,
+            r.get(4)?,
+            r.get(5)?,
+            r.get(6)?,
+            r.get(7)?,
+        );
+        Ok((item, r.get::<_, i64>(8)?))
     })?;
-    // A merge or a moved tab can bring a link the side tab already has: it shows once.
-    let mut seen = std::collections::HashSet::new();
-    let mut all: Vec<Item> = rows.collect::<rusqlite::Result<_>>()?;
-    all.retain(|i| seen.insert((i.kind, i.value.clone())));
-    Ok(all)
+    // A merge or a moved tab can bring a link the side tab already has: it shows once, in the
+    // first copy's place, with the best name among the copies.
+    let mut all: Vec<(Item, i64)> = Vec::new();
+    for row in rows {
+        let (item, rank) = row?;
+        match all
+            .iter_mut()
+            .find(|(i, _)| i.kind == item.kind && i.value == item.value)
+        {
+            Some((first, best)) => {
+                if rank > *best && item.name.is_some() {
+                    *best = rank;
+                    first.label = item.label.clone();
+                    first.name = item.name;
+                }
+            }
+            None => all.push((item, rank)),
+        }
+    }
+    Ok(all.into_iter().map(|(i, _)| i).collect())
+}
+
+/// Cleans every saved link once per database (D4): each value takes its cleaned form, and the
+/// copies of one link in a side tab share the best name. Nothing is deleted; copies move with
+/// their tabs. Returns how many rows changed.
+pub fn clean_saved_links(db: &Db) -> Result<usize> {
+    const DONE: &str = "links.cleaned.1";
+    let owner = db.local_owner()?;
+    let conn = db.conn();
+    let done: bool = conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM app_state WHERE owner_id = ?1 AND key = ?2)",
+        params![owner, DONE],
+        |r| r.get(0),
+    )?;
+    if done {
+        return Ok(0);
+    }
+    let tx = conn.unchecked_transaction()?;
+    let rows: Vec<(Id, String)> = {
+        let mut stmt = tx
+            .prepare("SELECT id, value FROM context_items WHERE owner_id = ?1 AND kind = 'link'")?;
+        stmt.query_map(params![owner], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<rusqlite::Result<_>>()?
+    };
+    let mut changed = 0;
+    for (id, value) in rows {
+        if let Some(clean) = links::clean(&value).filter(|c| *c != value) {
+            changed += tx.execute(
+                "UPDATE context_items SET value = ?2 WHERE id = ?1",
+                params![id, clean],
+            )?;
+        }
+    }
+    // Every copy takes the name of the strongest named copy of its side tab and value.
+    changed += tx.execute(
+        "UPDATE context_items AS c SET (name, name_rank) = (
+           SELECT b.name, b.name_rank FROM context_items b
+           WHERE b.owner_id = c.owner_id AND b.side_tab_id = c.side_tab_id AND b.kind = 'link'
+             AND b.value = c.value AND b.name IS NOT NULL
+           ORDER BY b.name_rank DESC, b.updated_at DESC LIMIT 1)
+         WHERE c.owner_id = ?1 AND c.kind = 'link' AND EXISTS (
+           SELECT 1 FROM context_items b
+           WHERE b.owner_id = c.owner_id AND b.side_tab_id = c.side_tab_id AND b.kind = 'link'
+             AND b.value = c.value AND b.name IS NOT NULL AND b.name_rank > c.name_rank)",
+        params![owner],
+    )?;
+    tx.execute(
+        "INSERT OR IGNORE INTO app_state (owner_id, key, value) VALUES (?1, ?2, '1')",
+        params![owner, DONE],
+    )?;
+    tx.commit()?;
+    Ok(changed)
 }
 
 /// The side tab of a removed link or text. Copies of the same value in that side tab go too,

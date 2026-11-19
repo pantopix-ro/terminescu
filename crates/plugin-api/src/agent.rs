@@ -93,6 +93,8 @@ pub enum AgentEvent {
     },
     /// The session a reboot resumes in this pane; `None` when the session ended.
     Session(Option<String>),
+    /// A link a tool call made, with its name when the call gave one (refine-context-links D7).
+    Link { url: String, name: Option<String> },
 }
 
 /// One coding tool (Strategy, D2). The runtime asks each adapter whether a hook event is its

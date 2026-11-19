@@ -517,7 +517,8 @@ fn a_reply_runs_the_extraction_rules() {
     rt.on_found(Box::new(move |_, _, items| {
         into.lock()
             .unwrap()
-            .extend(items.into_iter().map(|i| i.value))
+            .extend(items.into_iter().map(|i| i.value));
+        Vec::new()
     }));
     let touched = rt.hook(
         d,

@@ -78,7 +78,8 @@ test("a new prompt shows in the context panel and opens the library at it", asyn
 
   await page.keyboard.press("Meta+Backslash");
   const row = page.locator('aside.ctx-pinned .ctx-item[data-prompt="audit-export"]');
-  await expect(row).toContainText("{{pr_api}}");
+  // The row shows the name alone; the tooltip holds the body (refine-context-links D10).
+  await expect(row).toHaveText("Audit export");
   // A right click edits; a left click inserts (refine-context-panel D6).
   await row.getByRole("button", { name: "Audit export" }).click({ button: "right" });
   await expect(page.locator('.pl-item.sel[data-prompt="audit-export"]')).toBeVisible();
@@ -321,7 +322,8 @@ test("prompt tooltip blinks at a fixed size", async ({ page }) => {
 test("the whole prompt row shows the tooltip", async ({ page }) => {
   await insertSetup(page);
   const row = page.locator('aside.ctx-pinned .ctx-item[data-prompt="review-plan"]');
-  await row.locator(".ao-dim").hover();
+  const box = (await row.boundingBox())!;
+  await row.hover({ position: { x: box.width - 4, y: box.height / 2 } });
   await expect(page.getByRole("tooltip")).toBeVisible();
   await page.mouse.move(600, 600);
   await expect(page.getByRole("tooltip")).toHaveCount(0);
@@ -335,4 +337,23 @@ test("reduced motion shows the values, still", async ({ page }) => {
   await expect(slot).toHaveText("PROJ-482");
   await page.waitForTimeout(2300);
   await expect(slot).toHaveText("PROJ-482");
+});
+
+// refine-context-links 3.5: a long name wraps over two lines, with no placeholders in the row.
+test("a long prompt name wraps and shows no placeholders", async ({ page }) => {
+  const lib = await open(page);
+  await lib.getByRole("button", { name: "+ prompt" }).click();
+  const form = lib.getByRole("form", { name: "New prompt" });
+  await form.getByLabel("Prompt name").fill("Review the plan for the backend migration");
+  await form.getByLabel("Prompt body").fill("Review {{ticket}} on {{branch}}.");
+  await form.getByRole("button", { name: "Create" }).click();
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Meta+Backslash");
+  const panel = page.locator("aside.ctx-pinned");
+  await panel.evaluate((el) => (el.style.width = "260px"));
+  const name = panel.locator(".ctx-item[data-prompt] .ctx-prompt-name").filter({ hasText: "backend migration" });
+  await expect(name).toHaveText("Review the plan for the backend migration");
+  const fits = await name.evaluate((el) => el.scrollHeight <= el.clientHeight + 1);
+  expect(fits).toBe(true);
+  await expect(name).not.toContainText("{{");
 });

@@ -10,15 +10,18 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use terminescu_plugin_api::{
-    CoreEvent, Decoration, Id, PaneInfo, Plugin, PluginCx, PluginError, Target, Tone,
+    CoreEvent, Decoration, Id, LinkBadge, PaneInfo, Plugin, PluginCx, PluginError, Target, Tone,
 };
 use terminescu_plugin_git::plugin::{
     DEBOUNCE, MAX_BASE, MAX_CHANGES, VERSION_TIMER, WORKTREE_FOLDER, WORKTREE_ROW,
 };
 use terminescu_plugin_git::{
-    Change, Checks, DiffBase, Forge, ForgeError, GitPlugin, Head, Op, PullRequest, RepoFacts, Vcs,
-    VcsError, Worktree,
+    Change, Checks, DiffBase, Forge, ForgeError, GitPlugin, Head, LinkedPr, Op, PrState,
+    PullRequest, RepoFacts, Vcs, VcsError, Worktree,
 };
+
+/// What the plugin said about a link: its name and badge.
+type Described = (Option<String>, Option<LinkBadge>);
 
 /// A new row: window, the row it goes after, title and cwd.
 type NewRow = (String, Option<String>, String, String);
@@ -39,6 +42,9 @@ struct Cx {
     clears: std::sync::atomic::AtomicUsize,
     /// `new_row` fails, as when the window went meanwhile.
     no_rows: AtomicBool,
+    /// The context's links, and what the plugin said about each, by side tab and URL.
+    links: Mutex<Vec<String>>,
+    described: Mutex<HashMap<(String, String), Described>>,
 }
 
 impl Cx {
@@ -177,6 +183,24 @@ impl PluginCx for Cx {
     }
     fn schedule(&self, after: Duration, token: &str) {
         self.timers.lock().unwrap().push((after, token.into()));
+    }
+    fn links(&self, _: &str) -> Vec<String> {
+        self.links.lock().unwrap().clone()
+    }
+    fn describe_link(
+        &self,
+        side_tab: &str,
+        url: &str,
+        name: Option<&str>,
+        badge: Option<LinkBadge>,
+    ) -> Result<(), PluginError> {
+        let mut d = self.described.lock().unwrap();
+        let entry = d.entry((side_tab.into(), url.into())).or_default();
+        if name.is_some() {
+            entry.0 = name.map(String::from);
+        }
+        entry.1 = badge;
+        Ok(())
     }
 }
 
@@ -745,6 +769,8 @@ struct FakeForge {
     /// Keeps a lookup running until cleared.
     hold: AtomicBool,
     panics: AtomicBool,
+    linked: Mutex<HashMap<String, LinkedPr>>,
+    link_lookups: Mutex<usize>,
 }
 
 impl Forge for FakeForge {
@@ -770,6 +796,10 @@ impl Forge for FakeForge {
     }
     fn checkout(&self, _: &Path, _: u32) -> Result<(), ForgeError> {
         Ok(())
+    }
+    fn pr_at(&self, url: &str) -> Result<Option<LinkedPr>, ForgeError> {
+        *self.link_lookups.lock().unwrap() += 1;
+        Ok(self.linked.lock().unwrap().get(url).cloned())
     }
 }
 
@@ -1339,4 +1369,95 @@ fn a_slow_git_version_at_launch_asks_again_instead_of_stopping() {
     );
     let st = plugin.call("status", json!({}), &cx).unwrap();
     assert_eq!(st["version"], json!("2.44.0"), "{st}");
+}
+
+const PR_LINK: &str = "https://github.com/acme/shop-api/pull/918";
+
+/// Fires timers until the link is described, as the host would.
+fn until_described(plugin: &GitPlugin, cx: &Cx) -> Option<(Option<String>, Option<LinkBadge>)> {
+    for _ in 0..200 {
+        if let Some(d) = cx
+            .described
+            .lock()
+            .unwrap()
+            .get(&("s1".to_string(), PR_LINK.to_string()))
+        {
+            return Some(d.clone());
+        }
+        for (_, token) in cx.timers() {
+            if token == "linkready" {
+                plugin.on_event(&CoreEvent::Timer { token }, cx);
+            }
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    None
+}
+
+/// refine-context-links D9: a PR link gets its title and a badge for its state and checks.
+#[test]
+fn a_pr_link_gets_its_title_and_state() {
+    let forge = Arc::new(FakeForge::default());
+    forge.linked.lock().unwrap().insert(
+        PR_LINK.into(),
+        LinkedPr {
+            number: 918,
+            title: "Retry failed payments".into(),
+            state: PrState::Open,
+            checks: Checks::Failing(vec!["lint".into()]),
+        },
+    );
+    let (plugin, _, cx) = with_forge(forge.clone());
+    plugin.on_event(
+        &CoreEvent::LinkAdded {
+            side_tab: "s1".into(),
+            url: PR_LINK.into(),
+        },
+        &cx,
+    );
+    let (name, badge) = until_described(&plugin, &cx).expect("described");
+    assert_eq!(name.as_deref(), Some("Retry failed payments"));
+    let badge = badge.unwrap();
+    assert_eq!((badge.text.as_str(), badge.tone), ("open", Tone::Bad));
+
+    // Selecting the side tab within two minutes asks `gh` nothing new.
+    *cx.links.lock().unwrap() = vec![PR_LINK.into(), "https://example.test/docs".into()];
+    cx.described.lock().unwrap().clear();
+    plugin.on_event(
+        &CoreEvent::SideTabSelected {
+            window: "w1".into(),
+            side_tab: "s1".into(),
+        },
+        &cx,
+    );
+    assert!(until_described(&plugin, &cx).is_some());
+    assert_eq!(*forge.link_lookups.lock().unwrap(), 1);
+
+    // Not a PR: never looked up.
+    plugin.on_event(
+        &CoreEvent::LinkAdded {
+            side_tab: "s1".into(),
+            url: "https://github.com/acme/shop-api/issues/7".into(),
+        },
+        &cx,
+    );
+    assert_eq!(*forge.link_lookups.lock().unwrap(), 1);
+}
+
+#[test]
+fn with_gh_logged_out_a_pr_link_gets_no_badge_and_no_lookup() {
+    let forge = Arc::new(FakeForge {
+        out: true,
+        ..Default::default()
+    });
+    let (plugin, _, cx) = with_forge(forge.clone());
+    plugin.on_event(
+        &CoreEvent::LinkAdded {
+            side_tab: "s1".into(),
+            url: PR_LINK.into(),
+        },
+        &cx,
+    );
+    assert_eq!(until_described(&plugin, &cx), Some((None, None)));
+    assert_eq!(*forge.link_lookups.lock().unwrap(), 0);
 }

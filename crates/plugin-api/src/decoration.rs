@@ -31,6 +31,17 @@ pub enum Tone {
     Bad,
 }
 
+/// A small mark on a link row in the context panel, as a PR's state (refine-context-links D9).
+/// It lives in memory only.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinkBadge {
+    pub text: String,
+    pub tone: Tone,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tip: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Decoration {
