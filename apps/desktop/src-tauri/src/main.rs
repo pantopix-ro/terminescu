@@ -1033,7 +1033,7 @@ fn prompt_used(app: AppHandle, state: State<'_, AppState>, id: String) -> Result
 #[tauri::command(async)]
 fn items_list(
     state: State<'_, AppState>,
-    plugins: State<'_, plugins::Plugins>,
+    plugins: State<'_, Arc<plugins::Plugins>>,
     side_tab: String,
 ) -> Result<Vec<context::Item>, String> {
     let items = context::items(&lock(&state.db), &side_tab).map_err(|e| e.to_string())?;
