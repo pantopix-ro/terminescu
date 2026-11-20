@@ -61,7 +61,7 @@ The build runs these steps:
 2. It builds the UI into `apps/desktop/dist`.
 3. It builds the app in release mode and makes the disk image.
 
-The result is `target/release/bundle/dmg/Terminescu_0.2.0_aarch64.dmg`. The app bundle is
+The result is `target/release/bundle/dmg/Terminescu_0.2.1_aarch64.dmg`. The app bundle is
 also in `target/release/bundle/macos/Terminescu.app`.
 
 A full release build takes about 5 to 10 minutes the first time.
